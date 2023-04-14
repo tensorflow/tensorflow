@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -51,8 +50,7 @@ class XlaCallModuleLoader {
   // This is to prevent callers from accidentally passing `mlir::Type` owned by
   // a context that's different from the one passed to `Create`, which could
   // cause lifetime issues.
-  tsl::Status RefineDynamicShapes(
-      llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_shapes);
+  tsl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
   // Validate that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is

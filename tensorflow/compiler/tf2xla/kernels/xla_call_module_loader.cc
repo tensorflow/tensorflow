@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -271,7 +272,7 @@ tsl::Status XlaCallModuleLoader::AddMainWrapper() {
 }
 
 tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
-    llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_shapes) {
+    llvm::ArrayRef<xla::Shape> input_shapes) {
   // Locate the (wrapped) 'main' function.
   // This is the convention used by MlirToXlaComputation.
   mlir::Block &main_body = main_.front();
@@ -292,18 +293,22 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   mlir::Builder builder(module_->getContext());
   std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
   for (int i = 0, end = non_dimension_arguments; i < end; ++i) {
-    mlir::Type type = main_.getArgument(i).getType();
-    auto shaped = type.dyn_cast<mlir::ShapedType>();
-    if (shaped == nullptr) {
-      return tsl::errors::InvalidArgument(
-          "XlaCallModule can only accept shaped types, but got ",
-          mlir::debugString(type), " for argument #", i);
-    }
-    mlir::Type static_array_input_type =
-        mlir::RankedTensorType::get(input_shapes[i], shaped.getElementType());
+    const xla::Shape &xla_shape = input_shapes[i];
+    std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
+                                        xla_shape.dimensions().end());
+    TF_ASSIGN_OR_RETURN(
+        mlir::Type element_type,
+        ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
+    mlir::Type type = mlir::RankedTensorType::get(xla_dimensions, element_type);
+    // TODO(burmako): This fails with an obscure compilation error.
+    // TF_ASSIGN_OR_RETURN(
+    //     mlir::Type type,
+    //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
     VLOG(3) << "XlaCallModule static array input type #" << i << ": "
-            << mlir::debugString(static_array_input_type);
-    static_array_input_types[i] = static_array_input_type;
+            << mlir::debugString(type);
+    // TODO(b/278273480): Determine whether it's safe to override the element
+    // type using that from the input shape.
+    static_array_input_types[i] = type;
   }
 
   // Refine 'main' argument types to use static input types instead.

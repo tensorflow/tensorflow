@@ -385,6 +385,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:statusor",

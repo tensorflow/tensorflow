@@ -1222,16 +1222,10 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   // Cannot pass `op.getArgs().getTypes()` to `loader->RefineDynamicShapes`
   // because `op` and `loader` are using different MLIR contexts. See comments
   // on `xla_call_module_context_` for details.
-  SmallVector<ArrayRef<int64_t>> input_shapes;
+  std::vector<xla::Shape> input_shapes;
   input_shapes.reserve(op.getArgs().size());
   for (mlir::Type type : op.getArgs().getTypes()) {
-    auto ranked = type.dyn_cast<RankedTensorType>();
-    if (ranked == nullptr) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Unsupported XlaCallModule arg type: " << type);
-      return false;
-    }
-    input_shapes.push_back(ranked.getShape());
+    input_shapes.push_back(xla::TypeToShape(type));
   }
 
   tsl::Status status = loader->RefineDynamicShapes(input_shapes);

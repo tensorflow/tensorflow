@@ -105,14 +105,11 @@ class XlaCallModuleOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
-    std::vector<llvm::ArrayRef<int64_t>> input_shapes;
+    std::vector<xla::Shape> input_shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       auto shape = ctx->InputXlaShape(i);
       OP_REQUIRES_OK(ctx, shape.status());
-      auto type = xla::ConvertTensorShapeToType<mlir::RankedTensorType>(
-          *shape, mlir::Builder(&context_));
-      OP_REQUIRES_OK(ctx, type.status());
-      input_shapes.push_back(type->getShape());
+      input_shapes.push_back(*std::move(shape));
     }
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateModule());
