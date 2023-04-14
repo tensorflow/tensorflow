@@ -452,6 +452,8 @@ cc_library(
     deps = [
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/graph_executor:config",
+        "//tensorflow/core/tfrt/graph_executor:config_cc_proto",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
