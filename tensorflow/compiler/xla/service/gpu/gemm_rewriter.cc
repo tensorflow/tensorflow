@@ -501,16 +501,37 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                       CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Broadcast(&bias, m::Op())))) {
-      HloInstruction *bias_f32 = bias->mutable_operand(0);
-      HloInstruction *bias_f16_maybe;
+      if (existing_gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+        HloInstruction *bias_f32 = bias->mutable_operand(0);
+        HloInstruction *bias_f16_maybe;
+        PrimitiveType supported_bias_type;
+        switch (existing_gemm->shape().element_type()) {
+          case F8E4M3FN:
+          case F8E5M2:
+          case F32:
+          case BF16:
+            supported_bias_type = BF16;
+            break;
+          case F16:
+            supported_bias_type = F16;
+            break;
+          default:
+            VLOG(1) << "Bias element type must be BF16 or F16 for cuBLASLt F8 "
+                    << "matmul. And gemm output type has to be compatible. "
+                    << "Actual gemm output type is "
+                    << PrimitiveType_Name(
+                           existing_gemm->shape().element_type());
+            return InternalError(
+                "Output type has not supported bias fusion from "
+                "cuBLASTLt.");
+        }
 
-      if (existing_gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
-          bias_f32->shape().element_type() == F32 &&
-          Match(bias_f32,
-                m::Convert(m::Op(&bias_f16_maybe)).WithElementType(F32)) &&
-          (bias_f16_maybe->shape().element_type() == F16 ||
-           bias_f16_maybe->shape().element_type() == BF16)) {
-        TF_RETURN_IF_ERROR(bias->ReplaceOperandWith(0, bias_f16_maybe));
+        if (bias_f32->shape().element_type() == F32 &&
+            Match(bias_f32,
+                  m::Convert(m::Op(&bias_f16_maybe)).WithElementType(F32)) &&
+            bias_f16_maybe->shape().element_type() == supported_bias_type) {
+          TF_RETURN_IF_ERROR(bias->ReplaceOperandWith(0, bias_f16_maybe));
+        }
       }
 
       TF_ASSIGN_OR_RETURN(
