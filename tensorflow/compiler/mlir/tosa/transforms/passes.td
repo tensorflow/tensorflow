@@ -113,3 +113,9 @@ def StripModuleMetadata :
   let constructor = "createStripModuleMetadataPass()";
 }
 
+def VerifyFullyConverted :
+    Pass<"tosa-tflite-verify-fully-converted", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TFLite frontend ops were converted and none remain.";
+  let constructor = "createVerifyFullyConvertedPass()";
+}
+

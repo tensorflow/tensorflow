@@ -187,6 +187,7 @@ cc_library(
         "transforms/strip_metadata.cc",
         "transforms/strip_quant_types.cc",
         "transforms/tfl_legalize_patterns.inc",
+        "transforms/verify_fully_converted.cc",
     ],
     hdrs = [
         "tfl_passes.h",
