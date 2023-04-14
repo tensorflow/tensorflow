@@ -354,8 +354,8 @@ func.func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>
 
 // CHECK-LABEL: @xla_spmd_full_to_shard_shape
 func.func @xla_spmd_full_to_shard_shape(%arg0: tensor<2x2xi64>) -> (tensor<1x2xi64>) {
-  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
-  // CHECK: %[[MANUAL:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "{devices=[2,1]0,1}"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: %[[MANUAL:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "{manual}"} : (tensor<2x2xi64>) -> tensor<1x2xi64>
   // CHECK: return %[[MANUAL]]
   %0 = "tf.XlaSpmdFullToShardShape"(%arg0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
   func.return %0 : tensor<1x2xi64>
@@ -378,8 +378,8 @@ func.func @xla_spmd_full_to_shard_shape(%arg0: tensor<2x2xi64>) -> (tensor<1x2xi
 
 // CHECK-LABEL: @xla_spmd_shard_to_full_shape
 func.func @xla_spmd_shard_to_full_shape(%arg0: tensor<1x2xi64>) -> (tensor<2x2xi64>) {
-  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<1x2xi64>) -> tensor<1x2xi64>
-  // CHECK: %[[FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "{manual}"} : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  // CHECK: %[[FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "{devices=[2,1]0,1}"} : (tensor<1x2xi64>) -> tensor<2x2xi64>
   // CHECK: return %[[FULL]]
   %0 = "tf.XlaSpmdShardToFullShape"(%arg0) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
   func.return %0 : tensor<2x2xi64>
