@@ -110,7 +110,7 @@ Note: Image classification can only tell you the probability that an image
 represents one or more of the classes that the model was trained on. It cannot
 tell you the position or identity of objects within the image. If you need to
 identify objects and their positions within images, you should use an
-<a href="../object_detection/overview">object detection</a> model.
+<a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/examples/object_detection/overview.md">object detection</a> model.
 
 <h4>Ambiguous results</h4>
 
