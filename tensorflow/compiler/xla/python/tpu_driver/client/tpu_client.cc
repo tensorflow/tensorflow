@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,8 +39,9 @@ limitations under the License.
 
 namespace xla {
 
-TpuDevice::TpuDevice(int id, int process_index,
-                     const std::array<int, 3>& coords, int core_on_chip)
+TpuDeviceDescription::TpuDeviceDescription(int id, int process_index,
+                                           const std::array<int, 3>& coords,
+                                           int core_on_chip)
     : id_(id),
       process_index_(process_index),
       coords_(coords),
@@ -52,9 +54,9 @@ TpuDevice::TpuDevice(int id, int process_index,
       process_index_, absl::StrJoin(coords_, ","), core_on_chip_);
 }
 
-absl::string_view TpuDevice::DebugString() const { return debug_string_; }
-
-absl::string_view TpuDevice::ToString() const { return to_string_; }
+TpuDevice::TpuDevice(int id, int process_index,
+                     const std::array<int, 3>& coords, int core_on_chip)
+    : description_(id, process_index, coords, core_on_chip) {}
 
 xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
 TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
