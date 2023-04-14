@@ -1143,7 +1143,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " GetNext exit";
@@ -1180,7 +1180,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " Skip exit";

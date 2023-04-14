@@ -2208,7 +2208,7 @@ Model::Model()
                                                   gap_times_usec_.end()};
               return model_proto.DebugString();
             }
-            LOG(WARNING) << s.error_message();
+            LOG(WARNING) << s.message();
           }
         }
         return DebugString();
@@ -3000,7 +3000,7 @@ std::string Model::DebugString() {
   if (s.ok()) {
     cached_debug_string_ = model_proto.DebugString();
   } else {
-    LOG(WARNING) << s.error_message();
+    LOG(WARNING) << s.message();
   }
   cache_until_ = absl::Now() + absl::Seconds(kMinSecondsBetweenCalls);
   return cached_debug_string_;
