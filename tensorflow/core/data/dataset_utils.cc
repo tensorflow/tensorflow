@@ -709,7 +709,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
-        status.error_message()));
+        std::string(status.message())));
   }
   return OkStatus();
 }

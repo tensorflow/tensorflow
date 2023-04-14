@@ -277,7 +277,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     auto s = env_->session_mgr->DeleteSession(session_name);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to destroy worker session '" << session_name
-                   << "' due to " << s.error_message();
+                   << "' due to " << s.message();
     }
   };
 
@@ -549,7 +549,7 @@ void EagerServiceImpl::RunComponentFunction(
     delete num_retvals;
     delete op;
     done(errors::Internal("Error setting is_component_function attribute: ",
-                          s.error_message()));
+                          s.message()));
     return;
   }
 
