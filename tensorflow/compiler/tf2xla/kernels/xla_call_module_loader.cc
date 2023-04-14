@@ -361,6 +361,8 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::stablehlo::createStablehloRefineShapesPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloCanonicalizeDynamismPass());
   if (!mlir::succeeded(pm.run(*module_))) {
     return tsl::errors::InvalidArgument("Module shape refinement failed");
   }
