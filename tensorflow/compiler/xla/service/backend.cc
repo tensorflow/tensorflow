@@ -165,11 +165,18 @@ tsl::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
 
 StatusOr<se::StreamExecutor*> Backend::stream_executor(
     int device_ordinal) const {
-  if (device_ordinal < 0 ||
-      device_ordinal > stream_executors_.back()->device_ordinal()) {
+  if (stream_executor::DeviceOrdinalHelper::DecodeDeviceFromOrdinal(
+          device_ordinal) < 0 ||
+      stream_executor::DeviceOrdinalHelper::DecodeDeviceFromOrdinal(
+          device_ordinal) >
+          stream_executor::DeviceOrdinalHelper::DecodeDeviceFromOrdinal(
+              stream_executors_.back()->device_ordinal())) {
     return InvalidArgument(
         "Invalid device ordinal value (%d). Valid range is [0, %d].",
-        device_ordinal, stream_executors_.back()->device_ordinal());
+        stream_executor::DeviceOrdinalHelper::DecodeDeviceFromOrdinal(
+            device_ordinal),
+        stream_executor::DeviceOrdinalHelper::DecodeDeviceFromOrdinal(
+            stream_executors_.back()->device_ordinal()));
   }
   for (auto* executor : stream_executors_) {
     if (executor->device_ordinal() == device_ordinal) {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
 
 namespace tsl {
@@ -215,6 +216,30 @@ class DeviceNameUtils {
   // `device_name`.
   static Status DeviceNameToCpuDeviceName(const std::string& device_name,
                                           std::string* host_device_name);
+
+  // Returns true iff the device_name is in the format of
+  // ".*STREAM_(C|G)PU_\d+:\d+$".
+  static bool IsStreamDeviceName(const std::string& device_name);
+
+  // Returns name of the device from the stream-encoded name if the
+  // multi-stream is enabled. Otherwise returns the input name.
+  static tsl::StatusOr<std::string> GetDeviceNameFromStreamDeviceName(
+      const std::string& device_name);
+
+  // Returns device ordinal of the device from the stream-encoded name if the
+  // multi-stream is enabled.
+  static tsl::StatusOr<int> DecodeDeviceFromStreamDeviceName(
+      const std::string& device_name);
+
+  // Returns stream that is used from the stream-encoded name if the
+  // multi-stream is enabled.
+  static tsl::StatusOr<int> DecodeStreamFromStreamDeviceName(
+      const std::string& device_name);
+
+  // Returns true iff device_name1 and device_name2 have the same or
+  // are stream device names that represent the same device.
+  static bool HaveSameDeviceName(const std::string& device_name1,
+                                 const std::string& device_name2);
 };
 
 std::ostream& operator<<(std::ostream& os,

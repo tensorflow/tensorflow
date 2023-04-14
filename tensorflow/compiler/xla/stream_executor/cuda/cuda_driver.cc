@@ -37,6 +37,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -286,8 +287,10 @@ static tsl::Status InternalInit() {
 
 /* static */ tsl::Status GpuDriver::GetDevice(int device_ordinal,
                                               CUdevice* device) {
-  RETURN_IF_CUDA_RES_ERROR(cuDeviceGet(device, device_ordinal),
-                           "Failed call to cuDeviceGet");
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGet(device,
+                  DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal)),
+      "Failed call to cuDeviceGet");
   return ::tsl::OkStatus();
 }
 
@@ -1549,7 +1552,9 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
 
 /* static */ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
                                                  int device_ordinal) {
-  CUresult res = cuDeviceGetProperties(device_properties, device_ordinal);
+  CUresult res = cuDeviceGetProperties(
+      device_properties,
+      DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal));
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;

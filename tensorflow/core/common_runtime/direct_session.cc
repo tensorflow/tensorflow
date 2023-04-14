@@ -575,6 +575,15 @@ Status DirectSession::RunInternal(
   }
 #endif
 
+  // Decide the best stream group for each GPU device.
+  std::unordered_map<Device*, int> stream_group_map;
+  for (const auto& item : executors_and_keys->items) {
+    if (stream_group_map.find(item.device) == stream_group_map.end()) {
+      int stream_group_idx = device_mgr_->RequireStreamGroup(item.device);
+      stream_group_map.insert(std::make_pair(item.device, stream_group_idx));
+    }
+  }
+
   thread::ThreadPool* pool;
   // Use std::unique_ptr to ensure garbage collection
   std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
@@ -754,7 +763,14 @@ Status DirectSession::RunInternal(
                               executors_done.Notify();
                             });
 
-    for (const auto& item : executors_and_keys->items) {
+    for (int i = 0; i < executors_and_keys->items.size(); ++i) {
+      int stream_group_idx =
+          stream_group_map[executors_and_keys->items[i].device];
+      const auto& item =
+          stream_group_idx == -1 ||
+                  executors_and_keys->stream_items[i].size() <= stream_group_idx
+              ? executors_and_keys->items[i]
+              : executors_and_keys->stream_items[i][stream_group_idx];
       set_threadpool_args_for_item(item, &args);
       item.executor->RunAsync(args, barrier->Get());
     }
@@ -769,6 +785,11 @@ Status DirectSession::RunInternal(
 
   if (step_cancellation_manager.IsCancelled()) {
     run_status.Update(errors::Cancelled("Run call was cancelled"));
+  }
+
+  // Release the stream groups.
+  for (const auto& item : stream_group_map) {
+    device_mgr_->ReleaseStreamGroup(item.first, item.second);
   }
 
   if (device_profiler_session) {
@@ -1350,6 +1371,7 @@ Status DirectSession::CreateExecutors(
     }
   }
   ek->items.reserve(graphs.size());
+  ek->stream_items.reserve(graphs.size());
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
 
@@ -1368,6 +1390,23 @@ Status DirectSession::CreateExecutors(
             *r = new IntraProcessRendezvous(device_mgr);
             return OkStatus();
           }}));
+
+  size_t max_stream_num = device_mgr_->GetMaxStreamNum();
+  func_info->stream_proc_flr.reserve(max_stream_num);
+  for (int executor_index = 0; executor_index < max_stream_num;
+       ++executor_index) {
+    func_info->stream_proc_flr.push_back(
+        absl::make_unique<ProcessFunctionLibraryRuntime>(
+            device_mgr_.get(), options_.env, &options_.config,
+            graph_def_version, func_info->flib_def.get(), optimizer_opts,
+            thread_pools_[0].first, nullptr, session_metadata,
+            Rendezvous::Factory{
+                [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
+                  *r = new IntraProcessRendezvous(device_mgr);
+                  return OkStatus();
+                }},
+            CreateNoOpStatsPublisher, executor_index));
+  }
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1432,6 +1471,72 @@ Status DirectSession::CreateExecutors(
     item->executor = nullptr;
     item->device = device;
     auto executor_type = options_.config.experimental().executor_type();
+
+    // Create the multi-stream executors first.
+    size_t stream_num = device_mgr_->GetStreamNum(device);
+    ek->stream_items.resize(ek->stream_items.size() + 1);
+    auto* items = &(ek->stream_items.back());
+    items->reserve(stream_num);
+
+    std::vector<FunctionLibraryRuntime*> stream_libs;
+    for (size_t executor_index = 0; executor_index < max_stream_num;
+         ++executor_index) {
+      stream_libs.push_back(
+          func_info->stream_proc_flr[executor_index]->GetFLR(partition_name));
+    }
+    for (int executor_index = 0; executor_index < stream_num;
+         ++executor_index) {
+      items->resize(items->size() + 1);
+      auto* item = &(items->back());
+
+      auto lib = stream_libs[executor_index];
+      if (lib == nullptr) {
+        return errors::Internal("Could not find device: ", partition_name);
+      }
+      item->flib = lib;
+
+      LocalExecutorParams params;
+      params.device = device_mgr_->LookupStream(device, executor_index);
+      params.session_metadata = session_metadata;
+      params.function_library = lib;
+      params.create_kernel =
+          [this, lib, opseg](const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+            // NOTE(mrry): We must not share function kernels (implemented
+            // using `CallOp`) between subgraphs, because `CallOp::handle_`
+            // is tied to a particular subgraph. Even if the function itself
+            // is stateful, the `CallOp` that invokes it is not.
+            if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
+              return lib->CreateKernel(props, kernel);
+            }
+            auto create_fn = [lib, &props](OpKernel** kernel) {
+              return lib->CreateKernel(props, kernel);
+            };
+            // Kernels created for subgraph nodes need to be cached.  On
+            // cache miss, create_fn() is invoked to create a kernel based
+            // on the function library here + global op registry.
+            return opseg->FindOrCreate(session_handle_, props->node_def.name(),
+                                       kernel, create_fn);
+          };
+      params.delete_kernel = [lib](OpKernel* kernel) {
+        if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
+          delete kernel;
+      };
+
+      // NewLocalExecutor takes ownership of dup_graph.
+      std::unique_ptr<Graph> dup_graph(new Graph(func_info->flib_def.get()));
+      CopyGraph(*partition_graph, dup_graph.get());
+      item->executor = nullptr;
+      item->device = params.device;
+      TF_RETURN_IF_ERROR(
+          NewExecutor(executor_type, params, *dup_graph, &item->executor));
+      if (!options_.config.experimental().disable_output_partition_graphs() ||
+          options_.config.graph_options().build_cost_model() > 0) {
+        item->graph = std::move(dup_graph);
+      }
+    }
+
+    // Create the original executor at last.
     TF_RETURN_IF_ERROR(
         NewExecutor(executor_type, params, *partition_graph, &item->executor));
     if (!options_.config.experimental().disable_output_partition_graphs() ||

@@ -58,7 +58,8 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
                                      " to GetVariableInfosFromInputs.");
     }
     ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
-    if (handle.device() != dev->attributes().name()) {
+    if (!DeviceNameUtils::HaveSameDeviceName(handle.device(),
+                                             dev->attributes().name())) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
       return errors::InvalidArgument(

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace tsl {
@@ -616,6 +617,77 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   device.has_id = true;
   *host_device_name = DeviceNameUtils::ParsedNameToString(device);
   return OkStatus();
+}
+
+/*static*/ bool DeviceNameUtils::IsStreamDeviceName(
+    const std::string& device_name) {
+  size_t pos = device_name.rfind("STREAM_GPU_");
+  if (pos == string::npos) {
+    return false;
+  }
+  size_t pos_colon = device_name.find_last_of(":");
+  if (pos_colon == string::npos || pos > pos_colon) {
+    return false;
+  }
+  int32_t device_id, stream_id;
+  if (!strings::safe_strto32(device_name.substr(pos + 11, pos_colon - pos - 11),
+                             &device_id) ||
+      !strings::safe_strto32(device_name.substr(pos_colon + 1), &stream_id)) {
+    return false;
+  }
+  return true;
+}
+
+/*static*/ tsl::StatusOr<string>
+DeviceNameUtils::GetDeviceNameFromStreamDeviceName(const string& device_name) {
+  if (!IsStreamDeviceName(device_name)) {
+    return tsl::Status(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Invalid stream device name: ", device_name));
+  }
+  string output = device_name;
+  size_t pos = output.rfind("STREAM_GPU_");
+  output.replace(pos, 11, "GPU:");
+  output.erase(output.find_last_of(":"));
+  return output;
+}
+
+/*static*/ tsl::StatusOr<int> DeviceNameUtils::DecodeDeviceFromStreamDeviceName(
+    const string& device_name) {
+  if (!IsStreamDeviceName(device_name)) {
+    return tsl::Status(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Invalid stream device name: ", device_name));
+  }
+  size_t pos = device_name.rfind("STREAM_GPU_");
+  size_t pos_colon = device_name.find_last_of(":");
+  return std::stoi(device_name.substr(pos + 11, pos_colon - pos - 11));
+}
+
+/*static*/ tsl::StatusOr<int> DeviceNameUtils::DecodeStreamFromStreamDeviceName(
+    const string& device_name) {
+  if (!IsStreamDeviceName(device_name)) {
+    return tsl::Status(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Invalid stream device name: ", device_name));
+  }
+  return std::stoi(device_name.substr(device_name.find_last_of(":") + 1));
+}
+
+/*static*/ bool DeviceNameUtils::HaveSameDeviceName(
+    const std::string& device_name1, const std::string& device_name2) {
+  if (device_name1 == device_name2) return true;
+  std::string name1 = [&device_name1] {
+    tsl::StatusOr<std::string> name1 =
+        GetDeviceNameFromStreamDeviceName(device_name1);
+    return name1.ok() ? name1.value() : device_name1;
+  }();
+  std::string name2 = [&device_name2] {
+    tsl::StatusOr<std::string> name2 =
+        GetDeviceNameFromStreamDeviceName(device_name2);
+    return name2.ok() ? name2.value() : device_name2;
+  }();
+  return name1 == name2;
 }
 
 std::ostream& operator<<(std::ostream& os,

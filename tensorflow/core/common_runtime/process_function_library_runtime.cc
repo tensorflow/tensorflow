@@ -98,7 +98,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     DistributedFunctionLibraryRuntime* parent,
     const SessionMetadata* session_metadata,
     Rendezvous::Factory rendezvous_factory,
-    StatsPublisherFactory stats_publisher_factory)
+    StatsPublisherFactory stats_publisher_factory, int stream_id)
     : parent_(parent),
       env_(env),
       config_(config ? std::make_optional(*config) : std::nullopt),
@@ -120,7 +120,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
         session_metadata_, this);
     return;
   }
-  InitializeDeviceAndFlr();
+  InitializeDeviceAndFlr(stream_id);
 }
 
 /* static */
@@ -201,7 +201,8 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
   Device* device = flr->device();
   string device_type = device->parsed_name().type;
-  if (device_type == "CPU" || device_type == "TPU_SYSTEM") {
+  if (device_type == "CPU" || device_type == "TPU_SYSTEM" ||
+      device_type.find("STREAM_CPU") != string::npos) {
     // "TPU_SYSTEM" indicates that `device` is a CPU.
     return OkStatus();
   }
@@ -219,7 +220,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
                           "function executions");
 }
 
-void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
+void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr(int stream_id) {
   // Reset device_set_ by one of the two following scenarios:
   // 1) Both cluster-FLR and its remote_device_mgr is available: include local
   //    devices (if any) from the local device_mgr_ as Device type, and include
@@ -249,9 +250,9 @@ void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
   for (Device* d : device_mgr_->ListDevices()) {
     if ((*flr_map_)[d] == nullptr) {
       (*flr_map_)[d] = NewFunctionLibraryRuntime(
-          device_mgr_, env_, config_ ? &(*config_) : nullptr, d,
-          graph_def_version_, lib_def_, default_thread_pool_,
-          optimizer_options_, session_metadata_, this);
+          device_mgr_, env_, config_ ? &(*config_) : nullptr,
+          device_mgr_->LookupStream(d, stream_id), graph_def_version_, lib_def_,
+          default_thread_pool_, optimizer_options_, session_metadata_, this);
     }
   }
 }
