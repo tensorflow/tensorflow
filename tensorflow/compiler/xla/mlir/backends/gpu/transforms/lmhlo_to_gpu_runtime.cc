@@ -539,26 +539,24 @@ class CollectiveUidGenerator {
 template <typename CollectiveOp>
 class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static StringRef Target(AllGatherOp) { return "xla.gpu.all_gather"; }
+  static StringRef Target(AllGatherStartOp) { return "xla.gpu.all_gather"; }
+
   static StringRef Target(AllReduceOp) { return "xla.gpu.all_reduce"; }
+  static StringRef Target(AllReduceStartOp) { return "xla.gpu.all_reduce"; }
+
   static StringRef Target(AllToAllOp) { return "xla.gpu.all_to_all"; }
+  static StringRef Target(AllToAllStartOp) { return "xla.gpu.all_to_all"; }
+
   static StringRef Target(ReduceScatterOp) { return "xla.gpu.reduce_scatter"; }
+  static StringRef Target(ReduceScatterStartOp) {
+    return "xla.gpu.reduce_scatter";
+  }
+
   static StringRef Target(CollectivePermuteOp) {
     return "xla.gpu.collective_permute";
   }
   static StringRef Target(CollectivePermuteStartOp) {
-    return "xla.gpu.collective_permute_start";
-  }
-  static StringRef Target(AllReduceStartOp) {
-    return "xla.gpu.all_reduce_start";
-  }
-  static StringRef Target(AllGatherStartOp) {
-    return "xla.gpu.all_gather_start";
-  }
-  static StringRef Target(ReduceScatterStartOp) {
-    return "xla.gpu.reduce_scatter_start";
-  }
-  static StringRef Target(AllToAllStartOp) {
-    return "xla.gpu.all_to_all_start";
+    return "xla.gpu.collective_permute";
   }
 
   template <typename ReduceOrGatherOp>
@@ -874,6 +872,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto result = SetSpecificAttrs(b, op, call);
     if (failed(result)) return result;
 
+    bool is_async = false;
     // For asynchonous start operation we need to produce a fake token, that
     // will be later removed, because corresponding `done` operation doesn't
     // have a token argument. We rely on the `unrealized_conversion_cast`
@@ -882,11 +881,13 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
                          AllToAllStartOp, CollectivePermuteStartOp,
                          ReduceScatterStartOp>) {
+      is_async = true;
       Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
       token.replaceAllUsesWith(fake.getResult(0));
     }
+    call->setAttr(b.getStringAttr("is_async"), b.getBoolAttr(is_async));
 
     // Erase the original collective operation.
     rewriter.eraseOp(op);
