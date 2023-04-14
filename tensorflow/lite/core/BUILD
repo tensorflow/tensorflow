@@ -477,8 +477,8 @@ cc_test(
     deps = [
         ":framework_stable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
+        "//tensorflow/lite/testing:util",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
     ],
 )

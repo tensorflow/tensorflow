@@ -665,20 +665,28 @@ TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
       ->GetModelMetadata(name, ptr, bytes);
 }
 
-TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
-  TF_LITE_ENSURE(&context_, subgraph_index > 0);
-  TF_LITE_ENSURE(&context_,
-                 static_cast<size_t>(subgraph_index) <= subgraphs_->size());
-  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
-  return kTfLiteOk;
-}
-
 TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) {
   if (subgraph_index < 0 ||
       static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
     return nullptr;
   }
   return subgraphs_->at(subgraph_index)->context();
+}
+
+const TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) const {
+  if (subgraph_index < 0 ||
+      static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
+    return nullptr;
+  }
+  return subgraphs_->at(subgraph_index)->context();
+}
+
+TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
+  TF_LITE_ENSURE(&context_, subgraph_index > 0);
+  TF_LITE_ENSURE(&context_,
+                 static_cast<size_t>(subgraph_index) < subgraphs_->size());
+  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
+  return kTfLiteOk;
 }
 
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
