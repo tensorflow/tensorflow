@@ -60,7 +60,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return new SimpleNodeExecStats(this);
   }
 
-  string ReportAllocsOnResourceExhausted(const string& err) override {
+  string ReportAllocsOnResourceExhausted(absl::string_view err) override {
     return "";
   }
 

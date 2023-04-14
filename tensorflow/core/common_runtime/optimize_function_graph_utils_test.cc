@@ -71,9 +71,9 @@ TEST(OptimizeFunctionGraphTest,
       Env::Default(), OptimizedFunctionGraph::AOT);
   EXPECT_TRUE(errors::IsInvalidArgument(aot_result.status()))
       << "Actual status: " << aot_result.status();
-  EXPECT_TRUE(absl::StrContains(aot_result.status().error_message(),
+  EXPECT_TRUE(absl::StrContains(aot_result.status().message(),
                                 "Failed to find function"))
-      << "Actual error message: " << aot_result.status().error_message();
+      << "Actual error message: " << aot_result.status().message();
 }
 
 TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphReturnsCorrectResult) {

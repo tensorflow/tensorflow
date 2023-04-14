@@ -475,7 +475,7 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
         import_status.code(),
         absl::StrCat(
             "Converting GraphDef to Graph has failed with an error: '",
-            import_status.error_message(),
+            import_status.message(),
             "' The binary trying to import the GraphDef was built when "
             "GraphDef version was ",
             TF_GRAPH_DEF_VERSION,
@@ -821,14 +821,14 @@ Status GraphConstructor::ValidateShape(Node* node) {
     if (!s.ok()) {
       return errors::InvalidArgument("Node '", node->name(), " has an invalid ",
                                      kAttrName, " attribute (shape #", i,
-                                     " error:'", s.error_message(), "'");
+                                     " error:'", s.message(), "'");
     }
     s = refiner_->SetShape(node, i, h);
     if (!s.ok()) {
       return errors::InvalidArgument(
           "Node '", node->name(), "' has an ", kAttrName,
           " attribute inconsistent with the GraphDef for output #", i, ": ",
-          s.error_message());
+          s.message());
     }
   }
   node->ClearAttr(kAttrName);

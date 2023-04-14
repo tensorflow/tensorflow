@@ -933,7 +933,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
         VLOG(2) << "Component function execution failed: " << run_status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            run_status.error_message());
+            run_status.message());
         if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
@@ -1023,7 +1023,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
                 << comp_handle << " failed: " << status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            status.error_message());
+            status.message());
         refcounted_done->UpdateStatus(
             errors::CreateWithUpdatedMessage(status, function_and_msg));
         // Cancel the execution of other component functions.
