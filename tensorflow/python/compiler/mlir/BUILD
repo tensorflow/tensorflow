@@ -19,7 +19,13 @@ py_library(
 py_test(
     name = "mlir_test",
     srcs = ["mlir_test.py"],
+    data = [
+        "multi_add.tflite",
+    ],
     python_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":mlir",
         "//tensorflow/python:client_testlib",
