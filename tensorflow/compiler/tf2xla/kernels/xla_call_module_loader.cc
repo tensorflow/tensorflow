@@ -20,16 +20,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
@@ -46,11 +47,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -116,8 +115,8 @@ tsl::StatusOr<mlir::Value> ComputeDimensionValue(
 }  // namespace
 
 tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
-    int version, std::string module_str, std::vector<std::string> dim_args_spec,
-    int platform_index) {
+    mlir::MLIRContext *context, int version, std::string module_str,
+    std::vector<std::string> dim_args_spec, int platform_index) {
   if (version < VERSION_MINIMUM_SUPPORTED) {
     return tsl::errors::InvalidArgument(
         "XlaCallModuleOp with version ", version,
@@ -136,7 +135,7 @@ tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
 
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadAndPreprocessModule(
-      version, std::move(module_str), std::move(dim_args_spec),
+      context, version, std::move(module_str), std::move(dim_args_spec),
       platform_index));
   return loader;
 }
@@ -272,14 +271,10 @@ tsl::Status XlaCallModuleLoader::AddMainWrapper() {
 }
 
 tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
-    absl::Span<const xla::Shape> input_shapes) {
+    llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_shapes) {
   // Locate the (wrapped) 'main' function.
   // This is the convention used by MlirToXlaComputation.
-  mlir::func::FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
-  if (!main) {
-    return tsl::errors::InvalidArgument("Cannot find 'main' in module");
-  }
-  mlir::Block &main_body = main.front();
+  mlir::Block &main_body = main_.front();
   int nr_platform_args = (platform_index_ >= 0 ? 1 : 0);
   int nr_dim_args = dim_args_spec_.size();
   int non_dimension_arguments = input_shapes.size();
@@ -297,20 +292,18 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   mlir::Builder builder(module_->getContext());
   std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
   for (int i = 0, end = non_dimension_arguments; i < end; ++i) {
-    const xla::Shape &xla_shape = input_shapes[i];
-    std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
-                                        xla_shape.dimensions().end());
-    TF_ASSIGN_OR_RETURN(
-        mlir::Type element_type,
-        ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
-    mlir::Type type = mlir::RankedTensorType::get(xla_dimensions, element_type);
-    // TODO(burmako): This fails with an obscure compilation error.
-    // TF_ASSIGN_OR_RETURN(
-    //     mlir::Type type,
-    //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
+    mlir::Type type = main_.getArgument(i).getType();
+    auto shaped = type.dyn_cast<mlir::ShapedType>();
+    if (shaped == nullptr) {
+      return tsl::errors::InvalidArgument(
+          "XlaCallModule can only accept shaped types, but got ",
+          mlir::debugString(type), " for argument #", i);
+    }
+    mlir::Type static_array_input_type =
+        mlir::RankedTensorType::get(input_shapes[i], shaped.getElementType());
     VLOG(3) << "XlaCallModule static array input type #" << i << ": "
-            << mlir::debugString(type);
-    static_array_input_types[i] = type;
+            << mlir::debugString(static_array_input_type);
+    static_array_input_types[i] = static_array_input_type;
   }
 
   // Refine 'main' argument types to use static input types instead.
@@ -327,7 +320,7 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   VLOG(3) << "XlaCallModule module after inlining: "
           << mlir::debugString(*module_);
 
-  auto static_array_output_types = llvm::to_vector(main.getResultTypes());
+  auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     auto arg = main_body.getArgument(i);
     arg.setType(static_array_input_types[i]);
@@ -343,8 +336,8 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
       }
     }
   }
-  main.setType(builder.getFunctionType(static_array_input_types,
-                                       static_array_output_types));
+  main_.setType(builder.getFunctionType(static_array_input_types,
+                                        static_array_output_types));
 
   // Verify the module before running passes on it.
   // If the module doesn't pass verification, all sorts of weirdness might
@@ -373,25 +366,26 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
 }
 
 tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
-    int version, std::string module_str, std::vector<std::string> dim_args_spec,
-    int platform_index) {
+    mlir::MLIRContext *context, int version, std::string module_str,
+    std::vector<std::string> dim_args_spec, int platform_index) {
+  context_ = context;
   version_ = version;
   dim_args_spec_ = std::move(dim_args_spec);
   platform_index_ = platform_index;
 
   // Load a superset of dialects; we should check at serialization time that
   // we only include allowable dialects.
-  context_.loadDialect<mlir::func::FuncDialect>();
-  context_.loadDialect<mlir::stablehlo::StablehloDialect>();
-  context_.loadDialect<mlir::mhlo::MhloDialect>();
-  context_.loadDialect<mlir::chlo::ChloDialect>();
-  context_.loadDialect<mlir::vhlo::VhloDialect>();
+  context_->loadDialect<mlir::func::FuncDialect>();
+  context_->loadDialect<mlir::stablehlo::StablehloDialect>();
+  context_->loadDialect<mlir::mhlo::MhloDialect>();
+  context_->loadDialect<mlir::chlo::ChloDialect>();
+  context_->loadDialect<mlir::vhlo::VhloDialect>();
   // Parses both IR text and bytecode.
   if (version >= VERSION_START_STABLE_HLO_COMPATIBILITY) {
     module_ =
-        mlir::stablehlo::deserializePortableArtifact(module_str, &context_);
+        mlir::stablehlo::deserializePortableArtifact(module_str, context_);
   } else {
-    module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, &context_);
+    module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, context_);
   }
 
   if (!module_) {
@@ -407,16 +401,15 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     module_->dump();
     return tsl::errors::InvalidArgument("Error verifying module");
   }
-  mlir::func::FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
-  if (!main) {
+  main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main_) {
     return tsl::errors::InvalidArgument("Cannot find 'main' in module");
   }
 
   if (!dim_args_spec_.empty() || platform_index_ >= 0) {
     TF_RETURN_IF_ERROR(AddMainWrapper());
-    main = module_->lookupSymbol<mlir::func::FuncOp>("main");
+    main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");
   }
-  nr_outputs_ = main.getNumResults();
   return tsl::OkStatus();
 }
 
@@ -432,7 +425,7 @@ tsl::Status XlaCallModuleLoader::ValidateModule() {
             op->getDialect())) {
       moduleHasUnsupportedDialects = true;
       VLOG(3) << "Operation has unsupported dialects: "
-              << mlir::debugString(op);
+              << mlir::debugString(*op);
     }
 
     // It's sufficient to only check results because operands either come from
@@ -449,7 +442,7 @@ tsl::Status XlaCallModuleLoader::ValidateModule() {
     }
     if (opHasDynamicShapes) {
       moduleHasDynamicShapes = true;
-      VLOG(3) << "Operation has dynamic shapes: " << mlir::debugString(op);
+      VLOG(3) << "Operation has dynamic shapes: " << mlir::debugString(*op);
     }
   });
 

@@ -20,12 +20,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
@@ -96,18 +98,21 @@ class XlaCallModuleOp : public XlaOpKernel {
     }
 
     auto loader =
-        XlaCallModuleLoader::Create(version, std::move(module_str),
+        XlaCallModuleLoader::Create(&context_, version, std::move(module_str),
                                     std::move(dim_args_spec), platform_index);
     OP_REQUIRES_OK(ctx, loader.status());
     loader_ = *std::move(loader);
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
-    std::vector<xla::Shape> input_shapes;
+    std::vector<llvm::ArrayRef<int64_t>> input_shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       auto shape = ctx->InputXlaShape(i);
       OP_REQUIRES_OK(ctx, shape.status());
-      input_shapes.push_back(*std::move(shape));
+      auto type = xla::ConvertTensorShapeToType<mlir::RankedTensorType>(
+          *shape, mlir::Builder(&context_));
+      OP_REQUIRES_OK(ctx, type.status());
+      input_shapes.push_back(type->getShape());
     }
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateModule());
@@ -152,6 +157,7 @@ class XlaCallModuleOp : public XlaOpKernel {
   }
 
  private:
+  mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
   std::unique_ptr<XlaCallModuleLoader> loader_;
 };
 

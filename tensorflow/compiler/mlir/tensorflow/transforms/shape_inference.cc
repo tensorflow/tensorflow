@@ -19,9 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <stack>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -70,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -913,6 +918,10 @@ class ShapeInference {
   // yields.
   bool InferShapeForCaseRegion(CaseRegionOp op);
 
+  // Infers the shape CaseRegion outputs based on the embedded StableHLO module.
+  // Returns true if a return type was changed.
+  bool InferShapeForXlaCallModule(XlaCallModuleOp op);
+
   // Infers the shape of _XlaHostComputeMlir based on the host computation
   // module.  Returns true if a return type was changed.
   bool InferShapeForXlaHostComputeMlir(_XlaHostComputeMlirOp op);
@@ -985,6 +994,14 @@ class ShapeInference {
   // TODO(b/154065712): Remove propagate_caller_callee_constants once using
   // SCCP pass instead.
   bool propagate_caller_callee_constants_;
+
+  // XlaCallModule loader, which is used to deserialize the StableHLO module in
+  // each `XlaCallModule` op. Uses its own MLIRContext since the loader needs to
+  // load additional dialects, which is not allowed for the main context since
+  // shape inference may be called from a pass.
+  MLIRContext xla_call_module_context_;
+  DenseMap<XlaCallModuleOp, std::unique_ptr<tensorflow::XlaCallModuleLoader>>
+      xla_call_module_loaders_;
 };
 
 ShapeInference::ShapeInference(int64_t graph_version, ModuleOp module,
@@ -1168,6 +1185,80 @@ bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
       changed = RefineResultType(op, result, *types.begin()) || changed;
     }
   }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
+  tensorflow::XlaCallModuleLoader* loader;
+  {
+    const auto [it, inserted] = xla_call_module_loaders_.insert({op, nullptr});
+
+    // Lazily parse XlaCallModule's embedded HLO module and cache the loader to
+    // avoid repeatedly parsing the module.
+    if (inserted) {
+      std::vector<std::string> dim_args_spec;
+      for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
+        dim_args_spec.push_back(attr.getValue().str());
+      }
+
+      // Always use the first platform. The assumption is that shape inference
+      // results should be the same regardless of which platform is chosen.
+      int platform_index = op.getPlatforms().size() > 1 ? 0 : -1;
+
+      auto l = tensorflow::XlaCallModuleLoader::Create(
+          &xla_call_module_context_, op.getVersion(), op.getModule().str(),
+          std::move(dim_args_spec), platform_index);
+      if (!l.ok()) {
+        LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
+                                << l.status().ToString() << "\n");
+        return false;
+      }
+      it->second = *std::move(l);
+    }
+
+    loader = it->second.get();
+  }
+
+  // Cannot pass `op.getArgs().getTypes()` to `loader->RefineDynamicShapes`
+  // because `op` and `loader` are using different MLIR contexts. See comments
+  // on `xla_call_module_context_` for details.
+  SmallVector<ArrayRef<int64_t>> input_shapes;
+  input_shapes.reserve(op.getArgs().size());
+  for (mlir::Type type : op.getArgs().getTypes()) {
+    auto ranked = type.dyn_cast<RankedTensorType>();
+    if (ranked == nullptr) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Unsupported XlaCallModule arg type: " << type);
+      return false;
+    }
+    input_shapes.push_back(ranked.getShape());
+  }
+
+  tsl::Status status = loader->RefineDynamicShapes(input_shapes);
+  if (!status.ok()) {
+    LLVM_DEBUG(llvm::dbgs() << "Failed during XlaCallModule shape refinement: "
+                            << status.ToString());
+    return false;
+  }
+
+  bool changed = false;
+  for (auto [result, type] :
+       llvm::zip(op.getResults(), loader->output_types())) {
+    auto ranked = type.dyn_cast<RankedTensorType>();
+    if (ranked == nullptr) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Unsupported XlaCallModule result type: " << type);
+      continue;
+    }
+
+    // Build a new type object from `type` and `elem_type`. `type` is owned by
+    // `xla_call_module_context_` and should not be mixed with op's context.
+    auto new_type = RankedTensorType::get(
+        ranked.getShape(), getElementTypeOrSelf(result.getType()));
+
+    changed = RefineResultType(op, result, new_type) || changed;
+  }
+
   return changed;
 }
 
@@ -2348,6 +2439,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForWhile(
         while_region,
         while_region.getBody().front().getTerminator()->getOperandTypes());
+
+  if (auto xla_call_module = dyn_cast<XlaCallModuleOp>(op)) {
+    return InferShapeForXlaCallModule(xla_call_module);
+  }
 
   if (auto host_compute_op = dyn_cast<_XlaHostComputeMlirOp>(op)) {
     return InferShapeForXlaHostComputeMlir(host_compute_op);

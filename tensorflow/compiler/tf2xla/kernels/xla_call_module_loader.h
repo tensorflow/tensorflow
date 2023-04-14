@@ -20,12 +20,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -33,10 +34,11 @@ namespace tensorflow {
 class XlaCallModuleLoader {
  public:
   static tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
-      int version, std::string module_str,
+      mlir::MLIRContext* context, int version, std::string module_str,
       std::vector<std::string> dim_args_spec, int platform_index);
 
-  int nr_outputs() const { return nr_outputs_; }
+  int nr_outputs() { return main_.getNumResults(); }
+  mlir::TypeRange output_types() { return main_.getResultTypes(); }
 
   // Refines the dynamic module arguments based on the static argument shapes.
   // This assumes that the module has a "main" function without dimension args,
@@ -44,7 +46,13 @@ class XlaCallModuleLoader {
   // then set them as the types of the function parameters, and run StableHLO
   // shape refinement to specialize all dynamic shapes in the StableHLO program
   // to static shapes.
-  tsl::Status RefineDynamicShapes(absl::Span<const xla::Shape> input_shapes);
+  //
+  // This method accepts a list of `llvm::ArrayRef` instead of `mlir::Type`.
+  // This is to prevent callers from accidentally passing `mlir::Type` owned by
+  // a context that's different from the one passed to `Create`, which could
+  // cause lifetime issues.
+  tsl::Status RefineDynamicShapes(
+      llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_shapes);
 
   // Validate that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
@@ -57,7 +65,8 @@ class XlaCallModuleLoader {
   XlaCallModuleLoader() = default;
 
   // Initializes the loader with the given serialized module string.
-  tsl::Status LoadAndPreprocessModule(int version, std::string module_str,
+  tsl::Status LoadAndPreprocessModule(mlir::MLIRContext* context, int version,
+                                      std::string module_str,
                                       std::vector<std::string> dim_args_spec,
                                       int platform_index);
 
@@ -65,13 +74,12 @@ class XlaCallModuleLoader {
   // the dimension arguments.
   tsl::Status AddMainWrapper();
 
-  mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
-
+  mlir::MLIRContext* context_;
   int version_;
   mlir::OwningOpRef<mlir::ModuleOp> module_;
   int platform_index_;
   std::vector<std::string> dim_args_spec_;
-  int nr_outputs_;
+  mlir::func::FuncOp main_;
 };
 
 }  // namespace tensorflow
