@@ -119,3 +119,9 @@ def VerifyFullyConverted :
   let constructor = "createVerifyFullyConvertedPass()";
 }
 
+def ConvertFunctionMetadata :
+    Pass<"tosa-tflite-convert-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Converts TFLite input attributes to MLProgram arg attributes on functions.";
+  let constructor = "createConvertFunctionMetadataPass()";
+}
+

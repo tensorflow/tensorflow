@@ -179,6 +179,7 @@ cc_library(
     name = "tfl_passes",
     srcs = [
         "tfl_passes.cc",
+        "transforms/convert_metadata.cc",
         "transforms/convert_tfl_uint8.cc",
         "transforms/legalize_tfl.cc",
         "transforms/lower_complex_types.cc",
