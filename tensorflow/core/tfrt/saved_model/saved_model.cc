@@ -25,10 +25,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/import_model.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/batch_kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
+#include "learning/infra/mira/mlrt/bytecode/bytecode.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -64,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
@@ -452,10 +456,9 @@ tensorflow::Status CheckInputSpecs(
         ->GetCell(
             absl::StrCat(model_metadata.name(), ":", model_metadata.version()))
         ->Set(true);
-    const auto error_string =
-        absl::StrCat("model: ", model_metadata.name(),
-                     ", version: ", model_metadata.version(),
-                     ", error: ", status.error_message());
+    const auto error_string = absl::StrCat(
+        "model: ", model_metadata.name(),
+        ", version: ", model_metadata.version(), ", error: ", status.message());
     if (!run_options.validate_input_specs_dry_run) {
       return tensorflow::errors::InvalidArgument(error_string);
     }
@@ -590,6 +593,13 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   options.graph_execution_options.compile_options
       .fuse_get_resource_ops_in_hoisting =
       !options.graph_execution_options.enable_mlrt;
+
+  if (options.graph_execution_options.enable_mlrt) {
+    options.lazy_loading_use_graph_executor = options.enable_lazy_loading;
+    LOG(INFO) << "lazy_loading_use_graph_executor is updated to be the same as "
+                 "enable_lazy_loading: "
+              << options.enable_lazy_loading;
+  }
 }
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
@@ -685,11 +695,11 @@ SavedModelImpl::LoadSavedModel(Options options,
     GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
                                   meta_graph_def.signature_def(), options);
   }
-  tfrt::BefBuffer bef;
   mlrt::bc::Buffer bytecode;
+  tfrt::BefBuffer bef;
   if (options.graph_execution_options.enable_mlrt) {
     ASSIGN_OR_RETURN_IN_COMPILE(
-        bytecode, CompileMlirModuleToByteCode(
+        bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                       options.graph_execution_options.compile_options,
                       mlir_module.get()));
   } else {

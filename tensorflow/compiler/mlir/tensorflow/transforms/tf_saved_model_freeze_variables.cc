@@ -363,8 +363,8 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
   const tensorflow::DeviceMgr* mgr = nullptr;
   auto status = session->LocalDeviceManager(&mgr);
   if (!status.ok()) {
-    module->emitError("failed to fetch device manager: " +
-                      status.error_message());
+    module->emitError(
+        absl::StrCat("failed to fetch device manager: ", status.message()));
     return failure();
   }
 

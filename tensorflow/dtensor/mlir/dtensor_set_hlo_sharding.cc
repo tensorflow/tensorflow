@@ -58,7 +58,7 @@ mlir::LogicalResult SetHloShardingForInputs(mlir::ModuleOp module,
         StatusOr<xla::OpSharding> xla_sharding =
             ConvertLayoutToXlaOpSharding(layout_op.getLayout());
         if (!xla_sharding.ok()) {
-          return layout_op.emitError(xla_sharding.status().error_message());
+          return layout_op.emitError(xla_sharding.status().message());
         }
         func_op.setArgAttr(
             arg_index, kXlaShardingAttr,
@@ -87,7 +87,7 @@ mlir::LogicalResult SetHloShardingForOutputs(mlir::ModuleOp module,
               ConvertLayoutToXlaOpSharding(layout_op.getLayout());
 
           if (!xla_sharding.ok()) {
-            return module.emitError(xla_sharding.status().error_message());
+            return module.emitError(xla_sharding.status().message());
           }
 
           mlir::func::FuncOp func_op =

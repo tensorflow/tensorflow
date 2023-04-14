@@ -212,13 +212,15 @@ LogicalResult GetFunctionsToRewrite(
   return success();
 }
 
-// Assigns op sharding to full tensor on `kShardingTpuCore`.
-void SetOpSharding(Operation* op) {
-  std::string sharding_serialized =
-      ::xla::sharding_builder::AssignDevice(kShardingTpuCore)
-          .SerializeAsString();
+// Assigns either MAXIMAL or MANUAL sharding. The MAXIMAL sharding sends/recvs
+// one message from core `kShardingTpuCore` with the full tensor. MANUAL
+// sharding sends/recvs one message for each core with the core's shard.
+void SetOpSharding(Operation* op, bool manual_sharding) {
+  xla::OpSharding sharding =
+      manual_sharding ? ::xla::sharding_builder::Manual()
+                      : ::xla::sharding_builder::AssignDevice(kShardingTpuCore);
   op->setAttr(kShardingAttr,
-              StringAttr::get(op->getContext(), sharding_serialized));
+              StringAttr::get(op->getContext(), sharding.SerializeAsString()));
 }
 
 // Assigns frontend attributes holding information about data type and
@@ -263,7 +265,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
 // Creates a `mhlo.send` op for sending value `operand`.
 Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
                    Value operand, StringRef key, size_t index, Value token,
-                   StringRef host_handler_name) {
+                   StringRef host_handler_name, bool manual_sharding) {
   // type 2 == DEVICE_TO_HOST
   auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
                                                /*handle=*/channel_id++,
@@ -275,7 +277,7 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
   SetFrontendAttributes(send, index, key, operand.getType(),
                         /*device_to_host=*/true, host_handler_name);
 
-  SetOpSharding(send);
+  SetOpSharding(send, manual_sharding);
 
   return send.getResult();
 }
@@ -283,7 +285,7 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
 // Creates a `mhlo.recv` op for receiving a value.
 Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
                    Value result, StringRef key, size_t index, Value token,
-                   StringRef host_handler_name) {
+                   StringRef host_handler_name, bool manual_sharding) {
   // type 3 == HOST_TO_DEVICE
   auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
                                                /*handle=*/channel_id++,
@@ -297,7 +299,7 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
   SetFrontendAttributes(recv, index, key, result_type,
                         /*device_to_host=*/false, host_handler_name);
 
-  SetOpSharding(recv);
+  SetOpSharding(recv, manual_sharding);
 
   result.replaceAllUsesWith(recv.getResult(0));
 
@@ -328,12 +330,14 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
                            Value token) {
   builder.setInsertionPoint(host_compute);
   Location loc = host_compute.getLoc();
+  bool manual_sharding = host_compute.getManualSharding();
 
   SmallVector<Value, 4> send_tokens;
   for (auto operand : llvm::enumerate(host_compute.getInputs())) {
     auto send_token = CreateSendOp(
         builder, channel_id, loc, operand.value(), host_compute.getSendKey(),
-        operand.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
+        operand.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName,
+        manual_sharding);
     send_tokens.push_back(send_token);
   }
   token = CreateSinkToken(builder, loc, send_tokens, token);
@@ -342,7 +346,8 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
   for (auto result : llvm::enumerate(host_compute.getOutputs())) {
     auto recv_token = CreateRecvOp(
         builder, channel_id, loc, result.value(), host_compute.getRecvKey(),
-        result.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
+        result.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName,
+        manual_sharding);
     recv_tokens.push_back(recv_token);
   }
   token = CreateSinkToken(builder, loc, recv_tokens, token);
@@ -358,7 +363,8 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
   token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
                        send_to_host.getInput(), send_to_host.getKey(),
                        /*index=*/0, token,
-                       xla::kXlaHostTransferTfRendezvousHandlerName);
+                       xla::kXlaHostTransferTfRendezvousHandlerName,
+                       /*manual_sharding=*/false);
 
   send_to_host.erase();
   return token;
@@ -371,7 +377,8 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
   token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
                        recv_from_host.getOutput(), recv_from_host.getKey(),
                        /*index=*/0, token,
-                       xla::kXlaHostTransferTfRendezvousHandlerName);
+                       xla::kXlaHostTransferTfRendezvousHandlerName,
+                       /*manual_sharding=*/false);
 
   recv_from_host.erase();
   return token;

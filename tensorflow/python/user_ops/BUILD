@@ -1,6 +1,7 @@
 # Description:
 #   Contains User Ops (internal TensorFlow version).
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 visibility = [
@@ -18,13 +19,12 @@ tf_gen_op_wrapper_private_py(
 )
 
 # This target is deprecated.
-py_library(
+py_strict_library(
     name = "ops",
     srcs = ["user_ops.py"],
     srcs_version = "PY3",
     deps = [
         ":user_ops_gen",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )

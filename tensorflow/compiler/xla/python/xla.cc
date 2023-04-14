@@ -167,11 +167,12 @@ PYBIND11_MODULE(xla_extension, m) {
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);
 
-  py::class_<PjRtDevice, ClientAndPtr<PjRtDevice>>(
+  py::class_<PjRtDevice, ClientAndPtr<PjRtDevice>> device(
       m, "Device",
       "A descriptor of an available device.\n\nSubclasses are used to "
       "represent specific types of devices, e.g. CPUs, GPUs. Subclasses may "
-      "have additional properties specific to that device type.")
+      "have additional properties specific to that device type.");
+  device
       .def_property_readonly(
           "id", &PjRtDevice::id,
           "Integer ID of this device.\n\nUnique across all available devices "
@@ -184,14 +185,14 @@ PYBIND11_MODULE(xla_extension, m) {
                              "Deprecated; please use process_index")
       .def_property_readonly("task_id", &PjRtDevice::process_index,
                              "Deprecated; please use process_index")
-      .def_property_readonly("platform",
-                             [](const ClientAndPtr<PjRtDevice>& device) {
-                               return device.client->platform_name();
-                             })
-      .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
-          "client",
-          [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
+          "platform",
+          [](py::object self) { return self.attr("client").attr("platform"); })
+      .def_property_readonly("device_kind", &PjRtDevice::device_kind)
+      .def_property_readonly("client",
+                             [](const ClientAndPtr<PjRtDevice>& device) {
+                               return device.client();
+                             })
       .def("__str__", &PjRtDevice::DebugString)
       .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
@@ -224,18 +225,43 @@ PYBIND11_MODULE(xla_extension, m) {
                  "Per device live_buffers() is going to be deprecated. Please "
                  "use the jax.live_arrays() for jax.Arrays instead.");
              return py::list();
-           })
-      .def(
-          "__getattr__",
-          [](PjRtDevice& device, std::string name) -> py::object {
-            const auto& attrs = device.Attributes();
-            auto it = attrs.find(name);
-            if (it != attrs.end()) {
-              return std::visit([](auto&& v) { return py::cast(v); },
-                                it->second);
-            }
-            throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
-          });
+           });
+  static PyMethodDef get_attr_method = {
+      "__getattr__",
+      +[](PyObject* self, PyObject* args) -> PyObject* {
+        PyObject* key;
+        if (!PyArg_ParseTuple(args, "O", &key)) {
+          PyErr_SetString(PyExc_TypeError, "__getattr__ must take 1 argument.");
+          return nullptr;
+        }
+        try {
+          auto device = py::cast<PjRtDevice*>(py::handle(self));
+          auto name = py::cast<std::string>(py::handle(key));
+          const auto& attrs = device->Attributes();
+          auto it = attrs.find(name);
+          if (it != attrs.end()) {
+            auto result =
+                std::visit([](auto&& v) { return py::cast(v); }, it->second);
+            return result.release().ptr();
+          }
+          PyErr_SetNone(PyExc_AttributeError);
+          return nullptr;
+        } catch (std::exception& e) {
+          PyErr_Format(PyExc_SystemError,
+                       "Some unhandled pybind11 exception: %s", e.what());
+          return nullptr;
+        } catch (...) {
+          PyErr_SetString(PyExc_SystemError,
+                          "Some unhandled pybind11 exception.");
+          return nullptr;
+        }
+      },
+      METH_VARARGS,
+      nullptr,
+  };
+  device.attr("__getattr__") =
+      py::reinterpret_steal<py::object>(PyDescr_NewMethod(
+          reinterpret_cast<PyTypeObject*>(device.ptr()), &get_attr_method));
 
   // Local XLA client methods.
 
@@ -786,10 +812,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("platform_version",
                              [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
-                             })
-      .def_property_readonly("device_attributes",
-                             [](PjRtTopologyDescription& topology) {
-                               return py::cast(topology.DeviceAttributes());
                              });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")

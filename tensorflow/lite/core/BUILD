@@ -369,6 +369,26 @@ cc_library(
     ],
 )
 
+# Defines CreateOpResolver with all builtin ops.
+cc_library(
+    name = "create_op_resolver_with_builtin_ops",
+    srcs = ["create_op_resolver_with_builtin_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:op_resolver",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+    ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
+)
+
 # This target is only for use by the "tflite_custom_c_library" and "tflite_custom_cc_library" build
 # macro and should not be used anywhere other than in the implementation of that build macro.
 # "tflite_custom_c_library" requires target to be public, that's why we duplicated

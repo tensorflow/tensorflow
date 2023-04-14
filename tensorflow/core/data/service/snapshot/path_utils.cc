@@ -33,6 +33,7 @@ namespace {
 
 constexpr const char kDoneFileName[] = "DONE";
 constexpr const char kErrorFileName[] = "ERROR";
+constexpr const char kWorkerFileName[] = "owner_worker";
 constexpr const char kSnapshotMetadataFileName[] = "snapshot.metadata";
 constexpr const char kDatasetDefFileName[] = "dataset_def.proto";
 constexpr const char kDatasetSpecFileName[] = "dataset_spec.pb";
@@ -73,6 +74,19 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
   return tsl::io::JoinPath(
       SourceDirectory(snapshot_path, stream_index, source_id),
       absl::StrCat("split_", local_index, "_", global_index));
+}
+
+tsl::StatusOr<int64_t> ParseStreamDirectoryName(
+    absl::string_view stream_directory_name) {
+  std::vector<std::string> tokens = absl::StrSplit(stream_directory_name, '_');
+  int64_t stream_index = 0;
+  if (tokens.size() != 2 || tokens[0] != "stream" ||
+      !absl::SimpleAtoi(tokens[1], &stream_index) || stream_index < 0) {
+    return tsl::errors::InvalidArgument(
+        "Invalid stream directory name: ", stream_directory_name,
+        ". Expected stream_<stream_index>.");
+  }
+  return stream_index;
 }
 
 tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
@@ -147,6 +161,12 @@ std::string StreamDoneFilePath(absl::string_view snapshot_path,
                                int64_t stream_index) {
   return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
                            kDoneFileName);
+}
+
+std::string StreamWorkerFilePath(absl::string_view snapshot_path,
+                                 int64_t stream_index) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
+                           kWorkerFileName);
 }
 
 std::string SnapshotDoneFilePath(absl::string_view snapshot_path) {

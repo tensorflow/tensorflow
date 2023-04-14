@@ -112,6 +112,9 @@ WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
     new_config.set_dispatcher_timeout_ms(
         absl::ToInt64Milliseconds(kDefaultDispatcherTimeout));
   }
+  if (new_config.snapshot_max_chunk_size_bytes() == 0) {
+    new_config.set_snapshot_max_chunk_size_bytes(kDefaultMaxChunkSizeBytes);
+  }
   return new_config;
 }
 
@@ -658,7 +661,8 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
         std::make_unique<SnapshotStreamWriter>(
             SnapshotWriterParams{
                 snapshot_task.base_path(), snapshot_task.stream_index(),
-                snapshot_task.metadata().compression(), Env::Default()},
+                snapshot_task.metadata().compression(), Env::Default(),
+                config_.snapshot_max_chunk_size_bytes()},
             std::move(iterator)));
   }
 

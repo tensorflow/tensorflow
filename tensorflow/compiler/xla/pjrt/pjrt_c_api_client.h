@@ -494,6 +494,11 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
     return c_topology_.get();
   }
 
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const {
+    LOG(FATAL) << "PJRT C API DeviceDescription not implemented.";
+  }
+
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;

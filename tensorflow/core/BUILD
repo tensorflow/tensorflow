@@ -1057,6 +1057,7 @@ cc_library(
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/tsl/framework/fixedpoint",
+#         "//tensorflow/tsl/platform:logging",
 #     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
 #     alwayslink = 1,
 # )

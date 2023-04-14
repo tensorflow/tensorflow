@@ -367,7 +367,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
             /*output_layouts=*/llvm::DenseMap<int, Layout>());
     if (!forward_result.ok()) {
       op->emitOpError() << "ComputeLayoutForward error: "
-                        << forward_result.status().error_message();
+                        << forward_result.status().message();
       return mlir::WalkResult::interrupt();
     }
     StatusOr<llvm::DenseMap<int, Layout>> backward_result =
@@ -376,7 +376,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
             /*output_layouts=*/llvm::DenseMap<int, Layout>());
     if (!backward_result.ok()) {
       op->emitOpError() << "ComputeLayoutBackward error: "
-                        << backward_result.status().error_message();
+                        << backward_result.status().message();
       return mlir::WalkResult::interrupt();
     }
 
@@ -461,8 +461,7 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
     auto merged =
         MergeLayouts(value, producer_layout, consumer_requests[value]);
     if (!merged.ok())
-      return value.getDefiningOp()->emitOpError()
-             << merged.status().error_message();
+      return value.getDefiningOp()->emitOpError() << merged.status().message();
 
     auto current_layout = merged_layouts.find(value);
     if (current_layout == merged_layouts.end() ||
@@ -525,7 +524,7 @@ mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
     return mlir::emitError(
         location, llvm::formatv("error in layout propagation while merging "
                                 "producer layouts. {0}",
-                                new_layout.status().error_message()));
+                                new_layout.status().message()));
   }
   out->emplace(*new_layout);
   return mlir::success();
@@ -619,14 +618,14 @@ mlir::LogicalResult UpdateLayoutsForOp(
       expander->ComputeLayoutForward(op, input_layouts, output_layouts);
   if (!forward_result.ok()) {
     return op->emitOpError() << "ComputeLayoutForward error: "
-                             << forward_result.status().error_message();
+                             << forward_result.status().message();
   }
   const auto new_output_layouts = *forward_result;
   auto backward_result =
       expander->ComputeLayoutBackward(op, input_layouts, output_layouts);
   if (!backward_result.ok()) {
     return op->emitOpError() << "ComputeLayoutBackward error: "
-                             << backward_result.status().error_message();
+                             << backward_result.status().message();
   }
   const auto new_input_layouts = *backward_result;
 
@@ -1033,8 +1032,8 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot create directory '" << prefix
+                 << "': " << status.message();
     return;
   }
 
@@ -1048,8 +1047,7 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   std::unique_ptr<WritableFile> file_writer;
   status = env->NewWritableFile(prefix, &file_writer);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
     return;
   }
 
@@ -1063,8 +1061,8 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
 
   status = file_writer->Append(txt_module);
   if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "error writing to file '" << prefix
+                 << "': " << status.message();
     return;
   }
   (void)file_writer->Close();

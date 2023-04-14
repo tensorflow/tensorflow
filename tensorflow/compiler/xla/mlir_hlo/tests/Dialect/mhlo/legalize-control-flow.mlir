@@ -269,3 +269,19 @@ func.func @while_is_for(%lb: tensor<i32>, %ub: tensor<i32>, %step: tensor<i32>,
 // CHECK-NEXT: %[[NEXT_I2:.*]] = mhlo.add %[[TENSOR_I]], %[[STEP]]
 // CHECK-NEXT: scf.yield %[[NEXT_I2]], %[[ARG0]]
 // CHECK:      return %[[RET]]#1
+
+func.func @while_is_for_and_unsigned(%lb: tensor<ui32>, %ub: tensor<ui32>,
+                                     %step: tensor<ui32>, %foo: tensor<4xf32>)
+                                     -> tensor<4xf32> {
+  %0:2 = mhlo.while(%i = %lb, %arg0 = %foo) : tensor<ui32>, tensor<4xf32> cond {
+    %1 = mhlo.compare LT, %i, %ub : (tensor<ui32>, tensor<ui32>) -> tensor<i1>
+    mhlo.return %1 : tensor<i1>
+  } do {
+    %1 = mhlo.add %i, %step : tensor<ui32>
+    mhlo.return %1, %arg0 : tensor<ui32>, tensor<4xf32>
+  }
+  func.return %0#1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @while_is_for_and_unsigned
+// CHECK: scf.while

@@ -478,6 +478,7 @@ class MklConvCustomBackpropFilterOp
       // variable TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is set to true.
       bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
 
+      MklDnnThreadPool eigen_tp(context);
       MklConvBwdFilterPrimitive<T>* conv_bwd_filter =
           MklConvBwdFilterPrimitiveFactory<T>::Get(convBwdFilterDims,
                                                    do_not_cache);
@@ -614,7 +615,7 @@ class MklConvCustomBackpropFilterOp
 
       // Execute convolution backward filter.
       std::shared_ptr<stream> bwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       bwd_cpu_stream.reset(
           CreateStream(&eigen_tp, conv_bwd_filter->GetEngine()));
       if (bias_enabled) {

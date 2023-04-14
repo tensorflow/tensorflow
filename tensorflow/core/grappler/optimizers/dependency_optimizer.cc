@@ -773,7 +773,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     } else {
       LOG(ERROR) << "Iteration = " << iteration
                  << ", topological sort failed with message: "
-                 << topo_sort_status.error_message();
+                 << topo_sort_status.message();
     }
     // Turn nodes with only control outputs into NoOps, prune NoOp and Identity
     // nodes.

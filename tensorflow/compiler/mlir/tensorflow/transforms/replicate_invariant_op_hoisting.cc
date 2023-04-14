@@ -17,6 +17,7 @@ limitations under the License.
 // result(s) regardless of replication, out of their respective replicate.
 
 #include <memory>
+#include <optional>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
@@ -45,8 +46,46 @@ struct ReplicateInvariantOpHoistingPass
   void runOnOperation() override;
 };
 
+// Check if op directly uses a key in `virtual_devices`.
+bool DirectUseOfVirtualDevice(const DictionaryAttr& virtual_devices,
+                              Operation* op) {
+  StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
+  if (!op_device) return false;
+  if (virtual_devices.get(op_device.getValue())) return true;
+  return false;
+}
+
+// Check if op or its ancestor uses a key in `virtual_devices`.
+bool AncestorUsesVirtualDevice(
+    const std::optional<DictionaryAttr>& virtual_devices, Operation* op) {
+  if (!virtual_devices.has_value()) return false;
+  if (!op) return false;
+  if (llvm::isa<tf_device::ReplicateOp>(op)) return false;
+  if (DirectUseOfVirtualDevice(*virtual_devices, op)) return true;
+  return AncestorUsesVirtualDevice(virtual_devices, op->getParentOp());
+}
+
+// Check if op or its descendant uses a key in `virtual_devices`.
+bool DescendantUsesVirtualDevice(
+    const std::optional<DictionaryAttr>& virtual_devices,
+    Operation* operation) {
+  if (!virtual_devices.has_value()) return false;
+
+  auto result = operation->walk([&](Operation* op) {
+    if (DirectUseOfVirtualDevice(*virtual_devices, op))
+      return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted();
+}
+
+// Make invariant the `ShapeOp`s or a `ReadVariableOp` that's the `ShapeOp`'s
+// predecessor.
 void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
                           Block* replicate_block, TF::ShapeOp shape_op) {
+  // Ignore ShapeOps that have virtual devices.
+  if (AncestorUsesVirtualDevice(replicate_op.getDevices(), shape_op)) return;
+
   Value input = shape_op.getInput();
   // If ShapeOp operand is replicate tensor block argument, replace with the
   // associated first replica operand.
@@ -85,22 +124,6 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   }
 }
 
-// Check if op uses a device from a list of virtual devices.
-bool UsesVirtualDevice(const std::optional<DictionaryAttr>& virtual_devices,
-                       Operation* operation) {
-  if (!virtual_devices.has_value()) return false;
-
-  auto result = operation->walk([&](Operation* op) {
-    StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
-    if (!op_device) return WalkResult::advance();
-
-    if (virtual_devices.value().get(op_device.getValue()))
-      return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  return result.wasInterrupted();
-}
-
 // Checks if op and inner op operands are all replicate invariant.
 bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
   auto ancestor_of_replicate = [&](Region* region) {
@@ -127,6 +150,10 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
   const int num_replicas = replicate_op.getN();
   Block* replicate_block = &replicate_op.GetBody();
 
+  // A `ShapeOp` that directly depends on a `tf_device.replicate` param and does
+  // not have a virtual device is assumed to return the same shape across all
+  // replicas. Thus it is invariant across replicas.
+  // TODO(b/277936694): Remove this assumption and special case.
   replicate_op.walk([&](TF::ShapeOp shape_op) {
     MakeShapeOpInvariant(replicate_op, num_replicas, replicate_block, shape_op);
   });
@@ -138,7 +165,7 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
     if (llvm::isa<tf_device::ReturnOp>(inner_op)) continue;
     // Skip hoisting if the inner op device attribute is a virtual device
     // defined by tf_device.replicate.
-    if (UsesVirtualDevice(virtual_device_list, &inner_op)) continue;
+    if (DescendantUsesVirtualDevice(virtual_device_list, &inner_op)) continue;
 
     if (IsOpReplicateInvariant(replicate_region, &inner_op))
       inner_op.moveBefore(replicate_op);

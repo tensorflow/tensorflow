@@ -88,3 +88,28 @@ def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::fu
   let constructor = "createDequantizeTFLSoftmaxPass()";
   let dependentDialects = ["mlir::TFL::TFLDialect", "quantfork::QuantizationForkDialect"];
 }
+
+def LowerGlobalTensors :
+    Pass<"tflite-lower-global-tensors", "mlir::ModuleOp"> {
+  let summary = "Lowers TFLite global tensors to MLProgram dialect variables.";
+  let constructor = "createLowerGlobalTensorsPass()";
+}
+
+def RetainCallOnceFuncs :
+    Pass<"tflite-retain-call-once-funcs", "mlir::ModuleOp"> {
+  let summary = "Guarantees that functions used by tfl.call_once are retained.";
+  let constructor = "createRetainCallOnceFuncsPass()";
+}
+
+def StripFunctionMetadata :
+    Pass<"tosa-tflite-strip-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripFunctionMetadataPass()";
+}
+
+def StripModuleMetadata :
+    Pass<"tosa-tflite-strip-module-metadata", "mlir::ModuleOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripModuleMetadataPass()";
+}
+

@@ -898,14 +898,13 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
           NearHelper(expected_element, actual_element, element_index, error,
                      detailed_message, miscompare_callback);
       if (!element_result.ok()) {
-        element_result = InvalidArgument("Array at shape index %s, %s",
-                                         element_index.ToString(),
-                                         element_result.error_message());
+        element_result =
+            InvalidArgument("Array at shape index %s, %s",
+                            element_index.ToString(), element_result.message());
         if (return_status.ok()) {
           return_status = element_result;
         } else {
-          return_status =
-              AppendStatus(return_status, element_result.error_message());
+          return_status = AppendStatus(return_status, element_result.message());
         }
       }
     }
@@ -916,7 +915,7 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       return_status =
           InvalidArgument("\nMismatches in shape %s (%d elements):\n%s",
                           ShapeUtil::HumanString(actual.shape()),
-                          total_elements, return_status.error_message());
+                          total_elements, return_status.message());
     }
     return return_status;
   }
@@ -1086,7 +1085,7 @@ Status EmitLiteralsInErrorMessage(const Status& result,
     return result;
   }
   return InvalidArgument("%s\n\nExpected literal:\n%s\n\nActual literal:\n%s",
-                         result.error_message(), ToStringTruncated(expected),
+                         result.message(), ToStringTruncated(expected),
                          ToStringTruncated(actual));
 }
 

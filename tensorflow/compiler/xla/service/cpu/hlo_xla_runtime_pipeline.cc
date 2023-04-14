@@ -67,7 +67,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
-  options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
+  options.setFunctionBoundaryTypeConversion(LayoutMapOption::IdentityLayoutMap);
   options.createDeallocs = !new_deallocator;
   options.unknownTypeConverterFn = [](mlir::Value value,
                                       mlir::Attribute memorySpace,
@@ -329,7 +329,7 @@ static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
       Status status = CreateHloXlaPipeline(pm, options);
       if (!status.ok()) {
         LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                   << status.error_message();
+                   << status.message();
       }
     });
 

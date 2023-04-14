@@ -190,3 +190,21 @@ func.func @do_not_hoist_ops_with_virtual_device(%arg0: tensor<*xf32>, %arg1: ten
 // CHECK:      tf_device.return [[OP_C]] : tensor<*xi32>
 // CHECK:    }) {device = "c"} : () -> tensor<*xi32>
 // CHECK:    tf_device.return [[SHAPE]], [[OP_A]], [[LAUNCH_B]], [[LAUNCH_C]]
+
+
+// Checks that the argument to a Shape that has a virtual device is not changed.
+
+// CHECK-LABEL:   func @do_not_mutate_shape_op_with_virtual_device
+// CHECK:         tf_device.replicate
+// CHECK-SAME:    as [[RI:%.*]]: tensor<*xf32>
+// CHECK:         "tf.Shape"([[RI]])
+func.func @do_not_mutate_shape_op_with_virtual_device(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
+  tf_device.replicate([%arg0, %arg1] as %ri: tensor<*xf32>) {devices = {TPU_REPLICATED_HOST_0 = ["/device:CPU:0", "/device:CPU:1"]}, n = 2: i32} {
+    "tf_device.launch"() ({
+      %1 = "tf.Shape"(%ri) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
+      tf_device.return
+    }) {device = "TPU_REPLICATED_HOST_0"} : () -> ()
+    tf_device.return
+  }
+  func.return
+}

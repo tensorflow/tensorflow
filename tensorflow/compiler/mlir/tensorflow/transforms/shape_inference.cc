@@ -1771,14 +1771,14 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
   auto output_shape = xla::ShapeInference::InferGatherShape(
       input_shape, start_indices_shape, gather_dim_numbers, slice_sizes);
   if (!output_shape.ok()) {
-    op->emitError(output_shape.status().error_message());
+    op->emitError(output_shape.status().message());
     return false;
   }
 
   auto refined_type = xla::ConvertShapeToType<RankedTensorType>(
       *output_shape, mlir::Builder(op));
   if (!refined_type.ok()) {
-    op->emitError(refined_type.status().error_message());
+    op->emitError(refined_type.status().message());
     return false;
   }
 

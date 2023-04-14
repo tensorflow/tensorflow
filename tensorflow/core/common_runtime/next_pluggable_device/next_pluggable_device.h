@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_context.h"
@@ -29,7 +30,7 @@ namespace tensorflow {
 
 class NextPluggableDeviceAllocator;
 
-class NextPluggableDevice : public LocalDevice {
+class NextPluggableDevice : public PjRtBaseDevice {
  public:
   struct Options {
     // The device name's prefix (e.g., "/task:7")
@@ -78,13 +79,8 @@ class NextPluggableDevice : public LocalDevice {
 
   int GetDeviceOrdinal() const { return device_ordinal_; }
 
-  const std::string& GetCompilationDeviceType() const {
-    return compilation_device_type_;
-  }
-
  private:
   int device_ordinal_;
-  std::string compilation_device_type_;
   // Need to use RefCountPtr since DeviceContext is a ref counted object.
   core::RefCountPtr<DeviceContext> device_context_;
   std::unique_ptr<NextPluggableDeviceAllocator> allocator_;

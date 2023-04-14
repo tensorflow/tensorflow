@@ -50,7 +50,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -100,8 +100,8 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:lib",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -113,7 +113,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:util",
     ],
 )
 

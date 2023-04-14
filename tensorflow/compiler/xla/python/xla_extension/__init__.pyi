@@ -293,6 +293,8 @@ class OpSharding:
   def SerializeToString(self) -> bytes: ...
   def clone(self) -> OpSharding: ...
 
+def is_op_sharding_fully_replicated(sharding: OpSharding, /) -> bool: ...
+
 class HloSharding:
   @staticmethod
   def from_proto(proto: OpSharding) -> HloSharding: ...
@@ -537,7 +539,6 @@ class Executable:
 class DeviceTopology:
   platform: str
   platform_version: str
-  device_attributes: List[Dict[str, Any]]
 
 def compile(topology: DeviceTopology, mlir_module: str) -> Executable: ...
 

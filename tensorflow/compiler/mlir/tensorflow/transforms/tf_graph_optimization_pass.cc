@@ -72,7 +72,7 @@ void GraphOptPass::runOnOperation() {
   auto graph = std::make_unique<Graph>(flib_def);
   Status status = ConvertMlirToGraph(module_in, confs, &graph, &flib_def);
   if (!status.ok()) {
-    mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.error_message();
+    mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.message();
     return signalPassFailure();
   }
 
@@ -92,7 +92,7 @@ void GraphOptPass::runOnOperation() {
     Status status = pass->Run(options);
     if (!status.ok()) {
       mlir::emitError(mlir::UnknownLoc::get(&ctx))
-          << pass->name() << ": " << status.error_message();
+          << pass->name() << ": " << status.message();
       return signalPassFailure();
     }
   }
@@ -104,7 +104,7 @@ void GraphOptPass::runOnOperation() {
       ConvertGraphToMlir(**options.graph, debug_info, flib_def, specs, &ctx);
   if (!module_or_status.ok()) {
     mlir::emitError(mlir::UnknownLoc::get(&ctx))
-        << module_or_status.status().error_message();
+        << module_or_status.status().message();
     return signalPassFailure();
   }
   auto module_out = std::move(module_or_status).value();

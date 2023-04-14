@@ -52,7 +52,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    LaunchDimensionsGenerator generator);
+    LaunchDimensionsGenerator generator, mlir::MLIRContext& mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

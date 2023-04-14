@@ -135,7 +135,7 @@ class EagerContextResource {
     Status s = dynamic_cast<tensorflow::DynamicDeviceMgr*>(
                    ctx_.get()->local_device_mgr())
                    ->AddDevices(std::move(devices));
-    if (!s.ok()) return tfrt::MakeStringError(s.error_message());
+    if (!s.ok()) return tfrt::MakeStringError(s.message());
     ctx_.get()->InitPrioritizedDeviceTypeList();
     ctx_.get()->pflr()->InitializeDeviceAndFlr();
     return llvm::Error::success();

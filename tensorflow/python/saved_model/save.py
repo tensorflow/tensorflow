@@ -1398,8 +1398,9 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
     signatures = signature_serialization.find_function_to_export(
         augmented_graph_view)
 
-  signatures, wrapped_functions = (
-      signature_serialization.canonicalize_signatures(signatures))
+  signatures, wrapped_functions, _ = (
+      signature_serialization.canonicalize_signatures(signatures)
+  )
   signature_serialization.validate_augmented_graph_view(augmented_graph_view)
   signature_map = signature_serialization.create_signature_map(signatures)
   augmented_graph_view.set_signature(signature_map, wrapped_functions)
@@ -1423,11 +1424,9 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
             f"Unsupported type f{type(func)}. Functions in `function_aliases`"
             " should be created by tf.function, or concrete functions."
         )
-
   object_graph_proto = _serialize_object_graph(saveable_view,
                                                asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-
   return (meta_graph_def, exported_graph, object_saver, asset_info,
           saveable_view.nodes, saveable_view.node_paths)
 

@@ -792,6 +792,15 @@ tf_proto_library(
     cc_api_version = 2,
 )
 
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "checkpoint_state_py_pb2",
+#     testonly = 0,
+#     api_version = 2,
+#     deps = [":checkpoint_state"],
+# )
+# copybara:uncomment_end
+
 py_library(
     name = "checkpoint_management",
     srcs = ["checkpoint_management.py"],

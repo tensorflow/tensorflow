@@ -720,9 +720,7 @@ bool GpuExecutor::HostCallback(Stream* stream,
                                       InternalHostCallback, callback_ptr);
 }
 
-/* static */ void GpuExecutor::InternalHostCallback(CUstream stream,
-                                                    CUresult status,
-                                                    void* data) {
+/* static */ void GpuExecutor::InternalHostCallback(void* data) {
   auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
   std::move (*callback)();
   delete callback;

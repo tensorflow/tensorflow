@@ -33,9 +33,9 @@ struct Dims {
 
 class RuntimeShape {
  public:
-  // Shapes with dimensions up to 5 are stored directly in the structure, while
+  // Shapes with dimensions up to 6 are stored directly in the structure, while
   // larger shapes are separately allocated.
-  static constexpr int kMaxSmallSize = 5;
+  static constexpr int kMaxSmallSize = 6;
 
   RuntimeShape& operator=(RuntimeShape const&) = delete;
 

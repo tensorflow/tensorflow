@@ -19,6 +19,6 @@ cc_library_with_tflite(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )

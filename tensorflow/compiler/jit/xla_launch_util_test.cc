@@ -446,5 +446,49 @@ TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {
   EXPECT_TRUE(options.use_major_to_minor_data_layout_for_callbacks);
 }
 
+TEST_F(PjRtExecutionUtilTest, RunPjRtExecutable) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  TF_EXPECT_OK(NodeDefBuilder("AddV2", "AddV2")
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("T", DT_INT32)
+                   .Device("/job:localhost/replica:0/task:0/device:XLA_CPU:0")
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+
+  AddVariableInput<int32>("var1", TensorShape({1, 2}), {1, 2});
+  AddVariableInput<int32>("var2", TensorShape({1, 2}), {3, 4});
+
+  CreateContext();
+
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].initialized = true;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1, 2});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({1, 2});
+
+  const XlaCompiler::CompilationResult* result;
+  xla::PjRtLoadedExecutable* executable;
+  CompileToExecutable(args, &result, &executable);
+
+  std::vector<const Tensor*> inputs = InputsFromContext(context_.get());
+  std::vector<int> variables_indices =
+      GetResourceVariableIndicesFromContext(context_.get());
+  std::vector<VariableInfo> variables;
+  variables.reserve(variables_indices.size());
+  TF_ASSERT_OK(GetVariableInfosFromInputs(context_->resource_manager(),
+                                          context_->device(), inputs,
+                                          variables_indices, &variables));
+  TF_ASSERT_OK(RunPjRtExecutable(*pjrt_client_, inputs, variables, *result,
+                                 executable, context_.get()));
+
+  Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 2}), {4, 6});
+  test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
+}
+
 }  // namespace
 }  // namespace tensorflow

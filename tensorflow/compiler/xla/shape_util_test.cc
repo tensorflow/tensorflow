@@ -625,7 +625,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
       increment_func);
 
   EXPECT_FALSE(error_status.ok());
-  EXPECT_THAT(error_status.error_message(),
+  EXPECT_THAT(error_status.message(),
               ::testing::HasSubstr("Cannot increment beyond 5."));
   EXPECT_EQ(invocations, 5);
 }

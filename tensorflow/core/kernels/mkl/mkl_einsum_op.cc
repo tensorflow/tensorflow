@@ -111,6 +111,7 @@ struct MklEinsumHelper {
                                          out_shape, trans_x, trans_y);
 
     // Create or retrieve matmul primitive from cache.
+    MklDnnThreadPool eigen_tp(ctx);
     MklMatMulPrimitive<T, T, T>* matmul_prim =
         MklMatMulPrimitiveFactory<T, T, T, T>::Get(
             *params, false /* value for do_not_cache */);
@@ -162,7 +163,7 @@ struct MklEinsumHelper {
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
+
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
     matmul_prim->Execute(cpu_stream, lhs.flat<T>().data(), weight_data,

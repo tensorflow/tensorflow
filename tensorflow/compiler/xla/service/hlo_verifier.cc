@@ -2285,8 +2285,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
   // Fused root instruction and fused parameters must all be owned by the
   // fusion computation.
   bool root_owned = false;
-  const std::vector<HloInstruction*>& fused_parameters =
-      fusion->fused_parameters();
+  const auto& fused_parameters = fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
   for (auto* instruction : fused_computation->instructions()) {
@@ -2625,10 +2624,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       Status status =
           instruction->sharding().Validate(instruction->shape(), num_devices_);
       if (!status.ok()) {
-        return Status(status.code(),
-                      absl::StrCat("Invalid sharding for instruction: ",
-                                   instruction->ToString(), ": ",
-                                   status.error_message()));
+        return Status(
+            status.code(),
+            absl::StrCat("Invalid sharding for instruction: ",
+                         instruction->ToString(), ": ", status.message()));
       }
     }
 
@@ -2766,8 +2765,8 @@ StatusOr<bool> HloVerifier::Run(
     return status_or_changed.value();
   }
   return Status(status_or_changed.status().code(),
-                absl::StrCat("during context [", context_, "]: ",
-                             status_or_changed.status().error_message()));
+                absl::StrCat("during context [", context_,
+                             "]: ", status_or_changed.status().message()));
 }
 
 MetadataTracker::MetadataTracker(absl::string_view prefix) : prefix_(prefix) {}

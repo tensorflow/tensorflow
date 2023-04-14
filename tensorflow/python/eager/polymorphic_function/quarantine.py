@@ -16,7 +16,7 @@
 
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import eager_function_run
-from tensorflow.python.eager.polymorphic_function import tracing_compiler
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
@@ -69,15 +69,17 @@ def defun_with_attributes(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         function,
-        tracing_compiler.TracingCompiler(
+        polymorphic_function.Function(
             function,
             name,
             input_signature=input_signature,
-            attributes=attributes,
             autograph=autograph,
-            autograph_options=experimental_autograph_options,
             jit_compile=jit_compile,
-            reduce_retracing=reduce_retracing))
+            reduce_retracing=reduce_retracing,
+            experimental_autograph_options=experimental_autograph_options,
+            experimental_attributes=attributes,
+        ),
+    )
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:

@@ -196,7 +196,7 @@ FailureOr<mhlo::ConstantOp> CreateConstantOp(UniformQuantizedOp op,
   tensorflow::Status status =
       tensorflow::mangling_util::DemangleTensor(tensor_view, &tensor_proto);
   if (!status.ok()) {
-    return rewriter.notifyMatchFailure(op, status.error_message());
+    return rewriter.notifyMatchFailure(op, status.message());
   }
 
   tensorflow::Tensor t;
@@ -742,6 +742,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
   static const llvm::DenseSet<mlir::TypeID>* ops =
       new llvm::DenseSet<mlir::TypeID>{
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
+    TypeID::get<TF::AbsOp>(),
     TypeID::get<TF::AtanOp>(),
     TypeID::get<TF::AvgPool3DOp>(),
     TypeID::get<TF::BiasAddGradOp>(),
@@ -1015,7 +1016,7 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
             ConvertUniformQuantizedClipByValueOp>(context);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
     std::optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,

@@ -40,6 +40,7 @@ namespace data {
 // The on-disk state has this structure:
 // - snapshot_path
 //   - DONE
+//   - ERROR
 //   - snapshot.metadata
 //   - dataset_def.proto
 //   - dataset_spec.pb
@@ -48,6 +49,7 @@ namespace data {
 //   - streams
 //     - stream_0
 //       - DONE
+//       - ERROR
 //       - splits
 //         - source_0
 //           - split_<local_split_index>_<global_split_index>
@@ -79,13 +81,6 @@ class SnapshotManager {
   tsl::Status GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                                GetSnapshotSplitResponse& response);
   tsl::Status GetSnapshotStreams(GetSnapshotStreamsResponse& response);
-
-  // Checks for a stream that should move from `assignments_` to `orphans_` due
-  // to its assigned worker having stopped heartbeating.
-  void HandleMissingWorker(const std::string& worker_address);
-  // Checks for streams that should move from `unknowns_` to `orphans_` due to
-  // the dispatcher not having gotten a heartbeat from an assigned worker.
-  void UpdateStreams();
 
  private:
   SnapshotManager(
@@ -144,31 +139,22 @@ class SnapshotManager {
   struct Stream {
     explicit Stream(int64_t num_sources) : num_assigned_splits(num_sources) {}
 
+    enum class State {
+      // The stream is not finished and the worker is heartbeating.
+      kActive,
+      // The stream is finished.
+      kDone,
+    };
+
     // A counter of assigned splits for each source.
     std::vector<int64_t> num_assigned_splits;
-    // If `true`, there are no more splits to be processed for this stream.
-    bool done = false;
+    State state = State::kActive;
   };
 
   // All streams for this snapshot.
   std::vector<Stream> streams_;
-  // Indices of all "assigned" streams, keyed by worker address. A stream is
-  // considered to be assigned if the dispatcher knows of a worker
-  // processing the stream and that worker is heartbeating.
+  // A mapping of assigned worker to stream index.
   absl::flat_hash_map<std::string, int64_t> assignments_;
-  // Indices of all "orphan" streams. A stream is considered to be an orphan if
-  // the dispatcher believes that there is no worker currently processing the
-  // stream. Orphans are eventually assigned to unoccupied workers.
-  absl::flat_hash_set<int64_t> orphans_;
-  // Indices of all "unknown" streams. A stream is considered to be an unknown
-  // if the dispatcher recently restarted and has no idea whether or not there
-  // is a worker currently processing the stream. Unknown streams are eventually
-  // (1) reassigned to the worker processing the stream or (2) considered to be
-  // orphans.
-  absl::flat_hash_set<int64_t> unknowns_;
-  bool stream_available(int64_t stream_index) const {
-    return orphans_.contains(stream_index) || unknowns_.contains(stream_index);
-  }
 
   // A counter of assigned aplits for this snapshot.
   int64_t num_assigned_splits_ = 0;

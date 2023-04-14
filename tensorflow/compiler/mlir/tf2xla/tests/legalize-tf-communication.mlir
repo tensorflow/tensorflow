@@ -858,3 +858,15 @@ func.func @multi_block_func() {
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
   func.return
 }
+
+// -----
+
+// CHECK-LABEL: func @host_compute_manual_sharding
+func.func @host_compute_manual_sharding(%arg0: tensor<i32>) {
+  // CHECK:  "mhlo.send"
+  // CHECK-SAME: mhlo.sharding = "\08\04"
+  // CHECK:  "mhlo.recv"
+  // CHECK-SAME: mhlo.sharding = "\08\04"
+  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = "", manual_sharding = true} : (tensor<i32>) -> tensor<i32>
+  func.return
+}

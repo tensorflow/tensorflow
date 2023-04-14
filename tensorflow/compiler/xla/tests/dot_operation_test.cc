@@ -71,6 +71,10 @@ using TypesF8 = ::testing::Types<tsl::float8_e4m3fn>;
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
 XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
+  }
+
   XlaBuilder builder(TestName());
 
   XlaOp param;

@@ -744,8 +744,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto source_target_pairs_or =
         ConvertNx2Attribute(op.getSourceTargetPairs());
     if (!source_target_pairs_or.ok()) {
-      return op.emitOpError()
-             << source_target_pairs_or.status().error_message();
+      return op.emitOpError() << source_target_pairs_or.status().message();
     }
 
     // Pass an array of pairs as two vectors.
@@ -819,7 +818,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     Status implementable_status =
         CheckImplementable(op, replica_count, num_partitions);
     if (!implementable_status.ok()) {
-      return op.emitOpError() << implementable_status.error_message();
+      return op.emitOpError() << implementable_status.message();
     }
 
     // Check that we have and assigned unique collective operation id.

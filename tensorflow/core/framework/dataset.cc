@@ -762,11 +762,11 @@ void MergeOptions(const protobuf::MessageLite& source,
 void DatasetBase::Initialize(const Metadata& metadata) {
   Status s = ComputeNumSources();
   if (!s.ok()) {
-    LOG(ERROR) << s;
+    LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   s = MergeOptionsFromInputs();
   if (!s.ok()) {
-    LOG(ERROR) << s;
+    LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   metadata_ = metadata;
   if (metadata_.name() == "") {

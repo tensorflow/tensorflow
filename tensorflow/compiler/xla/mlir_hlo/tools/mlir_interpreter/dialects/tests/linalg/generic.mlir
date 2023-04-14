@@ -73,3 +73,24 @@ func.func @vector() -> tensor<4xvector<2xi32>> {
 // CHECK-LABEL: @vector
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: TensorOrMemref<4xvector<2xi32>>: [[1, 5], [2, 6], [3, 7], [4, 8]]
+
+func.func @matmul_dynamic() -> tensor<2x2xi32> {
+  %lhs = arith.constant dense<[[1, 2, 3], [4, 5, 6]]> : tensor<2x3xi32>
+  %rhs = arith.constant dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>
+  %lhs_cast = tensor.cast %lhs : tensor<2x3xi32> to tensor<2x?xi32>
+  %rhs_cast = tensor.cast %rhs : tensor<3x2xi32> to tensor<?x2xi32>
+  %init = tensor.empty() : tensor<2x2xi32>
+  %ret = linalg.generic #matmul_trait
+    ins(%lhs_cast, %rhs_cast : tensor<2x?xi32>, tensor<?x2xi32>)
+    outs(%init : tensor<2x2xi32>) {
+    ^bb(%a: i32, %b: i32, %c: i32):
+      %d = arith.muli %a, %b: i32
+      %e = arith.addi %c, %d: i32
+      linalg.yield %e : i32
+    } -> tensor<2x2xi32>
+  return %ret : tensor<2x2xi32>
+}
+
+// CHECK-LABEL: @matmul_dynamic
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: [[22, 28], [49, 64]]

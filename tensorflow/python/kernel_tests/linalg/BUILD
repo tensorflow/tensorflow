@@ -262,7 +262,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg:linear_operator_circulant",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
-        "//tensorflow/python/ops/signal",
+        "//tensorflow/python/ops/signal:fft_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -487,7 +487,6 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/ops/linalg:linear_operator_toeplitz",
-        "//tensorflow/python/ops/signal",
         "//third_party/py/numpy",
     ],
 )
