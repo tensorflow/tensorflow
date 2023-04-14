@@ -27,9 +27,6 @@ cc_library(
         "//tensorflow_serving/model_servers:__pkg__",
     ],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_time",
         "//tensorflow/tsl/platform:errors",
@@ -46,6 +43,9 @@ cc_library(
         "//tensorflow/tsl/profiler/utils:math_utils",
         "//tensorflow/tsl/profiler/utils:time_utils",
         "//tensorflow/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -70,10 +70,10 @@ cc_library(
     ],
     deps = [
         ":profiler_service_impl",
-        "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@com_google_absl//absl/strings",
     ] + tsl_grpc_cc_dependencies(),
     alwayslink = True,
 )

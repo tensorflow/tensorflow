@@ -13,11 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for DTensorDevice in python."""
+import threading
 from absl.testing import parameterized
-
 import numpy as np
 
 from tensorflow.dtensor.python import api
+
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
@@ -104,6 +105,34 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     with self.assertRaises(errors_impl.UnimplementedError):
       a + big  # pylint:disable=pointless-statement
     a + small  # pylint:disable=pointless-statement
+
+  def test_concurrent_execute(self):
+    results = {}
+
+    def func(thread_id):
+      @polymorphic_function.function
+      def update_variable(initial_value, num_round):
+        y = math_ops.multiply(initial_value, num_round)
+        return math_ops.add(initial_value, y)
+
+      for n in range(10):
+        with api._dtensor_device()._experimental_default_mesh(self.mesh):
+          x = stateless_random_ops.stateless_random_uniform(
+              [10], seed=(1, 2), minval=0, maxval=255
+          )
+          y = api.copy_to_mesh(x, Layout.replicated(self.mesh, rank=1))
+          y = update_variable(y, n + 1)
+          results[thread_id] = y
+
+    threads = {}
+    for a in range(10):
+      t = threading.Thread(target=func, args=(a,))
+      threads[a] = t
+      t.start()
+
+    for thrad_id, thread in threads.items():
+      thread.join()
+      self.assertIsNotNone(results[thrad_id])
 
   def testNoImplicitCopyOnForScalarVariableOnNonCPUMesh(self):
     self.skipForTfrt("b/235088250")
@@ -272,6 +301,32 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     output, = f.get_concrete_function().outputs
     self.assertEqual([2], output.shape)
 
+  def testUnpackInvalidInput(self):
+    # Test for b/255629824
+    with self.assertRaisesRegex(TypeError, "Expecting a Tensor"):
+      api.unpack(
+          **{
+              "tensor": [[
+                  41.8684053521925,
+                  731.610023060566,
+                  356.0701500440248,
+                  9.62928117100512,
+                  185.0041559439026,
+                  225.87663065861508,
+                  450.2403652750002,
+                  268.7273627027147,
+              ]]
+          }
+      )
+
+  def testIsDTensorInvalidInput(self):
+    # Test for b/272381211
+    self.assertFalse(api.fetch_layout(**{"tensor": -1024}))
+
+  def testFetchLayoutInvalidInput(self):
+    # Test for b/272381211
+    self.assertIsNone(api.fetch_layout(**{"tensor": -1024}))
+
   def testFetchLayoutForDVariablesReturnsCorrectLayout(self):
     layout = Layout.replicated(self.mesh, 2)
     with api._dtensor_device()._experimental_default_mesh(self.mesh):
@@ -348,9 +403,12 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     with api.default_mesh(cpu0_mesh):
       a = constant_op.constant(1.0)
       b = array_ops.ones(shape=(3, 3))
-    # FIXME(b/274647196): This shall eventually become a DTensor on cpu0_mesh.
-    self.assertIn("CPU:0", b.device)
+
+    self.assertFalse(api.is_dtensor(a))
     self.assertIn("CPU:0", a.device)
+
+    self.assertTrue(api.is_dtensor(b))
+    self.assertEqual(api.fetch_layout(b).mesh, cpu0_mesh)
 
 
 class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):

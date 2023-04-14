@@ -407,5 +407,28 @@ bool IsTensorCorePlaneName(absl::string_view plane_name) {
 
 /*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
+// String constants for XProf TraceMes.
+const absl::string_view kMegaScaleDcnReceive =
+    "MegaScale: Communication Transport Receive";
+const absl::string_view kMegaScaleDcnSend =
+    "MegaScale: Communication Transport Send";
+const absl::string_view kMegaScaleDcnSendFinished = "MegaScale: Send Finished";
+const absl::string_view kMegaScaleTopologyDiscovery =
+    "MegaScale: Communication Topology Discovery.";
+const absl::string_view kMegaScaleBarrier = "MegaScale: Barrier.";
+const absl::string_view kMegaScaleHostCommand = "MegaScale: HostCommandHandle";
+const absl::string_view kMegaScaleD2HTransferStart =
+    "MegaScale: Device to Host Action";
+const absl::string_view kMegaScaleD2HTransferFinished =
+    "MegaScale: Device to Host Transfer Finished";
+const absl::string_view kMegaScaleH2DTransferStart =
+    "MegaScale: Host to Device Action";
+const absl::string_view kMegaScaleH2DTransferFinished =
+    "MegaScale: Host to Device Transfer Finished";
+const char kXProfMetadataKey[] = "key";
+const char kXProfMetadataFlow[] = "flow";
+const char kXProfMetadataTransfers[] = "transfers";
+const char kXProfMetadataBufferSize[] = "buffer_size";
+
 }  // namespace profiler
 }  // namespace tsl

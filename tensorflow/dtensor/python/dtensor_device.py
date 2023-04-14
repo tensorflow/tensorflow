@@ -292,6 +292,9 @@ class DTensorDevice(object):
           self._device_info)
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
+
+    if layout_string is None:
+      return None
     return layout_lib.Layout.from_string(layout_string)
 
   def is_dtensor(self, tensor: Any) -> bool:

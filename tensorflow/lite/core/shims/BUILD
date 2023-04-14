@@ -573,17 +573,16 @@ build_test(
 )
 
 #------------------------------------------------------------------------------
-# JNI bindings (Java API and Java Tasks library)
+# Utilities for use in JNI Bindings (e.g. Java API and Java Tasks library).
 
 cc_library(
     name = "jni_utils",
-    srcs = ["jni/jni_utils.cc"],
     hdrs = ["jni/jni_utils.h"],
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/java/jni",
+        "//tensorflow/lite/c/jni:jni_utils",
     ],
 )
 

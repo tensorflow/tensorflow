@@ -1628,7 +1628,7 @@ StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
 }
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}, 2));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -1691,6 +1691,24 @@ TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_OperandCountMismatchWithReplicaGroupSize) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4] parameter(0)
+    p1 = f32[128,4] parameter(1)
+    ROOT a2a = (f32[128,4], f32[128,4], f32[128,4]) all-to-all(p0, p1, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("hlo->operand_count() == split_count"));
 }
 
 TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {

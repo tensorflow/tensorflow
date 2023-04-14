@@ -81,9 +81,9 @@ cc_test(
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [":gpu_plugin"],
         "//conditions:default": [],
     }) + [
-        "@com_google_googletest//:gtest_main",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

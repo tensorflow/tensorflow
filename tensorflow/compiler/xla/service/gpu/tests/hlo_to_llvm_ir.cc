@@ -13,23 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/Target/TargetMachine.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 #endif
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 #include "tensorflow/tsl/platform/init_main.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
 const char* const kUsage = R"(

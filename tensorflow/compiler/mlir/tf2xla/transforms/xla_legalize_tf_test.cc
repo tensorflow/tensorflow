@@ -57,6 +57,7 @@ StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
 
 bool BuildAndRunPipeline(absl::string_view module_string,
                          const std::function<void(PassManager*)>& passes) {
+  mlir::registerPassManagerCLOptions();
   MLIRContext context;
 
   OwningOpRef<ModuleOp> module =
@@ -64,7 +65,7 @@ bool BuildAndRunPipeline(absl::string_view module_string,
 
   PassManager pm(&context);
 
-  mlir::applyPassManagerCLOptions(pm);
+  if (mlir::failed(mlir::applyPassManagerCLOptions(pm))) return false;
   passes(&pm);
 
   return pm.run(module.get()).succeeded();

@@ -1260,31 +1260,33 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
 
 // ------------------------------ Device Topology ------------------------------
 
-PJRT_Error* PJRT_DeviceTopology_Destroy(
-    PJRT_DeviceTopology_Destroy_Args* args) {
+PJRT_Error* PJRT_TopologyDescription_Destroy(
+    PJRT_TopologyDescription_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_DeviceTopology_Destroy_Args",
-      PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE, args->struct_size));
+      "PJRT_TopologyDescription_Destroy_Args",
+      PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE, args->struct_size));
   delete args->topology;
   return nullptr;
 }
 
-PJRT_Error* PJRT_DeviceTopology_PlatformName(
-    PJRT_DeviceTopology_PlatformName_Args* args) {
+PJRT_Error* PJRT_TopologyDescription_PlatformName(
+    PJRT_TopologyDescription_PlatformName_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_DeviceTopology_PlatformName_Args",
-      PJRT_DeviceTopology_PlatformName_Args_STRUCT_SIZE, args->struct_size));
+      "PJRT_TopologyDescription_PlatformName_Args",
+      PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE,
+      args->struct_size));
   absl::string_view platform_name = args->topology->topology->platform_name();
   args->platform_name = platform_name.data();
   args->platform_name_size = platform_name.size();
   return nullptr;
 }
 
-PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
-    PJRT_DeviceTopology_PlatformVersion_Args* args) {
+PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
+    PJRT_TopologyDescription_PlatformVersion_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_DeviceTopology_PlatformVersion_Args",
-      PJRT_DeviceTopology_PlatformVersion_Args_STRUCT_SIZE, args->struct_size));
+      "PJRT_TopologyDescription_PlatformVersion_Args",
+      PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE,
+      args->struct_size));
   absl::string_view platform_version =
       args->topology->topology->platform_version();
   args->platform_version = platform_version.data();
@@ -1390,10 +1392,10 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
   return c_client;
 }
 
-PJRT_DeviceTopology* CreateWrapperDeviceTopology(
-    std::unique_ptr<xla::PjRtDeviceTopology> cpp_topology) {
-  PJRT_DeviceTopology* c_topology =
-      new PJRT_DeviceTopology{std::move(cpp_topology)};
+PJRT_TopologyDescription* CreateWrapperDeviceTopology(
+    std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
+  PJRT_TopologyDescription* c_topology =
+      new PJRT_TopologyDescription{std::move(cpp_topology)};
   return c_topology;
 }
 

@@ -40,12 +40,15 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  // Helper utility to replace pair of async-start/done ops in a computation
-  // with their synchronous variants and update the schedule.
+  // Helper utility to replace a list of pairs of async-start/done ops in a
+  // computation with their synchronous variants and update the schedule.
   static Status ReplaceAsyncInstructionsWithSync(
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
           async_pairs);
+
+  static constexpr char kAsyncCollectiveNameAttributeName[] =
+      "async_collective_name";
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);

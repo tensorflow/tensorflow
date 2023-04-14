@@ -122,6 +122,11 @@ struct TfrtPipelineOptions
                      "out to run during loading."),
       llvm::cl::init(false)};
 
+  Option<bool> fuse_get_resource_ops_in_hoisting{
+      *this, "fuse-get-resource-ops-in-hoisting",
+      llvm::cl::desc("If true, get_resource_op will be fused during hoisting"),
+      llvm::cl::init(true)};
+
   Option<bool> sink_in_invariant_ops{
       *this, "sink-in-invariant-ops",
       llvm::cl::desc("If true, sink the selected invariant ops in to the "

@@ -17,6 +17,7 @@ load(
     "tf_additional_profiler_deps",
 )
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
+load("//third_party/mkl_dnn:build_defs.bzl", "if_onednn_v3")
 
 # TODO(mdan): Break into per-directory files.
 
@@ -75,6 +76,7 @@ py_library(
         ":gradient_checker_v2",
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/tpu:tpu_estimator",
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
@@ -225,7 +227,7 @@ py_library(
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
-        "//tensorflow/python/ops/linalg/sparse",
+        "//tensorflow/python/ops/linalg/sparse:sparse_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for",
@@ -237,7 +239,7 @@ py_library(
         "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/summary/writer",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
@@ -1672,7 +1674,6 @@ py_library(
         ":list_ops",
         ":map_ops",
         ":tensor_array_ops",
-        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:auto_control_deps_utils",
@@ -1709,7 +1710,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "bincount_ops_test",
     size = "small",
     srcs = ["ops/bincount_ops_test.py"],
@@ -1829,6 +1830,7 @@ py_library(
     deps = [
         ":protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/types",
         "//tensorflow/python/util:compat",
@@ -2340,6 +2342,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:auto_control_deps_utils",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
@@ -2378,6 +2381,7 @@ py_library(
         ":array_ops",
         ":handle_data_util",
         ":list_ops_gen",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
@@ -3040,7 +3044,6 @@ py_library(
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/structured",
     ],
@@ -4013,15 +4016,10 @@ pywrap_tensorflow_macro(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-    ] + tsl_async_value_deps(),
+    ] + tsl_async_value_deps() + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":safe_pyobject_ptr",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
@@ -4109,6 +4107,11 @@ pywrap_tensorflow_macro(
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/tsl/python/lib/core",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ] + if_static([
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
@@ -4862,15 +4865,6 @@ tf_python_pybind_extension(
     }),
     static_deps = tf_python_pybind_static_deps(),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//third_party/py/numpy:headers",
-        "@pybind11",
-        "//third_party/python_runtime:headers",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/compiler/jit:flags_headers_only",
@@ -4886,6 +4880,15 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",

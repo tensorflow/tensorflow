@@ -281,6 +281,32 @@ struct SparseDynSliceCallRewriter {
   }
 };
 
+struct SparseReshapeCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 1 && "Need one input tensor");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // Reconstruct the reshape operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    // TODO(anlunx): Fix the issue that the reshape is rewritten to a collapse +
+    // expand pair where the sparsity encoding is dropped in between.
+    rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, ret_sp_tensor.getType(),
+                                                 op.getInputs()[0]);
+    return success();
+  }
+};
+
+struct SparseConvertCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 1 && "Need one input tensor");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<sparse_tensor::ConvertOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0]);
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
@@ -311,10 +337,11 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
       std::make_pair("sparse_tensor_dynamic_slice",
                      SparseDynSliceCallRewriter()),
+      std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
+      std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
   };
 
-  // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
-  // the corresponding sparse_tensor::PackOp and sparse_tensor::UnpackOp.
+  // Rewrites a CustomCallOp to corresponding sparse_tensor operation.
   LogicalResult matchAndRewrite(mhlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
     if (auto it = rewriter_map_.find(op.getCallTargetName());
@@ -326,27 +353,11 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   }
 };
 
-class ReallocToAllocRewriter : public OpRewritePattern<memref::ReallocOp> {
-  using OpRewritePattern::OpRewritePattern;
-  // Rewrites a Realloc to alloc + copy
-  LogicalResult matchAndRewrite(memref::ReallocOp op,
-                                PatternRewriter& rewriter) const override {
-    Value alloc = rewriter.create<memref::AllocOp>(
-        op.getLoc(), op.getType(), op.getOperands().drop_front(1),
-        op.getAlignmentAttr());
-    rewriter.create<memref::CopyOp>(op.getLoc(), op.getSource(), alloc);
-    rewriter.replaceOp(op, alloc);
-    return success();
-  }
-};
-
 void SparseCustomCallRewritingPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
-
   RewritePatternSet patterns(ctx);
   patterns.insert<SparseCustomCallRewriter>(ctx);
-
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();
   }

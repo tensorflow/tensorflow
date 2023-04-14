@@ -645,10 +645,6 @@ errors::Code InMemoryRunGraphResponse::status_code() const {
   return static_cast<errors::Code>(status_.code());
 }
 
-const string& InMemoryRunGraphResponse::status_error_message() const {
-  return status_.error_message();
-}
-
 void InMemoryRunGraphResponse::set_status(const Status& status) {
   status_ = status;
 }
@@ -716,10 +712,6 @@ Status OwnedProtoRunGraphResponse::status() const {
 
 absl::StatusCode OwnedProtoRunGraphResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_.status_code());
-}
-
-const string& OwnedProtoRunGraphResponse::status_error_message() const {
-  return response_.status_error_message();
 }
 
 void OwnedProtoRunGraphResponse::set_status(const Status& status) {
@@ -794,10 +786,6 @@ absl::StatusCode NonOwnedProtoRunGraphResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_->status_code());
 }
 
-const string& NonOwnedProtoRunGraphResponse::status_error_message() const {
-  return response_->status_error_message();
-}
-
 void NonOwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
   response_->set_status_error_message(status.error_message());
@@ -855,10 +843,6 @@ errors::Code InMemoryRunStepResponse::status_code() const {
   return static_cast<errors::Code>(status_.code());
 }
 
-const string& InMemoryRunStepResponse::status_error_message() const {
-  return status_.error_message();
-}
-
 void InMemoryRunStepResponse::set_status(const Status& status) {
   status_ = status;
 }
@@ -908,10 +892,6 @@ Status OwnedProtoRunStepResponse::status() const {
 
 absl::StatusCode OwnedProtoRunStepResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_.status_code());
-}
-
-const string& OwnedProtoRunStepResponse::status_error_message() const {
-  return response_.status_error_message();
 }
 
 void OwnedProtoRunStepResponse::set_status(const Status& status) {
@@ -965,10 +945,6 @@ Status NonOwnedProtoRunStepResponse::status() const {
 
 absl::StatusCode NonOwnedProtoRunStepResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_->status_code());
-}
-
-const string& NonOwnedProtoRunStepResponse::status_error_message() const {
-  return response_->status_error_message();
 }
 
 void NonOwnedProtoRunStepResponse::set_status(const Status& status) {

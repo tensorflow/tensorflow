@@ -81,6 +81,7 @@ py_binary(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "@absl_py//absl:app",
         "@six_archive//:six",

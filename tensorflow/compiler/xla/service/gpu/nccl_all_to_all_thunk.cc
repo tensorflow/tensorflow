@@ -15,16 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
 
-#include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
-#include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/shape_util.h"

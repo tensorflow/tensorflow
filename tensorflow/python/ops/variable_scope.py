@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import ref_variable
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -42,16 +43,7 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# References needed while refactor is in progress in order to
-#  not break tensorflow estimator.
-resource_variable_ops = LazyLoader(
-    "resource_variable_ops",
-    globals(),
-    "tensorflow.python.ops.resource_variable_ops")
 
 
 __all__ = [
@@ -75,7 +67,7 @@ def _from_proto_fn(v, import_scope=None):
   if v.is_resource:
     return resource_variable_ops.ResourceVariable.from_proto(
         v, import_scope=import_scope)
-  return variables.Variable.from_proto(v, import_scope=import_scope)
+  return variable_v1.VariableV1.from_proto(v, import_scope=import_scope)
 
 
 ops.register_proto_function(

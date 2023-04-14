@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -316,6 +317,11 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 /* static */ Literal LiteralUtil::ConvertF32ToBF16(
     const LiteralSlice& f32_literal) {
   return ConvertType<float, bfloat16>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToS8(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, int8_t>(f32_literal);
 }
 
 /* static */ Literal LiteralUtil::ConvertF32ToF64(

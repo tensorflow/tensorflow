@@ -225,11 +225,8 @@ Status SnapshotManager::ReadOnDiskSource(
   bool unused_end_of_splits;
   for (const auto& split_filename : split_filenames) {
     std::string split_path = io::JoinPath(source_path, split_filename);
-
-    // `split_filename` must have this format:
-    // "split_<local_split_index>_<global_split_index>".
-    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_filename));
-    auto [local_split_index, global_split_index] = split_index;
+    TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_filename));
+    auto [local_split_index, global_split_index] = split_indices;
     if (local_split_index > split_filenames.size() - 1) {
       return InvalidArgument(
           "found conflict between the number of splits and name of ",
@@ -265,7 +262,8 @@ Status SnapshotManager::HandleStreamCompletion(
   return OkStatus();
 }
 
-Status SnapshotManager::HandleStreamError(const StatusProto& status_proto) {
+Status SnapshotManager::HandleStreamError(absl::string_view worker_address,
+                                          const StatusProto& status_proto) {
   // This method returns an OkStatus as the RPC status if the worker reports an
   // error. The errors are communicated back to the workers with a proper RPC
   // response, instead of with a error status.
@@ -278,7 +276,7 @@ Status SnapshotManager::HandleStreamError(const StatusProto& status_proto) {
   TF_RETURN_IF_ERROR(AtomicallyWriteTextProto(SnapshotErrorFilePath(path_),
                                               status_proto, env_));
   LOG(ERROR) << "Failed to write tf.data distributed snapshot at " << path_
-             << ". Status: " << status_.ToString();
+             << ". Worker " << worker_address << " reported error: " << status_;
   return OkStatus();
 }
 
@@ -288,8 +286,8 @@ std::optional<int64_t> SnapshotManager::MaybeAssignOrphanStream(
     int64_t stream_index = *orphans_.begin();
     orphans_.erase(orphans_.begin());
     assignments_[worker_address] = stream_index;
-    VLOG(1) << "assigning an existing stream, " << stream_index
-            << ", to worker " << worker_address;
+    LOG(INFO) << "assigning an existing stream, " << stream_index
+              << ", to worker " << worker_address;
     return stream_index;
   }
   return std::nullopt;
@@ -304,15 +302,15 @@ StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
   }
   streams_.push_back(Stream(num_sources()));
   assignments_[worker_address] = new_stream_index;
-  VLOG(1) << "assigning a new stream, " << new_stream_index << ", to worker "
-          << worker_address;
+  LOG(INFO) << "assigning a new stream, " << new_stream_index << ", to worker "
+            << worker_address;
   return new_stream_index;
 }
 
 void SnapshotManager::ReassignPreviouslyAssignedStream(
     int64_t stream_index, absl::string_view worker_address) {
-  VLOG(1) << "reassigning a previous assignment of stream " << stream_index
-          << " to worker " << worker_address;
+  LOG(INFO) << "reassigning a previous assignment of stream " << stream_index
+            << " to worker " << worker_address;
   assignments_[worker_address] = stream_index;
   orphans_.erase(stream_index);
   unknowns_.erase(stream_index);
@@ -347,7 +345,8 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
       assigned_stream_index.reset();
     }
     if (snapshot_progress->status().code() != error::OK) {
-      TF_RETURN_IF_ERROR(HandleStreamError(snapshot_progress->status()));
+      TF_RETURN_IF_ERROR(
+          HandleStreamError(worker_address, snapshot_progress->status()));
       return std::optional<int64_t>();
     }
   }

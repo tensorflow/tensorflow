@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <numeric>
 #include <optional>
@@ -340,7 +341,7 @@ bool VerifyAddOpShapeConstraints(AddOp op) {
       IsI32Type(element_type) || IsI64Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
 
   // Allows QI16 output when operands have the same shape.

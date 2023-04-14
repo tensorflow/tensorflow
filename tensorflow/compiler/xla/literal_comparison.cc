@@ -144,6 +144,24 @@ Status MakeErrorStatus(NativeT lhs, NativeT rhs,
 }
 
 template <>
+Status MakeErrorStatus(s4 lhs, s4 rhs, absl::Span<const int64_t> multi_index) {
+  return InvalidArgument(
+      "first mismatch at array index %s:\n  expected value: %s\n  actual "
+      "value:   %s",
+      LiteralUtil::MultiIndexAsString(multi_index),
+      StrCat(static_cast<int8_t>(lhs)), StrCat(static_cast<int8_t>(rhs)));
+}
+
+template <>
+Status MakeErrorStatus(u4 lhs, u4 rhs, absl::Span<const int64_t> multi_index) {
+  return InvalidArgument(
+      "first mismatch at array index %s:\n  expected value: %s\n  actual "
+      "value:   %s",
+      LiteralUtil::MultiIndexAsString(multi_index),
+      StrCat(static_cast<uint8_t>(lhs)), StrCat(static_cast<uint8_t>(rhs)));
+}
+
+template <>
 Status MakeErrorStatus(tsl::float8_e5m2 lhs, tsl::float8_e5m2 rhs,
                        absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<tsl::float8_e5m2, uint8_t>(lhs, rhs,
@@ -782,6 +800,9 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       case PRED:
         result = Equal<bool>(expected, actual, index, 0, miscompared_ptr);
         break;
+      case S4:
+        result = Equal<s4>(expected, actual, index, 0, miscompared_ptr);
+        break;
       case S8:
         result = Equal<int8_t>(expected, actual, index, 0, miscompared_ptr);
         break;
@@ -793,6 +814,9 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case S64:
         result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
+        break;
+      case U4:
+        result = Equal<u4>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U8:
         result = Equal<uint8_t>(expected, actual, index, 0, miscompared_ptr);

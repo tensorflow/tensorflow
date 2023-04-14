@@ -240,16 +240,6 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
 
-// Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
-// The GpuExecutable (and the Thunks that are part of it) are not returned.
-StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
-    HloModule* hlo_module, llvm::LLVMContext* llvm_context,
-    const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability,
-    se::RocmComputeCapability rocm_compute_capability, int pointer_size);
-
 // Compiles the given LMHLO module to an executable.
 // ir_emitter_context should be partially populated: buffer_assignment
 // or buffer_allocations should not be populated, while other fields should be

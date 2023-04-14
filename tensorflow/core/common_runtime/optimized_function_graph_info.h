@@ -43,6 +43,11 @@ struct OptimizedFunctionGraphInfo {
   DataTypeVector ret_types;
   // Number of return nodes.
   size_t num_return_nodes;
+  // Time (in microseconds) spent on running the graph optimization passes for
+  // this function.
+  uint64_t optimization_duration_usecs;
+  // Indicates the source environment where the optimization is created.
+  OptimizedFunctionGraph::OptimizationSource optimization_source;
 
   // Converts from the struct to OptimizedFunctionGraph proto.
   static OptimizedFunctionGraph ToProto(const OptimizedFunctionGraphInfo& info);

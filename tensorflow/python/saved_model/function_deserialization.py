@@ -220,6 +220,9 @@ class RestoredFunction(def_function.Function):
     # via `tf.config.run_functions_eagerly`.
     return False
 
+  def _list_all_concrete_functions(self):
+    return self.concrete_functions
+
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
 

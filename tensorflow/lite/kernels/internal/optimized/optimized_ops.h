@@ -73,7 +73,7 @@ using reference_ops::Broadcast4DSlowLess;
 using reference_ops::Broadcast4DSlowLessEqual;
 using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
-using reference_ops::BroadcastAdd4DSlow;
+using reference_ops::BroadcastAdd6DSlow;
 using reference_ops::BroadcastMul4DSlow;
 using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
@@ -1833,7 +1833,7 @@ inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
                              .cwiseMax(activation_min)
                              .cwiseMin(activation_max);
   } else {
-    reference_ops::BroadcastAdd4DSlow<T>(params, input1_shape, input1_data,
+    reference_ops::BroadcastAdd6DSlow<T>(params, input1_shape, input1_data,
                                          input2_shape, input2_data,
                                          output_shape, output_data);
   }
@@ -1845,7 +1845,7 @@ inline void BroadcastAddDispatch(
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
-    return BroadcastAdd4DSlow(params, input1_shape, input1_data, input2_shape,
+    return BroadcastAdd6DSlow(params, input1_shape, input1_data, input2_shape,
                               input2_data, output_shape, output_data);
   }
 

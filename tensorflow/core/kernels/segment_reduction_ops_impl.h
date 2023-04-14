@@ -927,6 +927,17 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
       create_and_check_output();
     } else {
       const int64_t num_indices = indices.NumElements();
+      if (num_indices == 0) {
+        TensorShape output_shape = input.shape();
+        output_shape.set_dim(0, 0);
+
+        Tensor* output = nullptr;
+        OP_REQUIRES_OK_ASYNC(
+            context, context->allocate_output(0, output_shape, &output), done);
+        done();
+        return;
+      }
+
       // Need to copy last element of segment_ids from device to host, and then
       // asynchronously allocate the output and finish the computation.
       se::DeviceMemoryBase last_segment_id_device(

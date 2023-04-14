@@ -4110,6 +4110,26 @@ LogicalResult UniformQuantizedConvolutionOp::verify() {
   return VerifyLhsRhsBothUniformQuantizedOp(*this);
 }
 
+//===----------------------------------------------------------------------===//
+// UniformQuantizedAddOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedAddOp::verify() {
+  return VerifyLhsRhsBothUniformQuantizedOp(*this);
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedClipByValueOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedClipByValueOp::verify() {
+  UniformQuantizedClipByValueOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
+                                   op.getQuantizationAxis());
+}
+
 }  // namespace TF
 }  // namespace mlir
 

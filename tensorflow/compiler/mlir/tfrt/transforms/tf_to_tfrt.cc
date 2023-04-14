@@ -1992,7 +1992,8 @@ static void CreateTFExecutorToTFPipelineHelper(
     pm.addPass(CreateSinkInInvariantOpsPass());
   }
 
-  pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
+  pm.addPass(CreateLowerTFSavedModelPass(
+      options.hoist_invariant_ops, options.fuse_get_resource_ops_in_hoisting));
 }
 
 void CreateTfToTfrtPipeline(mlir::OpPassManager &pm,

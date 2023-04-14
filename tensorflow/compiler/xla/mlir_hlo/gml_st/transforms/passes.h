@@ -74,9 +74,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
 
-/// Pass to transform a conv op for CPU backend.
-std::unique_ptr<OperationPass<func::FuncOp>> createTransformConvForCpuPass();
-
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
@@ -116,6 +113,10 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> createFusionOutliningPass();
 /// Pass to inline fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createInlineFusionClustersPass();
+
+/// Pass with canonicalization patterns for linalg ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createOptimizeLinalgOpsPass();
 
 /// Pass to rewrite tensor.from_elements into tensor.insert.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -160,6 +161,11 @@ struct GmlStCPUTilingOptions
   Option<int64_t> vectorSize{*this, "vector-size",
                              llvm::cl::desc("Vector size for a 1D reduction."),
                              llvm::cl::init(8)};
+
+  Option<bool> reductionEnableHeuristic{
+      *this, "reduction-enable-heuristic",
+      llvm::cl::desc("Enable tiling parameters heuristic for reductions."),
+      llvm::cl::init(false)};
 
   Option<int64_t> reduction1DTileSize{
       *this, "reduction-1d-tile-size",

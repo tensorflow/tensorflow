@@ -44,17 +44,17 @@ namespace data {
 //   - dataset_def.proto
 //   - dataset_spec.pb
 //   - chunks
-//     - chunk_<stream_index>_<chunk_index>
+//     - chunk_<stream_index>_<stream_chunk_index>_<num_elements>
 //   - streams
 //     - stream_0
 //       - DONE
 //       - splits
 //         - source_0
 //           - split_<local_split_index>_<global_split_index>
-//       - uncommitted_chucnks
+//       - uncommitted_chunks
 //         - chunk_<chunk_index>
 //       - checkpoints
-//         - checkpoint_<chunk_index>
+//         - checkpoint_<chunk_index>_<num_elements>
 //
 class SnapshotManager {
  public:
@@ -121,7 +121,8 @@ class SnapshotManager {
       absl::string_view worker_address);
   tsl::StatusOr<int64_t> CreateAndAssignNewStream(
       absl::string_view worker_address);
-  Status HandleStreamError(const StatusProto& status_proto);
+  Status HandleStreamError(absl::string_view worker_address,
+                           const StatusProto& status_proto);
 
   // The filepath of the on-disk state.
   const std::string path_;

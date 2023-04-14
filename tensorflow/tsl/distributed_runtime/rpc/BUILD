@@ -35,14 +35,14 @@ cc_library(
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
     deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:cord",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -82,7 +82,6 @@ cc_library(
     deps = [
         ":grpc_channel_common",
         ":grpc_util",
-        "@com_google_absl//absl/strings",
         "//tensorflow/tsl/lib/gtl:map_util",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
@@ -96,6 +95,7 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
         "//tensorflow/tsl/util:device_name_utils",
+        "@com_google_absl//absl/strings",
     ] + tsl_grpc_cc_dependencies(),
 )
 

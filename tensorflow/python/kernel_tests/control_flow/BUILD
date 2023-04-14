@@ -74,6 +74,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",

@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_properties.h"
@@ -776,6 +778,23 @@ Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
   return AddFunctionLibrary(fdef_lib, /*stack_traces=*/{});
 }
 
+Status Graph::AddFunctionDef(const FunctionDef& fdef,
+                             const StackTracesMap& stack_traces) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddFunctionDef(fdef, stack_traces);
+}
+
+Status Graph::AddGradientDef(const GradientDef& gdef) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddGradientDef(gdef);
+}
+
 namespace {
 
 void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
@@ -1013,8 +1032,10 @@ void Graph::NodeType(StringPiece name, const FullTypeDef** result) {
 }
 
 std::string Edge::DebugString() const {
-  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_->name().c_str(),
-                         src_output_, dst_->name().c_str(), dst_input_);
+  auto src_name = src_ ? src_->name().c_str() : "<NULL>";
+  auto dst_name = dst_ ? dst_->name().c_str() : "<NULL>";
+  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_name, src_output_,
+                         dst_name, dst_input_);
 }
 
 }  // namespace tensorflow

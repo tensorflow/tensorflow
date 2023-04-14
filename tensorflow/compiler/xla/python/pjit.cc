@@ -1026,7 +1026,7 @@ void BuildPjitSubmodule(py::module& m) {
       },
       py::is_method(cfun_type));
   cfun.attr("__signature__") =
-      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+      property_readonly([](py::handle self) -> py::object {
         return AsPjitFunction(self)->PythonSignature();
       });
   cfun.attr("_cache_miss") =
@@ -1035,7 +1035,7 @@ void BuildPjitSubmodule(py::module& m) {
       });
   // All private members are only for testing/debugging purposes
   cfun.attr("_cache_size") = py::cpp_function(
-      [](py::handle self) -> xla::StatusOr<int> {
+      [](py::handle self) -> int {
         return AsPjitFunction(self)->cache_capacity();
       },
       py::is_method(cfun));

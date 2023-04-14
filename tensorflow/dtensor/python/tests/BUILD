@@ -86,11 +86,9 @@ dtensor_test(
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
         PATHWAYS,
-        PATHWAYS_V3_DONUT_BACKEND,
     ],
-    tags = [
-        "noasan",
-        "nosan",
+    disable = [
+        PATHWAYS_V3_DONUT_BACKEND,
     ],  # FIXME(b/275600764): Reenable after flakiness is fixed.
     deps = [
         ":test_util",
@@ -167,6 +165,7 @@ dtensor_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -174,6 +173,7 @@ dtensor_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

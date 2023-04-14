@@ -24,6 +24,7 @@ limitations under the License.
 #include "deallocation/utils/util.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -54,10 +55,12 @@ struct TransformResult {
   // released and then reacquired. It is valid to release an alloc that's not
   // owned by the current block, if some ancestor that is reachable without
   // crossing a loop boundary owns it.
+  // Collects values that are the actual memrefs.
   breaks_if_you_move_ops::ValueSet released;
 
   // Allocs that are now owned by the current block. Order matters here - it's
   // the same order as in the terminator/result list.
+  // Collects values that are the ownership indicators.
   SmallVector<Value> acquired;
 };
 
@@ -75,6 +78,7 @@ bool doesAlias(Operation* op, Value v,
 }
 
 struct Deallocator {
+  LogicalResult transformFuncOp(func::FuncOp op);
   // Transforms the operation and returns any allocations whose ownership is
   // transferred to the parent block.
   // `ownedMemrefs` contains the memrefs owned by the immediate parent block at
@@ -84,6 +88,7 @@ struct Deallocator {
   FailureOr<TransformResult> transformOp(
       RegionBranchOpInterface op,
       const breaks_if_you_move_ops::ValueSet& ownedMemrefs);
+  FailureOr<TransformResult> transformOp(func::CallOp op);
   // Transforms the block and collects newly acquired/released allocs. Does not
   // modify the block's terminator.
   FailureOr<TransformResult> transformBlock(Block& block,
@@ -91,6 +96,7 @@ struct Deallocator {
   FailureOr<breaks_if_you_move_ops::ValueSet> transformIfImplicitCapture(
       scf::IfOp op, TransformResult& ifResult, TransformResult& elseResult);
   void setOwnershipIndicator(Value owned, Value indicator);
+  Value findOwnershipIndicator(Value v);
 
   breaks_if_you_move_ops::ValueEquivalenceClasses aliases;
   // Tracked value -> corresponding ownership indicator.
@@ -100,6 +106,18 @@ struct Deallocator {
 void Deallocator::setOwnershipIndicator(Value owned, Value indicator) {
   ownershipIndicatorsForValues[owned] = indicator;
   aliases.unionSets(owned, indicator);
+}
+
+Value Deallocator::findOwnershipIndicator(Value v) {
+  if (llvm::isa_and_nonnull<memref::SubViewOp, memref::ViewOp,
+                            memref::CollapseShapeOp, memref::ExpandShapeOp,
+                            memref::TransposeOp, memref::ReinterpretCastOp>(
+          v.getDefiningOp())) {
+    return findOwnershipIndicator(v.getDefiningOp()->getOperand(0));
+  }
+  auto it = ownershipIndicatorsForValues.find(v);
+  if (it != ownershipIndicatorsForValues.end()) return it->second;
+  return {};
 }
 
 FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
@@ -124,12 +142,13 @@ FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
     if (failed(opResult)) return failure();
     // Remove released memrefs.
     for (auto v : opResult->released) {
-      auto owned = llvm::find_if(ownedMemrefs, [&](Value owned) {
-        return aliases.isEquivalent(v, owned);
-      });
+      auto owned = llvm::find(ownedMemrefs, v);
       // If we don't own the released value, pass the release on to the parent.
       if (owned == ownedMemrefs.end()) {
-        blockResult.released.insert(v);
+        if (!blockResult.released.insert(v).second) {
+          block.getParentOp()->emitOpError("same value released twice");
+          return failure();
+        }
       } else {
         ownedMemrefs.erase(owned);
       }
@@ -196,6 +215,33 @@ FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
   return blockResult;
 }
 
+// TODO(frgossen): Also allow passing ownership to functions.
+LogicalResult Deallocator::transformFuncOp(func::FuncOp op) {
+  if (op->getNumRegions() == 0) return success();
+
+  // Transform function body.
+  assert(op.getBody().getBlocks().size() == 1 &&
+         "expect single block functions");
+  Block& block = op.getBody().front();
+  auto transformedBlock = transformBlock(block, /*ownsInputs=*/false);
+  if (failed(transformedBlock)) return failure();
+  if (!transformedBlock->released.empty()) {
+    op->emitOpError("invalid realloc of memref");
+    return failure();
+  }
+
+  // Update terminator and pass on the ownership indicator per escaping memref.
+  auto returnOp = llvm::dyn_cast<func::ReturnOp>(block.getTerminator());
+  returnOp->setOperands(returnOp.getNumOperands(), 0,
+                        transformedBlock->acquired);
+  op.setFunctionType(mlir::FunctionType::get(
+      op.getContext(), block.getArgumentTypes(), returnOp.getOperandTypes()));
+
+  // Return a dummy result.
+  // Func ops do not acquire or release in the common sense, call ops do.
+  return success();
+}
+
 FailureOr<breaks_if_you_move_ops::ValueSet>
 Deallocator::transformIfImplicitCapture(scf::IfOp op, TransformResult& ifResult,
                                         TransformResult& elseResult) {
@@ -211,22 +257,17 @@ Deallocator::transformIfImplicitCapture(scf::IfOp op, TransformResult& ifResult,
     }
     auto* terminator = region.front().getTerminator();
     auto operands = terminator->getOperands();
-    auto it = llvm::find(operands, v);
+    auto it = llvm::find_if(operands, [&](Value operand) {
+      return findOwnershipIndicator(operand) == v;
+    });
     if (it == operands.end()) {
       op.emitOpError("released value not yielded on other branch");
-      return failure();
-    }
-    auto ownershipIndicator = ownershipIndicatorsForValues[v];
-    if (!ownershipIndicator) {
-      op.emitOpError(
-          "no ownership indicator found for value. Same value reallocated "
-          "twice?");
       return failure();
     }
     ownershipIndicatorsForValues.erase(v);
 
     auto index = std::count_if(operands.begin(), it, isMemref);
-    result.acquired[index] = ownershipIndicator;
+    result.acquired[index] = v;
     return success();
   };
 
@@ -316,15 +357,14 @@ FailureOr<TransformResult> Deallocator::transformOp(
       return true;
     };
 
-    auto eq = [&](Value v) { return aliases.isEquivalent(v, operand); };
-    auto releasable = llvm::find_if(ownedMemrefs, eq);
-    bool isReleasable =
-        releasable != ownedMemrefs.end() && llvm::none_of(released, eq);
-    if (isReleasable && isLastUse()) {
+    Value ownershipIndicator = findOwnershipIndicator(operand);
+    if (ownershipIndicator &&
+        !llvm::is_contained(released, ownershipIndicator) &&
+        llvm::is_contained(ownedMemrefs, ownershipIndicator) && isLastUse()) {
       // This is an alloc that is not used again, so we can pass ownership
       // to the loop.
-      op->insertOperands(op->getNumOperands(), *releasable);
-      released.insert(*releasable);
+      op->insertOperands(op->getNumOperands(), ownershipIndicator);
+      released.insert(ownershipIndicator);
     } else {
       // Either the operand is not an alloc or it's reused.
       op->insertOperands(op->getNumOperands(), b.create<NullOp>().getResult());
@@ -362,6 +402,39 @@ FailureOr<TransformResult> Deallocator::transformOp(
   return TransformResult{released, retained};
 }
 
+// TODO(frgossen): Also allow passing ownership to functions.
+FailureOr<TransformResult> Deallocator::transformOp(func::CallOp op) {
+  ImplicitLocOpBuilder b(op.getLoc(), op);
+
+  // Extend result types with ownership indicators.
+  SmallVector<Type> newResultTys(op.getResultTypes());
+  int64_t numMemrefResults = llvm::count_if(op.getResults(), isMemref);
+  newResultTys.append(
+      SmallVector<Type>(numMemrefResults, b.getType<OwnershipIndicatorType>()));
+  auto newOp = b.create<func::CallOp>(op.getCalleeAttr(), newResultTys,
+                                      op.getOperands());
+
+  // Replace old uses.
+  int64_t numResults = op.getNumResults();
+  op.replaceAllUsesWith(newOp.getResults().take_front(numResults));
+  op.erase();
+
+  // Update ownership and aliasing.
+  auto memrefOperands =
+      llvm::to_vector(llvm::make_filter_range(newOp.getOperands(), isMemref));
+  int nextOwnershipIndicatorIdx = numResults;
+  for (Value result : newOp.getResults().take_front(numResults)) {
+    if (!isMemref(result)) continue;
+    Value ownershipIndicator = newOp.getResult(nextOwnershipIndicatorIdx++);
+    setOwnershipIndicator(result, ownershipIndicator);
+    for (auto it : memrefOperands) aliases.unionSets(result, it);
+  }
+
+  // Collect ownership indicators.
+  auto retained = newOp->getResults().drop_front(numResults);
+  return TransformResult{{}, retained};
+}
+
 // Returns the set of values that are potentially owned by the op.
 FailureOr<TransformResult> Deallocator::transformOp(
     Operation* op, const breaks_if_you_move_ops::ValueSet& ownedMemrefs) {
@@ -385,19 +458,18 @@ FailureOr<TransformResult> Deallocator::transformOp(
         result.acquired.push_back(owned);
       }
       for (const auto& free : frees) {
-        result.released.insert(free.getValue());
+        auto ownershipIndicator = findOwnershipIndicator(free.getValue());
+        if (!ownershipIndicator) {
+          op->emitOpError("unable to find ownership indicator for operand");
+          return failure();
+        }
+        result.released.insert(ownershipIndicator);
       }
       return result;
     }
   }
-  if (auto func = llvm::dyn_cast<func::FuncOp>(op)) {
-    auto transformedBlock =
-        transformBlock(func.getBody().front(), /*ownsInputs=*/false);
-    if (failed(transformedBlock)) return failure();
-    if (!transformedBlock->released.empty()) {
-      op->emitOpError("invalid realloc of memref");
-    }
-    return TransformResult{{}, transformedBlock->acquired};
+  if (auto callOp = llvm::dyn_cast<func::CallOp>(op)) {
+    return transformOp(callOp);
   }
 
   // Deallocate ops inside unknown op regions.
@@ -437,16 +509,16 @@ FailureOr<TransformResult> Deallocator::transformOp(
 
 struct DeallocatePass : public impl::DeallocatePassBase<DeallocatePass> {
   void runOnOperation() override {
-    if (failed(Deallocator().transformOp(getOperation(), {}))) {
-      signalPassFailure();
-    }
+    ModuleOp moduleOp = getOperation();
+    moduleOp.walk([&](func::FuncOp funcOp) {
+      if (failed(Deallocator().transformFuncOp(funcOp))) signalPassFailure();
+    });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createDeallocatePass() {
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createDeallocatePass() {
   return std::make_unique<DeallocatePass>();
 }
 

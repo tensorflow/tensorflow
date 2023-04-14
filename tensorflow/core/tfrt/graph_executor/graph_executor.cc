@@ -27,7 +27,7 @@ limitations under the License.
 
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/assign_op_key.h"
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_await_pass.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_mlrt_ops.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/context.h"
@@ -177,7 +177,9 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const GraphExecutionRunOptions& run_options,
     const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
-    tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
+    tfrt::ResourceContext* resource_context,
+    tfrt::ResourceContext* client_graph_resource_context,
+    OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
     const tensorflow::tfrt_stub::FallbackState& fallback_state,
     CostRecorder* cost_recorder) {
@@ -210,14 +212,24 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   // Create a request context builder.
   tfrt::RequestContextBuilder request_context_builder(
       runtime.core_runtime()->GetHostContext(), resource_context, request_id);
+
   // Set up the request contexts in the builder.
   // Note: if the intra-op thread pool from the request queue is null, the
   // thread pool in `tensorflow::Device` will be used.
-  TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
-      &request_context_builder, &fallback_state.device_manager(),
-      &fallback_state.process_function_library_runtime(), runner_table,
-      resource_array, request_queue->GetIntraOpThreadPool(), model_metadata,
-      &request_info->runner, cost_recorder));
+  DCHECK(runner_table);
+  DCHECK(resource_array);
+  auto& fallback_request_state =
+      request_context_builder.context_data()
+          .emplace<tfd::KernelFallbackCompatRequestState>(
+              &request_info->runner, &fallback_state.device_manager(),
+              request_context_builder.id(), runner_table, resource_array,
+              request_queue->GetIntraOpThreadPool(), model_metadata,
+              &fallback_state.process_function_library_runtime());
+
+  fallback_request_state.set_cost_recorder(cost_recorder);
+  fallback_request_state.set_client_graph_resource_context(
+      client_graph_resource_context);
+
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
   // Set priority in the builder.
@@ -242,7 +254,9 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
-    tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
+    tfrt::ResourceContext* resource_context,
+    tfrt::ResourceContext* client_graph_resource_context,
+    OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
     const FallbackState& fallback_state,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
@@ -250,7 +264,8 @@ tensorflow::Status GraphExecutionRunOnFunction(
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(run_options, options.model_metadata, runtime,
-                        run_options.work_queue, resource_context, runner_table,
+                        run_options.work_queue, resource_context,
+                        client_graph_resource_context, runner_table,
                         resource_array, fallback_state, cost_recorder));
 
   tensorflow::profiler::TraceMeProducer traceme(
@@ -410,6 +425,9 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   graph_execution_state_options.use_bridge_for_gpu =
       options.compile_options.use_bridge_for_gpu;
 
+  options.compile_options.fuse_get_resource_ops_in_hoisting =
+      !options.enable_mlrt;
+
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
@@ -523,6 +541,7 @@ tensorflow::Status GraphExecutor::Run(
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
       options_, run_options, loaded_client_graph.name(), func,
       loaded_executable, flat_inputs, &flat_outputs, &resource_context_,
+      &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(), runtime(), fallback_state_,
       &req_deadline_tracker_, cost_recorder.get()));
@@ -716,7 +735,7 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
 
         // Perform optimizations in the lowered MLIR.
         pm.addNestedPass<mlir::func::FuncOp>(
-            mlrt_compiler::CreateFuseAwaitPass());
+            mlrt_compiler::CreateFuseMlrtOpPass());
         pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
         pm.addPass(mlir::createInlinerPass());
         pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
@@ -751,7 +770,8 @@ tensorflow::Status GraphExecutor::InitBef(
       auto request_info,
       CreateRequestInfo(
           /*run_options=*/{}, /*model_metadata=*/{}, runtime(), work_queue,
-          &resource_context_, &loaded_client_graph->runner_table(),
+          &resource_context_, /*client_graph_resource_context=*/nullptr,
+          &loaded_client_graph->runner_table(),
           &loaded_client_graph->resource_array(), fallback_state_));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
@@ -777,7 +797,9 @@ tensorflow::Status GraphExecutor::InitBytecode(
       auto request_info,
       CreateRequestInfo(/*run_options=*/{}, /*model_metadata=*/{},
                         *options_.runtime, options_.runtime->work_queue(),
-                        &resource_context_, &loaded_graph->runner_table(),
+                        &resource_context_,
+                        /*client_graph_resource_context=*/nullptr,
+                        &loaded_graph->runner_table(),
                         &loaded_graph->resource_array(), fallback_state_));
 
   const auto* loaded_executable =
@@ -881,10 +903,13 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
       CreateRequestInfo(
           /*run_options=*/{}, /*model_metadata=*/{}, *options_.runtime,
           options_.runtime->work_queue(), &resource_context_,
+          /*client_graph_resource_context=*/nullptr,
           &loaded_client_graph.runner_table(),
           &loaded_client_graph.resource_array(), fallback_state_));
   tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
 
+  // Get a shared_ptr of the executable so that during the current request the
+  // executable to use is guaranteed to be alive.
   auto executable_context = loaded_client_graph.executable_context();
   mlrt::ExecutionContext execution_context(
       executable_context->bytecode_executable.get());

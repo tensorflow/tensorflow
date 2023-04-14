@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
@@ -132,13 +134,12 @@ Tf2XlaRewriter::~Tf2XlaRewriter() {
   if (context_) context_->Unref();
 }
 
-tsl::StatusOr<std::string>
-Tf2XlaRewriter::CreateUniqueTranslatedFunctionName() {
+tsl::StatusOr<std::string> Tf2XlaRewriter::CreateUniqueTranslatedFunctionName(
+    std::string candidate_name) {
   ModuleOp parent_module = op_->getParentOfType<ModuleOp>();
   for (int i = 0; i < INT_MAX; i++) {
-    std::string renamed_kernel =
-        absl::StrCat("translated_tf2xla_kernel_",
-                     op_->getName().getStringRef().str(), "_", i);
+    std::string renamed_kernel = absl::StrCat(
+        "tf2xla_rewriter.", candidate_name, ".", std::to_string(i));
 
     mlir::func::FuncOp candidate_func =
         parent_module.lookupSymbol<mlir::func::FuncOp>(renamed_kernel);
@@ -153,39 +154,28 @@ Tf2XlaRewriter::CreateUniqueTranslatedFunctionName() {
 }
 
 tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::ImportXlaComputation(
-    xla::XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> computed_module,
-                      CreateModuleFromXlaComputation(computation));
+    XlaComputation& computation) {
+  ModuleOp mlir_module = op_->getParentOfType<ModuleOp>();
+  mlir::Builder builder(mlir_module);
+  mlir::SymbolTable symbol_table(mlir_module);
 
-  auto xla_source_function =
-      computed_module->lookupSymbol<mlir::func::FuncOp>("main");
-  if (!xla_source_function) {
-    return tsl::errors::NotFound("Could not find 'main' HLO imported function");
-  }
+  xla::DebugOptions debug_options;
+  TF_ASSIGN_OR_RETURN(auto hlo_module_config,
+                      xla::HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), debug_options));
+  TF_ASSIGN_OR_RETURN(
+      auto hlo_module,
+      xla::HloModule::CreateFromProto(computation.proto(), hlo_module_config));
 
-  TF_ASSIGN_OR_RETURN(std::string translated_function_name,
-                      CreateUniqueTranslatedFunctionName());
+  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>
+      function_map;
 
-  FuncOp mhlo_function = xla_source_function.clone();
-  mhlo_function.setName(translated_function_name);
+  TF_ASSIGN_OR_RETURN(FuncOp translated_function,
+                      xla::HloFunctionImporter::ImportAsFunc(
+                          *hlo_module->entry_computation(), symbol_table,
+                          &function_map, &builder, /*is_main*/ false));
 
-  ModuleOp parent_module = op_->getParentOfType<ModuleOp>();
-  parent_module.push_back(mhlo_function);
-
-  return mhlo_function;
-}
-
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-Tf2XlaRewriter::CreateModuleFromXlaComputation(
-    xla::XlaComputation& computation) {
-  mlir::OwningOpRef<mlir::ModuleOp> temp_module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(op_->getContext()));
-
-  TF_RETURN_IF_ERROR(
-      xla::ConvertHloToMlirHlo(temp_module.get(), &computation.proto(),
-                               /*import_all_computations=*/false));
-
-  return temp_module;
+  return translated_function;
 }
 
 LogicalResult Tf2XlaRewriter::PrepareParams() {
@@ -429,6 +419,29 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   return success();
 }
 
+tsl::Status Tf2XlaRewriter::CreateUniqueComputationNames(
+    XlaComputation& computation) {
+  int entry_computation = computation.proto().entry_computation_id();
+  std::string new_entry_computation_name = "";
+
+  for (xla::HloComputationProto& sub_computation :
+       *computation.mutable_proto()->mutable_computations()) {
+    TF_ASSIGN_OR_RETURN(
+        std::string renamed_computation,
+        CreateUniqueTranslatedFunctionName(sub_computation.name()));
+    sub_computation.set_name(renamed_computation);
+
+    if (sub_computation.id() == entry_computation) {
+      new_entry_computation_name = renamed_computation;
+    }
+  }
+
+  computation.mutable_proto()->set_entry_computation_name(
+      new_entry_computation_name);
+  computation.mutable_proto()->set_name(new_entry_computation_name);
+  return tsl::OkStatus();
+}
+
 tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::CompileWithHloImporter(
     tensorflow::OpKernelContext& op_context) {
   if (!use_tf2xla_hlo_importer_) {
@@ -452,6 +465,7 @@ tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::CompileWithHloImporter(
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
                       xla_builder_.Build(root_value,
                                          /*remove_dynamic_dimensions=*/false));
+  TF_RETURN_IF_ERROR(CreateUniqueComputationNames(computation));
 
   return ImportXlaComputation(computation);
 }

@@ -72,9 +72,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -87,6 +84,9 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:evaluation_utils",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/types:optional",
     ] + tf_protos_grappler(),
 )
 
@@ -173,10 +173,6 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cost_estimator",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -186,6 +182,10 @@ tf_cuda_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ] + tf_protos_grappler(),
 )
 
@@ -263,8 +263,8 @@ cc_library(
     hdrs = ["op_context.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + tf_protos_grappler(),
 )
 
@@ -340,13 +340,13 @@ cc_library(
         ":cost_estimator",
         ":op_context",
         ":utils",
-        "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_grappler(),
 )
 

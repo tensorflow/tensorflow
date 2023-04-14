@@ -35,6 +35,8 @@ OptimizedFunctionGraph OptimizedFunctionGraphInfo::ToProto(
   *proto.mutable_node_name_to_control_ret() = {
       info.node_name_to_control_ret.begin(),
       info.node_name_to_control_ret.end()};
+  proto.set_optimization_time_usecs(info.optimization_duration_usecs);
+  proto.set_source(info.optimization_source);
   return proto;
 }
 
@@ -68,7 +70,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizedFunctionGraphInfo::FromProto(
                                     {proto.node_name_to_control_ret().begin(),
                                      proto.node_name_to_control_ret().end()},
                                     std::move(data_type_vector),
-                                    proto.num_return_nodes()};
+                                    proto.num_return_nodes(),
+                                    proto.optimization_time_usecs(),
+                                    proto.source()};
 }
 
 }  // namespace tensorflow

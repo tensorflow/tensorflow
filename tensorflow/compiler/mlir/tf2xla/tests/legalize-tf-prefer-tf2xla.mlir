@@ -3,15 +3,6 @@
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
-// CHECK-LABEL: @abs
-func.func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-NOT: tf.Abs
-  %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  func.return %0 : tensor<2xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @testBroadcastGradientArgs
 func.func @testBroadcastGradientArgs(%s0: tensor<4xi32>, %s1: tensor<4xi32>) -> (tensor<1xi32>, tensor<0xi32>) {
   // CHECK:     tf.BroadcastGradientArgs

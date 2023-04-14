@@ -120,13 +120,6 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   VLOG(1) << "Dumped MLIR module to " << prefix;
 }
 
-static std::string GetModuleText(mlir::ModuleOp module) {
-  std::string module_txt;
-  llvm::raw_string_ostream os(module_txt);
-  module.print(os);
-  return module_txt;
-}
-
 MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
   static auto* global = new MlirOptimizationPassRegistry();
   return *global;
@@ -249,8 +242,12 @@ Status MlirFunctionOptimizationPass::Run(
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
-    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_before", name),
-                     GetModuleText(*module_ref), VLOG_IS_ON(1));
+    if (SHOULD_DUMP(function_name) || VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(
+          GET_DUMP_FILENAME(function_name,
+                            llvm::formatv("mlir_{0}_before", name)),
+          *module_ref, llvm::StringRef(), nullptr);
+    }
 
     Status pass_status = OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
@@ -316,8 +313,12 @@ Status MlirFunctionOptimizationPass::Run(
       }
     }
 
-    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_after", name),
-                     GetModuleText(*module_ref), VLOG_IS_ON(1));
+    if (SHOULD_DUMP(function_name) || VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(
+          GET_DUMP_FILENAME(function_name,
+                            llvm::formatv("mlir_{0}_after", name)),
+          *module_ref, llvm::StringRef(), nullptr);
+    }
   }
 
   if (!is_module_updated) {

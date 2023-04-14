@@ -129,7 +129,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/debug/lib:debug_data",
     ],
 )
@@ -154,6 +154,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/cli:cli_shared",
         "//tensorflow/python/debug/cli:debugger_cli_common",

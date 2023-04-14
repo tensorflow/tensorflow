@@ -53,7 +53,7 @@ tsl::StatusOr<std::string> CreateTmpDirectory() {
 tsl::StatusOr<int64_t> CommittedChunkIndex(const std::string& chunk_file) {
   std::vector<std::string> tokens = absl::StrSplit(chunk_file, '_');
   int64_t result = 0;
-  if (tokens.size() != 3 || !absl::SimpleAtoi(tokens[2], &result)) {
+  if (tokens.size() != 4 || !absl::SimpleAtoi(tokens[2], &result)) {
     return errors::Internal("Invalid");
   }
   return result;
@@ -62,7 +62,7 @@ tsl::StatusOr<int64_t> CommittedChunkIndex(const std::string& chunk_file) {
 tsl::StatusOr<int64_t> CheckpointIndex(const std::string& checkpoint_file) {
   std::vector<std::string> tokens = absl::StrSplit(checkpoint_file, '_');
   int64_t result = 0;
-  if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &result)) {
+  if (tokens.size() != 3 || !absl::SimpleAtoi(tokens[1], &result)) {
     return errors::Internal("Invalid");
   }
   return result;

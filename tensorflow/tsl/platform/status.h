@@ -124,6 +124,13 @@ class Status {
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
   }
+  // Status::message()
+  //
+  // Returns the error message associated with this error code, if available.
+  // Note that this message rarely describes the error code.  It is not unusual
+  // for the error message to be the empty string. As a result, prefer
+  // `operator<<` or `Status::ToString()` for debug logging.
+  absl::string_view message() const;
 
   bool operator==(const Status& x) const;
   bool operator!=(const Status& x) const;

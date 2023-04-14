@@ -163,42 +163,72 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     const DeviceSet* device_set, const ConfigProto& config_proto,
     const Graph& graph,
     const FunctionLibraryDefinition& function_library) const {
-  // Skip MLIR TF XLA Bridge if no TPU devices found and the non TPU graph is
-  // not qualified.
-  if (device_set && !HasTPUDevice(*device_set) && !EnableNonTpuBridge(graph)) {
+  // Skip MLIR TF/XLA Bridge if no TPU devices and no qualified CPU/GPU
+  // graphs are found.
+  bool has_tpu_device = device_set ? HasTPUDevice(*device_set) : false;
+  // GetPassState is called once before MlirBridgePass starts, and the pass
+  // gets skipped if it is disabled. Log such cases in this function. The cases
+  // where the pass is enabled will only be logged during their execution to
+  // prevent them from being counted twice.
+  if (device_set && !has_tpu_device && !EnableNonTpuBridge(graph)) {
+    metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+        /*device type*/ "cpu/gpu",
+        /*bridge version*/ "tfxla",
+        /*fallback_enabled*/ false,
+        /*result*/ "invalid_graph");
     return MlirOptimizationPassState::Disabled;
   }
 
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      graph, &function_library, config_proto,
+      graph, &function_library, config_proto, /*is_tpu_graph*/ has_tpu_device,
       /*uses_uninitialized_resource_args=*/false,
       /*is_v1_compat=*/false, /*record_stats=*/false);
+  if (has_tpu_device) {
+    switch (policy) {
+      case MlirBridgeRolloutPolicy::kEnabledByUser:
+        return MlirOptimizationPassState::Enabled;
+      case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
+        return MlirOptimizationPassState::FallbackEnabled;
+      case MlirBridgeRolloutPolicy::kDisabledByUser:
+        VLOG(1) << "Skipping MLIR TPU Bridge, disabled by user. "
+                   "Old bridge will evaluate.";
+        metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
+                                                     "disabled_by_user");
+        return MlirOptimizationPassState::Disabled;
+      case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
+        VLOG(1) << "Skipping MLIR TPU Bridge, disabled because "
+                   "graph has unsupported features. Old bridge will evaluate.";
+        metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
+                                                     "invalid_graph");
+        // We set `uses_uninitialized_resource_args` to false here because the
+        // first phase of the bridge is not affected by uninitialized resource
+        // args.
+        // For Invalid Graph Analysis we need to log here because Run will not
+        // be called.
+        LogGraphFeatures(graph, &function_library, config_proto,
+                         /*uses_uninitialized_resource_args=*/false,
+                         /*is_v1_compat=*/false);
+        return MlirOptimizationPassState::Disabled;
+    }
+  }
+  // TODO(b/277112519): Have uniform behavior for GPU/CPU and TPU
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
       return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
-      VLOG(1) << "Skipping MLIR TPU Bridge, MLIR TPU bridge disabled by user. "
-                 "Old bridge will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
+      VLOG(1) << "Skipping MLIR CPU/GPU Bridge, disabled by user.";
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "tfxla", false,
                                                    "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
-    case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
-      VLOG(1) << "Skipping MLIR TPU Bridge, MLIR TPU bridge disabled because "
-                 "graph has unsupported features. Old bridge will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
+    default:
+      // This case should never be hit. Added here to be consistent with OSS
+      // implementation.
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "ftxla", false,
                                                    "invalid_graph");
-      // We set `uses_uninitialized_resource_args` to false here because the
-      // first phase of the bridge is not affected by uninitialized resource
-      // args.
-      // For Invalid Graph Analysis we need to log here because Run will not be
-      // called.
-      LogGraphFeatures(graph, &function_library, config_proto,
-                       /*uses_uninitialized_resource_args=*/false,
-                       /*is_v1_compat=*/false);
       return MlirOptimizationPassState::Disabled;
   }
 }
@@ -217,7 +247,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
   // Check if there are TPU devices or TPU ops. If not, then check if the
-  // non TPU graph is qualified to run TF XLA Bridge.
+  // non TPU graph is qualified to run TF2XLA Bridge.
   // This check needs to precede GetPassState for instrumentation purposes.
   bool is_qualified_for_tpu_bridge = HasTPUDevicesAndOps(module),
        is_qualified_for_non_tpu_bridge = false;
@@ -225,7 +255,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     is_qualified_for_non_tpu_bridge = EnableNonTpuBridge(graph);
   if (!is_qualified_for_tpu_bridge && !is_qualified_for_non_tpu_bridge) {
     VLOG(1)
-        << "Skipping MLIR TF XLA Bridge, no qualified devices or ops found.";
+        << "Skipping MLIR TF2XLA Bridge, no qualified devices or ops found.";
     return OkStatus();
   }
 
@@ -264,7 +294,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
                                   /*enable_logging=*/VLOG_IS_ON(1),
                                   fallback_enabled, function_name);
   }
-  VLOG(1) << "Running MLIR non-TPU Bridge";
+  VLOG(1) << "Running MLIR CPU/GPU Bridge";
   return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1), function_name);
 }
 
@@ -279,6 +309,7 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
+      /*is_tpu_graph*/ true,
       /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
       /*record_stats=*/false);
   switch (policy) {

@@ -394,10 +394,16 @@ tsl::Status CudnnSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
 
   // Peek at the last error to give more information in cases of errors.
-  cudaError_t cerr = cudaPeekAtLastError();
-  if (cerr != cudaSuccess) {
-    LOG(WARNING) << "There was an error before creating cudnn handle: "
-                 << cudaGetErrorName(cerr) << " : " << cudaGetErrorString(cerr);
+  cudaError_t cuda_error = cudaPeekAtLastError();
+  if (cuda_error != cudaSuccess) {
+    // Printing the cuda_error value is useful when cudaGetErrorName doesn't
+    // work.
+    const std::string error =
+        absl::StrCat("There was an error before creating cudnn handle (",
+                     cuda_error, "): ", cudaGetErrorName(cuda_error), " : ",
+                     cudaGetErrorString(cuda_error));
+    LOG(ERROR) << error;
+    return tsl::Status(absl::StatusCode::kInternal, error);
   }
 
   cudnnHandle_t cudnn_handle = nullptr;
@@ -430,6 +436,11 @@ tsl::Status CudnnSupport::Init() {
   CHECK_EQ(cudnn_handle, nullptr);
   LOG(ERROR) << "Could not create cudnn handle: "
              << CudnnStatusToString(status);
+  int64_t free, total;
+  GpuDriver::GetDeviceMemoryInfo(parent_->gpu_context(), &free, &total);
+  LOG(ERROR) << "Memory usage: " << free << " bytes free, " << total
+             << " bytes total.";
+
   if (status == CUDNN_STATUS_NOT_INITIALIZED) {
     auto result = gpu::Diagnostician::FindKernelDriverVersion();
     if (!result.ok()) {

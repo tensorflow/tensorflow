@@ -1954,7 +1954,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A/sqrt(B) => A*rsqrt(X).
-  if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b))))) {
+  if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b)).WithOneUse()))) {
     auto* rsqrt = divide->mutable_operand(1)->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kRsqrt, b));
     return ReplaceWithNewInstruction(
@@ -1963,7 +1963,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A/rsqrt(B) => A*sqrt(B).
-  if (Match(divide, m::Divide(m::Op(&a), m::Rsqrt(m::Op(&b))))) {
+  if (Match(divide, m::Divide(m::Op(&a), m::Rsqrt(m::Op(&b)).WithOneUse()))) {
     auto* sqrt = divide->mutable_operand(1)->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kSqrt, b));
     return ReplaceWithNewInstruction(
@@ -6813,6 +6813,48 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     if (did_transform) {
       MarkAsChanged();
       return OkStatus();
+    }
+  }
+
+  // transpose(broadcast(x)) -> broadcast(x), if the transpose leaves the
+  // relative order of the dimensions of `x` unchanged.
+  //
+  // To understand the permutations logic here, consider a simple case.
+  //
+  //  bcast = f32[1,2,3,4] broadcast(f32[2,4] x), dimensions={1,3}
+  //  trans = f32[2,3,1,4] transpose(f32[1,2,3,4] bcast), dimensions={1,2,0,3}
+  //
+  // We want to transform this into
+  //
+  //  bcast' = f32[2,3,1,4] broadcast(f32[2,4] x), dimensions={0,3}
+  //
+  // The algorithm to compute bcast'.dimensions() is:
+  //
+  //  * Let p' be the inverse of trans.dimensions(); in the example, {2,0,1,3}.
+  //  * bcast'.dimensions() is [p'[dim] for dim in bcast.dimensions()].  In the
+  //    example, p'[1] = 0, meaning that broadcast dim 1 (size 2) ends up at
+  //    index 0 after the transpose.
+  //
+  // We also need to check that bcast'.dimensions() is "sorted the same" as
+  // bcast.dimensions() -- otherwise, we're simply moving the transpose into the
+  // broadcast op.  For now we cowardly refuse to consider broadcasts except
+  // where their dimensions() are sorted, so we need only check that
+  // bcast'.dimensions() is sorted.
+  //
+  // No one-user requirement on the transpose because having two different
+  // broadcasts of x should be cheap -- certainly cheaper than using the
+  // fully-materialized broadcasted+transposed value.
+  if (operand->opcode() == HloOpcode::kBroadcast &&
+      absl::c_is_sorted(operand->dimensions())) {
+    auto inv_perm = InversePermutation(transpose->dimensions());
+    absl::InlinedVector<int64_t, 8> new_bcast_dims;
+    for (int64_t dim : operand->dimensions()) {
+      new_bcast_dims.push_back(inv_perm[dim]);
+    }
+    if (absl::c_is_sorted(new_bcast_dims)) {
+      return ReplaceInstruction(
+          transpose, MakeBroadcastHlo(operand->mutable_operand(0),
+                                      new_bcast_dims, transpose->shape()));
     }
   }
 

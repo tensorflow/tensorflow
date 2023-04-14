@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 
-#include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>

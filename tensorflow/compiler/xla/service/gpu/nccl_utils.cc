@@ -43,26 +43,6 @@ bool IsGlobalNcclConfig() {
   return global_nccl_config;
 }
 
-bool IsNcclLaunchModeParallel() {
-  static const bool is_launch_mode_parallel = []() {
-    const char* launch_mode = std::getenv("NCCL_LAUNCH_MODE");
-    return launch_mode && std::string_view(launch_mode) == "PARALLEL";
-  }();
-  return is_launch_mode_parallel;
-}
-
-#ifndef TENSORFLOW_USE_ROCM
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
-                const char* expr) {
-  if (s == cudaSuccess) {
-    return OkStatus();
-  }
-  return tsl::errors::Internal(
-      absl::StrFormat("%s:%d: CUDA operation %s failed: %s", file, line, expr,
-                      cudaGetErrorString(s)));
-}
-#endif
-
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {

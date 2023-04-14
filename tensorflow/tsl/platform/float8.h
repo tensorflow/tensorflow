@@ -40,6 +40,9 @@ class float8_e5m2;
 
 template <typename Derived>
 class float8_base {
+  // Constructor tag to allow constexpr construction from bit representation.
+  struct ConstructFromRepTag {};
+
  public:
   constexpr float8_base() : rep_(0) {}
 
@@ -56,6 +59,7 @@ class float8_base {
       : float8_base(ConvertFrom(bf16).rep(), ConstructFromRepTag{}) {}
   explicit EIGEN_DEVICE_FUNC float8_base(Eigen::half f16)
       : float8_base(ConvertFrom(f16).rep(), ConstructFromRepTag{}) {}
+  constexpr float8_base(uint8_t rep, ConstructFromRepTag) : rep_{rep} {}
 
   constexpr uint8_t rep() const { return rep_; }
 
@@ -177,11 +181,6 @@ class float8_base {
   }
 
  private:
-  // Constructor tag to allow constexpr construction from bit representation.
-  struct ConstructFromRepTag {};
-
-  constexpr float8_base(uint8_t rep, ConstructFromRepTag) : rep_{rep} {}
-
   static EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC std::pair<uint8_t, uint8_t>
   SignAndMagnitude(Derived x) {
     const uint8_t x_abs_bits =

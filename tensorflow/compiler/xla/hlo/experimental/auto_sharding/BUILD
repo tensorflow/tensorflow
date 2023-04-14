@@ -1,6 +1,7 @@
 # Automatic sharding annotation
 
-load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -147,5 +148,29 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:platform_port",
+    ],
+)
+
+build_test(
+    name = "auto_sharding_runner_build_test",
+    targets = [
+        ":auto_sharding_runner",
+    ],
+)
+
+xla_cc_test(
+    name = "auto_sharding_test",
+    srcs = ["auto_sharding_test.cc"],
+    deps = [
+        ":auto_sharding",
+        ":auto_sharding_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        #"//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "@com_google_ortools//ortools/linear_solver",
     ],
 )

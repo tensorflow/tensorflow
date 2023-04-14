@@ -23,12 +23,10 @@ from .xla_extension import Layout as Layout
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
-from .xla_extension import Buffer as Buffer
 from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
-from .xla_extension import DeviceArrayBase as DeviceArrayBase
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient

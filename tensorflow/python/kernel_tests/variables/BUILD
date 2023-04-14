@@ -81,6 +81,7 @@ cuda_py_test(
         "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -36,6 +36,7 @@ from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
@@ -72,6 +73,7 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import resource
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import trace_saveable_util
+from tensorflow.python.types import core as types_core
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
@@ -269,7 +271,7 @@ class _SaveableView(object):
 
     untraced_functions = self.augmented_graph_view.untraced_functions
     if untraced_functions:
-      logging.warning(
+      logging.info(
           "Found untraced functions such as %s while saving (showing %d of %d)."
           " These functions will not be directly callable after loading.",
           ", ".join(untraced_functions[:_NUM_DISPLAY_UNTRACED_FUNCTIONS]),
@@ -1411,8 +1413,16 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
   if options.function_aliases:
     function_aliases = meta_graph_def.meta_info_def.function_aliases
     for alias, func in options.function_aliases.items():
-      for fdef in func._list_all_concrete_functions():  # pylint: disable=protected-access
-        function_aliases[fdef.name] = alias
+      if isinstance(func, types_core.ConcreteFunction):
+        function_aliases[func.name] = alias
+      elif isinstance(func, polymorphic_function.Function):
+        for fdef in func._list_all_concrete_functions():  # pylint: disable=protected-access
+          function_aliases[fdef.name] = alias
+      else:
+        raise TypeError(
+            f"Unsupported type f{type(func)}. Functions in `function_aliases`"
+            " should be created by tf.function, or concrete functions."
+        )
 
   object_graph_proto = _serialize_object_graph(saveable_view,
                                                asset_info.asset_index)

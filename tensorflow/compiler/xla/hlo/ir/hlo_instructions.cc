@@ -267,22 +267,20 @@ HloAsyncInstruction::HloAsyncInstruction(
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(*this);
   set_async_execution_thread(async_execution_thread);
+
+  // Drop 'async' from async-{start/update/done} to get the suffix.
+  absl::string_view suffix = HloOpcodeString(opcode).substr(5);
+  absl::string_view wrapped_name = HloOpcodeString(async_wrapped_opcode());
+  SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
 }
 
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape, HloInstruction* operand,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
     absl::string_view async_execution_thread)
-    : HloInstruction(opcode, shape),
-      async_group_id_(async_group_id),
-      async_execution_thread_(async_execution_thread) {
-  AppendOperand(operand);
-  AppendComputation(async_computation);
-  CHECK(!async_computation->IsCustomCallComputation());
-  CHECK(!async_computation->IsFusionComputation());
-  async_computation->AddAsyncInstruction(*this);
-  set_async_execution_thread(async_execution_thread);
-}
+    : HloAsyncInstruction(opcode, shape, absl::MakeConstSpan(&operand, 1),
+                          async_computation, async_group_id,
+                          async_execution_thread) {}
 
 HloAsyncInstruction::~HloAsyncInstruction() {
   ClearAsyncComputationInstruction();
@@ -2726,7 +2724,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2742,7 +2740,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     HloComputation* to_apply, absl::string_view custom_call_target,
     std::string opaque, CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands, to_apply),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2761,7 +2759,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands,
                              called_computations),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2781,7 +2779,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::Span<const Shape> operand_shapes_with_layout,
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(true),

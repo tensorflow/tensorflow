@@ -775,11 +775,11 @@ tf_cc_binary(
     ],
     visibility = [":friends"],
     deps = [
-        "@llvm-project//mlir:TranslateLib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_registration",
         "//tensorflow/compiler/mlir/tfrt:tfrt_fallback_registration",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
+        "@llvm-project//mlir:TranslateLib",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:mlirtobef_translate",
     ] + if_google(

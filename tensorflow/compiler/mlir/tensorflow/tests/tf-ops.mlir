@@ -5023,6 +5023,52 @@ func.func @testUniformQuantizedConvolution(
   func.return
 }
 
+// -----
+
+func.func @testUniformQuantizedAdd(
+  %input: tensor<2x2x!tf_type.qint32>, %bias: tensor<2x!tf_type.qint32>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %bias_scales: tensor<f32>, %bias_zps: tensor<i32>,
+  %output_scales: tensor<2xf32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedAdd' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedAdd"(
+    %input, %bias,
+    %input_scales, %input_zps,
+    %bias_scales, %bias_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -2147483648 : i64,
+      lhs_quantization_max_val = 2147483647 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -2147483648 : i64,
+      rhs_quantization_max_val = 2147483647 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<2x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>) -> tensor<2x2x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedClipByValue(
+    %operand: tensor<*x!tf_type.qint32>, %min: tensor<!tf_type.qint32>, %max: tensor<!tf_type.qint32>, 
+    %scales: tensor<2xf32>, %zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedClipByValue' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformQuantizedClipByValue"(%operand, %min, %max, %scales, %zps) {
+    quantization_axis = -1 : i64,
+    quantization_min_val = -2147483648 : i64,
+    quantization_max_val = 2147483647 : i64
+  } : (
+    tensor<*x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>,
+    tensor<2xf32>, tensor<i32>
+  ) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
 // Following tests are for LegacyCall symbol use verifier.
 
 // -----

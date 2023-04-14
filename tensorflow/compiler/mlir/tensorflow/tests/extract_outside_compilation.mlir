@@ -104,7 +104,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:     "tf_device.launch"
     // CHECK:            "tf.B"
     // CHECK-NEXT:       tf_device.return
-    // CHECK-NEXT:     device = "TPU_REPLICATED_HOST"
+    // CHECK-NEXT:     device = "TPU_REPLICATED_HOST_0"
     // CHECK:          %[[TPU_CLUSTER_OUTPUT:[0-9]*]] = "tf_device.cluster"
     // CHECK:            tf_device.return
     // CHECK:          tf_device.return %[[TPU_CLUSTER_OUTPUT]]

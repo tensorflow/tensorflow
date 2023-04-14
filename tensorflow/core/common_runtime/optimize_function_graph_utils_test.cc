@@ -62,10 +62,10 @@ TEST(OptimizeFunctionGraphTest,
 
   // Try to optimize a function called "FindDevice" which does not exist in
   // library.
-  const StatusOr<OptimizedFunctionGraphInfo> aot_result =
-      OptimizeFunctionGraph("FindDevice", {}, opts, device_set, lib_def.get(),
-                            /*composite_devices=*/{}, devices[0].get(),
-                            devices[0].get(), Env::Default());
+  const StatusOr<OptimizedFunctionGraphInfo> aot_result = OptimizeFunctionGraph(
+      "FindDevice", {}, opts, device_set, lib_def.get(),
+      /*composite_devices=*/{}, devices[0].get(), devices[0].get(),
+      Env::Default(), OptimizedFunctionGraph::AOT);
   EXPECT_TRUE(errors::IsInvalidArgument(aot_result.status()))
       << "Actual status: " << aot_result.status();
   EXPECT_TRUE(absl::StrContains(aot_result.status().error_message(),
@@ -91,16 +91,18 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphReturnsCorrectResult) {
     device_set.AddDevice(device.get());
   }
 
-  const StatusOr<OptimizedFunctionGraphInfo> aot_result =
-      OptimizeFunctionGraph("FindDevice", {}, opts, device_set, lib_def.get(),
-                            /*composite_devices=*/{}, devices[0].get(),
-                            devices[1].get(), Env::Default());
+  const StatusOr<OptimizedFunctionGraphInfo> aot_result = OptimizeFunctionGraph(
+      "FindDevice", {}, opts, device_set, lib_def.get(),
+      /*composite_devices=*/{}, devices[0].get(), devices[1].get(),
+      Env::Default(), OptimizedFunctionGraph::AOT);
   TF_EXPECT_OK(aot_result.status());
   EXPECT_EQ(aot_result->name, "FindDevice");
   // FindDevice function has one return node.
   EXPECT_EQ(aot_result->num_return_nodes, 1);
   // Return node type is string.
   EXPECT_THAT(aot_result->ret_types, ElementsAre(DT_STRING));
+  EXPECT_GT(aot_result->optimization_duration_usecs, 0);
+  EXPECT_EQ(aot_result->optimization_source, OptimizedFunctionGraph::AOT);
 }
 
 }  // namespace

@@ -489,6 +489,8 @@ cc_library(
         ":tf_ops_device_helper",
         ":tf_ops_layout_helper",
         ":tf_ops_tensor_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
@@ -500,8 +502,6 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ] + [":tensorflow_" + target["name"] + "_inc_gen" for target in tf_ops_category_list],
 )
 
@@ -2519,8 +2519,14 @@ tf_cc_test(
 
 cc_library(
     name = "bridge_logger",
-    srcs = ["utils/bridge_logger.cc"],
-    hdrs = ["utils/bridge_logger.h"],
+    srcs = [
+        "utils/bridge_logger.cc",
+        "utils/data_dumper_logger_config.cc",
+    ],
+    hdrs = [
+        "utils/bridge_logger.h",
+        "utils/data_dumper_logger_config.h",
+    ],
     deps = [
         ":dump_mlir_util",
         "@com_google_absl//absl/strings",

@@ -2163,9 +2163,11 @@ ENTRY AddDependency {
 R"(HloModule MinMaxValues, entry_computation_layout={()->c128[2]{0}}
 
 ENTRY MinMaxValues {
+  x.s4 = s4[2]{0} constant({-8, 7})
   x.s8 = s8[2]{0} constant({-128, 127})
   x.s16 = s16[2]{0} constant({-32768, 32767})
   x.s32 = s32[2]{0} constant({-2147483648, 2147483647})
+  x.u4 = u4[2]{0} constant({0, 15})
   x.u8 = u8[2]{0} constant({0, 255})
   x.u16 = u16[2]{0} constant({0, 65535})
   x.u32 = u32[2]{0} constant({0, 4294967295})
@@ -2718,6 +2720,54 @@ TEST_F(HloParserTest, ConstantBf16Overflow) {
   ExpectHasSubstr(
       ParseAndReturnUnverifiedModule(original).status().error_message(),
       "out of range");
+}
+
+TEST_F(HloParserTest, ConstantU4Underflow) {
+  const std::string original = R"(
+      HloModule ConstantU4Underflow_module
+      ENTRY %ConstantU4Underflow () -> u4[] {
+        ROOT %constant = u4[] constant(-1)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U4");
+}
+
+TEST_F(HloParserTest, ConstantU4Overflow) {
+  const std::string original = R"(
+      HloModule ConstantU4Overflow_module
+      ENTRY %ConstantU4Overflow () -> u4[] {
+        ROOT %constant = u4[] constant(16)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U4");
+}
+
+TEST_F(HloParserTest, ConstantS4Underflow) {
+  const std::string original = R"(
+      HloModule ConstantS4Underflow_module
+      ENTRY %ConstantS4Underflow () -> s4[] {
+        ROOT %constant = s4[] constant(-9)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type S4");
+}
+
+TEST_F(HloParserTest, ConstantS4Overflow) {
+  const std::string original = R"(
+      HloModule ConstantS4Overflow_module
+      ENTRY %ConstantS4Overflow () -> s4[] {
+        ROOT %constant = s4[] constant(8)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type S4");
 }
 
 TEST_F(HloParserTest, ConstantUnsignedUnderflow) {

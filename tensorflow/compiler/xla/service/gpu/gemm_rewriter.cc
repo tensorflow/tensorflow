@@ -924,19 +924,32 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const std::vector<HloInstruction *> gemm_users = existing_gemm->users();
     HloInstruction *reduce_damax = nullptr;
     if (gemm_users.size() == 2) {
+      // In the presence of a ReLU activation, the abs instruction is elided
+      // since abs(ReLU(x)) = ReLU(x).
+      TF_ASSIGN_OR_RETURN(auto config,
+                          existing_gemm->backend_config<GemmBackendConfig>());
       for (int i = 0; i < gemm_users.size(); ++i) {
-        if (gemm_users[i]->opcode() == HloOpcode::kAbs &&
-            gemm_users[i]->users().size() == 1 &&
-            gemm_users[i]->users()[0]->opcode() == HloOpcode::kReduce &&
-            gemm_users[i]->users()[0]->operands().size() == 2 &&
-            gemm_users[i]->users()[0]->operand(1)->opcode() ==
-                HloOpcode::kConstant &&
-            ShapeUtil::IsScalar(
-                gemm_users[i]->users()[0]->operand(1)->shape())) {
-          HloInstruction *reduce = gemm_users[i]->users()[0];
+        HloInstruction *maybe_reduce = nullptr;
+        if (gemm_users[i]->opcode() == HloOpcode::kAbs) {
+          if (gemm_users[i]->users().size() != 1) continue;
+          maybe_reduce = gemm_users[i]->users()[0];
+        } else {
+          // If there is no Abs instruction, relu is required as epilogue to
+          // ensure all values are nonnegative.
+          if (config.epilogue() != GemmBackendConfig::BIAS_RELU &&
+              config.epilogue() != GemmBackendConfig::RELU)
+            continue;
+          maybe_reduce = gemm_users[i];
+        }
+
+        if (maybe_reduce->opcode() == HloOpcode::kReduce &&
+            maybe_reduce->operands().size() == 2 &&
+            maybe_reduce->operand(1)->opcode() == HloOpcode::kConstant &&
+            ShapeUtil::IsScalar(maybe_reduce->operand(1)->shape())) {
+          HloInstruction *reduce = maybe_reduce;
           HloComputation *reduce_comp = reduce->to_apply();
           HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
-          if (reduce->operand(1)->literal().Get<float>({}) <= 0. &&
+          if (reduce->operand(1)->literal().GetAsDouble({}) <= 0. &&
               reduce_comp_root->opcode() == HloOpcode::kMaximum &&
               reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
               reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {

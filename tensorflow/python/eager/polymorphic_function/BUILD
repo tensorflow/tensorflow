@@ -23,6 +23,7 @@ py_library(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",

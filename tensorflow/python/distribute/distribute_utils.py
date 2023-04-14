@@ -393,17 +393,11 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
 # Return True if the Value is Mirrored or the Variable is replicated and kept in
 # sync.
 def is_mirrored(val):
-  if isinstance(val, values_lib.DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return val._policy._is_mirrored()  # pylint: disable=protected-access
-  return isinstance(val, values_lib.Mirrored)
+  return (getattr(val, "_is_mirrored", lambda: False))()
 
 
 def is_sync_on_read(val):
-  if isinstance(val, values_lib.DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return not val._policy._is_mirrored()  # pylint: disable=protected-access
-  return not isinstance(val, values_lib.Mirrored)
+  return not is_mirrored(val)
 
 
 class CachingScopeLocal(threading.local):
