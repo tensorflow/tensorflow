@@ -32,6 +32,18 @@ func.func @invariant_shape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 // CHECK:   tf_device.return %[[SHAPE]]
 
 
+// CHECK-LABEL: func @not_invariant_ordinal_placeholder
+func.func @not_invariant_ordinal_placeholder(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
+  // CHECK: tf_device.replicate
+  // CHECK:   tf._TPUDeviceOrdinalPlaceholder
+  %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<*xf32>) {n = 2: i32} {
+    %1 = "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+    tf_device.return %1 : tensor<i64>
+  }
+  func.return
+}
+
+
 // CHECK-LABEL: func @replicate_resource_var_arg_shape
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<*x!tf_type.resource>, %[[ARG_1:[a-z0-9]*]]: tensor<*x!tf_type.resource>)
 func.func @replicate_resource_var_arg_shape(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<*x!tf_type.resource>) {
