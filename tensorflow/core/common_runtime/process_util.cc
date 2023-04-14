@@ -128,9 +128,6 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32_t env_inter_op = GetEnvNumInterOpThreads();
   if (env_inter_op > 0) return env_inter_op;
 
-  // Reset inter to 1 since negative value means running in caller thread.
-  if (inter_op < 0 || env_inter_op < 0) return 1;
-
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
   if (IsMKLEnabled()) {
     // MKL library executes ops in parallel using OMP threads.
@@ -157,8 +154,12 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
-    const SessionOptions& options) {
-  const int32_t num_threads = NumInterOpThreadsFromSessionOptions(options);
+    const SessionOptions& options, bool run_in_caller) {
+  // `run_in_caller` means the session is expected to run with single thread,
+  // but it will be dispatched to global thread pool if there're multiple
+  // executors. To keep consistent behavior, set thread number to 1 here.
+  const int32_t num_threads =
+      run_in_caller ? 1 : NumInterOpThreadsFromSessionOptions(options);
   VLOG(1) << "Session inter op parallelism threads: " << num_threads;
   return new thread::ThreadPool(
       options.env, ThreadOptions(), "Compute", num_threads,

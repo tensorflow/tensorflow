@@ -46,7 +46,7 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options);
 
 // Creates a thread pool with number of inter op threads.
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
-    const SessionOptions& options);
+    const SessionOptions& options, bool run_in_caller = false);
 
 // Schedule "closure" in the default thread queue.
 void SchedClosure(std::function<void()> closure);
