@@ -128,9 +128,9 @@ StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
 absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
                            CollectivesSupport* collectives,
                            AsyncCollectivesSupport* async_collectives,
-                           const char* op_name, int32_t uid) {
+                           int32_t uid, std::string_view done_type) {
 #if XLA_ENABLE_XCCL
-  VLOG(3) << "Running " << op_name;
+  VLOG(3) << "Running " << done_type;
   se::Stream* stream = run_options->stream();
 
   auto event = async_collectives->PopEvent(uid);
@@ -243,19 +243,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<absl::Span<const int64_t>>("target_peers"));
 
 //===----------------------------------------------------------------------===//
-// CollectivePermuteDone.
-//===----------------------------------------------------------------------===//
-
-XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    CollectivePermuteDone, FunctionWrapper<AsyncDoneImpl>(), checks,
-    CustomCall::Bind("xla.gpu.collective_permute_done")
-        .UserData<const ServiceExecutableRunOptions*>()
-        .UserData<CollectivesSupport*>()
-        .UserData<AsyncCollectivesSupport*>()
-        .Value("CollectivePermuteDone")
-        .Attr<int32_t>("uid"));
-
-//===----------------------------------------------------------------------===//
 // AllGather.
 //===----------------------------------------------------------------------===//
 
@@ -317,19 +304,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<bool>("is_async")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
-
-//===----------------------------------------------------------------------===//
-// AllGatherDone.
-//===----------------------------------------------------------------------===//
-
-XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllGatherDone, FunctionWrapper<AsyncDoneImpl>(), checks,
-    CustomCall::Bind("xla.gpu.all_gather_done")
-        .UserData<const ServiceExecutableRunOptions*>()
-        .UserData<CollectivesSupport*>()
-        .UserData<AsyncCollectivesSupport*>()
-        .Value("AllGatherDone")
-        .Attr<int32_t>("uid"));
 
 //===----------------------------------------------------------------------===//
 // AllReduce.
@@ -400,19 +374,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
 //===----------------------------------------------------------------------===//
-// AllReduceDone.
-//===----------------------------------------------------------------------===//
-
-XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllReduceDone, FunctionWrapper<AsyncDoneImpl>(), checks,
-    CustomCall::Bind("xla.gpu.all_reduce_done")
-        .UserData<const ServiceExecutableRunOptions*>()
-        .UserData<CollectivesSupport*>()
-        .UserData<AsyncCollectivesSupport*>()
-        .Value("AllReduceDone")
-        .Attr<int32_t>("uid"));
-
-//===----------------------------------------------------------------------===//
 // AllToAll.
 //===----------------------------------------------------------------------===//
 
@@ -479,19 +440,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<bool>("is_async")
         .Attr<absl::Span<const int64_t>>("replica_group_offsets")
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
-
-//===----------------------------------------------------------------------===//
-// AllToAllDone.
-//===----------------------------------------------------------------------===//
-
-XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllToAllDone, FunctionWrapper<AsyncDoneImpl>(), checks,
-    CustomCall::Bind("xla.gpu.all_to_all_done")
-        .UserData<const ServiceExecutableRunOptions*>()
-        .UserData<CollectivesSupport*>()
-        .UserData<AsyncCollectivesSupport*>()
-        .Value("AllToAllDone")
-        .Attr<int32_t>("uid"));
 
 //===----------------------------------------------------------------------===//
 // ReduceScatter.
@@ -561,17 +509,17 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
 //===----------------------------------------------------------------------===//
-// ReduceScatterDone.
+// AsyncDone.
 //===----------------------------------------------------------------------===//
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    ReduceScatterDone, FunctionWrapper<AsyncDoneImpl>(), checks,
-    CustomCall::Bind("xla.gpu.reduce_scatter_done")
+    AsyncDone, FunctionWrapper<AsyncDoneImpl>(), checks,
+    CustomCall::Bind("xla.gpu.async_collective_done")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<CollectivesSupport*>()
         .UserData<AsyncCollectivesSupport*>()
-        .Value("ReduceScatterDone")
-        .Attr<int32_t>("uid"));
+        .Attr<int32_t>("uid")
+        .Attr<std::string_view>("done_type"));
 
 //===----------------------------------------------------------------------===//
 // ReplicaId.
@@ -679,15 +627,13 @@ absl::StatusOr<se::Event> AsyncCollectivesSupport::PopEvent(int32_t uid) {
 void RegisterCollectiveCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.collective_permute", CollectivePermute);
-  registry.Register("xla.gpu.collective_permute_done", CollectivePermuteDone);
   registry.Register("xla.gpu.all_gather", AllGather);
-  registry.Register("xla.gpu.all_gather_done", AllGatherDone);
   registry.Register("xla.gpu.all_reduce", AllReduce);
-  registry.Register("xla.gpu.all_reduce_done", AllReduceDone);
   registry.Register("xla.gpu.all_to_all", AllToAll);
-  registry.Register("xla.gpu.all_to_all_done", AllToAllDone);
   registry.Register("xla.gpu.reduce_scatter", ReduceScatter);
-  registry.Register("xla.gpu.reduce_scatter_done", ReduceScatterDone);
+
+  registry.Register("xla.gpu.collective_done", AsyncDone);
+
   registry.Register("xla.gpu.partition_id", PartitionId);
   registry.Register("xla.gpu.replica_id", ReplicaId);
 }
