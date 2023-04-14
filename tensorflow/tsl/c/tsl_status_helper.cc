@@ -22,7 +22,7 @@ namespace tsl {
 
 void Set_TSL_Status_from_Status(TSL_Status* tsl_status, const Status& status) {
   absl::StatusCode code = static_cast<absl::StatusCode>(status.code());
-  const char* message(status.error_message().c_str());
+  const char* message = tsl::NullTerminatedMessage(status);
 
   switch (code) {
     case absl::StatusCode::kOk:

@@ -1104,7 +1104,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
 int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
                                   PyObject* exception) {
   if (status.ok()) return 0;
-  const char* msg = status.error_message().c_str();
+  const char* msg = tsl::NullTerminatedMessage(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {

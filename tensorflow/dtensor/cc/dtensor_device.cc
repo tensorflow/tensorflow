@@ -1878,7 +1878,7 @@ void DTensorDevice::ExecuteEPUFunctions(
 
     if (!parallel_inputs.ok()) {
       RETURN_STATUS(status, TF_INTERNAL,
-                    parallel_inputs.status().error_message().c_str());
+                    tsl::NullTerminatedMessage(parallel_inputs.status()));
     }
 
     ASSIGN_OR_RETURN_C_STATUS(
@@ -2593,7 +2593,8 @@ void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
                                   void* device_info, TF_Status* status) {
   StatusOr<Layout> layout = Layout::FromString(serialized_layout);
   if (!layout.ok()) {
-    RETURN_STATUS(status, TF_INTERNAL, layout.status().error_message().c_str());
+    RETURN_STATUS(status, TF_INTERNAL,
+                  tsl::NullTerminatedMessage(layout.status()));
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->SetDefaultLayout(layout.value());
@@ -2608,7 +2609,7 @@ void ExperimentalSetDefaultMesh(const std::string& serialized_mesh,
                                 void* device_info, TF_Status* status) {
   StatusOr<Mesh> mesh = Mesh::FromString(serialized_mesh);
   if (!mesh.ok()) {
-    RETURN_STATUS(status, TF_INTERNAL, mesh.status().error_message().c_str());
+    RETURN_STATUS(status, TF_INTERNAL, NullTerminatedMessage(mesh.status()));
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->SetDefaultMesh(mesh.value());
