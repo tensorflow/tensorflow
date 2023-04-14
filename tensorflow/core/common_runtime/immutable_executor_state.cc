@@ -196,6 +196,12 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     item->is_recv_or_switch = IsRecv(n) || IsSwitch(n);
     item->is_next_iteration = IsNextIteration(n);
     item->is_distributed_communication = IsDistributedCommunication(n);
+    item->is_send_to_gpu = false;
+    if (IsSend(n)) {
+      string recv_device;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "recv_device", &recv_device));
+      item->is_send_to_gpu = recv_device.find("GPU") != string::npos;
+    }
 
     // Compute the maximum values we'll store for this node in the
     // pending counts data structure, and allocate a handle in

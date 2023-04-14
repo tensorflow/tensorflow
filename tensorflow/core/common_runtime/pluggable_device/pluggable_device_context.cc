@@ -26,7 +26,7 @@ namespace tensorflow {
 
 void PluggableDeviceContext::CopyCPUTensorToDevice(
     const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
-    StatusCallback done, bool sync_dst_compute) const {
+    StatusCallback done, bool sync_dst_compute, bool sync_dst_recv) const {
   PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
       cpu_tensor, this, device, device_tensor, done, sync_dst_compute);
 }

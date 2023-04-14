@@ -64,7 +64,8 @@ class XlaDeviceContext : public DeviceContext {
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done,
-                             bool sync_dst_compute) const override;
+                             bool sync_dst_compute,
+                             bool sync_dst_recv = true) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;

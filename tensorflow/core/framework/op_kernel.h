@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tracking_allocator.h"
@@ -560,6 +561,17 @@ struct GraphCollector {
   }
 };
 
+// Hold some tensors temporarily until the object is destructured.
+class TensorHolder {
+ public:
+  ~TensorHolder();
+  void AddTensor(const Tensor& tensor);
+
+ private:
+  mutex lock_;
+  std::vector<std::unique_ptr<TensorReference>> tensors_ TF_GUARDED_BY(lock_);
+};
+
 class OpKernelContext {
  public:
   // The first element of a WrappedAllocator is a "base" Allocator and
@@ -693,6 +705,9 @@ class OpKernelContext {
 
     // For access to distributed coordination service.
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
+
+    // To hold some CPU tensors until the session run finish.
+    TensorHolder* tensor_holder = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -1240,6 +1255,8 @@ class OpKernelContext {
   }
 
   Allocator* get_allocator(AllocatorAttributes attr);
+
+  TensorHolder* tensor_holder() const { return params_->tensor_holder; }
 
  private:
   bool record_memory_consumption_ = false;

@@ -80,7 +80,8 @@ class DeviceContext : public core::RefCounted {
   // must be allocated to be of the same size as "cpu_tensor".
   virtual void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                                      Tensor* device_tensor, StatusCallback done,
-                                     bool sync_dst_compute = true) const {
+                                     bool sync_dst_compute = true,
+                                     bool sync_dst_recv = true) const {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
   }
 

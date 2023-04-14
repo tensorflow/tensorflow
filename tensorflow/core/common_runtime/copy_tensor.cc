@@ -56,7 +56,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
                       Allocator* out_allocator, StringPiece edge_name,
                       Device* dst, Tensor* output,
                       DeviceContext* recv_dev_context, StatusCallback done,
-                      bool sync_dst_compute) {
+                      bool sync_dst_compute, bool sync_dst_recv) {
   if (input->dtype() == DT_VARIANT) {
     Tensor copy(cpu_allocator, DT_VARIANT, input->shape());
     auto* status_cb = new ReffedStatusCallback(std::move(done));
@@ -67,13 +67,14 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
       status_cb->Unref();
     };
     auto copier = [dst, recv_dev_context, out_allocator, status_cb,
-                   cpu_allocator, edge_name, sync_dst_compute,
+                   cpu_allocator, edge_name, sync_dst_compute, sync_dst_recv,
                    wrapped_done = std::move(wrapped_done)](const Tensor& from,
                                                            Tensor* to) {
       if (from.dtype() == DT_VARIANT) {
         status_cb->Ref();
         CopyHostToDevice(&from, cpu_allocator, out_allocator, edge_name, dst,
-                         to, recv_dev_context, wrapped_done, sync_dst_compute);
+                         to, recv_dev_context, wrapped_done, sync_dst_compute,
+                         sync_dst_recv);
         return OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
@@ -87,8 +88,8 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
         if (status_cb->ok()) {
           status_cb->Ref();
           *to = Tensor(out_allocator, from.dtype(), from.shape());
-          recv_dev_context->CopyCPUTensorToDevice(&from, dst, to, wrapped_done,
-                                                  sync_dst_compute);
+          recv_dev_context->CopyCPUTensorToDevice(
+              &from, dst, to, wrapped_done, sync_dst_compute, sync_dst_recv);
           return OkStatus();
         } else {
           return status_cb->status();
@@ -115,7 +116,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
     done(OkStatus());
   } else {
     recv_dev_context->CopyCPUTensorToDevice(input, dst, output, std::move(done),
-                                            sync_dst_compute);
+                                            sync_dst_compute, sync_dst_recv);
   }
 }
 
@@ -205,7 +206,7 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         const AllocatorAttributes dst_alloc_attr,
                         const Tensor* input, Tensor* output,
                         int dev_to_dev_stream_index, StatusCallback done,
-                        bool sync_dst_compute) {
+                        bool sync_dst_compute, bool sync_dst_recv) {
   profiler::ScopedAnnotation annotation(
       [&] { return absl::StrCat("#edge_name=", edge_name, "#"); });
   VLOG(1) << "Copy " << edge_name;
@@ -262,14 +263,15 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
     auto then_copy_to_other_device =
         [delete_and_done = std::move(delete_and_done), recv_dev_context,
          cpu_tensor, cpu_allocator, out_allocator, edge_name, dst, output,
-         sync_dst_compute](Status status) {
+         sync_dst_compute, sync_dst_recv](Status status) {
           if (!status.ok()) {
             delete_and_done(status);
             return;
           }
           CopyHostToDevice(cpu_tensor, cpu_allocator, out_allocator, edge_name,
                            dst, output, recv_dev_context,
-                           std::move(delete_and_done), sync_dst_compute);
+                           std::move(delete_and_done), sync_dst_compute,
+                           sync_dst_recv);
         };
     CopyDeviceToHost(input, cpu_allocator, out_allocator, edge_name, src,
                      cpu_tensor, send_dev_context,
@@ -290,7 +292,7 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
     // Host to Device copy.
     CopyHostToDevice(input, cpu_allocator, out_allocator, edge_name, dst,
                      output, recv_dev_context, std::move(done),
-                     sync_dst_compute);
+                     sync_dst_compute, sync_dst_recv);
     return;
   }
 

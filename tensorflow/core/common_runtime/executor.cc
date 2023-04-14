@@ -78,6 +78,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/determinism.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -394,6 +395,7 @@ class ExecutorState {
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
   const bool run_all_kernels_inline_;
+  TensorHolder* tensor_holder_;
 
   PropagatorStateType propagator_;
 
@@ -444,7 +446,8 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
       propagator_(immutable_state, step_id_, vlog_),
-      num_outstanding_ops_(0) {
+      num_outstanding_ops_(0),
+      tensor_holder_(args.tensor_holder) {
   if (args.user_intra_op_threadpool != nullptr) {
     Device* device = immutable_state_.params().device;
     user_device_ = RenamedDevice::NewRenamedDevice(
@@ -587,6 +590,21 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
   OpKernel* op_kernel = item.kernel;
   Device* device = immutable_state_.params().device;
   const bool is_expensive = kernel_stats_->IsExpensive(item);
+
+  static const bool gpu_stream_merge = [] {
+    bool gpu_stream_merge;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
+                                   /*default_val=*/false, &gpu_stream_merge));
+    return gpu_stream_merge;
+  }();
+  if (gpu_stream_merge && item.is_send_to_gpu &&
+      (op_kernel->type_string() == "_HostSend" ||
+       (op_kernel->type_string() == "_Send" &&
+        device->parsed_name().type.find("CPU") != string::npos)) &&
+      params->inputs[0].tensor->NumElements() > 0) {
+    CHECK(item.num_inputs == 1);
+    params->tensor_holder->AddTensor(*(params->inputs[0].tensor));
+  }
 
   if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
     tracing::ScopedRegion region(tracing::EventCategory::kCompute,
@@ -762,6 +780,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
 
   // Set the device_context for this device, if it exists.
   params.op_device_context = device_context_;
+  params.tensor_holder = tensor_holder_;
 
   Status s;
   NodeExecStatsInterface* stats = nullptr;

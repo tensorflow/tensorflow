@@ -329,6 +329,19 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   return OkStatus();
 }
 
+void TensorHolder::AddTensor(const Tensor& tensor) {
+  mutex_lock l(lock_);
+  tensors_.push_back(absl::make_unique<TensorReference>(tensor));
+}
+
+TensorHolder::~TensorHolder() {
+  mutex_lock l(lock_);
+  VLOG(3) << "Tensors to delete: " << tensors_.size();
+  for (auto& ref : tensors_) {
+    ref->Unref();
+  }
+}
+
 // OpKernelContext -----------------------------------------------------------
 
 const int OpKernelContext::Params::kNeverForward;

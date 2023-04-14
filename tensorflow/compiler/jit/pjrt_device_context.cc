@@ -100,11 +100,9 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                      const tensorflow::Status& status) { done(status); });
 }
 
-void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
-                                              Device* device,
-                                              Tensor* device_tensor,
-                                              StatusCallback done,
-                                              bool sync_dst_compute) const {
+void PjRtDeviceContext::CopyCPUTensorToDevice(
+    const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+    StatusCallback done, bool sync_dst_compute, bool sync_dst_recv) const {
   profiler::TraceMe traceme("PjRtDeviceContext::CopyCPUTensorToDevice");
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";

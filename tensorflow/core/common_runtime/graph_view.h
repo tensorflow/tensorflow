@@ -85,6 +85,8 @@ struct NodeItem {
                                     // node's input types.
   bool is_distributed_communication : 1;  // True iff the op is registered to
                                           // use distributed communication.
+  bool is_send_to_gpu : 1;  // True iff IsSend(node) and the receive device is
+                            // GPU.
 
   // The kernel for this node.
   OpKernel* kernel = nullptr;
