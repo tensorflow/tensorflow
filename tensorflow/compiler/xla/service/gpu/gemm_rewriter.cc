@@ -1195,10 +1195,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // the bias to BF16.
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
         bias->shape().element_type() == F32) {
-      Shape bf16_shape = bias->shape();
-      bf16_shape.set_element_type(BF16);
-      bias = instr->AddInstruction(
-          HloInstruction::CreateConvert(bf16_shape, bias));
+      HloInstruction *primitive_bias;
+      if (Match(bias,
+                m::Convert(m::Convert(m::Op(&primitive_bias))
+                               .WithShape(m::Shape().WithElementType(BF16)))
+                    .WithShape(m::Shape().WithElementType(F32))) &&
+          primitive_bias->shape().element_type() == F32) {
+        bias = primitive_bias->users()[0];
+      } else {
+        VLOG(1) << "F32 vector bias is not directly supported by cuBLASLt FP8 "
+                   "matmul. Please follow the pattern F32->BF16->F32->Add.";
+        return true;
+      }
     }
 
     // Replace add(gemm, broadcast) with fused new_gemm.

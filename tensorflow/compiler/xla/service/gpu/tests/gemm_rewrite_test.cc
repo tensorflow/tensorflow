@@ -5118,7 +5118,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
       x_f32 = f32[16,32] convert(x)
       y_f32 = f32[32,16] convert(y)
       b = f32[16] parameter(2)
-      b_bcast = f32[16,16] broadcast(b), dimensions={1}
+      b_bf16 = bf16[16] convert(b)
+      b_f32 = f32[16] convert(b_bf16)
+      b_bcast = f32[16,16] broadcast(b_f32), dimensions={1}
       x_scale = f32[] parameter(3)
       y_scale = f32[] parameter(4)
       x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
@@ -5131,7 +5133,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text, ErrorSpec{0.1, 0.1});
+  CheckFp8IfOnHopper(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
