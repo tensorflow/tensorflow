@@ -1858,6 +1858,10 @@ class JacobianTest(test.TestCase):
                           rtol=1e-3)
 
   def test_grad_jacobian_conv(self):
+    import platform
+    if platform.system() == 'Darwin':
+      self.skipTest("CPU only")
+
     def _inner(x):
       kernel = array_ops.ones([3, 3, 1, 9])
       with backprop.GradientTape() as tape:

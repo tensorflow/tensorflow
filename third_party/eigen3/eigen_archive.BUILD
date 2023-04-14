@@ -55,8 +55,10 @@ cc_library(
         # This define (mostly) guarantees we don't link any problematic
         # code. We use it, but we do not rely on it, as evidenced above.
         "EIGEN_MPL2_ONLY",
-        "EIGEN_MAX_ALIGN_BYTES=64",
-    ],
+    ] + select({
+        "@org_tensorflow//tensorflow/tsl:macos": ["EIGEN_DONT_ALIGN"],
+        "//conditions:default": ["EIGEN_MAX_ALIGN_BYTES=64"],
+    }),
     includes = ["."],
     visibility = ["//visibility:public"],
 )
