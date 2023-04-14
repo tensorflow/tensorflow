@@ -218,8 +218,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
+    VLOG(1) << "Tuning " << hlo->ToString();
     TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
                         AutotuneMatmul(*hlo->called_computations()[0]));
+    VLOG(1) << "Result: " << autotune_result.DebugString();
 
     TF_RET_CHECK(autotune_result.has_triton());
     AutotuneResult::TritonGemmKey tiling = autotune_result.triton();
@@ -391,7 +393,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
             LOG(ERROR) << "Results mismatch between different tilings. "
                        << "This is likely a bug/unexpected loss of precision.";
             CHECK(!autotune_cfg.should_crash_on_check_failure);
-            res.mutable_failure()->set_kind(AutotuneResult::WRONG_RESULT);
+            // WRONG_RESULT is not taken seriously by PickBestResult(), so
+            // use DISQUALIFIED.
+            res.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
           }
         }
       }
