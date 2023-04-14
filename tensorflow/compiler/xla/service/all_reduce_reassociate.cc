@@ -220,9 +220,8 @@ StatusOr<bool> AllReduceReassociate::Run(
       bool should_promote_ar = convert0 || convert1;
       if (should_promote_ar) {
         if (!reassociate_converted_ar_) {
-          VLOG(2) << "Inputs have Converts but "
-                     "xla_gpu_enable_reassociation_for_converted_ar is set to "
-                     "false, skipping";
+          VLOG(2) << "Promotions of all_reduces for reassociation will be "
+                     "disabled.";
           continue;
         }
         if (!AreCompatibleConverts(convert0, convert1)) {
