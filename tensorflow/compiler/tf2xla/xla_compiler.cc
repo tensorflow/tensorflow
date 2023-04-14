@@ -575,7 +575,7 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
     }
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         GetFunctionBody(function, flib_runtime_, fbody),
-        "Local lookup failed with: ", status.error_message());
+        "Local lookup failed with: ", status.message());
     if (config_proto) {
       *config_proto = flib_runtime_->config_proto();
     }
@@ -1330,7 +1330,7 @@ Status ValidateGraph(const Graph* graph,
       std::string errmsg = absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
           " on ", device_type.type_string(), ": ", node->def().op(), " (",
-          s.error_message(), ")", FormatNodeForError(*node));
+          s.message(), ")", FormatNodeForError(*node));
       if (absl::StrContains(device_type.type_string(), "TPU")) {
         absl::StrAppend(&errmsg,
                         "\nOne approach is to outside compile the unsupported "

@@ -69,7 +69,7 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
       Status close_status = TpuNodeContext::CloseTpuHost();
 
       if (!close_status.ok()) {
-        errors::AppendToMessage(&status, close_status.error_message());
+        errors::AppendToMessage(&status, close_status.message());
       }
     }
     ctx->CtxFailure(status);

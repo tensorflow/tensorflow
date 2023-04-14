@@ -54,7 +54,7 @@ class TableBuilder : public TensorSliceWriter::Builder {
     }
     if (!s.ok()) {
       s = errors::Internal("Error writing (tmp) checkpoint file: ", name_, ": ",
-                           s.error_message());
+                           s.message());
     }
     builder_.reset();
     file_.reset();
