@@ -504,32 +504,23 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       if (existing_gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
         HloInstruction *bias_f32 = bias->mutable_operand(0);
         HloInstruction *bias_f16_maybe;
-        PrimitiveType supported_bias_type;
-        switch (existing_gemm->shape().element_type()) {
-          case F8E4M3FN:
-          case F8E5M2:
-          case F32:
-          case BF16:
-            supported_bias_type = BF16;
-            break;
-          case F16:
-            supported_bias_type = F16;
-            break;
-          default:
-            VLOG(1) << "Bias element type must be BF16 or F16 for cuBLASLt F8 "
-                    << "matmul. And gemm output type has to be compatible. "
-                    << "Actual gemm output type is "
-                    << PrimitiveType_Name(
-                           existing_gemm->shape().element_type());
-            return InternalError(
-                "Output type has not supported bias fusion from "
-                "cuBLASTLt.");
-        }
+
+        auto gemm_d_type = existing_gemm->shape().element_type();
+        auto check_supported_bias = [&](const PrimitiveType btype) {
+          if (btype == BF16) {
+            return gemm_d_type == F8E4M3FN || gemm_d_type == F8E5M2 ||
+                   gemm_d_type == F32 || gemm_d_type == BF16;
+          } else if (btype == F16) {
+            return gemm_d_type == F16 || gemm_d_type == F8E4M3FN ||
+                   gemm_d_type == F8E5M2;
+          }
+          return false;
+        };
 
         if (bias_f32->shape().element_type() == F32 &&
             Match(bias_f32,
                   m::Convert(m::Op(&bias_f16_maybe)).WithElementType(F32)) &&
-            bias_f16_maybe->shape().element_type() == supported_bias_type) {
+            check_supported_bias(bias_f16_maybe->shape().element_type())) {
           TF_RETURN_IF_ERROR(bias->ReplaceOperandWith(0, bias_f16_maybe));
         }
       }
