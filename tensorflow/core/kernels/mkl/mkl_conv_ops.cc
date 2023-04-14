@@ -392,7 +392,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
           }
 #else
           // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
-          assert(post_op_param.param.size() == 1);
+          // and return a status instead of using DCHECK_EQ
+          DCHECK_EQ(post_op_param.param.size(), 1);
           post_ops_attr.set_scales_mask(DNNL_ARG_SRC, 0);
           post_ops_attr.set_scales_mask(DNNL_ARG_WEIGHTS, 0);
           post_ops_attr.set_scales_mask(DNNL_ARG_DST, 0);
@@ -2183,7 +2184,8 @@ class MklQuantizedConvOp
       }
 #else
       // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
-      assert(depth == 1);
+      // and return a status instead of using DCHECK_EQ
+      DCHECK_EQ(depth, 1);
       reorder_attr.set_scales_mask(DNNL_ARG_SRC, 0);
       reorder_attr.set_scales_mask(DNNL_ARG_WEIGHTS, 0);
       reorder_attr.set_scales_mask(DNNL_ARG_DST, 0);
@@ -2254,7 +2256,8 @@ class MklQuantizedConvOp
       }
 #else
       // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
-      assert(depth == 1);
+      // and return a status instead of using DCHECK_EQ
+      DCHECK_EQ(depth, 1);
       bias_attr.set_scales_mask(DNNL_ARG_SRC, 0);
       bias_attr.set_scales_mask(DNNL_ARG_WEIGHTS, 0);
       bias_attr.set_scales_mask(DNNL_ARG_DST, 0);
