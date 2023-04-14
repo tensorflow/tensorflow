@@ -100,12 +100,12 @@ std::string JsonEscape(absl::string_view raw) {
 }
 
 // Converts the given proto to text format and escapes it for JSON.
-std::string ProtoString(const proto2::Message& pb) {
+std::string ProtoString(const tsl::protobuf::Message& pb) {
   return JsonEscape(pb.DebugString());
 }
 
-std::map<uint64_t, uint64_t> BuildStackFrameReferences(
-    const proto2::Map<uint64_t, std::string>& name_table) {
+std::map<uint64_t, uint64_t> BuildStackFrameReferences(const Trace& trace) {
+  const auto& name_table = trace.name_table();
   std::map<uint64_t, uint64_t> output;
   for (const auto& [fp, name] : name_table) {
     if (!absl::StartsWith(name, "@@")) continue;
