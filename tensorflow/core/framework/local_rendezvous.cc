@@ -148,7 +148,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
                              const Rendezvous::Args& send_args,
                              const Tensor& val, const bool is_dead) {
   uint64 key_hash = KeyHash(key.FullKey());
-  VLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
+  DVLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
 
   auto keep_alive = GetOwnerRefCountPtr();
   // Already destroyed.
@@ -181,7 +181,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     // TODO(b/143786186): Investigate moving the allocation of `Item` outside
     // the lock.
     auto rc_owner = GetOwnerRefCountPtr();
-    VLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
+    DVLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
     activity_watcher::ActivityScope activity_scope(
         [&]() {
           return std::make_unique<activity_watcher::Activity>(
@@ -200,13 +200,13 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     return OkStatus();
   }
 
-  VLOG(2) << "Consume Recv Item (key:" << key.FullKey() << "). ";
+  DVLOG(2) << "Consume Recv Item (key:" << key.FullKey() << "). ";
   // There is an earliest waiter to consume this message.
   Item* item = queue->head;
 
   // Delete the queue when the last element has been consumed.
   if (item->next == nullptr) {
-    VLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
+    DVLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
     bucket.table.erase(it);
   } else {
     queue->head = item->next;
@@ -244,7 +244,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
                                 const Rendezvous::Args& recv_args,
                                 Rendezvous::DoneCallback done) {
   uint64 key_hash = KeyHash(key.FullKey());
-  VLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
+  DVLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
   tsl::core::RefCountPtr<Rendezvous> rc_keep_alive;
 
   auto keep_alive = GetOwnerRefCountPtr();
@@ -331,7 +331,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       return;
     }
 
-    VLOG(2) << "Enqueue Recv Item (key:" << key.FullKey() << "). ";
+    DVLOG(2) << "Enqueue Recv Item (key:" << key.FullKey() << "). ";
 
     // TODO(b/143786186): Investigate moving the allocation of `Item` outside
     // the lock.
@@ -376,14 +376,14 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     return;
   }
 
-  VLOG(2) << "Consume Send Item (key:" << key.FullKey() << "). ";
+  DVLOG(2) << "Consume Send Item (key:" << key.FullKey() << "). ";
   // A message has already arrived and is queued in the table under
   // this key.  Consumes the message and invokes the done closure.
   Item* item = queue->head;
 
   // Delete the queue when the last element has been consumed.
   if (item->next == nullptr) {
-    VLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
+    DVLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
     bucket.table.erase(it);
   } else {
     queue->head = item->next;
