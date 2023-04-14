@@ -341,14 +341,14 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
       ExportModule(*module, output_path, elide_large_elements_attrs);
   if (!conversion_status.ok()) {
     LOG(ERROR) << "TF to StableHLO conversion failed: "
-               << conversion_status.error_message();
+               << conversion_status.message();
 
     auto debug_export_status = ExportModule(
         *module, absl::StrCat(verbose_dir, "/debug_stablehlo.mlir"),
         elide_large_elements_attrs);
     if (!debug_export_status.ok()) {
       LOG(ERROR) << "Failed to export debug_stablehlo.mlir: "
-                 << debug_export_status.error_message();
+                 << debug_export_status.message();
     }
 
     return conversion_status;

@@ -1089,7 +1089,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
             return errors::InvalidArgument(
                 "Node '", node.name(), " has an invalid ",
                 kOutputShapesAttrName, " attribute (shape #", idx, " error:'",
-                s.error_message(), "')");
+                s.message(), "')");
           c->set_output(idx, h);
         }
       }

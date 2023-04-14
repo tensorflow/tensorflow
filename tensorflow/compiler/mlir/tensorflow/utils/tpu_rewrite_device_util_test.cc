@@ -63,7 +63,7 @@ TEST_P(ParameterizedDeviceSetTest, BadDeviceSet) {
       devices, /*num_replicas=*/1, /*num_cores_per_replica=*/1, topology_attr,
       device_assignment_attr);
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ(status_or.status().error_message(), std::get<1>(GetParam()));
+  EXPECT_EQ(status_or.status().message(), std::get<1>(GetParam()));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -110,7 +110,7 @@ TEST_P(ParameterizedMetadataTest, BadMetadata) {
       devices, std::get<0>(GetParam()), std::get<1>(GetParam()),
       std::get<2>(GetParam()), std::get<3>(GetParam()));
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ(status_or.status().error_message(), std::get<4>(GetParam()));
+  EXPECT_EQ(status_or.status().message(), std::get<4>(GetParam()));
 }
 
 std::string TopologyWithMeshShape(llvm::ArrayRef<int> mesh_shape) {
@@ -310,7 +310,7 @@ TEST(TPURewriteDeviceUtilTest,
       device_assignment_attr);
 
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ(status_or.status().error_message(),
+  EXPECT_EQ(status_or.status().message(),
             "no TPU device found for 'device_assignment' device coordinate (1, "
             "0, 0, 0)");
 }
@@ -622,7 +622,7 @@ TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
   auto status_or_device_coodinates =
       GetDeviceCoordinates(device_assignment_attr);
   ASSERT_TRUE(!status_or_device_coodinates.ok());
-  EXPECT_EQ(status_or_device_coodinates.status().error_message(),
+  EXPECT_EQ(status_or_device_coodinates.status().message(),
             "bad 'device_assignment' attribute at index 0, not an int");
 }
 

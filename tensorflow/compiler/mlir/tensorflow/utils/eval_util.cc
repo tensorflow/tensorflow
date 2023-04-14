@@ -50,7 +50,7 @@ static bool IsOk(const TF_Status* s) {
 
 static bool IsOk(const Status& s) {
   if (s.ok()) return true;
-  VLOG(2) << s.error_message();
+  VLOG(2) << s.message();
   return false;
 }
 
