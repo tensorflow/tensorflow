@@ -73,3 +73,12 @@ cc_library(
         "@com_google_absl//absl/time",
     ],
 )
+
+cc_library(
+    name = "trace_event_arguments_builder",
+    hdrs = ["trace_event_arguments_builder.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
