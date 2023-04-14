@@ -501,6 +501,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                       CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Broadcast(&bias, m::Op())))) {
+      HloInstruction *bias_f32 = bias->mutable_operand(0);
+      HloInstruction *bias_f16_maybe;
+
+      if (existing_gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+          bias_f32->shape().element_type() == F32 &&
+          Match(bias_f32,
+                m::Convert(m::Op(&bias_f16_maybe)).WithElementType(F32)) &&
+          (bias_f16_maybe->shape().element_type() == F16 ||
+           bias_f16_maybe->shape().element_type() == BF16)) {
+        TF_RETURN_IF_ERROR(bias->ReplaceOperandWith(0, bias_f16_maybe));
+      }
+
       TF_ASSIGN_OR_RETURN(
           bool was_fused,
           FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
@@ -1195,18 +1207,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // the bias to BF16.
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
         bias->shape().element_type() == F32) {
-      HloInstruction *primitive_bias;
-      if (Match(bias,
-                m::Convert(m::Convert(m::Op(&primitive_bias))
-                               .WithShape(m::Shape().WithElementType(BF16)))
-                    .WithShape(m::Shape().WithElementType(F32))) &&
-          primitive_bias->shape().element_type() == F32) {
-        bias = primitive_bias->users()[0];
-      } else {
-        VLOG(1) << "F32 vector bias is not directly supported by cuBLASLt FP8 "
-                   "matmul. Please follow the pattern F32->BF16->F32->Add.";
-        return true;
-      }
+       VLOG(1) << "F32 vector bias is not directly supported by cuBLASLt FP8 "
+                  "matmul. Please follow the pattern F32->BF16->F32->Add.";
+       return true;
     }
 
     // Replace add(gemm, broadcast) with fused new_gemm.
