@@ -835,7 +835,7 @@ LogicalResult Rewrite(
   // TODO(b/157054714): When a better abstraction instead of _TPUCompileMlirOp
   // and _XlaRecvAtHostOp and _XlaSendFromHostOp are used, update to a more
   // structured lowering.
-  old_parallel_execute.walk(
+  old_parallel_execute->getParentOp()->walk(
       [&](TF::_TPUCompileMlirPlaceholderProgramKeyOp key_op) {
         key_op.replaceAllUsesWith(compile_op->getResult(1));
         key_op.erase();
