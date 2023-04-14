@@ -85,12 +85,16 @@ std::string SanitizeFunctionName(llvm::StringRef name) {
 }
 
 // Returns whether the instruction is a default dot operation.
+// Supports vector.vector, vector.matrix, matrix.vector, and matrix.matrix.
+// Default operations have lhs_contracting dimension is 1 (or zero for vector)
+// and the rhs_contracting dimension is zero, and there are no batch dimensions.
 bool DotIsDefault(const HloInstruction* instruction) {
+  // If LHS/RHS has rank greater than 2, not default dot
   const auto& operands = instruction->operands();
-  // eg. vector[3] dot matrix[3, 2] => [2] not default dot
-  if (operands[0]->shape().rank() < operands[1]->shape().rank()) {
+  if (operands[0]->shape().rank() > 2 || operands[1]->shape().rank() > 2) {
     return false;
   }
+
   auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
