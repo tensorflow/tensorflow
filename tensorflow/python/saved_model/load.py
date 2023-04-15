@@ -27,8 +27,8 @@ from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint import restore
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -130,7 +130,7 @@ class _WrapperFunction(function.ConcreteFunction):
       return _unused_handle() if distribute_utils.is_distributed_variable(x)   \
           else x
 
-    if (ds_context.get_replica_context() is not None or
+    if (distribute_lib.get_replica_context() is not None or
         values_util.is_saving_non_distributed()):
       # If we're in the replica context or are saving a non-distributed version
       # of the model, we resolve the captured variables to the corresponding
