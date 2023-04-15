@@ -196,11 +196,14 @@ def canonicalize_signatures(signatures):
     concrete_signatures[signature_key] = final_concrete
     # pylint: enable=cell-var-from-loop
     if isinstance(function, core.GenericFunction):
-      defaults[signature_key] = (
-          function._function_spec.fullargspec.defaults  # pylint: disable=protected-access
-      )  # pylint: disable=protected-access
-    else:
-      defaults[signature_key] = None
+      full_arg_spec = function._function_spec.fullargspec  # pylint: disable=protected-access
+      len_defaults = len(full_arg_spec.defaults or [])
+      for arg, default in zip(
+          full_arg_spec.args[-len_defaults:], full_arg_spec.defaults or []
+      ):
+        if not default:
+          continue
+        defaults[(signature_key, arg)] = default
   return concrete_signatures, wrapped_functions, defaults
 
 

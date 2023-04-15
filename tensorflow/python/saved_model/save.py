@@ -499,8 +499,9 @@ def _to_safe_name_scope(signature_key, user_input_name):
   return re.sub(r"[^A-Za-z0-9_.\\-]", "_", invalid_prefix_stripped)
 
 
-def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
-                                              function_name):
+def _map_function_arguments_to_created_inputs(
+    function_arguments, signature_key, function_name, defaults=None
+):
   """Creates exterior placeholders in the exported graph for function arguments.
 
   Functions have two types of inputs: tensors captured from the outside (eager)
@@ -515,6 +516,8 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
     function_arguments: A list of argument placeholders in the function body.
     signature_key: The name of the signature being exported, for error messages.
     function_name: The name of the function, for error messages.
+    defaults: A dictionary mapping (signature_key, user_specified_name) to
+      Tensor representing default values.
 
   Returns:
     A tuple of (mapped_inputs, exterior_placeholders)
@@ -560,16 +563,27 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
           "structures unless unique names are specified for each. Use "
           "tf.TensorSpec(..., name=...) to provide a name for a Tensor "
           "input.")
-    arg_placeholder = array_ops.placeholder(
-        shape=placeholder.shape,
-        dtype=placeholder.dtype,
-        name=_to_safe_name_scope(signature_key, user_input_name))
-    exterior_argument_placeholders[user_input_name] = arg_placeholder
-    mapped_inputs.append(arg_placeholder)
+    default_value = defaults.get((signature_key, user_input_name))
+    if default_value is not None:
+      placeholder_with_default = array_ops.placeholder_with_default(
+          input=default_value.numpy(),
+          shape=placeholder.shape,
+          name=_to_safe_name_scope(signature_key, user_input_name),
+      )
+      exterior_argument_placeholders[user_input_name] = placeholder_with_default
+      mapped_inputs.append(placeholder_with_default)
+    else:
+      arg_placeholder = array_ops.placeholder(
+          shape=placeholder.shape,
+          dtype=placeholder.dtype,
+          name=_to_safe_name_scope(signature_key, user_input_name),
+      )
+      exterior_argument_placeholders[user_input_name] = arg_placeholder
+      mapped_inputs.append(arg_placeholder)
   return mapped_inputs, exterior_argument_placeholders
 
 
-def _generate_signatures(signature_functions, object_map):
+def _generate_signatures(signature_functions, object_map, defaults=None):
   """Validates and calls `signature_functions` in the exported graph.
 
   Args:
@@ -578,6 +592,8 @@ def _generate_signatures(signature_functions, object_map):
       which will be used to generate SignatureDefs.
     object_map: A dictionary that contains mappings from signature functions to
       concrete functions in the exported graph.
+    defaults: A dictionary mapping (signature_key, user_specified_name) to
+      Tensor representing default values.
 
   Returns:
     Each function in the `signature_functions` dictionary is called with
@@ -602,8 +618,10 @@ def _generate_signatures(signature_functions, object_map):
     else:
       argument_inputs = function.graph.inputs
     mapped_inputs, exterior_argument_placeholders = (
-        _map_function_arguments_to_created_inputs(argument_inputs,
-                                                  signature_key, function.name))
+        _map_function_arguments_to_created_inputs(
+            argument_inputs, signature_key, function.name, defaults
+        )
+    )
     kwarg_names = list(
         sorted(
             object_map[function].function.structured_input_signature[1].keys()))
@@ -788,8 +806,14 @@ def _trace_gradient_functions(graph, saveable_view):
       saveable_view.gradient_defs.append(grad_def)
 
 
-def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
-                         namespace_whitelist, save_custom_gradients):
+def _fill_meta_graph_def(
+    meta_graph_def,
+    saveable_view,
+    signature_functions,
+    namespace_whitelist,
+    save_custom_gradients,
+    defaults=None,
+):
   """Generates a MetaGraph which calls `signature_functions`.
 
   Args:
@@ -799,6 +823,8 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       functions containing signatures to add to the MetaGraph.
     namespace_whitelist: List of strings containing whitelisted op namespaces.
     save_custom_gradients: Whether to save custom gradients.
+    defaults: A dictionary mapping (signature_key, user_specified_name) to
+      Tensor representing default values.
 
   Returns:
     A tuple of (_AssetInfo, Graph) containing the captured assets and
@@ -811,7 +837,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   resource_initializer_ops = []
   with exported_graph.as_default():
     object_map, tensor_map, asset_info = saveable_view.map_resources()
-    signatures = _generate_signatures(signature_functions, object_map)
+    signatures = _generate_signatures(signature_functions, object_map, defaults)
   if save_custom_gradients:
     # Custom gradients functions must be traced in the same context as the
     # when they are registered.
@@ -1398,7 +1424,7 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
     signatures = signature_serialization.find_function_to_export(
         augmented_graph_view)
 
-  signatures, wrapped_functions, _ = (
+  signatures, wrapped_functions, defaults = (
       signature_serialization.canonicalize_signatures(signatures)
   )
   signature_serialization.validate_augmented_graph_view(augmented_graph_view)
@@ -1409,8 +1435,13 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
   saveable_view = _SaveableView(augmented_graph_view, options)
   object_saver = checkpoint.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
-      meta_graph_def, saveable_view, signatures, options.namespace_whitelist,
-      options.experimental_custom_gradients)
+      meta_graph_def,
+      saveable_view,
+      signatures,
+      options.namespace_whitelist,
+      options.experimental_custom_gradients,
+      defaults,
+  )
   if options.function_aliases:
     function_aliases = meta_graph_def.meta_info_def.function_aliases
     for alias, func in options.function_aliases.items():

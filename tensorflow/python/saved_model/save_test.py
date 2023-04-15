@@ -62,9 +62,16 @@ from tensorflow.python.training import saver
 from tensorflow.python.util import compat
 
 
-def _run_signature(session, meta_graph_def, inputs, signature_key):
+def _run_signature(
+    session,
+    meta_graph_def,
+    inputs,
+    signature_key,
+    disable_check_for_input_signature_size_match=False,
+):
   signature = meta_graph_def.signature_def[signature_key]
-  assert set(inputs.keys()) == set(signature.inputs.keys())
+  if not disable_check_for_input_signature_size_match:
+    assert set(inputs.keys()) == set(signature.inputs.keys())
   feed_dict = {}
   for arg_name in inputs.keys():
     input_tensor = session.graph.get_tensor_by_name(
@@ -80,12 +87,20 @@ def _run_signature(session, meta_graph_def, inputs, signature_key):
 def _import_and_infer(
     save_dir,
     inputs,
-    signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
+    signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    disable_check_for_input_signature_size_match=False,
+):
   """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
   graph = ops.Graph()
   with graph.as_default(), session_lib.Session() as session:
     model = loader.load(session, [tag_constants.SERVING], save_dir)
-    return _run_signature(session, model, inputs, signature_key)
+    return _run_signature(
+        session,
+        model,
+        inputs,
+        signature_key,
+        disable_check_for_input_signature_size_match,
+    )
 
 
 class SaveTest(test.TestCase, parameterized.TestCase):
@@ -166,6 +181,53 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     self.assertEqual({"out": 2.},
                      _import_and_infer(
                          save_dir, {"z": 1.}, signature_key="non_default_key"))
+
+  def test_method_save_defaults(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)]
+    )
+    def f(x, y=constant_op.constant(5.0)):
+      return x + y
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)]
+    )
+    def g(x=constant_op.constant(10.0), y=constant_op.constant(20.0)):
+      return x + y
+
+    root = module.Module()
+    root.f = f
+    root.g = g
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, {"f": root.f, "g": root.g})
+
+    self.assertEqual(
+        {"output_0": 7.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"x": 2.0},
+            signature_key="f",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+    self.assertEqual(
+        {"output_0": 30.0},
+        _import_and_infer(
+            save_dir,
+            inputs={},
+            signature_key="g",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+    self.assertEqual(
+        {"output_0": 15.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"y": 5.0},
+            signature_key="g",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
 
   def test_unsaveable_func_graph(self):
     root = module.Module()
