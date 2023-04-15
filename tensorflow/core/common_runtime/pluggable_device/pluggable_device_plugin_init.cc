@@ -92,7 +92,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   status = env->GetSymbolFromLibrary(dso_handle, "GetPjrtApi", &dso_symbol);
   if (errors::IsNotFound(status)) {
     VLOG(1) << "Loading PJRT plugin failed for " << device_type << ": "
-            << status.error_message();
+            << status.message();
     return OkStatus();
   } else if (!status.ok()) {
     return status;

@@ -349,7 +349,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
         tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                  1LL << 17 /*2^17 MB == 128GB*/, &limit_mb);
     if (!status.ok()) {
-      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
+      LOG(ERROR) << "GetGpuHostAllocator: " << status.message();
     }
     mem_limit_bytes = limit_mb * (1LL << 20);
   }

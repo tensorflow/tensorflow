@@ -193,8 +193,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
                                         1LL << 17 /*128GB max by default*/,
                                         &pluggable_device_host_mem_limit_in_mb);
     if (!status.ok()) {
-      LOG(ERROR) << "GetPluggableDeviceHostAllocator: "
-                 << status.error_message();
+      LOG(ERROR) << "GetPluggableDeviceHostAllocator: " << status.message();
     }
     int64_t pluggable_device_host_mem_limit =
         pluggable_device_host_mem_limit_in_mb << 20;
