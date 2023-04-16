@@ -350,7 +350,7 @@ class FuncGraph(ops.Graph):
     """
     if key is None:
       key = object()
-    if key not in self._function_captures._by_ref:  # pylint: disable=protected-access
+    if key not in self._function_captures.by_ref_internal:
       trace_ctx = trace_type.InternalTracingContext(True)
       spec = trace_type.from_value(spec, trace_ctx)
 
@@ -391,10 +391,13 @@ class FuncGraph(ops.Graph):
         return spec._to_tensors(ret_nest)  # pylint: disable=protected-access
 
       wrapped_closure.output_spec = spec
-      c = capture_container.ByRefCaptureContainer(
-          spec, placeholder, wrapped_closure)
-      self._function_captures._by_ref[key] = c  # pylint: disable=protected-access
-    return self._function_captures._by_ref[key].internal  # pylint: disable=protected-access
+      self._function_captures.add_or_replace(
+          key=key,
+          external=wrapped_closure,
+          internal=placeholder,
+          tracetype=spec,
+          is_by_ref=True)
+    return self._function_captures.by_ref_internal[key]
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -789,13 +792,19 @@ class FuncGraph(ops.Graph):
       placeholder: Provided placeholder for the tensor.
     """
     self._function_captures.add_or_replace(
-        tensor, placeholder, id(tensor), False)
+        key=id(tensor),
+        external=tensor,
+        internal=placeholder,
+        is_by_ref=False)
     self.inputs.append(placeholder)
 
   def replace_capture(self, tensor, placeholder):
     """Replace already existing capture."""
     self._function_captures.add_or_replace(
-        tensor, placeholder, id(tensor), False)
+        key=id(tensor),
+        external=tensor,
+        internal=placeholder,
+        is_by_ref=False)
 
   def replace_capture_with_deferred_capture(self,
                                             tensor,
@@ -845,28 +854,22 @@ class FuncGraph(ops.Graph):
   @property
   def external_captures(self):
     """External tensors captured by this function."""
-    captures = self._function_captures.by_val_captures.values()
-    return [c.external for c in captures]
+    return list(self._function_captures.by_val_external.values())
 
   @property
   def internal_captures(self):
     """Placeholders in this function corresponding captured tensors."""
-    captures = self._function_captures.by_val_captures.values()
-    return [c.internal for c in captures]
+    return list(self._function_captures.by_val_internal.values())
 
   @property
   def deferred_external_captures(self):
     """Ordered nest of tensors whose placeholders will be fed at call time."""
-    return [
-        c.lambda_fn for c in self._function_captures.by_ref_captures.values()
-    ]
+    return list(self._function_captures.by_ref_external.values())
 
   @property
   def deferred_internal_captures(self):
     """List of nest of placeholders which at call time will be fed."""
-    return [
-        c.internal for c in self._function_captures.by_ref_captures.values()
-    ]
+    return list(self._function_captures.by_ref_internal.values())
 
   @property
   def variable_captures(self):
@@ -1118,10 +1121,11 @@ def func_graph_from_py_func(name,
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
         # placeholders.
-        capture = func_graph._function_captures.pop(id(arg.handle))  # pylint: disable=protected-access
-        if capture is None:
+        capture = func_graph._function_captures.pop(id(arg.handle), False)  # pylint: disable=protected-access
+        assert len(capture) >= 2
+        resource_placeholder = capture[1]
+        if resource_placeholder is None:
           continue
-        resource_placeholder = capture.internal
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
@@ -1302,8 +1306,7 @@ def dismantle_func_graph(func_graph):
     func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable after
       this function.
   """
-  func_graph._function_captures._by_ref.clear()  # pylint: disable=protected-access
-  func_graph._function_captures._by_val.clear()  # pylint: disable=protected-access
+  func_graph._function_captures.clear()  # pylint: disable=protected-access
   ops.dismantle_graph(func_graph)
 
 
