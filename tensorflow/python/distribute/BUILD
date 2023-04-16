@@ -1183,7 +1183,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_gpu",  # TODO(b/213596871): times out
-        "no_rocm", # broken in 4.1
         "no_cuda_asan",  # TODO(b/214574707): times out
     ],
     deps = [
@@ -2149,7 +2148,6 @@ distribute_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm" # flaky/timeout with 4.1
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -2185,7 +2183,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # TODO(b/160006974)
-        "no_rocm" # flaky/timeout with 4.1
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -2260,7 +2257,6 @@ distribute_py_test(
     disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm" # flaky/timeout with 4.1
     ],
     deps = [
         ":combinations",

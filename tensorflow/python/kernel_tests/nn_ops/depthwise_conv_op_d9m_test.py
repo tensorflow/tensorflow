@@ -93,9 +93,13 @@ class DepthwiseConv2DDeterministicTest(
 
   @test_util.run_gpu_only
   def testForwardDeterminismGPU(self):
+    if test.is_built_with_rocm():
+      gpu_dtypes = [dtypes.float16, dtypes.float32]
+    else:
+      gpu_dtypes = [dtypes.float16, dtypes.float32, dtypes.float64]
     for use_cudnn in [False, True]:
       for data_format in ["NHWC", "NCHW"]:
-        for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+        for dtype in gpu_dtypes:
           self._testForwardDeterminismCase(use_cudnn, data_format, dtype=dtype)
 
   def testForwardDeterminismCPU(self):
@@ -135,9 +139,13 @@ class DepthwiseConv2DDeterministicTest(
   @test_util.run_gpu_only
   def testBackwardDeterminismGPU(self):
     using_gpu = True
+    if test.is_built_with_rocm():
+      gpu_dtypes = [dtypes.float16, dtypes.float32]
+    else:
+      gpu_dtypes = [dtypes.float16, dtypes.float32, dtypes.float64]
     for use_cudnn in [False, True]:
       for data_format in ["NHWC", "NCHW"]:
-        for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+        for dtype in gpu_dtypes:
           self._testBackwardDeterminismCase(using_gpu, use_cudnn, data_format,
                                             dtype)
 

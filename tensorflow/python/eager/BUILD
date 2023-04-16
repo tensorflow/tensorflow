@@ -319,7 +319,6 @@ cuda_py_test(
     srcs = ["profiler_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "no_windows",  # TODO(b/184424727): Re-enable this.
     ],
     deps = [
@@ -1030,7 +1029,6 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_pip",  # No point linking the gen script in the pip package.
-        "no_rocm",
     ],
     deps = [
         ":gradient_input_output_exclusions",

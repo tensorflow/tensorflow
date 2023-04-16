@@ -51,7 +51,6 @@ tf_py_test(
     size = "medium",
     srcs = ["collective_ops_multi_worker_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",

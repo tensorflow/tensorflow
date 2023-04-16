@@ -67,7 +67,6 @@ tf_py_test(
     srcs = ["file_io_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "no_windows",
     ],
     deps = [

@@ -539,9 +539,7 @@ cuda_py_test(
     size = "small",
     srcs = ["iterator_test.py"],
     grpc_enabled = True,
-    tags = [
-        "no_rocm",
-    ],
+    tags = [],
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",

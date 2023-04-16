@@ -36,8 +36,8 @@ tf_cuda_cc_test(
     args = ["--heap_check="],
     tags = tf_cuda_tests_tags() + [
         "gpu_cupti",
-        "no_rocm",
         "nomac",
+        "no_rocm", # flaky on CI
     ],
     deps = [
         ":cupti_collector",

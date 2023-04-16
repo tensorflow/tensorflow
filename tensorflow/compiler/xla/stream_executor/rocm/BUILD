@@ -180,6 +180,7 @@ cc_library(
         ":rocblas_if_static",
         ":rocblas_wrapper",
         ":rocm_gpu_executor",
+        ":rocm_helpers",
         ":rocm_platform_id",
         "//third_party/eigen3",
         "//tensorflow/compiler/xla/stream_executor",

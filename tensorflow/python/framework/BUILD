@@ -1799,7 +1799,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1849,7 +1848,7 @@ tf_py_test(
     srcs = ["importer_test.py"],
     main = "importer_test.py",
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [],
     deps = [
         ":for_generated_wrappers",
         ":framework",
@@ -2411,7 +2410,7 @@ tf_py_test(
     srcs = ["convert_to_constants_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_rocm"],
+    tags = [],
     deps = [
         ":convert_to_constants",
         ":test_lib",

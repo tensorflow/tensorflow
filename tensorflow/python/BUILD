@@ -1314,7 +1314,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",
         "no_windows",
         "nomac",
     ],
@@ -3676,9 +3675,7 @@ cuda_py_test(
     main = "ops/nn_fused_batchnorm_d9m_test.py",
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "no_rocm",
-    ],
+    tags = [],
     deps = [
         ":client_testlib",
         ":config",
