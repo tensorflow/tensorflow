@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/full_type.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/python/framework/cpp_shape_inference_go_proto";
+
+message CppShapeInferenceResult {
+  message HandleShapeAndType {
+    reserved 3;
+
+    TensorShapeProto shape = 1;
+    DataType dtype = 2;
+    FullTypeDef type = 4;
+  }
+  message HandleData {
+    bool is_set = 1;
+
+    // Only valid if <is_set>.
+    repeated HandleShapeAndType shape_and_type = 2;
+  }
+  TensorShapeProto shape = 1;
+
+  reserved 2;  // was handle_shape
+  reserved 3;  // was handle_dtype
+  HandleData handle_data = 4;
+}
+
+message CppShapeInferenceInputsNeeded {
+  repeated int32 input_tensors_needed = 1;
+  repeated int32 input_tensors_as_shapes_needed = 2;
+}

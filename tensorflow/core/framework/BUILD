@@ -30,7 +30,7 @@ package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
-        # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
+# TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
         "//tensorflow/tsl/lib:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
         # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
@@ -114,6 +114,7 @@ exports_files(
     srcs = [
         "allocation_description.proto",
         "api_def.proto",
+        "cpp_shape_inference.proto",
         "attr_value.proto",
         "cost_graph.proto",
         "dataset_metadata.proto",
@@ -1389,7 +1390,7 @@ cc_library(
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.
 
-# Generate the C++ sources for some of the protos.
+#Generate the C++ sources for some of the protos.
 tf_generate_proto_text_sources(
     name = "attr_value_proto_text",
     srcs = [
@@ -1691,6 +1692,18 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "cpp_shape_inference_proto",
+    srcs = ["cpp_shape_inference.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":full_type_proto",
+        ":tensor_shape_proto",
+        ":types_proto",
+    ],
+)
+
+tf_proto_library(
     name = "variable_proto",
     srcs = ["variable.proto"],
     cc_api_version = 2,
@@ -1757,7 +1770,7 @@ tf_proto_library(
 #         ":function_proto",
 #     ],
 # )
-# copybara:uncomment_end
+#copybara : uncomment_end
 
 tf_proto_library(
     name = "summary_proto",
@@ -1828,6 +1841,7 @@ tf_proto_library(
     protodeps = [
         ":allocation_description_proto",
         ":api_def_proto",
+        ":cpp_shape_inference_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
         ":dataset_proto",
