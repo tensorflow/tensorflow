@@ -53,9 +53,9 @@ bool ThreadPoolUseCallerThread() {
   return threadpool_use_caller_thread;
 }
 
-string FPMathModeSetting() {
-  static string math_mode_setting = [] {
-    string setting = "";
+std::string FPMathModeSetting() {
+  static std::string math_mode_setting = [] {
+    std::string setting = "";
     TF_CHECK_OK(ReadStringFromEnvVar("TF_SET_ONEDNN_FPMATH_MODE",
                                      /*default_value*/ "", &setting));
     return setting;
