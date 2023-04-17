@@ -480,6 +480,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // heap size is within the limits.
   Chunk FindChunkCandidate(const BufferInterval& buffer_interval,
                            int64_t preferred_offset = -1) const;
+  // FindChunkCandidates is the same as FindChunkCandidate, except it finds
+  // spatially contiguous chunks candidates for a sliced buffer interval.
+  // Returned chunk i will correspond to slice i, as described in
+  // SlicedBufferInterval::sorted_slices.
+  std::vector<Chunk> FindChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t preferred_offset = -1) const;
   void CommitChunk(const BufferInterval& buffer_interval, Chunk chunk);
 
   // Adds the buffer and the chunk to the result chunk map.
