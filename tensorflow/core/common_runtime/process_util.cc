@@ -154,12 +154,9 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
-    const SessionOptions& options, bool run_in_caller) {
-  // `run_in_caller` means the session is expected to run with single thread,
-  // but it will be dispatched to global thread pool if there're multiple
-  // executors. To keep consistent behavior, set thread number to 1 here.
+    const SessionOptions& options, int32_t expected) {
   const int32_t num_threads =
-      run_in_caller ? 1 : NumInterOpThreadsFromSessionOptions(options);
+      expected > 0 ? expected : NumInterOpThreadsFromSessionOptions(options);
   VLOG(1) << "Session inter op parallelism threads: " << num_threads;
   return new thread::ThreadPool(
       options.env, ThreadOptions(), "Compute", num_threads,

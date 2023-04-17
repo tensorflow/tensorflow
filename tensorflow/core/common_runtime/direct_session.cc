@@ -139,9 +139,9 @@ Status NewThreadPoolFromThreadPoolOptions(
 }
 
 thread::ThreadPool* GlobalThreadPool(const SessionOptions& options,
-                                     bool run_in_caller = false) {
+                                     int32_t expected) {
   static thread::ThreadPool* const thread_pool =
-      NewThreadPoolFromSessionOptions(options, run_in_caller);
+      NewThreadPoolFromSessionOptions(options, expected);
   return thread_pool;
 }
 
@@ -347,8 +347,9 @@ DirectSession::DirectSession(const SessionOptions& options,
          env_num_threads < 0)) {
       run_in_caller_thread_ = true;
     }
-    thread_pools_.emplace_back(GlobalThreadPool(options, run_in_caller_thread_),
-                               false /* owned */);
+    thread_pools_.emplace_back(
+        GlobalThreadPool(options, run_in_caller_thread_ ? 1 : 0),
+        false /* owned */);
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
