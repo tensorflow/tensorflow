@@ -30,6 +30,8 @@ auto* session_created = monitoring::Gauge<bool, 0>::New(
 
 }  // namespace
 
+void SetSessionCreatedMetric() { session_created->GetCell()->Set(true); }
+
 Session::Session() {}
 
 Session::~Session() {}
@@ -63,7 +65,7 @@ Session* NewSession(const SessionOptions& options) {
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
-  session_created->GetCell()->Set(true);
+  SetSessionCreatedMetric();
   Session* out_session;
   Status s = NewSession(options, &out_session);
   if (!s.ok()) {
@@ -84,7 +86,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
-  session_created->GetCell()->Set(true);
+  SetSessionCreatedMetric();
   s = factory->NewSession(options, out_session);
   if (!s.ok()) {
     *out_session = nullptr;
