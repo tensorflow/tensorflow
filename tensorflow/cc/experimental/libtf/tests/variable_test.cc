@@ -89,12 +89,7 @@ TEST_P(VariableTest, CreateAssignReadDestroy) {
     AbstractTensorHandle* var_ptr = nullptr;
     PartialTensorShape scalar_shape;
     TF_EXPECT_OK(
-<<<<<<< HEAD
-        PartialTensorShape::MakePartialShape<tensorflow::int32>(
-            {}, 0, &scalar_shape));
-=======
         PartialTensorShape::MakePartialShape<int32_t>({}, 0, &scalar_shape));
->>>>>>> upstream/master
     TF_EXPECT_OK(tensorflow::ops::VarHandleOp(ctx_.get(), &var_ptr, DT_FLOAT,
                                               scalar_shape));
     var.reset(var_ptr);

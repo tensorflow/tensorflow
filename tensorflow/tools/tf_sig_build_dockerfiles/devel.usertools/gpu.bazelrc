@@ -29,25 +29,14 @@ build --copt=-mavx --host_copt=-mavx
 build --profile=/tf/pkg/profile.json.gz
 
 # CUDA: Set up compilation CUDA version and paths
-<<<<<<< HEAD
 build:cuda --@local_config_cuda//:enable_cuda
 build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --action_env=TF_CUDA_VERSION="11"
 build:cuda --action_env=TF_CUDNN_VERSION="8"
 build:cuda --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
 build:cuda --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build:cuda --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
-build:cuda --crosstool_top="@sigbuild-r2.13-clang_config_cuda//crosstool:toolchain"
-=======
-build --@local_config_cuda//:enable_cuda
-build --repo_env TF_NEED_CUDA=1
-build --action_env=TF_CUDA_VERSION="11"
-build --action_env=TF_CUDNN_VERSION="8"
-build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
-build --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
+build:cuda --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib
 build --crosstool_top="@sigbuild-r2.13_config_cuda//crosstool:toolchain"
->>>>>>> upstream/master
 
 # CUDA: Enable TensorRT optimizations
 # https://developer.nvidia.com/tensorrt
