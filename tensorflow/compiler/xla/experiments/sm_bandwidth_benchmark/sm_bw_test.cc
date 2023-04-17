@@ -24,6 +24,8 @@ namespace experiments {
 namespace benchmark {
 namespace {
 
+constexpr int kSMNumber = 108;
+
 template <typename T>
 struct DeviceMemoryDeleter {
   void operator()(T* ptr) { cudaFree(ptr); }
@@ -78,12 +80,13 @@ bool CheckOutputAndClean(float* h_in, float* h_out, float* d_out, size_t size) {
 
 template <int chunks>
 float BenchmarkCustomDeviceCopy(int kReps, float* d_in, float* d_out,
-                                size_t size) {
+                                size_t size, int num_blocks = kSMNumber,
+                                int num_threads = 64) {
   Event start = MakeEvent();
   Event stop = MakeEvent();
   CHECK_CUDA(cudaEventRecord(start.get()));
   for (int i = 0; i < kReps; i++) {
-    BenchmarkDeviceCopy<chunks>(d_in, d_out, size, 108);
+    BenchmarkDeviceCopy<chunks>(d_in, d_out, size, num_blocks, num_threads);
   }
   CHECK_CUDA(cudaEventRecord(stop.get()));
   CHECK_CUDA(cudaEventSynchronize(stop.get()));
@@ -163,13 +166,16 @@ TEST(SMBandwidthTest, IncreasingNumBlocks) {
                         cudaMemcpyHostToDevice));
 
   constexpr int kReps = 10;
+  constexpr int num_threads = 64;
   LOG(ERROR) << "num_blocks,TB/s";
-  for (int64_t num_blocks = 108; num_blocks <= 108 * 32; num_blocks += 108) {
+  for (int64_t num_blocks = kSMNumber; num_blocks <= kSMNumber * 32;
+       num_blocks += kSMNumber) {
     Event start = MakeEvent();
     Event stop = MakeEvent();
     CHECK_CUDA(cudaEventRecord(start.get()));
     for (int i = 0; i < kReps; i++) {
-      BenchmarkDeviceCopy<1>(d_in.get(), d_out.get(), size, num_blocks);
+      BenchmarkDeviceCopy<1>(d_in.get(), d_out.get(), size, num_blocks,
+                             num_threads);
     }
     CHECK_CUDA(cudaEventRecord(stop.get()));
     CHECK_CUDA(cudaEventSynchronize(stop.get()));
@@ -231,6 +237,33 @@ struct IterateOverChunkSizeImpl {
 TEST(SMBandwidthTest, IterateOverChunkSize) {
   LOG(ERROR) << "chunks,TB/s";
   ForLoop<12>::iterate<IterateOverChunkSizeImpl>();
+}
+
+TEST(SMBandwidthTest, IncreaseThreadsNumber) {
+  constexpr size_t size = 1 << 28;
+  DeviceMemory<float> d_in = MakeDeviceMemory<float>(size);
+  DeviceMemory<float> d_out = MakeDeviceMemory<float>(size);
+
+  HostMemory<float> h_in = MakeHostMemory<float>(size);
+  HostMemory<float> h_out = MakeHostMemory<float>(size);
+
+  for (size_t i = 0; i < size; i++) {
+    h_in.get()[i] = i;
+  }
+  CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), size * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  constexpr int kReps = 10;
+  constexpr int num_threads = 256;
+  for (int num_blocks = 1; num_blocks <= kSMNumber; num_blocks++) {
+    float time_diff = BenchmarkCustomDeviceCopy<1 << 8>(
+        kReps, d_in.get(), d_out.get(), size, num_blocks, num_threads);
+    EXPECT_TRUE(
+        CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), size));
+    LOG(ERROR) << "num_blocks: " << num_blocks
+               << ", num_threads: " << num_threads
+               << ", TB/sec: " << TbPerSec(size, time_diff);
+  }
 }
 
 }  // namespace

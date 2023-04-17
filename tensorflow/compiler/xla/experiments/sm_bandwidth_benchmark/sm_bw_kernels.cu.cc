@@ -22,60 +22,59 @@ namespace experiments {
 namespace benchmark {
 template <int chunks>
 __global__ void BenchmarkDeviceCopyKernel(const float* __restrict__ in,
-                                          float* __restrict__ out, int64_t size,
-                                          int num_blocks) {
-  constexpr int num_thr = 64;
-  int64_t lines = size / (num_thr * chunks);
-  int64_t start_line = lines * blockIdx.x / num_blocks;
-  int64_t end_line = lines * (blockIdx.x + 1) / num_blocks;
-  int64_t start_offset = start_line * num_thr * chunks + threadIdx.x;
-  int64_t end_offset = end_line * num_thr * chunks;
+                                          float* __restrict__ out,
+                                          const int64_t size) {
+  const int64_t lines = size / (blockDim.x * chunks);
+  const int64_t start_line = lines * blockIdx.x / gridDim.x;
+  const int64_t end_line = lines * (blockIdx.x + 1) / gridDim.x;
+  const int64_t start_offset = start_line * blockDim.x * chunks + threadIdx.x;
+  const int64_t end_offset = end_line * blockDim.x * chunks;
   float buffer[chunks];
-  for (int64_t i = start_offset; i < end_offset; i += num_thr * chunks) {
+  for (int64_t i = start_offset; i < end_offset; i += blockDim.x * chunks) {
 #pragma unroll
     for (int j = 0; j < chunks; j++) {
-      buffer[j] = in[i + num_thr * j];
+      buffer[j] = in[i + blockDim.x * j];
     }
 #pragma unroll
     for (int j = 0; j < chunks; j++) {
-      out[i + num_thr * j] = buffer[j];
+      out[i + blockDim.x * j] = buffer[j];
     }
   }
 }
 
 template <int chunks>
-void BenchmarkDeviceCopy(float* in, float* out, int64_t size, int num_blocks) {
-  BenchmarkDeviceCopyKernel<chunks>
-      <<<num_blocks, 64>>>(in, out, size, num_blocks);
+void BenchmarkDeviceCopy(float* in, float* out, int64_t size, int num_blocks,
+                         int num_threads) {
+  BenchmarkDeviceCopyKernel<chunks><<<num_blocks, num_threads>>>(in, out, size);
   CHECK_CUDA(cudaGetLastError());
 }
 
 template void BenchmarkDeviceCopy<1>(float* in, float* out, int64_t size,
-                                     int num_blocks);
+                                     int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 1>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 2>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 3>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 4>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 5>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 6>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 7>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 8>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 9>(float* in, float* out, int64_t size,
-                                          int num_blocks);
+                                          int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 10>(float* in, float* out, int64_t size,
-                                           int num_blocks);
+                                           int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 11>(float* in, float* out, int64_t size,
-                                           int num_blocks);
+                                           int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 12>(float* in, float* out, int64_t size,
-                                           int num_blocks);
+                                           int num_blocks, int num_threads);
 }  // namespace benchmark
 }  // namespace experiments
 
