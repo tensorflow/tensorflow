@@ -72,12 +72,16 @@ StatusOr<std::string> AotCompileCpuExecutable(
   return result;
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 StatusOr<std::string> AotCompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     const gpu::GpuTargetConfig& gpu_target_config,
     const AutotuneResults& autotune_results = AutotuneResults()) {
+#if GOOGLE_CUDA  
   gpu::NVPTXCompiler nvptx_compiler;
+#else
+  gpu::AMDGPUCompiler nvptx_compiler;
+#endif
   Compiler::CompileOptions compile_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module_after_opt,
                       nvptx_compiler.RunHloPassesWithoutDevice(

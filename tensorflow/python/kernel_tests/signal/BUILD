@@ -129,7 +129,6 @@ cuda_py_test(
     srcs = ["spectral_ops_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",
     ],
     deps = [
@@ -155,7 +154,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "no_windows_gpu",
     ],
     deps = [

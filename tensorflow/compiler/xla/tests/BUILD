@@ -1227,7 +1227,6 @@ xla_test(
     backends = ["gpu"],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "nozapfhahn",
         "optonly",
     ],
@@ -1320,7 +1319,7 @@ xla_test(
         "interpreter",
     ],
     shard_count = 40,
-    tags = ["no_rocm"],
+    tags = [],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2911,8 +2910,7 @@ xla_test(
     srcs = ["cholesky_test.cc"],
     real_hardware_only = True,
     tags = [
-        "optonly",
-        "no_rocm", # broken since 220530 (SWDEV-342540)
+        "optonly"
     ],
     deps = [
         ":client_library_test_base",

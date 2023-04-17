@@ -264,7 +264,7 @@ tf_py_strict_test(
     name = "dispatch_test",
     srcs = ["dispatch_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [],
     deps = [
         ":deprecation",
         ":dispatch",
@@ -521,7 +521,7 @@ tf_py_strict_test(
     size = "small",
     srcs = ["traceback_utils_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [],
     deps = [
         ":traceback_utils",
         "//tensorflow/python:array_ops",

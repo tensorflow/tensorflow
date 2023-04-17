@@ -89,9 +89,7 @@ py_test(
     srcs = ["framework_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_rocm",
-    ],
+    tags = [],
     deps = [
         ":framework",
         "//tensorflow/core:protos_all_py",

@@ -364,7 +364,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "guitar",
         "multi_gpu",
-        "no_rocm", # flaky on CI as of 2022-05-30
+        "no_rocm" # fail on CI
     ],
     deps = [
         ":gpu_id",

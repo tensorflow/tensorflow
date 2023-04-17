@@ -1726,7 +1726,7 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
     const T* input, T* filter_backprop, TensorFormat data_format) {
   auto stream = ctx->op_device_context()->stream();
-
+#if GOOGLE_CUDA
   // It's simpler to catch this here than in
   // DepthwiseConv2dNativeBackpropFilterOp
   OP_REQUIRES(
@@ -1735,7 +1735,7 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
           "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
           " not available with this version of cuDNN. Please build with cuDNN"
           " version 7.6.3 or later."));
-
+#endif
   // Initialize the results to 0.
   int num_filter_backprop =
       args.filter_rows * args.filter_cols * args.out_depth;

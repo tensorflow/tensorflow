@@ -1070,7 +1070,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adam_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [],
     deps = [
         ":adam",
         "//tensorflow/python:array_ops",
