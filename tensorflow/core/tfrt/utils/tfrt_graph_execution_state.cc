@@ -65,7 +65,7 @@ absl::flat_hash_set<std::string> FindFunctionsToOptimize(
     const GraphDef& graph_def) {
   // TODO(b/203689805): Add more functional ops.
   static const auto* const kOpWhitelist = new absl::flat_hash_set<std::string>{
-      "PartitionedCall", "StatefulPartitionedCall"};
+      "PartitionedCall", "StatefulPartitionedCall", "BatchFunction"};
   absl::flat_hash_map<
       std::string /*function_name*/,
       absl::flat_hash_set<std::string> /*ops_using_the_function*/>
