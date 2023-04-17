@@ -77,7 +77,7 @@ def cuda_gpu_architectures():
     """Returns a list of supported GPU architectures."""
     return %{cuda_gpu_architectures}
 
-def if_cuda_is_configured(x):
+def if_cuda_is_configured(x, no_cuda = []):
     """Tests if the CUDA was enabled during the configure process.
 
     Unlike if_cuda(), this does not require that we are building with
@@ -85,7 +85,7 @@ def if_cuda_is_configured(x):
     """
     if %{cuda_is_configured}:
       return select({"//conditions:default": x})
-    return select({"//conditions:default": []})
+    return select({"//conditions:default": no_cuda})
 
 def cuda_header_library(
         name,
