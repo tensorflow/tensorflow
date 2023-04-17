@@ -951,7 +951,8 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
                                     const bool add_to_local_only,
                                     const StackTracesMap& stack_traces) {
-  auto fdefs_to_add = small_constants_optimizer::FoldInputTensors(fdef);
+  auto fdefs_to_add =
+      small_constants_optimizer::FoldInputTensors(fdef, func_lib_def_);
   for (const auto& fdef_to_add : fdefs_to_add) {
     TF_RETURN_IF_ERROR(
         AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));

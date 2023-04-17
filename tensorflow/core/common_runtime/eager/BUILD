@@ -457,6 +457,7 @@ cc_library(
     hdrs = ["small_constants_optimizer.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],

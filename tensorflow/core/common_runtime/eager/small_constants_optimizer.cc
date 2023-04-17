@@ -20,7 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -33,7 +35,7 @@ namespace {
 constexpr char kRuntimeConstantOptimization[] = "runtime_constant_optimization";
 
 FunctionDef FoldBoolInputTensor(const FunctionDef& fdef,
-                                const std::string& input_name,
+                                absl::string_view input_name,
                                 const bool input_value) {
   // TODO(b/272805674):
   // -  Inline the evaluated conditional expressions by promoting the
@@ -66,7 +68,7 @@ FunctionDef FoldBoolInputTensor(const FunctionDef& fdef,
 
   // Insert top level const tensor node.
   auto* const_tensor = result.add_node_def();
-  const_tensor->set_name(input_name);
+  const_tensor->set_name(std::string(input_name));
   const_tensor->set_op("Const");
   AttrValue dtype_value;
   dtype_value.set_type(DT_BOOL);
@@ -87,11 +89,42 @@ void DisableBoolInputFolding(FunctionDef& fdef) {
   it->second.set_b(false);
 }
 
+// Returns a list of input arguments that have dtype tf.bool in a FunctionDef.
+// NOTE: This function requires that the FunctionDef outlive the returned
+// result.
+std::vector<absl::string_view> GetBoolInputNames(const FunctionDef& fdef) {
+  std::vector<absl::string_view> result;
+  for (const auto& input_arg : fdef.signature().input_arg()) {
+    if (input_arg.type() == DT_BOOL) {
+      result.emplace_back(input_arg.name());
+    }
+  }
+  return result;
+}
+
+void GenerateTrueAndFalseFunctions(const FunctionDef& fdef,
+                                   std::vector<FunctionDef>& result) {
+  // Limit the folding to functions that have a single boolean tensor input to
+  // avoid exponential FunctionDef creation. We might consider easing this
+  // restriction later.
+  std::vector<absl::string_view> bool_input_names = GetBoolInputNames(fdef);
+  if (bool_input_names.size() != 1) return;
+  absl::string_view input_name_to_fold = bool_input_names[0];
+
+  // Add f_true.
+  auto true_fdef = FoldBoolInputTensor(fdef, input_name_to_fold, true);
+  DisableBoolInputFolding(true_fdef);
+  result.push_back(std::move(true_fdef));
+  // Add f_false.
+  auto false_fdef = FoldBoolInputTensor(fdef, input_name_to_fold, false);
+  DisableBoolInputFolding(false_fdef);
+  result.push_back(std::move(false_fdef));
+}
+
 }  // namespace
 
-std::string FoldedFunctionName(const std::string& fname,
-                               const std::string& input_name,
-                               bool input_value) {
+std::string FoldedFunctionName(absl::string_view fname,
+                               absl::string_view input_name, bool input_value) {
   return absl::StrCat(fname, "_", input_name, "_", input_value);
 }
 
@@ -101,31 +134,13 @@ bool IsSmallConstantOptimizationEnabled(const FunctionDef& fdef) {
   return it->second.b();
 }
 
-std::vector<FunctionDef> FoldInputTensors(const FunctionDef& fdef) {
+std::vector<FunctionDef> FoldInputTensors(
+    const FunctionDef& fdef, const FunctionLibraryDefinition& flib) {
   std::vector<FunctionDef> result;
   if (!IsSmallConstantOptimizationEnabled(fdef)) return result;
 
-  // Limit the folding to functions that have a single boolean tensor input to
-  // avoid exponential FunctionDef creation. We might consider easing this
-  // restriction later.
-  int32_t num_bool_args = 0;
-  const std::string* input_arg_to_fold = nullptr;
-  for (const auto& input_arg : fdef.signature().input_arg()) {
-    if (input_arg.type() == DT_BOOL) {
-      num_bool_args++;
-      input_arg_to_fold = &input_arg.name();
-    }
-  }
-  if (num_bool_args != 1) return result;
-
-  // Add f_true.
-  auto true_fdef = FoldBoolInputTensor(fdef, *input_arg_to_fold, true);
-  DisableBoolInputFolding(true_fdef);
-  result.push_back(std::move(true_fdef));
-  // Add f_false.
-  auto false_fdef = FoldBoolInputTensor(fdef, *input_arg_to_fold, false);
-  DisableBoolInputFolding(false_fdef);
-  result.push_back(std::move(false_fdef));
+  // Add f_true and f_false to the result.
+  GenerateTrueAndFalseFunctions(fdef, result);
 
   return result;
 }
