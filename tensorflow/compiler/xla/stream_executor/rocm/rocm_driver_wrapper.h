@@ -58,7 +58,7 @@ namespace wrap {
               .value(),                                                    \
           kName, &f);                                                      \
       CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in HIP DSO; dlerror: " << s.error_message();      \
+                    << " in HIP DSO; dlerror: " << s.message();            \
       return reinterpret_cast<FuncPtrT>(f);                                \
     }();                                                                   \
     return loaded(args...);                                                \

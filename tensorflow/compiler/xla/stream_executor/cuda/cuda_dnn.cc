@@ -7630,8 +7630,7 @@ void initialize_cudnn() {
           });
 
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuDNN factory: "
-               << status.error_message();
+    LOG(ERROR) << "Unable to register cuDNN factory: " << status.message();
   }
 
   PluginRegistry::Instance()->SetDefaultFactory(
