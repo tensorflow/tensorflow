@@ -540,7 +540,7 @@ void EagerContext::CloseRemoteContexts(
           if (!s.ok()) {
             LOG(ERROR) << "Unable to close remote context with ID "
                        << context_id << " for worker: " << worker << " due to "
-                       << s.error_message();
+                       << s.message();
           }
           counter.DecrementCount();
         });
@@ -844,7 +844,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
         [request, response](const Status& status) {
           if (!status.ok()) {
             LOG(ERROR) << "Failed to register function remotely due to "
-                       << status.error_message()
+                       << status.message()
                        << "\nThis could happen if the remote target has been "
                           "disconnected from the client.";
           }
@@ -881,7 +881,7 @@ Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
         [request, response](const Status& status) {
           if (!status.ok()) {
             LOG(ERROR) << "Failed to remove function remotely due to "
-                       << status.error_message()
+                       << status.message()
                        << "\nThis could happen if the remote target has been "
                           "disconnected from the client.";
           }
@@ -925,7 +925,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
           [request = requests[i], response](const Status& s) {
             if (!s.ok()) {
               LOG(ERROR) << "Failed to register function remotely due to "
-                         << s.error_message()
+                         << s.message()
                          << "\nThis could happen if the remote target has been "
                             "disconnected from the client.";
             }
