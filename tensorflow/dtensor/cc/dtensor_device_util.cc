@@ -112,7 +112,7 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
   if (!convert_status.ok() || t.dtype() != DataType::DT_RESOURCE) {
     TF_SetStatus(status, TF_INTERNAL,
                  absl::StrCat("TF_TensorToTensor() Conversion failed:",
-                              convert_status.error_message())
+                              convert_status.message())
                      .c_str());
     return nullptr;
   }
@@ -164,7 +164,7 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
         status, TF_INTERNAL,
         absl::StrCat("Error creating a TensorWithLayout from a resource tensor "
                      "during broadcasting with original error message:",
-                     result.status().error_message())
+                     result.status().message())
             .c_str());
     return nullptr;
   }
@@ -182,7 +182,7 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
           status, TF_INTERNAL,
           absl::StrCat(
               "Error updating shape and dtype of the resource tensor: ",
-              s.error_message())
+              s.message())
               .c_str());
       return nullptr;
     }
@@ -1054,10 +1054,10 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     const Status status = resource->UpdateAttrs(embedding_input_attrs);
     if (!status.ok()) {
       TF_SetStatus(s, static_cast<TF_Code>(status.code()),
-                   NullTerminatedMessage(status));
+                   tsl::NullTerminatedMessage(status));
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
-          status.error_message());
+          status.message());
     }
   }
   return table_id_node_map;
@@ -1096,7 +1096,7 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
   StatusOr<std::map<int64_t, std::vector<Node*>>> table_id_node_map =
       GetTPUEmbeddingInputNodes(status, *graph, inputs);
   if (!table_id_node_map.ok()) {
-    return errors::Internal(table_id_node_map.status().error_message());
+    return errors::Internal(table_id_node_map.status().message());
   }
 
   StatusOr<std::string> mesh_str = ValidateResourceMeshConsistency(inputs);
