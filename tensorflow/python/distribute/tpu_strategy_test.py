@@ -224,13 +224,14 @@ class TPUTest(test.TestCase):
     def foo():
       return 1 + 1
 
-    func1 = function.defun_with_attributes(
-        foo, attributes={"_XlaMustCompile": False})
+    func1 = function.defun_with_attributes(foo, jit_compile=False)
     func2 = function.defun_with_attributes(
-        foo, attributes={
+        foo,
+        jit_compile=False,
+        attributes={
             "_OutputsOnOpDevice": True,
-            "_XlaMustCompile": False
-        })
+        },
+    )
 
     with ops.device("/device:TPU:0"):
       ret1 = func1()

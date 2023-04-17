@@ -30,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import quarantine
+from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -60,6 +61,7 @@ from tensorflow.python.saved_model.save import save
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -189,19 +191,17 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertIs(ops.get_default_graph(), concrete.graph.outer_graph)
 
   def testGraphEagerIsolation(self):
-
-    @quarantine.defun_with_attributes
-    def f():
+    def f_py():
       self.v = variables.Variable(1.0)
       return self.v.read_value()
 
+    f = tracing_compiler.TracingCompiler(f_py, 'f')
     self.assertAllEqual(f(), 1.0)
 
     with ops.Graph().as_default():
       self.assertEqual(f().shape, ())
 
   def testDefunNumpyArraysConvertedToTensors(self):
-
     def f(x):
       self.assertIsInstance(x, ops.Tensor)
       return x
@@ -313,8 +313,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
-    @quarantine.defun_with_attributes
-    def test_function():
+    def test_function_py():
 
       def loop_test(_):
         return False
@@ -324,17 +323,20 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
       return while_loop.while_loop(loop_test, loop_body, [0.0])
 
+    test_function = tracing_compiler.TracingCompiler(
+        test_function_py, 'test_function'
+    )
+
     self.assertEqual(test_function().shape, [])
 
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):
-
     def variable_creator():
       self.v = variables.Variable(0.0)
       return self.v.read_value()
-
-    self.v = None
-    defined = quarantine.defun_with_attributes(variable_creator)
+    defined = tracing_compiler.TracingCompiler(
+        variable_creator, 'variable_creator'
+    )
     defined()  # Create the variable.
     self.assertIsInstance(self.v, resource_variable_ops.ResourceVariable)
 
@@ -377,12 +379,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         kernel_initializer=init_ops.ones_initializer(),
         bias_initializer=init_ops.zeros_initializer())
 
-    @quarantine.defun_with_attributes
     def model(x):
       return conv(x)
 
     x = array_ops.ones([1, 2, 2, 1])
-    y = model(x)
+    y = tracing_compiler.TracingCompiler(model, 'model')(x)
 
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
@@ -970,12 +971,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         ValueError,
         'TracingCompiler does not support `experimental_1` as an attribute.',
     ):
-      quarantine.defun_with_attributes(
-          add, attributes={'experimental_1': 'value1'}
+      tracing_compiler.TracingCompiler(
+          add, 'add', attributes={'experimental_1': 'value1'}
       )
 
   def testRegisterFunction(self):
-
     @quarantine.defun_with_attributes
     def add(x, y):
       return math_ops.add(x, y)

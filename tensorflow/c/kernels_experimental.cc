@@ -262,7 +262,7 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
   Status status =
       LookupResource(context, HandleFromInput(context, input_index), &variable);
   if (!status.ok()) {
-    printf("Failed with error: %s\n", status.error_message().c_str());
+    printf("Failed with error: %s\n", tsl::NullTerminatedMessage(status));
     abort();
   }
   const Tensor& value = context->input(value_index);

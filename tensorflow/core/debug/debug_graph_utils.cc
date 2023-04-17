@@ -188,7 +188,7 @@ Status DebugNodeInserter::InsertNodes(
         return Status(
             absl::StatusCode::kFailedPrecondition,
             strings::StrCat("Failed to create Copy/CopyHost node for tensor ",
-                            tensor_name, ", due to: ", copy_s.error_message()));
+                            tensor_name, ", due to: ", copy_s.message()));
       }
 
       // Add edge from watched tensor to the copy node.
@@ -216,7 +216,7 @@ Status DebugNodeInserter::InsertNodes(
                 absl::StatusCode::kFailedPrecondition,
                 strings::StrCat("Failed to create debug node ", debug_op_name,
                                 " for tensor ", tensor_name,
-                                ", due to: ", debug_s.error_message()));
+                                ", due to: ", debug_s.message()));
           }
         }
       }

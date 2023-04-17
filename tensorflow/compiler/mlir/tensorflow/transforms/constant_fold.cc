@@ -40,7 +40,7 @@ namespace TF {
 
 static bool IsOk(const tensorflow::Status& s) {
   if (s.ok()) return true;
-  VLOG(2) << s.error_message();
+  VLOG(2) << s.message();
   return false;
 }
 

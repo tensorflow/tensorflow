@@ -37,7 +37,10 @@ using ::tensorflow::tpu::ShardingAndIndex;
 using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
-    "/tensorflow/core/tf2xla/v0/bridge_phase_2_compilation_time";
+    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_time";
+
+static constexpr char kCompilationStatusStreamzName[] =
+    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_status";
 
 MlirToHloArgs CreateTestMlirToHloArgs() {
   static constexpr char kMlirModuleStr[] = R"(
@@ -90,6 +93,7 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForMlirFallback) {
 
 TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
   CellReader<Histogram> compilation_time(kCompilationTimeStreamzName);
+  CellReader<int64_t> compilation_status(kCompilationStatusStreamzName);
 
   FunctionDef empty_function =
       tensorflow::FunctionDefHelper::Create("empty", {}, {}, {}, {}, {});
@@ -114,6 +118,7 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
       compilation_time.Delta("graph_old_bridge_has_function_to_hlo");
 
   EXPECT_EQ(histogram.num(), 1);
+  EXPECT_EQ(compilation_status.Delta("kOldBridgeNoMlirSuccess"), 1);
 }
 
 }  // namespace

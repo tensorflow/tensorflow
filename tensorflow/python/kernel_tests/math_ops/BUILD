@@ -98,6 +98,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -111,6 +112,7 @@ cuda_py_test(
         "//tensorflow/python:bincount_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -201,7 +203,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -226,8 +227,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -252,8 +253,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -326,7 +327,6 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -382,6 +382,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

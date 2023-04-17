@@ -337,7 +337,7 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
   Status s = parallel_tensor->Shape(&shape);
   if (!s.ok()) {
     TF_SetStatus(status, static_cast<TF_Code>(s.code()),
-                 s.error_message().c_str());
+                 tsl::NullTerminatedMessage(s));
     return nullptr;
   }
   size_t num_dims = shape->size();
@@ -1054,7 +1054,7 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     const Status status = resource->UpdateAttrs(embedding_input_attrs);
     if (!status.ok()) {
       TF_SetStatus(s, static_cast<TF_Code>(status.code()),
-                   status.error_message().c_str());
+                   NullTerminatedMessage(status));
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
           status.error_message());

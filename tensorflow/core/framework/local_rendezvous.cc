@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/local_rendezvous.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 
@@ -188,6 +190,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
               activity_watcher::Activity::Attributes{
                   {"Rendezvous", absl::StrFormat("%p", this)},
                   {"key", std::string(key.FullKey())},
+                  {"key_hash", absl::StrCat(key_hash)},
               });
         },
         /*level=*/1);
@@ -339,7 +342,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
               activity_watcher::ActivityCategory::kRendezvous,
               activity_watcher::Activity::Attributes{
                   {"Rendezvous", absl::StrFormat("%p", this)},
-                  {"key", std::string(key.FullKey())}});
+                  {"key", std::string(key.FullKey())},
+                  {"key_hash", absl::StrCat(key_hash)},
+              });
         },
         /*level=*/1);
     auto rc_owner = GetOwnerRefCountPtr();
@@ -421,9 +426,17 @@ void LocalRendezvous::StartAbort(const Status& status) {
     for (auto& p : table) {
       Item* item = p.second.head;
       while (item != nullptr) {
-        if (item->type == Item::kRecv) {
-          (*item->recv_state.waiter)(status, Rendezvous::Args(),
-                                     Rendezvous::Args(), Tensor(), false);
+        switch (item->type) {
+          case Item::kRecv:
+            (*item->recv_state.waiter)(status, Rendezvous::Args(),
+                                       Rendezvous::Args(), Tensor(), false);
+            LOG(INFO) << "Local rendezvous recv item cancelled. Key hash: "
+                      << p.first;
+            break;
+          case Item::kSend:
+            LOG(INFO) << "Local rendezvous send item cancelled. Key hash: "
+                      << p.first;
+            break;
         }
         Item* to_delete = item;
         item = item->next;

@@ -45,8 +45,7 @@ static void RegisterGpuOpHandler(CoreRuntime* core_runtime,
           tf_device_id, &platform_device_id);
       if (!s.ok()) {
         LOG(ERROR) << "Failed to convert gpu device [" << device->name()
-                   << "] to platform device id due to error: "
-                   << s.error_message();
+                   << "] to platform device id due to error: " << s.message();
         continue;
       }
       auto gpu = tfrt::gpu::GetOrCreateGpuDevice(

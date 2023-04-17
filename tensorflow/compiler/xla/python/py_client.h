@@ -59,7 +59,8 @@ struct PyArray_Storage;
 
 // A pair of a PyClient reference and an unowned pointer to T.
 template <typename T>
-struct ClientAndPtr {
+class ClientAndPtr {
+ public:
   ClientAndPtr() = default;
   // pybind11 requires that we define a constructor that takes a raw pointer,
   // but it should be unreachable.
@@ -72,12 +73,22 @@ struct ClientAndPtr {
   ClientAndPtr& operator=(const ClientAndPtr&) = default;
   ClientAndPtr& operator=(ClientAndPtr&&) = default;
 
-  std::shared_ptr<PyClient> client;
-  T* contents;
+  PyClient* get_client() const { return client_; }
 
-  T* get() const { return contents; }
-  T* operator->() const { return contents; }
-  T& operator*() const { return *contents; }
+  std::shared_ptr<PyClient> client() const {
+    return std::shared_ptr<PyClient>(contents_, client_);
+  }
+
+  T* get() const { return contents_.get(); }
+  T* operator->() const { return contents_.get(); }
+  T& operator*() const { return *contents_; }
+
+ private:
+  template <typename U>
+  friend ClientAndPtr<U> WrapWithClient(std::shared_ptr<PyClient> client,
+                                        U* contents);
+  std::shared_ptr<T> contents_;
+  PyClient* client_;
 };
 
 // By defining a templated helper function, we can use return type deduction
@@ -85,8 +96,8 @@ struct ClientAndPtr {
 template <typename T>
 ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
   ClientAndPtr<T> result;
-  result.client = std::move(client);
-  result.contents = contents;
+  result.client_ = client.get();
+  result.contents_ = std::shared_ptr<T>(std::move(client), contents);
   return result;
 }
 

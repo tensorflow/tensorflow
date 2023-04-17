@@ -357,7 +357,7 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   // Registering the evaluator task is unexpected
   Status status = coord_service->RegisterTask(evaluator, /*incarnation=*/0);
   EXPECT_TRUE(errors::IsInvalidArgument(status)) << status;
-  EXPECT_TRUE(!status.error_message().empty());
+  EXPECT_TRUE(!status.message().empty());
 }
 
 // RegisterTask() may succeed in the service, but the agent response times out.
@@ -402,7 +402,7 @@ TEST(CoordinationServiceTest,
   const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/1);
 
   EXPECT_TRUE(errors::IsAborted(status)) << status;
-  EXPECT_TRUE(!status.error_message().empty());
+  EXPECT_TRUE(!status.message().empty());
 }
 
 TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
@@ -425,7 +425,7 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
   const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/0);
 
   EXPECT_TRUE(errors::IsAborted(status)) << status;
-  EXPECT_TRUE(!status.error_message().empty());
+  EXPECT_TRUE(!status.message().empty());
 }
 
 TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {

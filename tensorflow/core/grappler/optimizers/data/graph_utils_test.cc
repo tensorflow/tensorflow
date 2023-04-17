@@ -117,7 +117,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
   int64_t result;
   Status s = GetScalarConstNodeValue<int64_t>(*non_const, &result);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Node Placeholder is not a Const node. Op: Placeholder");
 }
 
@@ -128,7 +128,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithType) {
   bool result;
   Status s = GetScalarConstNodeValue<bool>(*int64_node, &result);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Node Const should have type bool but has type: int64");
 }
 
@@ -146,8 +146,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithVector) {
   int64_t result;
   Status s = GetScalarConstNodeValue<int64_t>(node, &result);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
-            "Node Const should be a scalar but has shape: [1]");
+  EXPECT_EQ(s.message(), "Node Const should be a scalar but has shape: [1]");
 }
 
 TEST(GraphUtilsTest, Compare) {

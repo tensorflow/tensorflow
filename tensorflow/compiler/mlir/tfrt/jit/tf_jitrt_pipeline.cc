@@ -98,7 +98,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // Transform TF operation to HLO.
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
+  pm.addPass(mlir::mhlo::createLegalizeTFPass());
 
   if (options.legalize_i1_tensors) {
     // Convert 'i1' tensors into 'i8' tensors.

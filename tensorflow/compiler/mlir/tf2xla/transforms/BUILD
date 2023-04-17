@@ -8,9 +8,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/compiler/mlir/tf2xla:tensorflow_mlir_tf2xla",
-    ],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 

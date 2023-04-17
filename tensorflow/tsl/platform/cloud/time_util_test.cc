@@ -30,7 +30,7 @@ TEST(TimeUtil, ParseRfc3339Time) {
 TEST(TimeUtil, ParseRfc3339Time_ParseError) {
   int64_t mtime_nsec;
   EXPECT_EQ("Unrecognized RFC 3339 time format: 2016-04-29",
-            ParseRfc3339Time("2016-04-29", &mtime_nsec).error_message());
+            ParseRfc3339Time("2016-04-29", &mtime_nsec).message());
 }
 
 }  // namespace tsl

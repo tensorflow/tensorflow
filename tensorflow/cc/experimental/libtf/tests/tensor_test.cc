@@ -43,7 +43,7 @@ class UnifiedCAPI
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = tensorflow::StatusFromTF_Status(status.get());
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
   }
 };
 
@@ -52,7 +52,7 @@ template <class T>
 TaggedValue MakeContext(T runtime) {
   AbstractContext* ctx_raw = nullptr;
   Status s = BuildImmediateExecutionContext(runtime, &ctx_raw);
-  // ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+  // ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.message();
   return TaggedValue::Capsule(static_cast<void*>(ctx_raw), [](void* p) {
     tensorflow::internal::AbstractContextDeleter()(
         static_cast<AbstractContext*>(p));
@@ -67,7 +67,7 @@ TEST_P(UnifiedCAPI, HoldTensors) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -76,7 +76,7 @@ TEST_P(UnifiedCAPI, HoldTensors) {
   {
     AbstractTensorHandle* x_raw = nullptr;
     Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
-    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.message();
     x.reset(x_raw, false);
   }
   // Manually copy pointer so we can later compare the reference count.

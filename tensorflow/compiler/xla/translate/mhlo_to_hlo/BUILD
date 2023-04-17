@@ -65,6 +65,7 @@ cc_library(
         ":location_exporter",
         ":type_to_shape",
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",

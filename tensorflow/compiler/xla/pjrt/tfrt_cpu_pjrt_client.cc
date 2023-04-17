@@ -125,20 +125,27 @@ static void EnqueueWorkWhenReady(
   });
 }
 
-TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
-    : id_(id),
-      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int id) : id_(id) {
   debug_string_ = absl::StrCat("TFRT_CPU_", id);
   to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
 }
 
-absl::string_view TfrtCpuDevice::device_kind() const {
+absl::string_view TfrtCpuDeviceDescription::device_kind() const {
   return kCpuPlatformName;
 }
 
-absl::string_view TfrtCpuDevice::DebugString() const { return debug_string_; }
+absl::string_view TfrtCpuDeviceDescription::DebugString() const {
+  return debug_string_;
+}
 
-absl::string_view TfrtCpuDevice::ToString() const { return to_string_; }
+absl::string_view TfrtCpuDeviceDescription::ToString() const {
+  return to_string_;
+}
+
+TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
+    : description_(id),
+      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+}
 
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);

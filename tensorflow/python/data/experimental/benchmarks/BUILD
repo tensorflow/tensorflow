@@ -55,12 +55,12 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )

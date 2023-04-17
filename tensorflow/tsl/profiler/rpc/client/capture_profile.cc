@@ -119,7 +119,7 @@ inline bool ShouldRetryTracing(Status status) {
          // removed" error message. This should not be treated as an
          // unrecoverable error.
          (status.code() == error::Code::UNKNOWN &&
-          status.error_message() == "Stream removed");
+          status.message() == "Stream removed");
 }
 
 Status Profile(const std::string& repository_root,

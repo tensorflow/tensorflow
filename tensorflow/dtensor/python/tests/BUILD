@@ -37,6 +37,7 @@ pytype_library(
     deps = [
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/dtensor/python:tpu_util",
@@ -86,10 +87,8 @@ dtensor_test(
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
         PATHWAYS,
-    ],
-    disable = [
         PATHWAYS_V3_DONUT_BACKEND,
-    ],  # FIXME(b/275600764): Reenable after flakiness is fixed.
+    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",

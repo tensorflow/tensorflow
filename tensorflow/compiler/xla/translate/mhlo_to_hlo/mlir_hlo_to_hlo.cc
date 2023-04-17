@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -289,47 +290,44 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return xla::ConvertReplicaGroups(groups).value();
 }
 
+static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {
+  if (shape.IsArray()) {
+    shape.mutable_layout()->clear_minor_to_major();
+    for (auto l : layout) {
+      shape.mutable_layout()->mutable_minor_to_major()->push_back(
+          l.getSExtValue());
+    }
+  } else if (shape.IsToken()) {
+    assert(layout.empty() && "Invalid layout for token type");
+  } else {
+    assert(!shape.IsTuple() &&
+           "Exporting layout for tuples is not implemented yet");
+    assert(false && "Exporting unknown type with layout");
+  }
+}
+
+static void SetLayout(xla::Shape& shape, mlir::ArrayAttr layouts) {
+  if (shape.IsTuple()) {
+    for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+      SetLayout(*shape.mutable_tuple_shapes(i),
+                layouts[i].cast<mlir::DenseIntElementsAttr>());
+    }
+  } else {
+    assert(layouts.size() == 1);
+    SetLayout(shape, layouts[0].cast<mlir::DenseIntElementsAttr>());
+  }
+}
+
 // Converts types and corresponding layouts into xla shapes with layouts.
 static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
     mlir::TypeRange value_types, mlir::ArrayAttr layouts) {
   std::vector<xla::Shape> shapes_with_layout;
-  for (auto type_and_layout : llvm::zip(value_types, layouts)) {
-    mlir::Type type = std::get<0>(type_and_layout);
-    mlir::Attribute layout = std::get<1>(type_and_layout);
-
-    if (type.isa<mlir::TensorType>()) {
-      shapes_with_layout.emplace_back(xla::TypeToShape(type));
-      auto& shape = shapes_with_layout.back();
-      shape.mutable_layout()->clear_minor_to_major();
-      for (auto l : layout.cast<mlir::DenseIntElementsAttr>()) {
-        shape.mutable_layout()->mutable_minor_to_major()->push_back(
-            l.getSExtValue());
-      }
-    } else if (type.isa<mlir::mhlo::TokenType>()) {
-      assert(mlir::cast<mlir::DenseElementsAttr>(layout).empty() &&
-             "Invalid layout for token type");
-      shapes_with_layout.emplace_back(xla::TypeToShape(type));
-    } else {
-      assert(!type.isa<mlir::TupleType>() &&
-             "Exporting layout for tuples is not implemented yet");
-      assert(false && "Exporting unknown type with layout");
-    }
+  for (auto [type, layout] : llvm::zip(value_types, layouts)) {
+    xla::Shape shape = xla::TypeToShape(type);
+    SetLayout(shape, layout.cast<mlir::DenseIntElementsAttr>());
+    shapes_with_layout.push_back(std::move(shape));
   }
   return shapes_with_layout;
-}
-
-// CustomCallOp result can be of tuple type to pack multiple results into one
-// value. If the custom call result is a tuple, then result layouts represent
-// the layout of each element of the tuple. Nested tuples are currently not
-// supported for export.
-static xla::Shape GetCustomCallResultShapeWithLayout(mlir::Type type,
-                                                     mlir::ArrayAttr layouts) {
-  auto tuple_type = type.dyn_cast<mlir::TupleType>();
-  if (!tuple_type) return ConvertTypesToShapesWithLayout({type}, layouts)[0];
-
-  std::vector<xla::Shape> shapes_with_layouts =
-      ConvertTypesToShapesWithLayout(tuple_type.getTypes(), layouts);
-  return xla::ShapeUtil::MakeTupleShape(shapes_with_layouts);
 }
 
 // Converts StringRef to xla Transpose enum.
@@ -1653,9 +1651,6 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
-  if (op.getNumResults() != 1)
-    return op.emitOpError() << "with multiple results cannot be exported";
-
   if (op.getCalledComputations().size() > 1)
     return op.emitOpError()
            << "cannot export with more than one called computations";
@@ -1668,7 +1663,6 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
                                "layouts are specified";
   }
 
-  Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.getInputs(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.getApiVersion());
@@ -1697,10 +1691,12 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   StatusOr<xla::Literal> literal;
+  const xla::Literal* literal_ptr = nullptr;
   auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kLiteralAttr);
   if (literal_attr) {
     literal = CreateArrayLiteralFromAttr(literal_attr, {});
     if (!literal.ok()) return failure();
+    literal_ptr = &*literal;
   }
 
   auto& value_map = *ctx.values;
@@ -1710,44 +1706,55 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
   if (!custom_call_schedule.ok()) return failure();
+
+  std::string call_target_name(op.getCallTargetName());
+  xla::Shape result_shape;
+  if (op->getNumResults() == 1) {
+    result_shape = xla::TypeToShape(op.getResult(0).getType());
+  } else {
+    std::vector<xla::Shape> subshapes;
+    for (const auto& item : op.getResults().getType()) {
+      subshapes.push_back(xla::TypeToShape(item));
+    }
+    result_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
+  }
+
+  xla::XlaOp custom_call;
   if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
     xla::XlaComputation& computation =
         ctx.converter->GetLoweredComputation(callee);
-    value_map[result] = xla::CustomCallWithComputation(
-        ctx.builder, std::string(op.getCallTargetName()), args, computation,
-        xla::TypeToShape(result.getType()), backend_config,
-        op.getHasSideEffect(), output_operand_aliasing,
-        /*literal=*/literal.ok() ? &*literal : nullptr,
-        /*schedule=*/*custom_call_schedule,
-        /*api_version=*/*xla_api_version);
-    return success();
-  }
-
-  if (op.getOperandLayouts() && op.getResultLayouts()) {
+    custom_call = xla::CustomCallWithComputation(
+        ctx.builder, call_target_name, args, computation, result_shape,
+        backend_config, op.getHasSideEffect(), output_operand_aliasing,
+        literal_ptr, *custom_call_schedule, *xla_api_version);
+  } else if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
         op.getOperandTypes(), op.getOperandLayouts().value());
-    xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-        result.getType(), op.getResultLayouts().value());
-    value_map[result] = xla::CustomCallWithLayout(
-        ctx.builder, std::string(op.getCallTargetName()), args,
-        result_shape_with_layout, operand_shapes_with_layout, backend_config,
-        op.getHasSideEffect(), output_operand_aliasing,
-        /*literal=*/literal.ok() ? &*literal : nullptr,
-        /*schedule=*/*custom_call_schedule,
-        /*api_version=*/*xla_api_version);
-    return success();
+    SetLayout(result_shape, op.getResultLayouts().value());
+
+    custom_call = xla::CustomCallWithLayout(
+        ctx.builder, call_target_name, args, result_shape,
+        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+        output_operand_aliasing, literal_ptr, *custom_call_schedule,
+        *xla_api_version);
+  } else {
+    custom_call = xla::CustomCall(
+        ctx.builder, call_target_name, args, result_shape, backend_config,
+        op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
+        *custom_call_schedule, *xla_api_version);
   }
 
-  value_map[result] =
-      xla::CustomCall(ctx.builder, std::string(op.getCallTargetName()), args,
-                      xla::TypeToShape(result.getType()), backend_config,
-                      op.getHasSideEffect(), output_operand_aliasing,
-                      /*literal=*/literal.ok() ? &*literal : nullptr,
-                      /*schedule=*/*custom_call_schedule,
-                      /*api_version=*/*xla_api_version);
+  if (op->getNumResults() == 1) {
+    value_map[op.getResult(0)] = custom_call;
+  } else {
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(custom_call, index);
+    }
+  }
+
   return success();
 }
 
@@ -2745,7 +2752,7 @@ LogicalResult ConvertToHloModule::Lower(
                 options_.layout_preference_fn, options_.shape_representation_fn,
                 ret_shardings[index], /*fast_mem=*/false);
         if (!reshape.ok())
-          return inst->emitError() << reshape.status().error_message();
+          return inst->emitError() << reshape.status().message();
 
         returns[index] = reshape.value();
       }
@@ -2923,7 +2930,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
                                       : XlaLayoutPreference::kNoPreference;
     if (!layout_preference_status.ok())
       return block->getParentOp()->emitError()
-             << layout_preference_status.status().error_message();
+             << layout_preference_status.status().message();
 
     auto arg_shape_status = options_.shape_representation_fn
                                 ? options_.shape_representation_fn(
@@ -2932,7 +2939,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
                                 : arg_shape;
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
-             << arg_shape_status.status().error_message();
+             << arg_shape_status.status().message();
 
     arg_shape = std::move(arg_shape_status.value());
 
@@ -2956,14 +2963,14 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
       auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
       if (!hlo_sharding.ok())
         return block->getParentOp()->emitError()
-               << hlo_sharding.status().error_message();
+               << hlo_sharding.status().message();
 
       auto status = RewriteLayoutWithShardedShape(
           hlo_sharding.value(), /*use_fast_memory=*/false,
           options_.layout_preference_fn, options_.shape_representation_fn,
           &(*arg_shapes)[arg_sharding.index()]);
       if (!status.ok())
-        return block->getParentOp()->emitError() << status.error_message();
+        return block->getParentOp()->emitError() << status.message();
 
       *sharding.add_tuple_shardings() = *arg_sharding.value();
     }
@@ -3096,8 +3103,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   auto computation_or =
       return_value.valid() ? builder->Build(return_value) : builder->Build();
   if (!computation_or.ok()) {
-    block->back().emitError(
-        llvm::Twine(computation_or.status().error_message()));
+    block->back().emitError(llvm::Twine(computation_or.status().message()));
     return failure();
   }
   *result = std::move(computation_or.value());

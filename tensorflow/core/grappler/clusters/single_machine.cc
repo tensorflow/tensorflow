@@ -98,8 +98,7 @@ Status SingleMachine::Provision() {
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         return errors::Unavailable("Unknown TF GPU device with id ",
-                                   tf_device_id.value(), ": ",
-                                   s.error_message());
+                                   tf_device_id.value(), ": ", s.message());
       }
       attr = GetLocalGPUInfo(platform_device_id);
     } else if (dev.device_type().find("XLA") == string::npos) {

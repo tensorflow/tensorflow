@@ -96,13 +96,13 @@ TEST(PjRtStreamExecutorClientTest, DonateSameBufferTwice) {
   status = ExecuteWithSameInputBuffer(
       [](XlaBuilder& builder) { builder.SetUpAlias({0}, 0, {}); });
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("f(donate(a), a)"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("f(donate(a), a)"));
 
   // f(a, donate(a))
   status = ExecuteWithSameInputBuffer(
       [](XlaBuilder& builder) { builder.SetUpAlias({0}, 1, {}); });
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("f(a, donate(a))"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("f(a, donate(a))"));
 
   // f(donate(a), donate(a))
   status = ExecuteWithSameInputBuffer([](XlaBuilder& builder) {
@@ -110,7 +110,7 @@ TEST(PjRtStreamExecutorClientTest, DonateSameBufferTwice) {
     builder.SetUpAlias({1}, 1, {});
   });
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("f(donate(a), donate(a))"));
 }
 

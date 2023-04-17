@@ -64,8 +64,6 @@ StatusOr<int64_t> GetFileIndex(const std::string& filename,
 
 }  // namespace
 
-constexpr int64_t SnapshotWriterParams::kDefaultMaxChunkSizeBytes;
-
 SnapshotStreamWriter::SnapshotStreamWriter(
     const SnapshotWriterParams& params, std::unique_ptr<TaskIterator> iterator)
     : params_(params), iterator_(std::move(iterator)) {
@@ -87,13 +85,6 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
-  if (IsStreamAssignmentChanged(status)) {
-    LOG(INFO) << "Stopped writing distributed tf.data snapshot stream due to a "
-                 "transient error: "
-              << params_.DebugString()
-              << ". It will be retried. Status: " << status;
-    return;
-  }
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {

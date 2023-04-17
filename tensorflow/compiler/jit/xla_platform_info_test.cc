@@ -127,8 +127,10 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerTpuDevice) {
   // XlaPlatformInfo::device_type() is needed to build the appropriate
   // XlaDeviceCompiler.
   Device* device = nullptr;
-  XlaPlatformInfo platform_info(DeviceType(DEVICE_TPU), nullptr, nullptr,
-                                nullptr);
+  XlaPlatformInfo platform_info(DeviceType(DEVICE_TPU), /*platform_id=*/nullptr,
+                                /*xla_device_metadata=*/nullptr,
+                                /*pjrt_device_metadata=*/nullptr,
+                                /*device_allocator=*/nullptr);
 
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, nullptr, platform_info,
@@ -158,7 +160,10 @@ TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTpuDevice) {
   // Instead of creating/initializing a TPU device, create a dummy platform_info
   // for testing purposes. Only XlaPlatformInfo::device_type() is needed to
   // build the appropriate PjRtDeviceCompiler.
-  XlaPlatformInfo platform_info(device_type, nullptr, nullptr, nullptr);
+  XlaPlatformInfo platform_info(device_type, /*platform_id=*/nullptr,
+                                /*xla_device_metadata=*/nullptr,
+                                /*pjrt_device_metadata=*/nullptr,
+                                /*device_allocator=*/nullptr);
 
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
   TF_EXPECT_OK(

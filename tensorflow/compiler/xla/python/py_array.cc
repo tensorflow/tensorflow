@@ -637,6 +637,11 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
                      "%zu and be nonzero",
                      dst_devices.size(), xs.size()));
   }
+  for (ClientAndPtr<PjRtDevice>& device : dst_devices) {
+    if (device.get_client() == nullptr) {
+      return InvalidArgument("Cannot copy to unattached devices.");
+    }
+  }
   auto transfer_guard_formatter = [&aval, &sharding] {
     return absl::StrCat(
         "aval=", py::cast<std::string>(py::repr(aval)),
@@ -670,7 +675,7 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
           jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
     }
     TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
-                        DevicePut(x, dst_devices[i].client->ifrt_client(),
+                        DevicePut(x, dst_devices[i].get_client()->ifrt_client(),
                                   dst_devices[i].get(), options));
     ifrt_arrays.push_back(std::move(on_device.ifrt_array));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
@@ -696,7 +701,7 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
           xla::ifrt::ArrayCopySemantics::kReuseInput));
 
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
-                 dst_devices[0].client, Traceback::Get(), ifrt_array,
+                 dst_devices[0].client(), Traceback::Get(), ifrt_array,
                  committed);
 }
 

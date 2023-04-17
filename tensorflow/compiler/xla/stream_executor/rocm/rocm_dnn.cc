@@ -223,31 +223,31 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                         \
-    static const char* kName;                                            \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
-    static void* GetDsoHandle() {                                        \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
-      return s.value();                                                  \
-    }                                                                    \
-    static FuncPtrT LoadOrDie() {                                        \
-      void* f;                                                           \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                         kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                        \
-                    << " in miopen DSO; dlerror: " << s.error_message(); \
-      return reinterpret_cast<FuncPtrT>(f);                              \
-    }                                                                    \
-    static FuncPtrT DynLoad() {                                          \
-      static FuncPtrT f = LoadOrDie();                                   \
-      return f;                                                          \
-    }                                                                    \
-    template <typename... Args>                                          \
-    miopenStatus_t operator()(Args... args) {                            \
-      return DynLoad()(args...);                                         \
-    }                                                                    \
-  } __name;                                                              \
+#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                        \
+  struct DynLoadShim__##__name {                                   \
+    static const char* kName;                                      \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;   \
+    static void* GetDsoHandle() {                                  \
+      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();    \
+      return s.value();                                            \
+    }                                                              \
+    static FuncPtrT LoadOrDie() {                                  \
+      void* f;                                                     \
+      auto s = tsl::Env::Default()                                 \
+          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);      \
+      CHECK(s.ok()) << "could not find " << kName                  \
+                    << " in miopen DSO; dlerror: " << s.message(); \
+      return reinterpret_cast<FuncPtrT>(f);                        \
+    }                                                              \
+    static FuncPtrT DynLoad() {                                    \
+      static FuncPtrT f = LoadOrDie();                             \
+      return f;                                                    \
+    }                                                              \
+    template <typename... Args>                                    \
+    miopenStatus_t operator()(Args... args) {                      \
+      return DynLoad()(args...);                                   \
+    }                                                              \
+  } __name;                                                        \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -2672,7 +2672,7 @@ tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
-          << scratch_or.status().error_message() << "\n"
+          << scratch_or.status().message() << "\n"
           << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
@@ -3108,7 +3108,7 @@ tsl::Status MIOpenSupport::DoPrepareForConvolution(
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
-          << allocated.status().error_message() << "\n"
+          << allocated.status().message() << "\n"
           << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
@@ -3694,7 +3694,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
     } else {
       LOG(FATAL)
           << "Failed to allocate scratch memory - "
-          << allocated.status().error_message() << "\n"
+          << allocated.status().message() << "\n"
           << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
@@ -5247,8 +5247,7 @@ void initialize_miopen() {
             });
 
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to register MIOpen factory: "
-                 << status.error_message();
+      LOG(ERROR) << "Unable to register MIOpen factory: " << status.message();
     }
 
     PluginRegistry::Instance()->SetDefaultFactory(

@@ -57,8 +57,8 @@ TEST_F(DeviceCompilerSerializeTest, PersistentCacheTest) {
   for (int b = 1; b < 4; ++b) {
     auto status = ExecuteWithBatch(graph, b);
     EXPECT_FALSE(status.ok());
-    EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                  "Serialized HLO does not match."));
+    EXPECT_TRUE(
+        absl::StrContains(status.message(), "Serialized HLO does not match."));
   }
 }
 

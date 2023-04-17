@@ -79,8 +79,8 @@ void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
                                  XlaCustomCallStatus* status) {
   auto s = PrepareAndCallInternal(result, arg_ptrs);
   if (!s.ok()) {
-    XlaCustomCallStatusSetFailure(status, s.error_message().c_str(),
-                                  s.error_message().length());
+    auto msg = s.message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return;
   }
 }

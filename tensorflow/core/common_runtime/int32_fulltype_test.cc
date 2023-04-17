@@ -269,7 +269,7 @@ TEST_F(Int32FulltypeTest, BadTensorFT) {
 
   const auto& status = Int32FulltypeAnnotate(&g);
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("which has 0 args instead of 1."));
 }
 
@@ -287,7 +287,7 @@ TEST_F(Int32FulltypeTest, BadFTWithoutProduct) {
 
   const auto& status = Int32FulltypeAnnotate(&g);
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("does not start with TFT_PRODUCT."));
 }
 
@@ -306,7 +306,7 @@ TEST_F(Int32FulltypeTest, BadProductFT) {
   const auto& status = Int32FulltypeAnnotate(&g);
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("has 0 outputs but output_types has 2 outputs."));
 }
 

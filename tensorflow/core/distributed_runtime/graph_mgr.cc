@@ -63,7 +63,7 @@ GraphMgr::GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr)
   Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
 }
 
@@ -381,7 +381,7 @@ Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
     // Failing to fetch the outputs should not be possible, so rewrite the error
     // status to an INTERNAL error.
     s = errors::Internal("Failed to fetch outputs for step ", step_id,
-                         ". (Original error message: ", s.error_message(), ")");
+                         ". (Original error message: ", s.message(), ")");
   }
   size_t output_size = 0;
   for (auto& p : *out) {

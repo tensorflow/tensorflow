@@ -151,7 +151,7 @@ func.func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  // expected-error @+1 {{expect operands are compatible with condition block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<3xf32>', 'tensor<3xf32>'}}
+  // expected-error @+1 {{expect operands to be compatible with condition block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<3xf32>', 'tensor<3xf32>'}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<3xf32>, %arg4: tensor<3xf32>):
     %2 = arith.constant dense<0> : tensor<i32>
@@ -174,7 +174,7 @@ func.func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  // expected-error @+1 {{expect operands are compatible with body block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<3xi32>', 'tensor<1xf32>', 'tensor<3xf32>'}}
+  // expected-error @+1 {{expect operands to be compatible with body block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<3xi32>', 'tensor<1xf32>', 'tensor<3xf32>'}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %2 = arith.constant dense<0> : tensor<i32>
@@ -197,7 +197,7 @@ func.func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  // expected-error @+1 {{expect operands are compatible with condition block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>'}}
+  // expected-error @+1 {{expect operands to be compatible with condition block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>'}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>):
     %2 = arith.constant dense<0> : tensor<i32>
@@ -220,7 +220,7 @@ func.func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  // expected-error @+1 {{expect operands are compatible with body block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<3xi32>', 'tensor<1xf32>'}}
+  // expected-error @+1 {{expect operands to be compatible with body block arguments but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<3xi32>', 'tensor<1xf32>'}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %2 = arith.constant dense<0> : tensor<i32>
@@ -303,7 +303,7 @@ func.func @while_with_body_return_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  // expected-error @+1 {{expect operands are compatible with body block return types but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<1xf32>'}}
+  // expected-error @+1 {{expect operands to be compatible with body block return types but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<1xf32>'}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %2 = arith.constant dense<0> : tensor<i32>
@@ -347,7 +347,7 @@ func.func @while_mismatch_operand_count_with_body_return(%arg0: tensor<3xf32>) -
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  // expected-error @+1 {{expect operands are compatible with body block return types but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>'}}
+  // expected-error @+1 {{expect operands to be compatible with body block return types but got 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' vs 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>'}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %2 = arith.constant dense<0> : tensor<i32>

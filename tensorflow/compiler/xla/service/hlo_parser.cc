@@ -909,7 +909,7 @@ bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects custom-call schedule but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -926,7 +926,7 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects custom-call API version but sees: %s, error: %s",
-                  val, status_or_result.status().error_message()));
+                  val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -1013,7 +1013,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
           alias_config.SetUpAlias(p.first, p.second.parameter_number,
                                   p.second.parameter_index, p.second.kind);
       if (!st.ok()) {
-        return TokenError(st.error_message());
+        return TokenError(st.message());
       }
     }
     module->input_output_alias_config() = alias_config;
@@ -1305,9 +1305,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         auto inferred = infer();
         if (!inferred.ok()) {
-          return TokenError(StrFormat(
-              "failed to infer shape for opcode: %s, error: %s",
-              HloOpcodeString(opcode), inferred.status().error_message()));
+          return TokenError(
+              StrFormat("failed to infer shape for opcode: %s, error: %s",
+                        HloOpcodeString(opcode), inferred.status().message()));
         }
         shape = std::move(inferred).value();
         return true;
@@ -5760,12 +5760,12 @@ bool HloParserImpl::ParseOpcode(
       if (!status_or_result.ok()) {
         return TokenError(
             StrFormat("expects async wrapped opcode but sees: %s, error: %s",
-                      val, status_or_result.status().error_message()));
+                      val, status_or_result.status().message()));
       }
       *async_wrapped_opcode = status_or_result.value();
     } else {
       return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
-                                  status_or_result.status().error_message()));
+                                  status_or_result.status().message()));
     }
   } else {
     *opcode = status_or_result.value();
@@ -5840,8 +5840,7 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
   auto status_or_result = StringToFusionKind(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects fusion kind but sees: %s, error: %s",
-                                val,
-                                status_or_result.status().error_message()));
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5858,7 +5857,7 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects random distribution but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5875,7 +5874,7 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects random algorithm but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5891,8 +5890,7 @@ bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
   auto status_or_result = StringToPrecision(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects precision but sees: %s, error: %s",
-                                val,
-                                status_or_result.status().error_message()));
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();

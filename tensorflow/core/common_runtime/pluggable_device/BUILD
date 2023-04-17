@@ -57,6 +57,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = 1,

@@ -61,23 +61,27 @@ class DistributedSaveTest(
     parameterized.TestCase,
 ):
 
-  # TODO(mpcallanan): Add test for multiple workers.
-
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3])))
-  def testSaveLoad(self, num_workers):
+          combinations.combine(num_workers=[1, 3], num_elements=[0, 10, 10000]),
+      )
+  )
+  def testSaveLoad(self, num_workers, num_elements):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
-    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset_ops.Dataset.range(num_elements)
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()))
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    ignore_order = num_workers > 1
+
+    multiple_workers = num_workers > 1
+    multiple_chunks = num_elements > 10
+    ignore_order = multiple_workers or multiple_chunks
     self.assertDatasetProduces(
-        dataset, list(range(10)), assert_items_equal=ignore_order)
+        dataset, list(range(num_elements)), assert_items_equal=ignore_order
+    )
 
   @combinations.generate(
       combinations.times(
@@ -153,13 +157,20 @@ class DistributedSaveTest(
         dataset, list(range(10)) * 3, assert_items_equal=True
     )
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testDistributedLoad(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3]),
+      )
+  )
+  def testDistributedLoad(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     dataset = dataset_ops.Dataset.range(10)
-    self.evaluate(distributed_save_op.distributed_save(
-        dataset, self._test_dir, cluster.dispatcher_address()
-    ))
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, self._test_dir, cluster.dispatcher_address()
+        )
+    )
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
@@ -169,7 +180,22 @@ class DistributedSaveTest(
             cluster.dispatcher_address(),
         )
     )
-    self.assertDatasetProduces(dataset, list(range(10)))
+    ignore_order = num_workers > 0
+    self.assertDatasetProduces(
+        dataset, list(range(10)) * num_workers, assert_items_equal=ignore_order)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDuplicateSnapshot(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "already started or completed"):
+      self.evaluate(
+          distributed_save_op.distributed_save(
+              dataset, self._test_dir, cluster.dispatcher_address()))
+      self.evaluate(
+          distributed_save_op.distributed_save(
+              dataset, self._test_dir, cluster.dispatcher_address()))
 
   @combinations.generate(test_base.default_test_combinations())
   def testWorkerFailure(self):

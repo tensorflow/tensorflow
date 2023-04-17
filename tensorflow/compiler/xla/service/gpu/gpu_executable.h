@@ -220,6 +220,11 @@ class GpuExecutable : public Executable {
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
 
+  // Allocate the temp buffers and store them with the GpuExecutable. This
+  // function only allocates buffers on the first run for each executor.
+  Status PopulatePersistentTempBuffers(se::StreamExecutor* executor)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(persistent_temp_buffers_mu_);
+
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
@@ -228,7 +233,9 @@ class GpuExecutable : public Executable {
   StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal);
+      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      const BufferAllocToDeviceMemoryMap&
+          buffer_alloc_to_persistent_memory_map);
 
   StatusOr<se::DeviceMemoryBase> BufferForAllocation(
       VariantArguments arguments,
@@ -275,6 +282,17 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::vector<BufferAllocation> allocations_;
+
+  // TODO(anlunx): Make this a configurable flag.
+  bool enable_persistent_temp_buffers_ = false;
+
+  absl::Mutex persistent_temp_buffers_mu_;
+  // Temp buffers can be allocated once and be reused whenever the GpuExecutable
+  // is executed. The persistent temp buffer is stored in a map that maps from
+  // a BufferAllocation to the temp buffer.
+  absl::flat_hash_map<stream_executor::StreamExecutor*,
+                      BufferAllocToDeviceMemoryMap>
+      persistent_temp_buffers_ ABSL_GUARDED_BY(persistent_temp_buffers_mu_);
 
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
   std::function<std::string()> verbose_buffer_assignment_string_dumper_;

@@ -45,9 +45,10 @@ void EnableDetailedLogging(PassManager *pm,
   pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
       [module_name](const std::string &pass_tag_name) {
-        return GET_DUMP_FILENAME(module_name.str(), pass_tag_name);
+        return DEBUG_DATA_DUMPER()->GetDumpFilename(
+            module_name.str(), kDebugGroupBridgePhase1, pass_tag_name);
       },
-      "bridge_phase_1_",
+      "",
       /*print_module_scope=*/true));
   pm->enableTiming();
 }
@@ -95,23 +96,29 @@ tensorflow::Status RunTFXLABridge(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
-  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name.str())) {
+  if (enable_logging || VLOG_IS_ON(1) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "tf_xla_bridge_before"), module,
-        llvm::StringRef(), &bridge);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "tf_xla_bridge_before"),
+        module, llvm::StringRef(), &bridge);
   }
 
-  if (enable_logging || VLOG_IS_ON(2) || SHOULD_DUMP(module_name.str())) {
+  if (enable_logging || VLOG_IS_ON(2) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(),
+                                      kDebugGroupBridgePhase1)) {
     EnableDetailedLogging(&bridge, module_name);
   }
 
   LogicalResult result = bridge.run(module);
   (void)result;
 
-  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name.str())) {
+  if (enable_logging || VLOG_IS_ON(1) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "tf_xla_bridge_after"), module,
-        llvm::StringRef(), &bridge);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "tf_xla_bridge_after"),
+        module, llvm::StringRef(), &bridge);
   }
 
   return diag_handler.ConsumeStatus();

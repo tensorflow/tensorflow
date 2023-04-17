@@ -19,6 +19,9 @@ load(
     "tf_exec_properties",
 )
 
+def register_extension_info(**kwargs):
+    pass
+
 def xla_py_proto_library(**kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
     _ignore = kwargs
@@ -108,3 +111,8 @@ def xla_cc_test(
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
+
+register_extension_info(
+    extension = xla_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)

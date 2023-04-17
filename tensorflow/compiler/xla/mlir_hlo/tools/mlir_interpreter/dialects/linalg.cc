@@ -70,13 +70,15 @@ llvm::SmallVector<InterpreterValue> generic(
     InterpreterState& state, linalg::GenericOp generic,
     MutableArrayRef<InterpreterValue> inputs,
     MutableArrayRef<InterpreterValue> outputsRef) {
-  auto ranges = generic.getStaticLoopRanges();
-  for (auto range : ranges) {
-    (void)range;
-    // TODO(jreiffers): Support this.
-    assert(!mlir::ShapedType::isDynamic(range) &&
-           "Dynamic ranges not supported yet.");
+  SmallVector<int64_t> shapes;
+  for (auto& value : llvm::concat<InterpreterValue>(inputs, outputsRef)) {
+    if (value.isTensor() /* (or memref) */) {
+      llvm::append_range(
+          shapes, ArrayRef<int64_t>(value.view().sizes)
+                      .drop_back(value.view().numVectorDims.value_or(0)));
+    }
   }
+  auto ranges = generic.getShapesToLoopsMap().compose(shapes);
 
   llvm::SmallVector<InterpreterValue> outputs;
   for (int64_t output = 0; output < outputsRef.size(); ++output) {
@@ -154,27 +156,35 @@ llvm::SmallVector<InterpreterValue> map(InterpreterState& state,
 
 llvm::SmallVector<InterpreterValue> reduce(InterpreterState& state,
                                            linalg::ReduceOp reduce,
-                                           const InterpreterValue& in,
-                                           const InterpreterValue& init) {
-  // TODO(jreiffers): Support variadic reduce.
+                                           ArrayRef<InterpreterValue> ins,
+                                           ArrayRef<InterpreterValue> inits) {
   auto dims = reduce.getDimensions();
-  InterpreterValue output =
-      reduce.getInits()[0].getType().isa<TensorType>() ? init.clone() : init;
-  for (const auto& index : in.view().indices()) {
+  SmallVector<InterpreterValue> output;
+  for (auto [ty, init] : llvm::zip(reduce.getInits().getTypes(), inits)) {
+    output.push_back(ty.isa<TensorType>() ? init.clone() : init);
+  }
+  for (const auto& index : ins[0].view().indices()) {
     auto dstIndex = index;
     for (int64_t dim : llvm::reverse(dims)) {
       dstIndex.erase(dstIndex.begin() + dim);
     }
 
-    auto newValue =
-        interpret(state, reduce.getRegion(),
-                  {in.extractElement(index), output.extractElement(dstIndex)});
+    SmallVector<InterpreterValue> args;
+    for (auto& in : ins) {
+      args.push_back(in.extractElement(index));
+    }
+    for (auto& out : output) {
+      args.push_back(out.extractElement(dstIndex));
+    }
+    auto newValues = interpret(state, reduce.getRegion(), args);
     if (state.hasFailure()) return {};
 
-    output.insertElement(dstIndex, newValue.front());
+    for (auto [out, value] : llvm::zip(output, newValues)) {
+      out.insertElement(dstIndex, value);
+    }
   }
   if (reduce->getNumResults() == 0) return {};
-  return {output};
+  return output;
 }
 
 llvm::SmallVector<InterpreterValue> fill(InterpreterState&, linalg::FillOp op,
@@ -237,9 +247,55 @@ SmallVector<InterpreterValue> transpose(InterpreterState&,
   return {};
 }
 
-REGISTER_MLIR_INTERPRETER_OP("linalg.matmul", "mhlo.dot");
+SmallVector<InterpreterValue> dot(InterpreterState&, linalg::DotOp op,
+                                  ArrayRef<InterpreterValue> inputs,
+                                  InterpreterValue acc) {
+  const auto& lhs = inputs[0];
+  const auto& rhs = inputs[1];
+  if (op.getOutputs()[0].getType().isa<TensorType>()) {
+    acc = acc.clone();
+  }
+  dispatchScalarType(op.getOutputs()[0].getType(), [&](auto dummy) {
+    using TT = TensorOrMemref<decltype(dummy)>;
+    auto lhsTensor = std::get<TT>(lhs.storage);
+    auto rhsTensor = std::get<TT>(rhs.storage);
+    auto resultTensor = std::get<TT>(acc.storage);
+    for (int64_t k = 0; k < lhsTensor.view.sizes[0]; ++k) {
+      resultTensor.at({}) += lhsTensor.at(k) * rhsTensor.at(k);
+    }
+  });
+
+  if (op.getNumResults() == 0) return {};
+  return {acc};
+}
+
+SmallVector<InterpreterValue> vecmat(InterpreterState&, linalg::VecmatOp op,
+                                     ArrayRef<InterpreterValue> inputs,
+                                     InterpreterValue acc) {
+  const auto& lhs = inputs[0];
+  const auto& rhs = inputs[1];
+  if (op.getOutputs()[0].getType().isa<TensorType>()) {
+    acc = acc.clone();
+  }
+  dispatchScalarType(op.getOutputs()[0].getType(), [&](auto dummy) {
+    using TT = TensorOrMemref<decltype(dummy)>;
+    auto lhsTensor = std::get<TT>(lhs.storage);
+    auto rhsTensor = std::get<TT>(rhs.storage);
+    auto resultTensor = std::get<TT>(acc.storage);
+    for (int64_t j = 0; j < resultTensor.view.sizes[0]; ++j) {
+      for (int64_t k = 0; k < lhsTensor.view.sizes[0]; ++k) {
+        resultTensor.at(j) += lhsTensor.at(k) * rhsTensor.at({k, j});
+      }
+    }
+  });
+
+  if (op.getNumResults() == 0) return {};
+  return {acc};
+}
+
 REGISTER_MLIR_INTERPRETER_OP("linalg.yield", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP(broadcast);
+REGISTER_MLIR_INTERPRETER_OP(dot);
 REGISTER_MLIR_INTERPRETER_OP(fill);
 REGISTER_MLIR_INTERPRETER_OP(generic);
 REGISTER_MLIR_INTERPRETER_OP(index);
@@ -247,6 +303,7 @@ REGISTER_MLIR_INTERPRETER_OP(map);
 REGISTER_MLIR_INTERPRETER_OP(matmul);
 REGISTER_MLIR_INTERPRETER_OP(reduce);
 REGISTER_MLIR_INTERPRETER_OP(transpose);
+REGISTER_MLIR_INTERPRETER_OP(vecmat);
 
 }  // namespace
 }  // namespace interpreter

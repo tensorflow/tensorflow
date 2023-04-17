@@ -171,11 +171,14 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
   // where the pass is enabled will only be logged during their execution to
   // prevent them from being counted twice.
   if (device_set && !has_tpu_device && !EnableNonTpuBridge(graph)) {
-    metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-        /*device type*/ "cpu/gpu",
-        /*bridge version*/ "tfxla",
-        /*fallback_enabled*/ false,
-        /*result*/ "invalid_graph");
+    // Only record CPU/GPU graphs that are qualified but filtered out
+    if (HasQualifiedNonTPUOp(graph)) {
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          /*device type*/ "cpu/gpu",
+          /*bridge version*/ "tfxla",
+          /*fallback_enabled*/ false,
+          /*result*/ "invalid_graph");
+    }
     return MlirOptimizationPassState::Disabled;
   }
 

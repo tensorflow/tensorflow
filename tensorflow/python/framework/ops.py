@@ -1096,6 +1096,11 @@ class _EagerTensorBase(Tensor, internal.NativeObject, core_tf_types.Value):
 
     return np.array(a, dtype=dtype)
 
+  def __hash__(self) -> int:
+    # EagerTensors are never hashable.
+    raise TypeError("Tensor is unhashable. "
+                    "Instead, use tensor.ref() as the key.")
+
   def _numpy_internal(self):
     raise NotImplementedError()
 

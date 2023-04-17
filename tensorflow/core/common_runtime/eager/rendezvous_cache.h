@@ -79,6 +79,12 @@ class RendezvousCache {
 
   // Removes a Rendezvous weak reference from table.
   void Remove(int64_t step_id) {
+    tsl::mutex_lock l(table_lock_);
+    table_.erase(step_id);
+  }
+
+  // Removes a Rendezvous weak reference from table, and abort the rendezvous.
+  void RemoveAndAbort(int64_t step_id) {
     tsl::core::RefCountPtr<T> rendez = nullptr;
     {
       tsl::mutex_lock l(table_lock_);

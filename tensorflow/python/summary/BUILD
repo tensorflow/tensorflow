@@ -25,7 +25,6 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:lib",
         "//tensorflow/python:logging_ops_gen",
-        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:summary_op_util",
         "//tensorflow/python:summary_ops_gen",
@@ -38,7 +37,8 @@ py_library(
         "//tensorflow/python/summary/writer",
         "//tensorflow/python/summary/writer:writer_cache",
         "//tensorflow/python/training:training_util",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -130,6 +130,8 @@ tf_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",

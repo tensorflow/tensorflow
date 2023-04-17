@@ -129,7 +129,7 @@ static Expected<tfrt::RCReference<tfrt::Device>> GetDeviceFromFallbackTensor(
   const char* tf_device_name =
       result_tensor.GetTensorHandle()->DeviceName(&status);
   if (!status.ok()) {
-    return tfrt::MakeStringError(status.error_message());
+    return tfrt::MakeStringError(status.message());
   }
 
   // TODO(b/165872892): Unify device name for tests.
@@ -310,8 +310,8 @@ llvm::Error RuntimeFallbackOpHandler::Initialize() {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status status = InjectTfGpuResources();
   if (!status.ok()) {
-    return tfrt::MakeStringError(tfrt::StrCat("error injecting GPU resources: ",
-                                              status.error_message()));
+    return tfrt::MakeStringError(
+        tfrt::StrCat("error injecting GPU resources: ", status.message()));
   }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

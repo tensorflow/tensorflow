@@ -234,7 +234,7 @@ LogicalResult SetMetadataProtoArgs(
     if (!status.ok())
       return op.emitOpError(
           llvm::formatv("failed to determine operand type at index {0}: {1}",
-                        index, status.error_message()));
+                        index, status.message()));
 
     arg->set_dtype(dtype);
     // TODO(lyandy): Support other arg kinds.
@@ -805,7 +805,7 @@ LogicalResult Rewrite(
   if (!status_or_device_coodinates.ok())
     return cluster_func.emitError()
            << "error in fetching tpu device coordinates: "
-           << status_or_device_coodinates.status().error_message();
+           << status_or_device_coodinates.status().message();
 
   // Determine compilation and execution devices.
   auto status_or_tpu_device_assignment =
@@ -815,7 +815,7 @@ LogicalResult Rewrite(
   if (!status_or_tpu_device_assignment.ok())
     return cluster_func.emitError()
            << "error in fetching TPU compilation/execution devices: "
-           << status_or_tpu_device_assignment.status().error_message();
+           << status_or_tpu_device_assignment.status().message();
 
   // Create compile op.
   auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
@@ -835,7 +835,7 @@ LogicalResult Rewrite(
   // TODO(b/157054714): When a better abstraction instead of _TPUCompileMlirOp
   // and _XlaRecvAtHostOp and _XlaSendFromHostOp are used, update to a more
   // structured lowering.
-  old_parallel_execute.walk(
+  old_parallel_execute->getParentOp()->walk(
       [&](TF::_TPUCompileMlirPlaceholderProgramKeyOp key_op) {
         key_op.replaceAllUsesWith(compile_op->getResult(1));
         key_op.erase();

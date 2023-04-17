@@ -884,7 +884,7 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
     const auto& result = (*results)[i];
     TF_Status s;
     TF_SetStatus(&s, static_cast<TF_Code>(result.error_code()),
-                 result.error_message().data());
+                 std::string(result.error_message()).data());
     if (TF_GetCode(&s) != TF_Code::TF_OK) {
       tensorflow::CoordinationServiceError error;
       *error.mutable_source_task() = result.error_payload().source_task();

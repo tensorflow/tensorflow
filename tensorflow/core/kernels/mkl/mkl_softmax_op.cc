@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -254,6 +254,7 @@ class MklSoftmaxOp : public OpKernel {
       fwdParams.aarch64_counter =
           MklSoftmaxPrimitiveFactory<T>::IncrementCounter();
 #endif
+      MklDnnThreadPool eigen_tp(context);
       MklSoftmaxPrimitive<T>* softmax_fwd =
           MklSoftmaxPrimitiveFactory<T>::Get(fwdParams);
 
@@ -263,7 +264,7 @@ class MklSoftmaxOp : public OpKernel {
       const T* src_data = src_tensor.flat<T>().data();
       T* dst_data = reinterpret_cast<T*>(output_tensor->flat<T>().data());
       std::shared_ptr<stream> fwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       fwd_cpu_stream.reset(CreateStream(&eigen_tp, softmax_fwd->GetEngine()));
       softmax_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
     } catch (dnnl::error& e) {
@@ -291,4 +292,4 @@ TF_CALL_bfloat16(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
