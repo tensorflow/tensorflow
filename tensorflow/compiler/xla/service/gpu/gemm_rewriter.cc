@@ -1193,8 +1193,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // cuBLASLt does not support F32 vector biases on F8 matmuls. To enable
     // epilogue fusion, the bias has to be converted to BF16 first.
-    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+        bias->shape().element_type() == F32) {
       HloInstruction *bias_f16_maybe;
+
       auto is_bias_dtype_compatible = [](const PrimitiveType btype,
                                          const PrimitiveType dtype) {
         if (btype == BF16) {
@@ -1206,8 +1208,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
       };
 
-      if (bias->shape().element_type() == F32 &&
-          Match(bias,
+      if (Match(bias,
                 m::Convert(m::Op(&bias_f16_maybe)).WithElementType(F32)) &&
           is_bias_dtype_compatible(bias_f16_maybe->shape().element_type(),
                                    gemm->shape().element_type())) {
