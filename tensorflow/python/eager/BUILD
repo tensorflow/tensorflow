@@ -156,6 +156,7 @@ py_library(
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -447,6 +448,7 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
