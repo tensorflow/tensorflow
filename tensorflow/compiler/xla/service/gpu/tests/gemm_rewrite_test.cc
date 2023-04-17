@@ -5138,10 +5138,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
                             R"(
-
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f32[16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
-; CHECK-NEXT:    [[VB:%[^ ]+]] = f32[16]{0} parameter(2)
-; CHECK-NEXT:    [[VBC:%[^ ]+]] = bf16[16]{0} convert([[VB]])
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5150,6 +5147,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[VB:%[^ ]+]] = f32[16]{0} parameter(2)
+; CHECK-NEXT:    [[VBC:%[^ ]+]] = bf16[16]{0} convert([[VB]])
 ; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[P2]], [[P3]], /*index=5*/[[C]], [[C]], [[VBC]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
