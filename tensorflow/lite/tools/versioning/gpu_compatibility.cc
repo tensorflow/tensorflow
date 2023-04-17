@@ -440,6 +440,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       const TfLiteAddParams* tf_options;
       return RetrieveBuiltinData(op_sig, &tf_options);
     }
+    case kTfLiteBuiltinAddN: {
+      return op_sig.inputs.size() == 2
+                 ? absl::OkStatus()
+                 : absl::UnimplementedError("ADD_N only supports 2 inputs.");
+    }
 
     case kTfLiteBuiltinAveragePool2d:
       return CheckPooling2DGpuDelegateCompatibility(op_sig);
