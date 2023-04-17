@@ -23,7 +23,6 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_run
@@ -828,7 +827,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # collective ops are to be launched sequentially.
       return super()._replica_ctx_all_reduce(reduce_op, value, options)
 
-    replica_context = distribution_strategy_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     assert replica_context, (
         "`StrategyExtended._replica_ctx_all_reduce` must be called in a "
         "replica context")
@@ -842,7 +841,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if self._use_merge_call():
       return super()._replica_ctx_update(var, fn, args, kwargs, group)
 
-    replica_context = distribution_strategy_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     assert replica_context
     replica_id = values_util.get_current_replica_id_as_int()
     name = "update_%d" % replica_id

@@ -18,7 +18,7 @@ from collections import abc
 import contextlib
 import threading
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.reduce_util import ReduceOp
@@ -47,7 +47,7 @@ def get_loss_reduction():
     `tf.distribute.ReduceOp` corresponding to the last loss reduction for
     estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
   """
-  if not distribution_strategy_context.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
+  if not distribute_lib.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
     # If we are not in Estimator context then return 'SUM'. We do not need to
     # scale loss in the optimizer.
     return ReduceOp.SUM

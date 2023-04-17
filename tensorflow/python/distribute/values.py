@@ -21,7 +21,6 @@ import weakref
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values_util
@@ -52,7 +51,7 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
   if var.aggregation == vs.VariableAggregation.NONE:
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
 
-  if not ds_context.get_strategy().extended._use_merge_call():  # pylint: disable=protected-access
+  if not distribute_lib.get_strategy().extended._use_merge_call():  # pylint: disable=protected-access
     # Don't allow MEAN with non float dtype, since it may cause unexpected
     # precision loss. Python3 and NumPy automatically upcast integers to
     # float in division, but we should always preserve the type.
@@ -68,7 +67,7 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
         value, var.aggregation, var)
     values_util.mark_as_unsaveable()
 
-    return ds_context.get_replica_context()._update(  # pylint: disable=protected-access
+    return distribute_lib.get_replica_context()._update(  # pylint: disable=protected-access
         var,
         update_fn,
         args=(aggregated_value,),
@@ -98,7 +97,7 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
       v = values_util.apply_aggregation(strategy, value, var.aggregation, var)
       return var._update_cross_replica(update_fn, v, **kwargs)  # pylint: disable=protected-access
 
-    return ds_context.get_replica_context().merge_call(
+    return distribute_lib.get_replica_context().merge_call(
         merge_fn, args=(value,), kwargs=kwargs)
 
 
@@ -118,11 +117,12 @@ def apply_aggregation_replica_context(value, aggregation, destinations):
           strategy.experimental_local_results(value)[0],
           destinations=destinations)
 
-    return ds_context.get_replica_context().merge_call(merge_fn, args=(value,))
+    return distribute_lib.get_replica_context().merge_call(
+        merge_fn, args=(value,))
 
   else:
     reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
-    aggregated_value = ds_context.get_strategy(  # pylint: disable=protected-access
+    aggregated_value = distribute_lib.get_strategy(  # pylint: disable=protected-access
     ).extended._replica_ctx_all_reduce(reduce_op, value)
     return aggregated_value
 
@@ -373,7 +373,8 @@ def _per_replica_to_tensor(var, dtype=None, name=None, as_ref=False):
   if as_ref:
     raise NotImplementedError(
         "PerReplica doesn't support being used as a reference.")
-  if ds_context.in_cross_replica_context() or not ds_context.has_strategy():
+  if (distribute_lib.in_cross_replica_context() or
+      not distribute_lib.has_strategy()):
     raise ValueError("It looks like you are using a PerReplica object while "
                      "not inside a replica context, which is not supported. "
                      "Try running your op or function inside a replica context "
@@ -406,7 +407,7 @@ class PerReplicaSpec(type_spec.TypeSpec):
     return self._value_specs
 
   def _to_components(self, value):
-    replica_context = ds_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     if replica_context is not None and replica_context.num_replicas_in_sync > 1:
       raise ValueError(
           "Flattening a PerReplica to components is not supported in replica "
@@ -575,7 +576,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     Raises:
       RuntimeError: If trying to deepcopy into a different strategy.
     """
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       new_values = []
 
       for value in self._values:
@@ -746,7 +747,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # We want cross-replica code that does some var.op.X calls
     # to work (even if the current device isn't in self._devices), but
     # other uses of var.op in a cross-replica context to fail.
-    if ds_context.in_cross_replica_context():
+    if distribute_lib.in_cross_replica_context():
       return DistributedVarOp(self._primary.op.name, self._primary.op.graph,
                               self._primary.op.traceback, self._primary.op.type)
     return self._get().op
@@ -791,7 +792,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   def read_value(self):
     if values_util.is_saving_non_distributed():
       return self._primary.read_value()
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       return array_ops.identity(self._get())
 
   def value(self):
@@ -1010,8 +1011,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     """
     if values_util.is_saving_non_distributed():
       return update_fn(self._primary, value, **kwargs)
-    with ds_context.enter_or_assert_strategy(self.distribute_strategy):
-      if ds_context.in_cross_replica_context():
+    with distribute_lib.enter_or_assert_strategy(self.distribute_strategy):
+      if distribute_lib.in_cross_replica_context():
         update_replica_id = distribute_lib.get_update_replica_id()
         if update_replica_id is not None:
           replica_value = self._get_replica(update_replica_id)
@@ -1030,7 +1031,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     if values_util.is_saving_non_distributed():
       return ops.convert_to_tensor(
           self._primary, dtype=dtype, name=name, as_ref=as_ref)
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
@@ -1268,7 +1269,7 @@ class SyncOnReadVariable(DistributedVariable):
     If called under default replica-context or cross-replica context, returns
     the synced value.
     """
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       return super(SyncOnReadVariable, self)._get()
 
   # TODO(b/154017756): Make assign behaivor in cross replica context consistent
@@ -1276,8 +1277,8 @@ class SyncOnReadVariable(DistributedVariable):
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():
       return self._primary.assign_sub(value, use_locking, name, read_value)
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         values_util.mark_as_unsaveable()
         return values_util.on_read_assign_sub_cross_replica(
@@ -1289,8 +1290,8 @@ class SyncOnReadVariable(DistributedVariable):
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():
       return self._primary.assign_add(value, use_locking, name, read_value)
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         values_util.mark_as_unsaveable()
         return values_util.on_read_assign_add_cross_replica(
@@ -1302,8 +1303,8 @@ class SyncOnReadVariable(DistributedVariable):
   def assign(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():
       return self._primary.assign(value, use_locking, name, read_value)
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         values_util.mark_as_unsaveable()
         return values_util.on_read_assign_cross_replica(
@@ -1352,14 +1353,14 @@ class SyncOnReadVariable(DistributedVariable):
     self._scatter_not_implemented("scatter_update")
 
   def value(self):
-    if ds_context.in_variable_sync_on_read_context():
+    if distribute_lib.in_variable_sync_on_read_context():
       raise NotImplementedError(
           "call `variable.value()` inside variable_sync_on_read_context is not "
           "supported")
     if values_util.is_saving_non_distributed():
       return self._primary.value()
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
           return self._get_replica(0).value()
@@ -1369,7 +1370,7 @@ class SyncOnReadVariable(DistributedVariable):
         return self._get_on_device_or_primary().value()
 
   def read_value(self):
-    if ds_context.in_variable_sync_on_read_context():
+    if distribute_lib.in_variable_sync_on_read_context():
       raise NotImplementedError(
           "call `variable.read_value()` inside variable_sync_on_read_context is"
           " not supported")
@@ -1382,7 +1383,7 @@ class SyncOnReadVariable(DistributedVariable):
       return self._get_replica(0)
     if self._aggregation == vs.VariableAggregation.SUM:
       values_util.mark_as_unsaveable()
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       return self._distribute_strategy.reduce(
           reduce_util.ReduceOp.from_variable_aggregation(self._aggregation),
           self,
@@ -1392,8 +1393,8 @@ class SyncOnReadVariable(DistributedVariable):
     if values_util.is_saving_non_distributed():
       return self._primary._as_graph_element()  # pylint: disable=protected-access
     # pylint: disable=protected-access
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context():
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
+      if distribute_lib.in_cross_replica_context():
         return ops.convert_to_tensor(self._get_cross_replica())
     return self._get()._as_graph_element()
 
@@ -1417,10 +1418,10 @@ class SyncOnReadVariable(DistributedVariable):
     if values_util.is_saving_non_distributed():
       return ops.convert_to_tensor(
           self._primary, dtype=dtype, name=name, as_ref=as_ref)
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      replica_context = ds_context.get_replica_context()
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
+      replica_context = distribute_lib.get_replica_context()
       if (replica_context is not None and
-          ds_context.in_variable_sync_on_read_context()):
+          distribute_lib.in_variable_sync_on_read_context()):
         if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
           return ops.convert_to_tensor(
               self._get_replica(0), dtype=dtype, name=name, as_ref=as_ref)
@@ -1528,8 +1529,8 @@ class OnReadPolicy(VariablePolicy):
     return False
 
   def value(self, var):
-    with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
           return var._get_replica(0).value()  # pylint: disable=protected-access
@@ -1538,8 +1539,8 @@ class OnReadPolicy(VariablePolicy):
         return var._get_on_device_or_primary().value()  # pylint: disable=protected-access
 
   def _as_graph_element(self, var):
-    with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if ds_context.in_cross_replica_context():
+    with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+      if distribute_lib.in_cross_replica_context():
         return ops.convert_to_tensor(var._get_cross_replica())  # pylint: disable=protected-access
     return var._get()._as_graph_element()  # pylint: disable=protected-access
 
@@ -1548,7 +1549,7 @@ class OnReadPolicy(VariablePolicy):
       return var._get_replica(0)  # pylint: disable=protected-access
     if self._aggregation == vs.VariableAggregation.SUM:
       values_util.mark_as_unsaveable()
-    with ds_context.enter_or_assert_strategy(var.distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
       return var.distribute_strategy.reduce(
           reduce_util.ReduceOp.from_variable_aggregation(self._aggregation),
           var,
@@ -1568,8 +1569,8 @@ class OnReadPolicy(VariablePolicy):
                  name=None,
                  read_value=True):
     """Subtracts a value from this variable."""
-    with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         values_util.mark_as_unsaveable()
         return values_util.on_read_assign_sub_cross_replica(
@@ -1589,8 +1590,8 @@ class OnReadPolicy(VariablePolicy):
                  name=None,
                  read_value=True):
     """Adds a value to this variable."""
-    with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         values_util.mark_as_unsaveable()
         return values_util.on_read_assign_add_cross_replica(
@@ -1604,8 +1605,8 @@ class OnReadPolicy(VariablePolicy):
             read_value=read_value)
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
-    with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if (ds_context.in_cross_replica_context() and
+    with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+      if (distribute_lib.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         values_util.mark_as_unsaveable()
         return values_util.on_read_assign_cross_replica(

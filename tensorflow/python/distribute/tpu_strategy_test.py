@@ -20,7 +20,6 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -777,7 +776,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         return w
 
       def all_reduce(x):
-        ctx = distribution_strategy_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         return ctx.all_reduce("SUM", w) + x
 
       outputs = strategy.run(computation, args=(next(iterator),))
