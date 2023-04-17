@@ -21,7 +21,6 @@ def repo(name):
             "//third_party/llvm:build.patch",
             "//third_party/llvm:mathextras.patch",
             "//third_party/llvm:remove_loopinfo.patch",
-            "//third_party/llvm:temporary.patch",
             "//third_party/llvm:zstd.patch",
         ],
         link_files = {"//third_party/llvm:run_lit.sh": "mlir/run_lit.sh"},
