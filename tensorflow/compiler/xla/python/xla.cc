@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/profiler.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
+#include "tensorflow/compiler/xla/python/py_compile_only_client.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
@@ -447,7 +448,7 @@ PYBIND11_MODULE(xla_extension, m) {
   // GetCApiTopology does not depend on TPU.
   m.def("get_default_c_api_topology",
         [](std::string platform_name)
-            -> std::unique_ptr<PjRtTopologyDescription> {
+            -> std::shared_ptr<PjRtTopologyDescription> {
           return xla::ValueOrThrow(GetCApiTopology(platform_name));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
@@ -804,7 +805,13 @@ PYBIND11_MODULE(xla_extension, m) {
         "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
         "representation");
 
-  py::class_<PjRtTopologyDescription>(m, "DeviceTopology")
+  RegisterCompileOnlyClient(m);
+  py::class_<PjRtTopologyDescription, std::shared_ptr<PjRtTopologyDescription>>(
+      m, "DeviceTopology")
+      .def("_make_compile_only_devices",
+           [](std::shared_ptr<PjRtTopologyDescription> topology) {
+             return MakeCompileOnlyClient(topology)->Devices();
+           })
       .def_property_readonly("platform",
                              [](PjRtTopologyDescription& topology) {
                                return topology.platform_name();
@@ -815,33 +822,17 @@ PYBIND11_MODULE(xla_extension, m) {
                              });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
-      .def("hlo_modules", &PjRtExecutable::GetHloModules)
+      .def("hlo_modules",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetHloModules))
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
-      .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
-      .def("compile_options", &PjRtExecutable::GetCompileOptions)
+      .def("get_compiled_memory_stats",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
+      .def("compile_options",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompileOptions))
       .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
         return ValueOrThrow(exec.SerializeExecutable());
       });
-
-  m.def(
-      "compile",
-      [](const PjRtTopologyDescription& topology, std::string mlir_module,
-         CompileOptions options) -> std::shared_ptr<PjRtExecutable> {
-        std::unique_ptr<PjRtExecutable> executable;
-        std::optional<std::string> fingerprint;
-        {
-          py::gil_scoped_release gil_release;
-          mlir::MLIRContext context;
-          mlir::OwningOpRef<mlir::ModuleOp> module =
-              xla::ValueOrThrow(ParseMlirModuleString(mlir_module, context));
-          executable = xla::ValueOrThrow(
-              PjRtCompile(std::move(options), module.get(), topology));
-        }
-        return std::shared_ptr<PjRtExecutable>(std::move(executable));
-      },
-      py::arg("topology"), py::arg("computation"),
-      py::arg("compile_options") = CompileOptions());
 
   m.def("is_asan", IsAsan);
   m.def("is_msan", IsMsan);

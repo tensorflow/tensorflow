@@ -540,8 +540,8 @@ class Executable:
 class DeviceTopology:
   platform: str
   platform_version: str
+  def _make_compile_only_devices(self) -> List[Device]: ...
 
-def compile(topology: DeviceTopology, mlir_module: str) -> Executable: ...
 
 def buffer_to_dlpack_managed_tensor(
     buffer: ArrayImpl,
