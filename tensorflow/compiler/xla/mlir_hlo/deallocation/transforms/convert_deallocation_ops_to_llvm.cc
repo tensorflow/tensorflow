@@ -26,6 +26,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/FunctionCallUtils.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
@@ -91,6 +93,67 @@ struct FreeOpLowering : public ConvertOpToLLVMPattern<FreeOp> {
   }
 };
 
+struct RetainOpLowering : public ConvertOpToLLVMPattern<RetainOp> {
+  using ConvertOpToLLVMPattern<RetainOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      RetainOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto loc = op.getLoc();
+    auto ptrTy = LLVM::LLVMPointerType::get(op.getContext());
+    rewriter.setInsertionPoint(op);
+    auto alloca = rewriter.create<memref::AllocaScopeOp>(
+        loc, SmallVector<Type>(op->getNumResults(), ptrTy));
+    auto& body = alloca.getBodyRegion().emplaceBlock();
+    rewriter.setInsertionPoint(&body, body.begin());
+
+    auto i64Ty = rewriter.getI64Type();
+    auto ptrPtrTy = getTypeConverter()->getPointerType(ptrTy);
+    auto getBuffers = [&](ValueRange values) {
+      auto ret = rewriter.create<LLVM::AllocaOp>(
+          loc, ptrPtrTy, ptrTy,
+          createIndexConstant(rewriter, loc,
+                              values.size() *
+                                  getTypeConverter()->getPointerBitwidth() /
+                                  CHAR_BIT));
+      for (auto [index, value] : llvm::enumerate(values)) {
+        auto ptr = rewriter.create<LLVM::GEPOp>(
+            loc, ptrPtrTy, ptrTy, ret,
+            createIndexConstant(rewriter, loc, index));
+        rewriter.create<LLVM::StoreOp>(loc, value, ptr);
+      }
+      return ret;
+    };
+
+    Value numAllocs = createIndexConstant(rewriter, loc, op.getAllocs().size());
+    Value allocBuffers = getBuffers(adaptor.getAllocs());
+    Value numRetained =
+        createIndexConstant(rewriter, loc, op.getRetained().size());
+    Value retainedBuffers = getBuffers(adaptor.getRetained());
+
+    auto retainFn =
+        LLVM::lookupOrCreateFn(op->getParentOfType<ModuleOp>(), "retainBuffers",
+                               {i64Ty, ptrPtrTy, i64Ty, ptrPtrTy},
+                               LLVM::LLVMVoidType::get(op->getContext()));
+    rewriter.create<LLVM::CallOp>(
+        loc, retainFn,
+        ValueRange{numAllocs, allocBuffers, numRetained, retainedBuffers});
+
+    SmallVector<Value> results;
+    for (auto index : llvm::seq<size_t>(0, op.getRetained().size())) {
+      auto ptr = rewriter.create<LLVM::GEPOp>(
+          loc, ptrPtrTy, ptrTy, retainedBuffers,
+          createIndexConstant(rewriter, loc, index));
+      results.push_back(rewriter.create<LLVM::LoadOp>(loc, ptrTy, ptr));
+    }
+    rewriter.create<memref::AllocaScopeReturnOp>(loc, results);
+    llvm::errs() << "\n\n" << alloca << "\n";
+
+    rewriter.replaceOp(op, alloca->getResults());
+    return success();
+  }
+};
+
 #define GEN_PASS_DEF_CONVERTDEALLOCATIONOPSTOLLVMPASS
 #include "deallocation/transforms/passes.h.inc"
 
@@ -112,6 +175,8 @@ struct ConvertDeallocationOpsToLLVMPass
 
     LLVMConversionTarget target(getContext());
     target.addLegalOp<func::FuncOp>();
+    target.addLegalOp<memref::AllocaScopeOp, memref::AllocaScopeReturnOp>();
+    target.addIllegalOp<OwnOp, FreeOp, GetBufferOp, NullOp, RetainOp>();
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
@@ -125,9 +190,8 @@ void populateDeallocationToLLVMConversionPatterns(LLVMTypeConverter& converter,
   converter.addConversion([&](OwnershipIndicatorType) {
     return LLVM::LLVMPointerType::get(&converter.getContext());
   });
-  patterns
-      .add<OwnOpLowering, FreeOpLowering, GetBufferOpLowering, NullOpLowering>(
-          converter);
+  patterns.add<OwnOpLowering, FreeOpLowering, GetBufferOpLowering,
+               NullOpLowering, RetainOpLowering>(converter);
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
