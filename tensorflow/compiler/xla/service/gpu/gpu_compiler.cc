@@ -488,8 +488,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
 
-    pipeline.AddPass<LogisticExpander>(
-        /*expansion_type=*/LogisticExpansionType::kExp);
+    pipeline.AddPass<LogisticExpander>();
     pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicDimensionSimplifier>();
 

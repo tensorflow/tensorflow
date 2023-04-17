@@ -663,8 +663,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*rewrite_training_op=*/true,
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
-  pipeline.AddPass<LogisticExpander>(
-      /*expansion_type=*/LogisticExpansionType::kExp);
+  pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
   auto dynamic_padder_options = DynamicPadderOptions();
