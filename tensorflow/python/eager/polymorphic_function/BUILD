@@ -71,7 +71,6 @@ py_library(
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types",
-        "//tensorflow/python/util",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",

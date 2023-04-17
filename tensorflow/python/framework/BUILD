@@ -324,7 +324,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/lib/core:_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
-        "//tensorflow/python/util",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         "//tensorflow/python/util:_pywrap_nest",
@@ -332,6 +331,8 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ] + if_xla_available([
@@ -1277,7 +1278,6 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/util",
         "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
@@ -1671,6 +1671,7 @@ py_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:traceback_utils",
+        "//tensorflow/python/util/protobuf",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2537,7 +2538,7 @@ pyx_library(
     name = "fast_tensor_util",
     srcs = ["fast_tensor_util.pyx"],
     cc_deps = ["//third_party/py/numpy:headers"],
-    py_deps = ["//tensorflow/python:util"],
+    py_deps = ["//tensorflow/python/util:compat"],
 )
 
 py_test(

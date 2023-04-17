@@ -413,7 +413,6 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
