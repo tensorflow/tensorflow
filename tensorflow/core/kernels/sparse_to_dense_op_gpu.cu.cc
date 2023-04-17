@@ -245,7 +245,6 @@ void LaunchSparseToDense<T, Index>::operator()(
   template struct functor::LaunchSparseToDense<T, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
-TF_CALL_bfloat16(DEFINE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC);
 DEFINE_GPU_SPEC(bool);
 

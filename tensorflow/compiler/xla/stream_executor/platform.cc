@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 
@@ -92,14 +92,14 @@ bool Platform::Initialized() const { return true; }
 tsl::Status Platform::Initialize(
     const std::map<std::string, std::string> &platform_options) {
   if (!platform_options.empty()) {
-    return tsl::Status(port::error::UNIMPLEMENTED,
+    return tsl::Status(absl::StatusCode::kUnimplemented,
                        "this platform does not support custom initialization");
   }
   return ::tsl::OkStatus();
 }
 
 tsl::Status Platform::ForceExecutorShutdown() {
-  return tsl::Status(port::error::UNIMPLEMENTED,
+  return tsl::Status(absl::StatusCode::kUnimplemented,
                      "executor shutdown is not supported on this platform");
 }
 

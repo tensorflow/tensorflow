@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 #include <string>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
@@ -193,7 +195,7 @@ DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
 
 // Wrapper that allows passing std::function across C API.
 struct HostCallbackContext {
-  std::function<tsl::Status()> callback;
+  absl::AnyInvocable<tsl::Status() &&> callback;
 };
 
 // This wrapper allows calling `HostCallbackContext::callback` across C API.
@@ -201,8 +203,8 @@ struct HostCallbackContext {
 // `callback_fn` to `host_callback` in `SP_StreamExecutor`.
 void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   HostCallbackContext* host_ctx = static_cast<HostCallbackContext*>(ctx);
-  tsl::Status s = host_ctx->callback();
-  Set_TF_Status_from_Status(status, s);
+  tsl::Status s = std::move(host_ctx->callback)();
+  tsl::Set_TF_Status_from_Status(status, s);
   delete host_ctx;
 }
 
@@ -235,7 +237,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     tsl::Status status = ValidateSPDeviceMemoryBase(mem);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
     }
     return DeviceMemoryBaseFromC(mem);
   }
@@ -282,7 +284,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     }
     tsl::Status status = ValidateSPAllocatorStats(c_stats);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
       return absl::nullopt;
     }
     ::stream_executor::AllocatorStats stats;
@@ -314,12 +316,12 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                  uint64 size) override {
     // TODO(annarev): figure out if we should support memzero/memset
     // functionality by allocating on host and then copying to device.
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "SynchronousMemZero is not supported by pluggable device.");
   }
   tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
                                 uint64 size) override {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "SynchronousMemSet is not supported by pluggable device.");
   }
   tsl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
@@ -423,10 +425,10 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return true;
   }
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override {
+                    absl::AnyInvocable<tsl::Status() &&> callback) override {
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
-    HostCallbackContext* ctx = new HostCallbackContext{callback};
+    HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
     return stream_executor_->host_callback(&device_, stream_handle,
                                            &HostCallbackTrampoline, ctx);
   }
@@ -571,7 +573,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   }
   int PlatformDeviceCount() override { return visible_device_count_; }
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
@@ -802,7 +804,7 @@ tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
           std::move(platform), params.destroy_platform, std::move(platform_fns),
           params.destroy_platform_fns, std::move(device_fns), std::move(se),
           std::move(timer_fns)));
-  SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
   // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
   // available in `PluggableDeviceProcessState` once the latter is checked in.

@@ -176,7 +176,7 @@ void SplitIsland(mlir::tf_executor::IslandOp island_op,
   // `island_op.getControl().dropAllUses();` of a control dep that's only used
   // in a graph's fetch, immediately leads to a segfault. Turns out we need to
   // drop its uses manually so that we don't leave dangling controls.
-  for (auto& fetch : llvm::enumerate(graph_op.GetFetch().getFetches())) {
+  for (const auto& fetch : llvm::enumerate(graph_op.GetFetch().getFetches())) {
     if (fetch.value() == island_op.getControl()) {
       graph_op.GetFetch().getFetchesMutable().erase(fetch.index(), 1);
       break;

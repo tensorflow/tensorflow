@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MergeDedupData"
   input_arg {
     name: "integer_tensor"
@@ -37,6 +37,13 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
       }
+    }
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }

@@ -203,11 +203,10 @@ class GatherOp : public OpKernel {
                               .HostMemory("axis"),                     \
                           GatherOp<dev##Device, type, index_type>)
 
-#define REGISTER_GATHER_ALL_INDICES(dev, type) \
-  REGISTER_GATHER_FULL(dev, type, int32);      \
-  REGISTER_GATHER_FULL(dev, type, int64_t)
-
-#define REGISTER_GATHER_CPU(type) REGISTER_GATHER_ALL_INDICES(CPU, type)
+#define REGISTER_GATHER_CPU(type)           \
+  REGISTER_GATHER_FULL(CPU, type, int16); \
+  REGISTER_GATHER_FULL(CPU, type, int32); \
+  REGISTER_GATHER_FULL(CPU, type, int64_t)
 
 // Registration of the CPU implementations.
 TF_CALL_ALL_TYPES(REGISTER_GATHER_CPU);
@@ -220,18 +219,18 @@ TF_CALL_qint16(REGISTER_GATHER_CPU);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Registration of the GPU implementations.
-#define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
+#define REGISTER_GATHER_GPU(type)           \
+  REGISTER_GATHER_FULL(GPU, type, int32); \
+  REGISTER_GATHER_FULL(GPU, type, int64_t)
 
 TF_CALL_int32(REGISTER_GATHER_GPU);
 TF_CALL_int64(REGISTER_GATHER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
-TF_CALL_bfloat16(REGISTER_GATHER_GPU);
 
 #undef REGISTER_GATHER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#undef REGISTER_GATHER_ALL_INDICES
 #undef REGISTER_GATHER_FULL
 
 }  // namespace tensorflow

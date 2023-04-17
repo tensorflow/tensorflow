@@ -35,14 +35,14 @@ cc_library_with_tflite(
         "sample_stable_delegate.h",
     ],
     copts = tflite_copts(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
-        "//tensorflow/lite/core/shims:builtin_ops",
-        "//tensorflow/lite/core/shims:builtin_op_data",
-        "//tensorflow/lite/core/shims:c_api",
-        "//tensorflow/lite/core/shims:c_api_experimental",
-        "//tensorflow/lite/core/shims:c_api_types",
-        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
@@ -55,9 +55,10 @@ cc_test(
     srcs = ["sample_stable_delegate_test.cc"],
     data = [
         "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/sub.bin",
     ],
     deps = [
-        ":sample_stable_delegate",
+        ":sample_stable_delegate_opaque_delegate",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
@@ -67,23 +68,23 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "sample_stable_delegate_external",
     testonly = True,
     srcs = [
         "sample_stable_delegate_external.cc",
     ],
     copts = tflite_copts(),
-    deps = [
+    generate_opaque_delegate_target = True,
+    tflite_deps = [
         ":sample_stable_delegate",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
-        "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
-        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_inferface",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_interface",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
     ],
 )
@@ -100,7 +101,7 @@ tflite_cc_shared_object(
     }),
     per_os_targets = True,
     deps = [
-        ":sample_stable_delegate_external",
+        ":sample_stable_delegate_external_opaque_delegate",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:version_script.lds",
     ],
 )
@@ -113,7 +114,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
     ],
     deps = [
-        ":sample_stable_delegate",
+        ":sample_stable_delegate_opaque_delegate",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",

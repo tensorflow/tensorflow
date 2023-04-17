@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -353,7 +354,7 @@ class PartitionedHlo {
     PartitionedHlo new_phlo = *this;
     new_phlo.hlo_ = hlo;
     if (!hlo->has_sharding() && hlo_->has_sharding()) {
-      hlo->set_sharding(hlo_->sharding());
+      hlo->copy_sharding(hlo_);
     }
     return new_phlo;
   }

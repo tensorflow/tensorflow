@@ -55,6 +55,9 @@ enum FilterLayout {
   kOutputYXInput = 1;    // cuDNN's NHWC layout
   kOutputInputYX4 = 2;   // cuDNN's NCHW_VECT_C layout with 4-elem vectors
   kOutputInputYX32 = 5;  // cuDNN's NCHW_VECT_C layout with 32-elem vectors
+  // cuDNN-specific filter reordering (using `cudnnReorderFilterAndBias`)
+  // When the filter is reordered, so is the bias (if present).
+  kOutputInputYX32_CudnnReordered = 6;
   kInputYXOutput = 3;
   kYXInputOutput = 4;
 }
@@ -170,4 +173,11 @@ message ConvolutionDescriptorProto {
   ConvolutionMode convolution_mode = 6;
   // Tensorflow node name, same as in NodeDef, for debugging purposes.
   string name = 7;
+}
+
+// FusedMHAKind kind
+enum FusedMHAKind {
+  BMM1_OUTPUT_UNKNOWN = 0;
+  BMM1_OUTPUT_INPUT_TYPE = 1;
+  BMM1_OUTPUT_FLOAT = 2;
 }

@@ -16,20 +16,21 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "./passes.h"
 #include "mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "transforms/passes.h"
 
 #define GEN_PASS_DEF_TOSALEGALIZEMHLOPASS
-#include "transforms/passes.h.inc"
+#include "passes.h.inc"
 
 #define PASS_NAME "tosa-legalize-mhlo"
 #define DEBUG_TYPE PASS_NAME
 
-#include "transforms/legalize_mhlo/legalize_mhlo.pdll.h.inc"
+#include "legalize_mhlo/legalize_mhlo.pdll.h.inc"
 
 namespace mlir {
 namespace tosa {
@@ -293,7 +294,7 @@ struct ConvertMhloGatherOp : public OpRewritePattern<mhlo::GatherOp> {
 
     auto startIndexMap = op.getDimensionNumbers().getStartIndexMap();
     for (const auto& startIndex : llvm::enumerate(startIndexMap)) {
-      if (startIndex.value() != startIndex.index()) {
+      if (startIndex.value() != static_cast<int64_t>(startIndex.index())) {
         return rewriter.notifyMatchFailure(op,
                                            "start_index_map must be in order");
       }

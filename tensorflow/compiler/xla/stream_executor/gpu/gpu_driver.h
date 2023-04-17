@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -373,9 +373,8 @@ class GpuDriver {
   // * Callbacks must not make any CUDA API calls.
   // * Callbacks from independent streams execute in an undefined order and may
   //   be serialized.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g613d97a277d7640f4cb1c03bd51c2483
-  typedef void (*StreamCallback)(GpuStreamHandle stream, GpuStatus status,
-                                 void* data);
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gab95a78143bae7f21eebb978f91e7f3f
+  typedef void (*StreamCallback)(void* data);
 
   // Enqueues a callback operation into stream.
   // See StreamCallback above and the NVIDIA documentation for additional

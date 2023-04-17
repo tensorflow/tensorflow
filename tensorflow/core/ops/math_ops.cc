@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -131,8 +133,8 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int16, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
@@ -576,7 +578,6 @@ REGISTER_OP("Maximum")
         "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
-// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("_MklMaximum")
     .Input("x: T")
     .Input("y: T")
@@ -950,8 +951,8 @@ REGISTER_OP("MatMul")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int32, int64, uint8, "
+        "uint16, uint32, uint64, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 
 #ifdef INTEL_MKL
@@ -1278,7 +1279,7 @@ REGISTER_OP("SegmentSum")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
-// TODO(hinsu): Introduce Segment{Prod,Min,Max}V2 ops, similarly.
+// TODO(hinsu): Introduce Segment{Min,Max}V2 ops, similarly.
 REGISTER_OP("SegmentSumV2")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1305,6 +1306,16 @@ REGISTER_OP("SegmentProd")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+REGISTER_OP("SegmentProdV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("SegmentMin")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1312,6 +1323,16 @@ REGISTER_OP("SegmentMin")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
+
+REGISTER_OP("SegmentMinV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SegmentMax")
     .Input("data: T")
@@ -1321,13 +1342,23 @@ REGISTER_OP("SegmentMax")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+REGISTER_OP("SegmentMaxV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("UnsortedSegmentSum")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: numbertype")
-    .Attr("Tindices: {int32,int64}")
+    .Attr("Tindices: {int16,int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
@@ -1884,7 +1915,7 @@ REGISTER_OP("CumulativeLogsumexp")
     .Attr("exclusive: bool = false")
     .Attr("reverse: bool = false")
     .Output("out: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnchangedShape);
 

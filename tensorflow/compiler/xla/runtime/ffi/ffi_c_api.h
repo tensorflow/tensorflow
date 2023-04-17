@@ -79,10 +79,18 @@ typedef enum {
 // of such modules at run time.
 typedef struct XLA_FFI_Module XLA_FFI_Module;
 
-// When a module is instantiated for each executable it can optionally create a
-// state object that can be used to implement stateful functions, to keep
-// state between FFI functions invocations. State can be accessed from different
-// executable invocations running concurrently.
+// XLA FFI module state can be instantiated once for each XLA executable, and
+// its life time will be bound to the executable iself, or it can be
+// instantiated for each separate execution.
+typedef enum {
+  XLA_FFI_Module_State_PER_EXECUTABLE = 1,
+  XLA_FFI_Module_State_PER_EXECUTION = 2,
+} XLA_FFI_Module_StateType;
+
+// Exported FFI functions will have access to the state object that they can
+// use to share data between different function invocations. If the state is
+// instantiated for each executable, it is the user's responsibility to
+// guarantee that it is thread-safe to use from multiple concurrent executions.
 typedef struct XLA_FFI_Module_State XLA_FFI_Module_State;
 
 // Creates a new per-executable module state.
@@ -201,6 +209,7 @@ typedef struct {
   void* priv;
   const char* name;
   XLA_FFI_Module* module;
+  XLA_FFI_Module_StateType state_type;
   XLA_FFI_Module_CreateState* create_state;
   XLA_FFI_Module_DestroyState* destroy_state;
   int64_t num_exported_functions;

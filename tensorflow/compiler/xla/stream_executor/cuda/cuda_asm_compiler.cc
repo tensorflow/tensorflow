@@ -39,7 +39,7 @@ namespace stream_executor {
       std::ostringstream oss;                                                 \
       oss << error_string << "\nin " << __FILE__ << "(" << __LINE__ << "): '" \
           << #expr << "'";                                                    \
-      return tsl::Status(port::error::UNKNOWN, oss.str().c_str());            \
+      return tsl::Status(absl::StatusCode::kUnknown, oss.str().c_str());      \
     }                                                                         \
   } while (false)
 
@@ -108,7 +108,7 @@ tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
 
   if (exit_status != 0) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("nvlink exited with non-zero error code %d, output: %s",
                         exit_status, stderr_output));
   }

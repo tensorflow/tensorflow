@@ -149,17 +149,30 @@ absl::Status XlaThreeFry::operator()(const ExecutableRunOptions*,
   std::array<uint32_t, 2> key{state_vals[0], state_vals[1]};
   std::array<uint32_t, 2> ctr{state_vals[2], state_vals[3]};
 
-  if (values_buffer.dtype == PrimitiveType::U16 ||
-      values_buffer.dtype == PrimitiveType::S16 ||
-      values_buffer.dtype == PrimitiveType::F16) {
-    // XLA's RngBitGeneratorExpander has a corner case for U16 where it discards
-    // half the bits. We don't really need that, but some TF tests depend on it,
-    // somehow.
-    FillBuffer<uint16_t>(values_buffer.data, state_out_buffer.data,
-                         values_buffer.size_in_bytes, threefry2x32, ctr, key);
-  } else {
-    FillBuffer<uint32_t>(values_buffer.data, state_out_buffer.data,
-                         values_buffer.size_in_bytes, threefry2x32, ctr, key);
+  switch (values_buffer.dtype) {
+    case S8:
+    case U8:
+    case F16:
+    case U16:
+    case S16:
+      // XLA's RngBitGeneratorExpander has a corner case for bit widths less
+      // than 32 where it discards half the bits. We don't really need that, but
+      // some TF tests depend on it, somehow.
+      FillBuffer<uint16_t>(values_buffer.data, state_out_buffer.data,
+                           values_buffer.size_in_bytes, threefry2x32, ctr, key);
+      break;
+    case F32:
+    case U32:
+    case S32:
+    case F64:
+    case U64:
+    case S64:
+      FillBuffer<uint32_t>(values_buffer.data, state_out_buffer.data,
+                           values_buffer.size_in_bytes, threefry2x32, ctr, key);
+      break;
+    default:
+      return absl::UnimplementedError(
+          "Type not implemented by ThreeFryBitGenerator");
   }
 
   return absl::OkStatus();
@@ -181,14 +194,27 @@ absl::Status XlaPhilox::operator()(const ExecutableRunOptions*,
                               state_vals[is_24 ? 4 : 0],
                               state_vals[is_24 ? 5 : 1]};
 
-  if (values_buffer.dtype == PrimitiveType::U16 ||
-      values_buffer.dtype == PrimitiveType::S16 ||
-      values_buffer.dtype == PrimitiveType::F16) {
-    FillBuffer<uint16_t>(values_buffer.data, state_out_buffer.data,
-                         values_buffer.size_in_bytes, philox4x32, ctr, key);
-  } else {
-    FillBuffer<uint32_t>(values_buffer.data, state_out_buffer.data,
-                         values_buffer.size_in_bytes, philox4x32, ctr, key);
+  switch (values_buffer.dtype) {
+    case S8:
+    case U8:
+    case F16:
+    case U16:
+    case S16:
+      FillBuffer<uint16_t>(values_buffer.data, state_out_buffer.data,
+                           values_buffer.size_in_bytes, philox4x32, ctr, key);
+      break;
+    case F32:
+    case U32:
+    case S32:
+    case F64:
+    case U64:
+    case S64:
+      FillBuffer<uint32_t>(values_buffer.data, state_out_buffer.data,
+                           values_buffer.size_in_bytes, philox4x32, ctr, key);
+      break;
+    default:
+      return absl::UnimplementedError(
+          "Type not implemented by PhiloxBitGenerator");
   }
   return absl::OkStatus();
 }

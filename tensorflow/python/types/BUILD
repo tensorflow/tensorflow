@@ -5,18 +5,6 @@ package(
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
-)
-
 # Important: this is a leaf library. It may not have any new dependencies inside TF proper.
 # The sole exception is tf_export, to allow exporting symbols into the public namespace.
 pytype_strict_library(
@@ -24,6 +12,7 @@ pytype_strict_library(
     srcs = [
         "__init__.py",
         "core.py",
+        "data.py",
         "distribute.py",
         "internal.py",
         "trace.py",

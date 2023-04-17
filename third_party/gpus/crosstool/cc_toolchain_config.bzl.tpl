@@ -354,7 +354,6 @@ def _features(cpu, compiler, ctx):
                         actions = all_cpp_compile_actions(),
                         flag_groups = [
                             flag_group(flags = [
-                                "-fexperimental-new-pass-manager",
                                 "-fmerge-all-constants",
                             ]),
                         ] if compiler == "clang" else [],

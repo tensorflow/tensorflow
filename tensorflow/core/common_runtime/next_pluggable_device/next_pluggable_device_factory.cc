@@ -23,10 +23,35 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
+namespace {
+StatusOr<xla::Shape> DeviceShapeRepresentation(
+    const TensorShape& shape, DataType type, bool use_fast_memory,
+    XlaLayoutPreference layout_preference) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(
+      tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
+  ApiConverter::StackHelper<XLA_Shape> c_xla_shape(xla_shape);
+  ApiConverter::StackHelper<XLA_Shape> c_device_shape;
+  TF_Status* tf_status = TF_NewStatus();
+  TfnpdApi()->TFNPD_XlaShapeToDeviceShapeRepresentation(
+      &c_xla_shape.value, type, use_fast_memory,
+      ConvertToCXlaLayoutPreference(layout_preference), &c_device_shape.value,
+      tf_status);
+  const Status status = StatusFromTF_Status(tf_status);
+  TF_DeleteStatus(tf_status);
+  TF_RETURN_IF_ERROR(status);
+  return c_device_shape.AsCpp<xla::Shape>();
+}
+}  // namespace
 
 Status NextPluggableDeviceFactory::ListPhysicalDevices(
     std::vector<string>* devices) {
@@ -63,11 +88,19 @@ Status NextPluggableDeviceFactory::CreateDevices(
     options.device_name = device_type_;
     options.compilation_device_name = compilation_device_name_;
     options.device_ordinal = i;
+    options.shape_determination_fns = {
+        XlaShapeLayoutHelpers::ShapeDeterminationFns{
+            UseNoPreferenceLayoutFn(), DeviceShapeRepresentation}};
 
     auto device =
         std::make_unique<NextPluggableDevice>(session_options, options);
     devices->push_back(std::move(device));
   }
+
+  // PjRtCompileOnDemand op compiles a TensorFlow op to a PjRtExecutable and
+  // runs it.
+  RegisterPjRtCompileOnDemand(device_type_.c_str(),
+                              compilation_device_name_.c_str());
 
   LOG(INFO) << "Created " << device_count
             << " TensorFlow NextPluggableDevices. "

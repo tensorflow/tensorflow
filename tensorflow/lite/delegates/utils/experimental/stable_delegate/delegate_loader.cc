@@ -15,7 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 
 #include <dlfcn.h>
+#include <stdlib.h>
+#include <string.h>
 
+#include <cerrno>
 #include <string>
 
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
@@ -24,19 +27,44 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace utils {
+namespace {
+void setLibraryPathEnvironmentVariable(const std::string& delegate_path) {
+  std::string directory_path = "";
+  // Finds the last '/' character in the file path.
+  size_t last_slash_index = delegate_path.rfind('/');
+  // If there is no '/' character, then the file path is a relative path and
+  // the directory path is empty.
+  if (last_slash_index != std::string::npos) {
+    // Extracts the directory path from the file path.
+    directory_path = delegate_path.substr(0, last_slash_index);
+  }
+  if (setenv(kTfLiteLibraryPathEnvironmentVariable, directory_path.c_str(),
+             /* overwrite= */ 1) != 0) {
+    // Delegate loading can continue as the environment variable is optional for
+    // the stable delegate shared library to use.
+    TFLITE_LOG(WARN) << "Error setting environment variable "
+                     << kTfLiteLibraryPathEnvironmentVariable
+                     << " with error: " << strerror(errno);
+  }
+}
+}  // namespace
 
 using ::tflite::acceleration::AndroidInfo;
 using ::tflite::acceleration::RequestAndroidInfo;
 
 const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
     const std::string& delegate_path) {
-  return LoadDelegateFromSharedLibrary(delegate_path,
-                                       kTfLiteStableDelegateSymbol);
+  void* symbol_pointer =
+      LoadSymbolFromSharedLibrary(delegate_path, kTfLiteStableDelegateSymbol);
+  if (!symbol_pointer) {
+    return nullptr;
+  }
+  return reinterpret_cast<const TfLiteStableDelegate*>(symbol_pointer);
 }
 
-const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
-    const std::string& delegate_path, const std::string& delegate_symbol) {
-  // TODO(b/239825926): Use android_dlopen_ext to support loading from an offset
+void* LoadSymbolFromSharedLibrary(const std::string& delegate_path,
+                                  const std::string& delegate_symbol) {
+  // TODO(b/268483011): Use android_dlopen_ext to support loading from an offset
   // within an apk.
   void* delegate_lib_handle = nullptr;
   // RTLD_NOW: Ensures that any dynamic linking errors occur early rather than
@@ -54,6 +82,13 @@ const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
     TFLITE_LOG(INFO) << "Android SDK level is " << sdk_version
                      << ", using dlopen with RTLD_NODELETE.";
   }
+  // Exports the path of the folder containing the stable delegate shared
+  // library to the TFLITE_STABLE_DELEGATE_LIBRARY_PATH environment variable.
+  setLibraryPathEnvironmentVariable(delegate_path);
+  // On the one hand, the handle would not be closed in production. The resource
+  // will be released when the process is killed. On the other hand, it may
+  // cause issues for leak detection in testing.
+  // TODO(b/268483011): Better support for cleanup the shared library handle.
   delegate_lib_handle = dlopen(delegate_path.c_str(), dlopen_flags);
   if (!delegate_lib_handle) {
     TFLITE_LOG(ERROR) << "Failed to open library " << delegate_path << ": "
@@ -61,15 +96,15 @@ const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
     return nullptr;
   }
 
-  auto* stable_delegate_pointer = reinterpret_cast<TfLiteStableDelegate*>(
-      dlsym(delegate_lib_handle, delegate_symbol.c_str()));
-  if (!stable_delegate_pointer) {
+  void* symbol_pointer = dlsym(delegate_lib_handle, delegate_symbol.c_str());
+  if (!symbol_pointer) {
     TFLITE_LOG(ERROR) << "Failed to find " << delegate_symbol
                       << " symbol: " << dlerror();
     dlclose(delegate_lib_handle);
     return nullptr;
   }
-  return stable_delegate_pointer;
+  TFLITE_LOG(INFO) << "Found symbol: " << delegate_symbol;
+  return symbol_pointer;
 }
 
 }  // namespace utils

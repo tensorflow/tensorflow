@@ -28,19 +28,12 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-char XlaCompatibleCompiler::ID = 0;
 char PjRtCompiler::ID = 0;
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
     mlir::ModuleOp mlir_module, CompileOptions options) {
   DCHECK(this);
   return PjRtLoadedExecutable::Create(client_, mlir_module, std::move(options));
-}
-
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::CompileXla(
-    const XlaComputation& computation, CompileOptions options) {
-  DCHECK(this);
-  return PjRtLoadedExecutable::Create(client_, computation, std::move(options));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>>

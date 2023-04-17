@@ -19,13 +19,15 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_variable.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -36,6 +38,11 @@ Status DirectPluginOpKernelConstruction::GetBoolAttr(std::string_view attr_name,
 
 Status DirectPluginOpKernelConstruction::GetInt32Attr(
     std::string_view attr_name, int* value) const {
+  return ctx_->GetAttr(attr_name, value);
+}
+
+Status DirectPluginOpKernelConstruction::GetInt32AttrList(
+    std::string_view attr_name, std::vector<int32_t>* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
@@ -52,6 +59,34 @@ Status DirectPluginOpKernelConstruction::GetStringAttr(
 Status DirectPluginOpKernelConstruction::GetFunctionAttr(
     std::string_view attr_name, NameAttrList* function) const {
   return ctx_->GetAttr(attr_name, function);
+}
+
+Status DirectPluginOpKernelContext::CreatePluginVariable(
+    int index, PluginVariable** variable) const {
+  const auto& arg_tensor = ctx_->input(index);
+  if (arg_tensor.dtype() != DT_RESOURCE) {
+    return tsl::errors::InvalidArgument(
+        "Trying to obtain resource handle from Input[", index,
+        "], which is not type DT_RESOURCE.");
+  }
+  const ResourceHandle& handle = arg_tensor.flat<ResourceHandle>()(0);
+  Var* var;
+  TF_RETURN_IF_ERROR(LookupResource(ctx_, handle, &var));
+
+  *variable = new DirectPluginVariable(index, handle.name(), var);
+  return tsl::OkStatus();
+}
+
+Status DirectPluginOpKernelContext::AllocateTempForPluginVariable(
+    PluginVariable* variable) {
+  auto* direct_variable = reinterpret_cast<DirectPluginVariable*>(variable);
+  if (direct_variable->var_info_.var() == nullptr) {
+    return tsl::errors::InvalidArgument(
+        "VariableInfo does not track a resource variable.");
+  }
+  Tensor* var_tensor = direct_variable->var_info_.var()->tensor();
+  return ctx_->allocate_temp(var_tensor->dtype(), var_tensor->shape(),
+                             var_tensor);
 }
 
 std::string_view

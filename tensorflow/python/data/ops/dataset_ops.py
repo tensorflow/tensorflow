@@ -24,7 +24,9 @@ import numpy as np
 from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
+from tensorflow.python.data.ops import dataset_autograph
 from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
@@ -48,7 +50,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import gen_parsing_ops
@@ -57,9 +60,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base as tracking_base
 from tensorflow.python.trackable import resource as resource_lib
+from tensorflow.python.types import data as data_types
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -138,6 +143,7 @@ class DatasetV2(
     collections_abc.Iterable,
     tracking_base.Trackable,
     composite_tensor.CompositeTensor,
+    data_types.DatasetV2,
     metaclass=abc.ABCMeta):
   """Represents a potentially large set of elements.
 
@@ -240,18 +246,18 @@ class DatasetV2(
     self._options_attr = options_lib.Options()
     for input_dataset in self._inputs():
       input_options = None
-      if isinstance(input_dataset, DatasetV1):
+      if isinstance(input_dataset, data_types.DatasetV1):
         # If the V1 dataset does not have the `_dataset` attribute, we assume it
         # is a dataset source and hence does not have options. Otherwise, we
         # grab the options of `_dataset` object
         if hasattr(input_dataset, "_dataset"):
-          if not isinstance(input_dataset._dataset, DatasetV2):
+          if not isinstance(input_dataset._dataset, data_types.DatasetV2):
             raise TypeError(
                 f"Each input of dataset {type(self)} should be a subclass of "
                 f"`tf.data.Dataset` but encountered "
                 f"{type(input_dataset._dataset)}.")
           input_options = input_dataset._dataset._options_attr
-      elif isinstance(input_dataset, DatasetV2):
+      elif isinstance(input_dataset, data_types.DatasetV2):
         input_options = input_dataset._options_attr
       else:
         raise TypeError(
@@ -1011,7 +1017,7 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def zip(datasets, name=None):
+  def zip(*args, datasets=None, name=None):
     """Creates a `Dataset` by zipping together the given datasets.
 
     This method has similar semantics to the built-in `zip()` function
@@ -1020,14 +1026,14 @@ class DatasetV2(
     nesting mechanisms are documented
     [here] (https://www.tensorflow.org/guide/data#dataset_structure).
 
-    >>> # The nested structure of the `datasets` argument determines the
-    >>> # structure of elements in the resulting dataset.
+    >>> # The datasets or nested structure of datasets `*args` argument
+    >>> # determines the structure of elements in the resulting dataset.
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
-    >>> ds = tf.data.Dataset.zip((a, b))
+    >>> ds = tf.data.Dataset.zip(a, b)
     >>> list(ds.as_numpy_iterator())
     [(1, 4), (2, 5), (3, 6)]
-    >>> ds = tf.data.Dataset.zip((b, a))
+    >>> ds = tf.data.Dataset.zip(b, a)
     >>> list(ds.as_numpy_iterator())
     [(4, 1), (5, 2), (6, 3)]
     >>>
@@ -1035,7 +1041,7 @@ class DatasetV2(
     >>> c = tf.data.Dataset.range(7, 13).batch(2)  # ==> [ [7, 8],
     ...                                            #       [9, 10],
     ...                                            #       [11, 12] ]
-    >>> ds = tf.data.Dataset.zip((a, b, c))
+    >>> ds = tf.data.Dataset.zip(a, b, c)
     >>> for element in ds.as_numpy_iterator():
     ...   print(element)
     (1, 4, array([7, 8]))
@@ -1045,12 +1051,16 @@ class DatasetV2(
     >>> # The number of elements in the resulting dataset is the same as
     >>> # the size of the smallest dataset in `datasets`.
     >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
-    >>> ds = tf.data.Dataset.zip((a, d))
+    >>> ds = tf.data.Dataset.zip(a, d)
     >>> list(ds.as_numpy_iterator())
     [(1, 13), (2, 14)]
 
     Args:
-      datasets: A (nested) structure of datasets.
+      *args: Datasets or nested structures of datasets to zip together. This
+        can't be set if `datasets` is set.
+      datasets: A (nested) structure of datasets. This can't be set if `*args`
+        is set. Note that this exists only for backwards compatibility and it is
+        preferred to use *args.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
@@ -1060,6 +1070,15 @@ class DatasetV2(
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import zip_op
+
+    if not args and datasets is None:
+      raise TypeError("Must pass at least one dataset to `zip`.")
+    if args and datasets is not None:
+      raise TypeError("Both `*args` and `datasets` cannot be set.")
+    if len(args) == 1:
+      datasets = args[0]
+    elif len(args) > 1:
+      datasets = args
     return zip_op._zip(datasets, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
@@ -1281,7 +1300,7 @@ class DatasetV2(
           "No files matched pattern: ",
           string_ops.reduce_join(file_pattern, separator=", "), name="message")
 
-      assert_not_empty = control_flow_ops.Assert(
+      assert_not_empty = control_flow_assert.Assert(
           condition, [message], summarize=1, name="assert_not_empty")
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
@@ -1693,6 +1712,10 @@ class DatasetV2(
           implementation creates a `tf.train.Checkpoint` object internally, so
           users should not set the `checkpoint` argument in `checkpoint_args`.
 
+    Returns:
+      An operation which when executed performs the save. When writing
+      checkpoints, returns None. The return value is useful in unit tests.
+
     Raises:
       ValueError if `checkpoint` is passed into `checkpoint_args`.
     """
@@ -1700,7 +1723,7 @@ class DatasetV2(
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import save_op
-    save_op._save(self, path, compression, shard_func, checkpoint_args)
+    return save_op._save(self, path, compression, shard_func, checkpoint_args)
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
@@ -2474,7 +2497,7 @@ name=None))
       A new `Dataset` with the transformation applied as described above.
     """
     dataset = transformation_func(self)
-    if not isinstance(dataset, DatasetV2):
+    if not isinstance(dataset, data_types.DatasetV2):
       raise TypeError(
           f"`transformation_func` must return a `tf.data.Dataset` object. "
           f"Got {type(dataset)}.")
@@ -3626,7 +3649,7 @@ name=None))
 
 
 @tf_export(v1=["data.Dataset"])
-class DatasetV1(DatasetV2):
+class DatasetV1(DatasetV2, data_types.DatasetV1):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -3931,8 +3954,8 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
-  def zip(datasets, name=None):
-    return DatasetV1Adapter(DatasetV2.zip(datasets, name=name))
+  def zip(*args, datasets=None, name=None):
+    return DatasetV1Adapter(DatasetV2.zip(*args, datasets=datasets, name=name))
 
   @functools.wraps(DatasetV2.concatenate)
   def concatenate(self, dataset, name=None):
@@ -4561,9 +4584,6 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
     return DatasetSpec(common_element_spec, common_dataset_shape)
 
-  def _tf_data_normalize(self, t):
-    return t
-
   # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
   # following functions do not need to be overloaded: is_subtype_of,
   # most_specific_common_supertype, __hash__ and __eq__
@@ -4629,7 +4649,14 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
             self._dataset_shape == other._dataset_shape)
 
 
-class _NumpyIterator:
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        DatasetSpec, struct_pb2.TypeSpecProto.DATA_DATASET_SPEC
+    )
+)
+
+
+class _NumpyIterator(tracking_base.Trackable):
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -4654,6 +4681,24 @@ class _NumpyIterator:
 
   def next(self):
     return self.__next__()
+
+  # override
+  def _serialize_to_tensors(self):
+    # pylint: disable=protected-access
+    return self._iterator._serialize_to_tensors()
+
+  # override
+  def _restore_from_tensors(self, restored_tensors):
+    # pylint: disable=protected-access
+    return self._iterator._restore_from_tensors(restored_tensors)
+
+  def _save(self):
+    # pylint: disable=protected-access
+    return self._iterator._save()
+
+  def _restore(self, state):
+    # pylint: disable=protected-access
+    return self._iterator._restore(state)
 
 
 class _VariantTracker(resource_lib.CapturableResource):
@@ -4836,7 +4881,7 @@ def _filter_ds(dataset,
 
   def maybe_warn_on_large_rejection(accept_dist, initial_dist):
     proportion_rejected = math_ops.reduce_sum((1 - accept_dist) * initial_dist)
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.less(proportion_rejected, .5),
         lambda: accept_dist,
         lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
@@ -5091,3 +5136,6 @@ def _resource_resolver(op, resource_reads, resource_writes):
           resource_writes.add(inp)
 
   return updated
+
+
+dataset_autograph.register_overrides()

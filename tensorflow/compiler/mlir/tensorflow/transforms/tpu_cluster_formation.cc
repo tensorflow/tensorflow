@@ -203,10 +203,10 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
           // some issue with device names.
           if (device_attr.str().find(devices[device_local_name]) ==
               std::string::npos) {
-            LOG(WARNING) << "found two devices with same local name but "
-                            "conflicting fullname: "
-                         << device_attr.str() << " and "
-                         << devices[device_local_name];
+            LOG(WARNING) << "found two devices with same local name "
+                         << device_local_name
+                         << " but conflicting fullname: " << device_attr.str()
+                         << " and " << devices[device_local_name];
           }
           devices[device_local_name] = device_attr.str();
         }
@@ -463,8 +463,9 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
         }
         // When model parallelism is used in conjunction with data parallelism
         // for resource inputs, we need to collect the per replica resource
-        // inputs from input to `tf.TPUPartitionedInput` ops.
-        if (auto pi = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(def)) {
+        // inputs from input to `tf.TPUPartitionedInputV2` ops.
+        if (auto pi =
+                llvm::dyn_cast_or_null<TF::TPUPartitionedInputV2Op>(def)) {
           if (pi->getNumOperands() != num_cores_per_replica)
             status = pi.emitOpError()
                      << "requires " << num_cores_per_replica
@@ -493,7 +494,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   llvm::SmallVector<Value, 8> packed_inputs;
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> replicated_ops;
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> packed_ops;
-  for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
+  for (const auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
     bool is_packed = input.getIsPacked();
     const int num_operands = input->getNumOperands();
@@ -563,7 +564,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     }
   }
 
-  // Collect all `tf.TPUPartitionedInput` ops to be moved inside the
+  // Collect all `tf.TPUPartitionedInputV2` ops to be moved inside the
   // `tf_device.replicate` later.
   llvm::SmallSet<Operation*, 4> partitioned_inputs;
   for (auto input_and_block_arg :
@@ -573,9 +574,9 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     Value block_arg = std::get<1>(input_and_block_arg);
     mlir::replaceAllUsesInRegionWith(input->getResult(0), block_arg,
                                      cluster.getBody());
-    // Update replicated input use in tf.TPUPartitionedInput op.
+    // Update replicated input use in tf.TPUPartitionedInputV2 op.
     for (auto& use : input->getUses()) {
-      auto pi = llvm::dyn_cast<TF::TPUPartitionedInputOp>(use.getOwner());
+      auto pi = llvm::dyn_cast<TF::TPUPartitionedInputV2Op>(use.getOwner());
       if (pi) {
         pi.setOperand(use.getOperandNumber(), block_arg);
         partitioned_inputs.insert(pi.getOperation());
@@ -584,7 +585,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   }
 
   // Create terminator for replicate op and move `tf_device.cluster` and
-  // `tf.TPUPartitionedInput`(s) into replicate body.
+  // `tf.TPUPartitionedInputV2`(s) into replicate body.
   builder.setInsertionPointToEnd(&replicate_op.GetBody());
   auto return_op = builder.create<tf_device::ReturnOp>(replicate_op.getLoc(),
                                                        cluster.getResults());

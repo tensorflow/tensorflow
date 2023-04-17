@@ -22,19 +22,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
-class PyBuffer;
-class PyShardedBuffer;
 class PyClient;
 class PyLoadedExecutable;
 class PyArray;
@@ -61,7 +59,8 @@ struct PyArray_Storage;
 
 // A pair of a PyClient reference and an unowned pointer to T.
 template <typename T>
-struct ClientAndPtr {
+class ClientAndPtr {
+ public:
   ClientAndPtr() = default;
   // pybind11 requires that we define a constructor that takes a raw pointer,
   // but it should be unreachable.
@@ -74,12 +73,22 @@ struct ClientAndPtr {
   ClientAndPtr& operator=(const ClientAndPtr&) = default;
   ClientAndPtr& operator=(ClientAndPtr&&) = default;
 
-  std::shared_ptr<PyClient> client;
-  T* contents;
+  PyClient* get_client() const { return client_; }
 
-  T* get() const { return contents; }
-  T* operator->() const { return contents; }
-  T& operator*() const { return *contents; }
+  std::shared_ptr<PyClient> client() const {
+    return std::shared_ptr<PyClient>(contents_, client_);
+  }
+
+  T* get() const { return contents_.get(); }
+  T* operator->() const { return contents_.get(); }
+  T& operator*() const { return *contents_; }
+
+ private:
+  template <typename U>
+  friend ClientAndPtr<U> WrapWithClient(std::shared_ptr<PyClient> client,
+                                        U* contents);
+  std::shared_ptr<T> contents_;
+  PyClient* client_;
 };
 
 // By defining a templated helper function, we can use return type deduction
@@ -87,8 +96,8 @@ struct ClientAndPtr {
 template <typename T>
 ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
   ClientAndPtr<T> result;
-  result.client = std::move(client);
-  result.contents = contents;
+  result.client_ = client.get();
+  result.contents_ = std::shared_ptr<T>(std::move(client), contents);
   return result;
 }
 
@@ -139,17 +148,13 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   int addressable_device_count() const {
     return ifrt_client_->addressable_device_count();
   }
-  int device_count() const {
-    return ifrt_client_->device_count();
-  }
-  int process_index() const {
-    return ifrt_client_->process_index();
-  }
+  int device_count() const { return ifrt_client_->device_count(); }
+  int process_index() const { return ifrt_client_->process_index(); }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
 
-  // Returns a vector of live PyBuffer objects. PyBuffer objects may share
+  // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
   std::vector<pybind11::object> LiveBuffers();
@@ -184,13 +189,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
-      ifrt::Client::HostBufferSemantics host_buffer_semantics
-  );
+      ifrt::Client::HostBufferSemantics host_buffer_semantics);
 
   StatusOr<std::shared_ptr<PyLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options,
-      std::vector<pybind11::capsule> host_callbacks);
-  StatusOr<std::shared_ptr<PyLoadedExecutable>> CompileMlir(
       std::string mlir_module, CompileOptions options,
       std::vector<pybind11::capsule> host_callbacks);
 
@@ -258,23 +259,18 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<pybind11::object> LiveArrays();
 
  private:
-  friend class PyBuffer;
-  friend class PyShardedBuffer;
   friend class PyLoadedExecutable;
   friend class PyArray;
   friend struct PyArray_Storage;
 
   std::shared_ptr<ifrt::Client> ifrt_client_;
 
-  // Pointers to intrusive doubly-linked lists of buffers and executables, used
+  // Pointers to intrusive doubly-linked lists of arrays and executables, used
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.
 
-  // buffers_ is a per-device list, indexed by device->id().
-  std::vector<PyBuffer*> buffers_;
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
-  PyShardedBuffer* sharded_buffers_ = nullptr;
 };
 
 }  // namespace xla

@@ -14,20 +14,14 @@
 # ==============================================================================
 """FuncGraph and related functionality."""
 
-import collections as py_collections
 import traceback
 from typing import Any, Callable, Hashable
 import weakref
 
-import numpy as np
-
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
-from tensorflow.python.eager import tape
-from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
@@ -37,14 +31,13 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -62,8 +55,6 @@ ALLOWLIST_COLLECTIONS = [
     variable_scope._VARSTORE_KEY,  # pylint: disable=protected-access
     variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
 ]
-
-_EAGER_CONST_THRESHOLD = 128
 
 
 class UnknownArgument(object):
@@ -164,8 +155,6 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
-    control_captures: Set of external ops on which this graph has a control
-      dependency.
     seed: The graph-level random seed.
     capture_by_value: If True, the func graph will capture Variables by value
       instead of reference.
@@ -202,10 +191,10 @@ class FuncGraph(ops.Graph):
     """
     super().__init__()
     self.name = name
+    # TODO(panzf): Separate captures from non-captures inputs in self.inputs
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
-    self.control_captures = object_identity.ObjectIdentitySet()
     self.structured_input_signature = structured_input_signature
     self.structured_outputs = structured_outputs
     self._resource_tensor_inputs = object_identity.ObjectIdentitySet()
@@ -221,15 +210,10 @@ class FuncGraph(ops.Graph):
     # If self._weak_outer_graph is deleted, we revert to the outermost Graph
     # active when the FuncGraph was traced. This will not be a FuncGraph.
     self._fallback_outer_graph = outer_graph
-    self._captures = py_collections.OrderedDict()
     # If not None, records the names of output args of this function. Used to
     # preserve the output names in the signature of a serialized+deserialized
     # function. Private at the moment mostly because it's often out of date.
     self._output_names = None
-    # Maps arbitrary key -> (closure, nest of placeholders), where at function
-    # call time the value of closure() will be used to feed the nest of
-    # placeholders.
-    self._deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
       self.capture_by_value = capture_by_value
@@ -366,19 +350,13 @@ class FuncGraph(ops.Graph):
     """
     if key is None:
       key = object()
-    if key not in self._deferred_captures:
+    if key not in self._function_captures.by_ref_internal:
+      trace_ctx = trace_type.InternalTracingContext(True)
+      spec = trace_type.from_value(spec, trace_ctx)
 
       if placeholder is None:
-
-        def convert_to_placeholder(s):
-          if not isinstance(s, tensor_spec.DenseSpec):
-            raise TypeError(
-                "Expected a nest of `TypeSpec` objects, found %s of type %s." %
-                (s, type(s)))
-          return array_ops.placeholder(dtype=s.dtype, shape=s.shape)
-
-        placeholder = nest.map_structure(
-            convert_to_placeholder, spec, expand_composites=True)
+        placeholder_ctx = trace_type.InternalPlaceholderContext(self)
+        placeholder = spec.placeholder_value(placeholder_ctx)
 
       def wrapped_closure():
 
@@ -402,16 +380,6 @@ class FuncGraph(ops.Graph):
           assert isinstance(
               graph,
               FuncGraph), "This API should only be used in TF2 enviroment."
-          # In the case of control flow, we need to capture the
-          # external_captures (deferred or not) of the body_graph (i.e.
-          # `WhileBodyFuncGraph) in `cond_graph` (i.e. WhileCondFuncGraph) and
-          # create the corresponding placeholders in `cond_graph` so that it
-          # expects to receive these as arguments. However, doing so requires
-          # having evaluated the call_time_value already (and maybe repeatedly),
-          # so we skip adding deferred_captures to the control flow graph but
-          # add it to its outer graph.
-          while graph.is_control_flow_graph:
-            graph = graph.outer_graph
 
           with graph.as_default():
             ret_nest = graph.capture_call_time_value(
@@ -419,21 +387,17 @@ class FuncGraph(ops.Graph):
         else:
           ret_nest = closure()
 
-        nest.assert_same_structure(spec, ret_nest, expand_composites=True)
-        # This uses the tensor dtype defined in `spec` when converting values
-        # in `ret_nest` to tensors.
-        # pylint: disable=protected-access
-        y = nest.map_structure(
-            lambda s, r: s._to_components(r),
-            spec,
-            ret_nest,
-            expand_composites=False)
-        # pylint: enable=protected-access
-        return nest.flatten(y, expand_composites=True)
+        ret_nest = spec._cast(ret_nest, trace_type.InternalCastContext)  # pylint: disable=protected-access
+        return spec._to_tensors(ret_nest)  # pylint: disable=protected-access
 
       wrapped_closure.output_spec = spec
-      self._deferred_captures[key] = (wrapped_closure, placeholder)
-    return self._deferred_captures[key][1]
+      self._function_captures.add_or_replace(
+          key=key,
+          external=wrapped_closure,
+          internal=placeholder,
+          tracetype=spec,
+          is_by_ref=True)
+    return self._function_captures.by_ref_internal[key]
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -470,7 +434,7 @@ class FuncGraph(ops.Graph):
         graph_element = c
       if graph_element is not None and getattr(graph_element, "graph",
                                                None) is not self:
-        self.control_captures.add(graph_element)
+        self._function_captures.control.add(graph_element)
       else:
         filtered_control_inputs.append(graph_element)
     return super().control_dependencies(filtered_control_inputs)
@@ -708,89 +672,39 @@ class FuncGraph(ops.Graph):
         compute_device)
 
   def capture(self, tensor, name=None, shape=None):
-    """Captures `tensor` if it's external to this graph.
+    return self._function_captures.capture_by_value(self, tensor, name)
 
-    If `tensor` is from a different graph, returns a placeholder for it.
-    `tensor` and the placeholder will appear in self.captures, and the
-    placeholder will appear in self.inputs.  Multiple calls to this method with
-    the same `tensor` argument will return the same placeholder. If `tensor` is
-    from this graph, returns `tensor`.
+  def _validate_in_scope(self, tensor):
+    inner_graph = tensor.graph
+    while inner_graph is not None and isinstance(inner_graph, FuncGraph):
+      if inner_graph is self:
+        try:
+          tb = tensor.op.traceback
+        except AttributeError:
+          tensor_traceback = "<unknown>"
+        else:
+          tensor_traceback_list = []
+          for frame in traceback.format_list(tb.get_user_frames()):
+            tensor_traceback_list.extend(
+                [f"  {line}" for line in frame.split("\n") if line.strip()])
+          tensor_traceback = "\n".join(tensor_traceback_list)
+        # Keep in sync with tfe_wrapper.cc.
+        # TODO(b/200991648): Unify those two paths.
+        raise errors.InaccessibleTensorError(
+            f"{tensor!r} is out of scope and cannot be used here. Use return "
+            "values, explicit Python locals or TensorFlow collections to "
+            "access it.\n"
+            "Please see https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values "  # pylint: disable=line-too-long
+            "for more information.\n\n"
+            f"{tensor!r} was defined here:\n{tensor_traceback}\n\n"
+            f"The tensor {tensor!r} cannot be accessed from {self}, because "
+            f"it was defined in {tensor.graph}, which is out of scope.")
+      inner_graph = inner_graph.outer_graph
 
-    Args:
-      tensor: Tensor. May be from this FuncGraph or a different graph.
-      name: Optional name if a placeholder is created.
-      shape: Optional shape if a placeholder is created.
-
-    Returns:
-      Tensor from this FuncGraph.
-
-    Raises:
-      InaccessibleTensorError: if any tensors are accessed in a manner that
-      bypasses the mechanisms required for the data dependencies to be correctly
-      wired.
-    """
-    if isinstance(tensor, ops.EagerTensor):
-      if name is None:
-        name = str(ops.uid())
-
-      # Small EagerTensors are captured with Const ops
-      if (tensor.dtype in dtypes.TF_VALUE_DTYPES and
-          np.prod(tensor.shape) <= _EAGER_CONST_THRESHOLD):
-        return self.capture_eager_tensor(tensor, name)
-
-      # Large EagerTensors and resources are captured with Placeholder ops
-      return self._capture_helper(tensor, name, shape)
-    if tensor.graph is not self:
-      if name is None:
-        name = tensor.op.name
-      inner_graph = tensor.graph
-      while inner_graph is not None and isinstance(inner_graph, FuncGraph):
-        if inner_graph is self:
-          try:
-            tb = tensor.op.traceback
-          except AttributeError:
-            tensor_traceback = "<unknown>"
-          else:
-            tensor_traceback_list = []
-            for frame in traceback.format_list(tb.get_user_frames()):
-              tensor_traceback_list.extend(
-                  [f"  {line}" for line in frame.split("\n") if line.strip()])
-            tensor_traceback = "\n".join(tensor_traceback_list)
-          # Keep in sync with tfe_wrapper.cc.
-          # TODO(b/200991648): Unify those two paths.
-          raise errors.InaccessibleTensorError(
-              f"{tensor!r} is out of scope and cannot be used here. Use return "
-              "values, explicit Python locals or TensorFlow collections to "
-              "access it.\n"
-              "Please see https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values "
-              "for more information.\n\n"
-              f"{tensor!r} was defined here:\n{tensor_traceback}\n\n"
-              f"The tensor {tensor!r} cannot be accessed from {self}, because "
-              f"it was defined in {tensor.graph}, which is out of scope.")
-        inner_graph = inner_graph.outer_graph
-      return self._capture_helper(tensor, name)
-    return tensor
-
-  def _capture_helper(self, tensor, name, shape=None):
-    capture = self._captures.get(id(tensor))
-    if capture is None:
-      placeholder = _create_substitute_placeholder(
-          tensor, name=name, dtype=tensor.dtype, shape=shape)
-      # Record the composite device as an attribute to the placeholder.
-      # This attribute would be propogated into the arg_attr of the FunctionDef.
-      # Currently, a packed eager tensor is always placed on a CompositeDevice.
-      if isinstance(tensor, ops.EagerTensor) and tensor.is_packed:
-        placeholder.op._set_attr(  # pylint: disable=protected-access
-            "_composite_device",
-            attr_value_pb2.AttrValue(s=compat.as_bytes(tensor.device)))
-      self.add_capture(tensor, placeholder)
-    else:
-      placeholder = capture[1]
-    tape.record_operation(
-        "captured_value", [placeholder], [tensor],
-        backward_function=lambda x: [x],
-        forward_function=lambda x: [x])
-    return placeholder
+  # TODO(panzf): Rename this method along with usages in cond/while graph.
+  def _capture_helper(self, tensor, name):
+    return self._function_captures._create_placeholder_helper(  # pylint: disable=protected-access
+        self, tensor, name)
 
   def _experimental_capture_side_input_by_ref(self, identifier: Hashable,
                                               func: Callable[[], Any]) ->...:
@@ -852,15 +766,23 @@ class FuncGraph(ops.Graph):
         are replaced with placehoders, and non-tensors remain the same.
 
     """
+    if context.executing_eagerly():
+      return func()
 
-    placeholder = self._function_captures.capture_by_ref(
-        func, identifier)
+    def maybe_convert_to_tensor():
+      value = func()
+      if not (isinstance(value, core.Value) or isinstance(value, core.Symbol)):
+        value = constant_op.constant(value)
+      return value
+
+    placeholder = self._function_captures._capture_by_ref(  # pylint: disable=protected-access
+        self, maybe_convert_to_tensor, identifier)
     return placeholder
 
   @property
   def captures(self):
     """Order list of tuples containing external and internal captures."""
-    return self._captures.values()
+    return self._function_captures.by_val_capture_tuples
 
   def add_capture(self, tensor, placeholder):
     """Capture a specific tensor and utilize the provided placeholder.
@@ -869,12 +791,20 @@ class FuncGraph(ops.Graph):
       tensor: Tensor to captures.
       placeholder: Provided placeholder for the tensor.
     """
-    self._captures[id(tensor)] = (tensor, placeholder)
+    self._function_captures.add_or_replace(
+        key=id(tensor),
+        external=tensor,
+        internal=placeholder,
+        is_by_ref=False)
     self.inputs.append(placeholder)
 
   def replace_capture(self, tensor, placeholder):
     """Replace already existing capture."""
-    self._captures[id(tensor)] = (tensor, placeholder)
+    self._function_captures.add_or_replace(
+        key=id(tensor),
+        external=tensor,
+        internal=placeholder,
+        is_by_ref=False)
 
   def replace_capture_with_deferred_capture(self,
                                             tensor,
@@ -913,8 +843,7 @@ class FuncGraph(ops.Graph):
       default_value: optional value to use in environments that cannot safely
         evaluate closure.
     """
-    if id(tensor) in self._captures:
-      self.pop_capture(tensor)
+    self._function_captures.pop(id(tensor), is_by_ref=False)
     self.capture_call_time_value(
         closure,
         spec,
@@ -922,72 +851,34 @@ class FuncGraph(ops.Graph):
         default_value=default_value,
         placeholder=placeholder)
 
-  def reset_captures(self, capture_list):
-    """Set the captures with the provided list of captures & placeholder."""
-    self._captures = py_collections.OrderedDict()
-    for tensor, placeholder in capture_list:
-      self._captures[id(tensor)] = (tensor, placeholder)
-
-  def pop_capture(self, tensor):
-    """Remove the capture and return the generated placeholder."""
-    capture = self._captures.pop(id(tensor), None)
-    if capture is None:
-      return None
-
-    return capture[1]
-
-  def clear_captures(self):
-    self._captures.clear()
-    self._deferred_captures.clear()
-
-  def capture_eager_tensor(self, tensor, name):
-    capture = self._captures.get(id(tensor))
-    if capture is None:
-      with ops.control_dependencies(None):
-        constant_value = tensor_util.constant_value(tensor)
-        if constant_value is None:
-          # Some eager tensors, e.g. parallel tensors, are not convertible to a
-          # single constant. We'll use a placeholder for this case.
-          return self._capture_helper(tensor, name)
-        graph_const = constant_op.constant(
-            constant_value, dtype=tensor.dtype, shape=tensor.shape, name=name)
-      self.add_capture(tensor, graph_const)
-    else:
-      graph_const = capture[1]
-    tape.record_operation(
-        "captured_value", [graph_const], [tensor],
-        backward_function=lambda x: [x],
-        forward_function=lambda x: [x])
-    return graph_const
-
-  def captured(self, tensor):
-    """Check if the specified tensor has been captured."""
-    return id(tensor) in self._captures
-
   @property
   def external_captures(self):
     """External tensors captured by this function."""
-    return [c[0] for c in self._captures.values()]
+    return list(self._function_captures.by_val_external.values())
 
   @property
   def internal_captures(self):
     """Placeholders in this function corresponding captured tensors."""
-    return [c[1] for c in self._captures.values()]
+    return list(self._function_captures.by_val_internal.values())
 
   @property
   def deferred_external_captures(self):
     """Ordered nest of tensors whose placeholders will be fed at call time."""
-    return [c[0] for c in self._deferred_captures.values()]
+    return list(self._function_captures.by_ref_external.values())
 
   @property
   def deferred_internal_captures(self):
     """List of nest of placeholders which at call time will be fed."""
-    return [c[1] for c in self._deferred_captures.values()]
+    return list(self._function_captures.by_ref_internal.values())
 
   @property
   def variable_captures(self):
     """Map of python object ids of variables to variables which are captured."""
     return self.variables
+
+  @property
+  def function_captures(self):
+    return self._function_captures
 
   def mark_as_unsaveable(self, error_message):
     """Marks this FuncGraph as unsaveable.
@@ -1014,8 +905,6 @@ class FuncGraph(ops.Graph):
     """Returns set of errors preventing this FuncGraph from being saved."""
     return self._saving_errors
 
-  # TODO(b/263520817): Add function_captures property.
-
   def _add_scope_exit_callback(self, fn):
     """Add a function to call when this graph exits the default scope."""
     if not callable(fn):
@@ -1028,7 +917,6 @@ class FuncGraph(ops.Graph):
     self._scope_exit_callbacks.append(fn)
 
 
-# TODO(mdan): Too many threaded arguments. Accept an ACD ctx manager instead.
 def func_graph_from_py_func(name,
                             python_func,
                             args,
@@ -1042,8 +930,7 @@ def func_graph_from_py_func(name,
                             op_return_value=None,
                             collections=None,
                             capture_by_value=None,
-                            create_placeholders=True,
-                            acd_record_initial_resource_uses=False):
+                            create_placeholders=True):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -1084,11 +971,6 @@ def func_graph_from_py_func(name,
     create_placeholders: An optional boolean. If True, then func graph will
       create placeholders for the inputs as graph ops. If False, the input args
       and kwargs will be treated as the input placeholders.
-    acd_record_initial_resource_uses: If `True` and `add_control_dependencies`
-      is enabled, the results (those marked with
-      AutomaticControlDependencies.mark_result) will be annotated with a private
-      attribute, "_res_first_used_by", which points to the first nodes which
-      used the any of the resources that the result op is using.
 
   Returns:
     A FuncGraph.
@@ -1104,8 +986,7 @@ def func_graph_from_py_func(name,
         name, collections=collections, capture_by_value=capture_by_value)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
-    deps_control_manager = auto_control_deps.AutomaticControlDependencies(
-        record_initial_resource_uses=acd_record_initial_resource_uses)
+    deps_control_manager = auto_control_deps.AutomaticControlDependencies()
   else:
     deps_control_manager = ops.NullContextmanager()
 
@@ -1233,10 +1114,6 @@ def func_graph_from_py_func(name,
     finally:
       current_scope.set_use_resource(default_use_resource)
 
-    # Variables in `func_args`, `func_kwargs` should be explicit inputs
-    # to the function, not captured inputs.
-    graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
-    arg_variables = object_identity.ObjectIdentitySet()
     inputs = []
     for arg in composite_tensor_utils.flatten_with_variables([func_args,
                                                               func_kwargs]):
@@ -1244,14 +1121,14 @@ def func_graph_from_py_func(name,
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
         # placeholders.
-        resource_placeholder = func_graph.pop_capture(arg.handle)
+        capture = func_graph._function_captures.pop(id(arg.handle), False)  # pylint: disable=protected-access
+        assert len(capture) >= 2
+        resource_placeholder = capture[1]
         if resource_placeholder is None:
           continue
-        arg_variables.add(arg)
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
-    variables = [v for v in graph_variables if v not in arg_variables]
     func_graph.inputs = (
         inputs + func_graph.internal_captures + nest.flatten(
             func_graph.deferred_internal_captures, expand_composites=True))
@@ -1262,7 +1139,7 @@ def func_graph_from_py_func(name,
         for x in flatten(func_graph.structured_outputs)
         if x is not None)
 
-    func_graph.variables = variables
+    func_graph.variables = func_graph._watched_variables  # pylint: disable=protected-access
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)
@@ -1387,19 +1264,6 @@ def pack_sequence_as(structure, flat_sequence):
   return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
 
 
-def _create_substitute_placeholder(value, name=None, dtype=None, shape=None):
-  """Creates a placeholder for `value` and propagates shape info to it."""
-  # Note: setting ops.control_dependencies(None) ensures we always put
-  # capturing placeholders outside of any control flow context.
-  if shape is None:
-    shape = value.shape
-  with ops.control_dependencies(None):
-    placeholder = graph_placeholder(
-        dtype=dtype or value.dtype, shape=shape, name=name)
-  handle_data_util.copy_handle_data(value, placeholder)
-  return placeholder
-
-
 def _create_placeholders(args, kwargs, arg_names=None):
   """Create placeholders given positional args and keyword args."""
   signature_context = trace_type.InternalTracingContext(
@@ -1442,7 +1306,7 @@ def dismantle_func_graph(func_graph):
     func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable after
       this function.
   """
-  func_graph.clear_captures()
+  func_graph._function_captures.clear()  # pylint: disable=protected-access
   ops.dismantle_graph(func_graph)
 
 

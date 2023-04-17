@@ -45,10 +45,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -70,7 +69,7 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat(
             "expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
             "for driver version; got \"%s\"",
@@ -82,21 +81,21 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   int patch = 0;
   if (!absl::SimpleAtoi(pieces[0], &major)) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0], value));
   }
   if (!absl::SimpleAtoi(pieces[1], &minor)) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str()));
   }
   if (pieces.size() == 3 && !absl::SimpleAtoi(pieces[2], &patch)) {
     return tsl::Status(
-        port::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[2], value));
@@ -144,36 +143,36 @@ void Diagnostician::LogDiagnosticInformation() {
     if (!started) {
       LOG(INFO) << "kernel driver is installed, but does not appear to be "
                    "running on this host "
-                << "(" << port::Hostname() << ")";
+                << "(" << tsl::port::Hostname() << ")";
     }
   } else {
     LOG(INFO) << "kernel driver does not appear to be installed on this host "
-              << "(" << port::Hostname() << ")";
+              << "(" << tsl::port::Hostname() << ")";
   }
   CFRelease(kext_infos);
 #elif !defined(PLATFORM_WINDOWS)
   if (access(kDriverVersionPath, F_OK) != 0) {
-    LOG(INFO) << "kernel driver does not appear to be running on this host "
-              << "(" << port::Hostname() << "): "
-              << "/proc/driver/nvidia/version does not exist";
+    VLOG(1) << "kernel driver does not appear to be running on this host "
+            << "(" << tsl::port::Hostname() << "): "
+            << "/proc/driver/nvidia/version does not exist";
     return;
   }
   auto dev0_path = GetDevNodePath(0);
   if (access(dev0_path.c_str(), F_OK) != 0) {
-    LOG(INFO) << "no NVIDIA GPU device is present: " << dev0_path
-              << " does not exist";
+    VLOG(1) << "no NVIDIA GPU device is present: " << dev0_path
+            << " does not exist";
     return;
   }
 #endif
 
   LOG(INFO) << "retrieving CUDA diagnostic information for host: "
-            << port::Hostname();
+            << tsl::port::Hostname();
 
   LogDriverVersionInformation();
 }
 
 /* static */ void Diagnostician::LogDriverVersionInformation() {
-  LOG(INFO) << "hostname: " << port::Hostname();
+  LOG(INFO) << "hostname: " << tsl::port::Hostname();
 #ifndef PLATFORM_WINDOWS
   if (VLOG_IS_ON(1)) {
     const char *value = getenv("LD_LIBRARY_PATH");
@@ -217,7 +216,7 @@ void Diagnostician::LogDiagnosticInformation() {
 // driver-interfacing DSO version number. Returns it as a string.
 tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   tsl::StatusOr<DriverVersion> result(tsl::Status(
-      port::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       "was unable to find libcuda.so DSO loaded into this program"));
 
 #if defined(__APPLE__)
@@ -287,7 +286,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == std::string::npos) {
     return tsl::Status(
-        port::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
                      driver_version_file_contents, "\""));
@@ -348,21 +347,21 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   }
   CFRelease(kext_infos);
   auto status = tsl::Status(
-      port::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrCat(
           "failed to read driver bundle version: ",
           CFStringGetCStringPtr(kDriverKextIdentifier, kCFStringEncodingUTF8)));
   return status;
 #elif defined(PLATFORM_WINDOWS)
   auto status =
-      tsl::Status(port::error::UNIMPLEMENTED,
+      tsl::Status(absl::StatusCode::kUnimplemented,
                   "kernel reported driver version not implemented on Windows");
   return status;
 #else
   FILE *driver_version_file = fopen(kDriverVersionPath, "r");
   if (driver_version_file == nullptr) {
     return tsl::Status(
-        port::error::PERMISSION_DENIED,
+        absl::StatusCode::kPermissionDenied,
         absl::StrCat("could not open driver version path for reading: ",
                      kDriverVersionPath));
   }
@@ -384,7 +383,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   }
 
   auto status = tsl::Status(
-      port::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrCat(
           "failed to read driver version file contents: ", kDriverVersionPath,
           "; ferror: ", ferror(driver_version_file)));

@@ -26,9 +26,13 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 # break dependencies. Must use double quotes to match code internal rewrite
 # rule.
 _calibration_wrapper = LazyLoader(
-    "_calibration_wrapper", globals(),
-    "tensorflow.lite.python.optimize."
-    "_pywrap_tensorflow_lite_calibration_wrapper")
+    "_calibration_wrapper",
+    globals(),
+    (
+        "tensorflow.lite.python.optimize."
+        "_pywrap_tensorflow_lite_calibration_wrapper"
+    ),
+)
 
 
 def add_intermediate_tensors(model_content):
@@ -42,10 +46,12 @@ class Calibrator:
   This is an internal class, not a public interface.
   """
 
-  def __init__(self,
-               model_content,
-               custom_op_registerers_by_name=None,
-               custom_op_registerers_by_func=None):
+  def __init__(
+      self,
+      model_content,
+      custom_op_registerers_by_name=None,
+      custom_op_registerers_by_func=None,
+  ):
     """Constructor.
 
     Args:
@@ -65,10 +71,11 @@ class Calibrator:
     if custom_op_registerers_by_func is None:
       custom_op_registerers_by_func = []
     try:
-      self._calibrator = (
-          _calibration_wrapper.CalibrationWrapper(
-              model_content, custom_op_registerers_by_name,
-              custom_op_registerers_by_func))
+      self._calibrator = _calibration_wrapper.CalibrationWrapper(
+          model_content,
+          custom_op_registerers_by_name,
+          custom_op_registerers_by_func,
+      )
       self._model_content = model_content
     except Exception as e:
       raise ValueError("Failed to parse the model: %s." % e)
@@ -81,7 +88,8 @@ class Calibrator:
     signature_runner = self._interpreter.get_signature_runner(signature_key)
     input_details = sorted(
         signature_runner.get_input_details().items(),
-        key=lambda item: item[1]["index"])
+        key=lambda item: item[1]["index"],
+    )
     for input_name, _ in input_details:
       input_array.append(inputs[input_name])
     return input_array
@@ -93,15 +101,18 @@ class Calibrator:
     for sample in dataset_gen():
       if isinstance(sample, tuple):
         if not isinstance(sample[1], dict):
-          raise ValueError("You need to provide either a dictionary with input "
-                           "names and values in the second arugment in the "
-                           "tuple")
+          raise ValueError(
+              "You need to provide either a dictionary with input "
+              "names and values in the second arugment in the "
+              "tuple"
+          )
         # Convert signature based inputs to the tensor index based data.
         if self._interpreter is None:
           self._interpreter = Interpreter(model_content=self._model_content)
         signature_key = sample[0]
         input_array = self._create_input_array_from_dict(
-            signature_key, sample[1])
+            signature_key, sample[1]
+        )
       elif isinstance(sample, dict):
         # Convert signature based inputs to the tensor index based data.
         if self._interpreter is None:
@@ -112,19 +123,22 @@ class Calibrator:
         signature_key = None
         input_array = sample
       else:
-        raise ValueError("You need to provide either a dictionary with input "
-                         "names and values, a tuple with signature key and a "
-                         "dictionary with input names and values, or an array "
-                         "with input values in the order of input tensors of "
-                         "the graph in the representative_dataset function. "
-                         "Unsupported value from dataset: {}.".format(sample))
+        raise ValueError(
+            "You need to provide either a dictionary with input "
+            "names and values, a tuple with signature key and a "
+            "dictionary with input names and values, or an array "
+            "with input values in the order of input tensors of "
+            "the graph in the representative_dataset function. "
+            "Unsupported value from dataset: {}.".format(sample)
+        )
 
       if signature_key not in initialized:
         initialized[signature_key] = True
         if resize_input:
           if signature_key is not None:
-            self._calibrator.Prepare([list(s.shape) for s in input_array],
-                                     signature_key)
+            self._calibrator.Prepare(
+                [list(s.shape) for s in input_array], signature_key
+            )
           else:
             self._calibrator.Prepare([list(s.shape) for s in input_array])
         else:
@@ -137,17 +151,21 @@ class Calibrator:
       else:
         self._calibrator.FeedTensor(input_array)
 
-  @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
-                 SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)
-  def calibrate_and_quantize(self,
-                             dataset_gen,
-                             input_type,
-                             output_type,
-                             allow_float,
-                             activations_type=dtypes.int8,
-                             bias_type=dtypes.int32,
-                             resize_input=True,
-                             disable_per_channel=False):
+  @convert_phase(
+      Component.OPTIMIZE_TFLITE_MODEL,
+      SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER,
+  )
+  def calibrate_and_quantize(
+      self,
+      dataset_gen,
+      input_type,
+      output_type,
+      allow_float,
+      activations_type=dtypes.int8,
+      bias_type=dtypes.int32,
+      resize_input=True,
+      disable_per_channel=False,
+  ):
     """Calibrates the model with specified generator and then quantizes it.
 
     The input shapes of the calibrator are resized with the calibration data if
@@ -161,33 +179,40 @@ class Calibrator:
       input_type: A tf.dtype representing the desired real-value input type.
       output_type: A tf.dtype representing the desired real-value output type.
       allow_float: A boolean. False if the resulting model cannot perform float
-                   computation, useful when targeting an integer-only backend.
-                   If False, an error will be thrown if an operation cannot be
-                   quantized, otherwise the model will fallback to float ops.
+        computation, useful when targeting an integer-only backend. If False, an
+        error will be thrown if an operation cannot be quantized, otherwise the
+        model will fallback to float ops.
       activations_type: A tf.dtype representing the desired type for
-                   activations.
+        activations.
       bias_type: A tf.dtype representing the desired type for bias.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
       disable_per_channel: A boolean. True if disabling per-channel
-                   quantization.
+        quantization.
     """
     self._feed_tensors(dataset_gen, resize_input)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float,
+        np.dtype(output_type.as_numpy_dtype()).num,
+        allow_float,
         np.dtype(activations_type.as_numpy_dtype()).num,
-        np.dtype(bias_type.as_numpy_dtype()).num, disable_per_channel)
+        np.dtype(bias_type.as_numpy_dtype()).num,
+        disable_per_channel,
+    )
 
-  @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
-                 SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)
-  def calibrate_and_quantize_single(self,
-                                    dataset_gen,
-                                    input_type,
-                                    output_type,
-                                    allow_float,
-                                    op_output_name,
-                                    resize_input=True):
+  @convert_phase(
+      Component.OPTIMIZE_TFLITE_MODEL,
+      SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER,
+  )
+  def calibrate_and_quantize_single(
+      self,
+      dataset_gen,
+      input_type,
+      output_type,
+      allow_float,
+      op_output_name,
+      resize_input=True,
+  ):
     """Calibrates the model with specified generator and then quantizes it.
 
     Only the single op with output op_output_name will be quantized.
@@ -211,7 +236,10 @@ class Calibrator:
     self._feed_tensors(dataset_gen, resize_input)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)
+        np.dtype(output_type.as_numpy_dtype()).num,
+        allow_float,
+        op_output_name,
+    )
 
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.CALIBRATE)
   def calibrate(self, dataset_gen):

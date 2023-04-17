@@ -85,6 +85,13 @@ int RandomSeed();
 // NOTE: This function is not thread-safe.
 int PickUnusedPortOrDie();
 
+// Constant which is false internally and true in open source.
+#ifdef PLATFORM_GOOGLE
+inline constexpr bool kIsOpenSource = false;
+#else
+inline constexpr bool kIsOpenSource = true;
+#endif  // PLATFORM_GOOGLE
+
 }  // namespace testing
 }  // namespace tsl
 

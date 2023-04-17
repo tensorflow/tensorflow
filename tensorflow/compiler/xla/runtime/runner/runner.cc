@@ -262,7 +262,7 @@ absl::Status Execute(RunnerFlags flags,
   if (auto st = ReadFileToString(env, flags.module_path, &module); !st.ok()) {
     return InternalError(
         StrFormat("failed to read module input from %s, error: %s",
-                  flags.module_path, st.error_message()));
+                  flags.module_path, st.message()));
   }
 
   // Read arguments from the input file.
@@ -295,7 +295,7 @@ absl::Status Execute(RunnerFlags flags,
   // Execute and convert results to proto message.
   if (auto executed = executable->Execute(args, converter, execute_opts);
       !executed.ok())
-    return executed;
+    return executed.status();
 
   if (auto inout = WriteInoutResults(args_proto, args, &results_proto);
       !inout.ok())

@@ -106,7 +106,11 @@ tensorflow::Status RunOptimizationPasses(
     const mlir::PassPipelineCLParser& passPipeline, mlir::ModuleOp module,
     mlir::MLIRContext* context) {
   mlir::PassManager pm(context);
-  mlir::applyPassManagerCLOptions(pm);
+  mlir::registerPassManagerCLOptions();
+  if (failed(mlir::applyPassManagerCLOptions(pm))) {
+    return tensorflow::errors::InvalidArgument(
+        "Could not initialize MLIR pass manager CL options");
+  }
 
   auto error_handler = [&](const llvm::Twine& msg) {
     emitError(mlir::UnknownLoc::get(pm.getContext())) << msg;

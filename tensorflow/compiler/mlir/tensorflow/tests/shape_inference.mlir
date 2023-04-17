@@ -1,5 +1,7 @@
 // RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s
 
+!tf_variant = tensor<!tf_type.variant<tensor<*x!tf_type.variant>>>
+
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
   // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
   func.func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
@@ -141,6 +143,51 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       "tf.Yield"(%2) : (tensor<*xf32>) -> ()
       // CHECK: {is_stateless = true} : (tensor<i1>) -> tensor<1x2x3xf32>
      }) {is_stateless = true} : (tensor<i1>) -> tensor<*xf32>
+    // CHECK: return {{.*}} :  tensor<1x2x3xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @shape_from_case_to_branch_functions_to_results
+  // CHECK-SAME: (%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @shape_from_case_to_branch_functions_to_results(%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %0 = "tf.Case"(%arg0, %arg1) {branches = [@case_branch0, @case_branch1], is_stateless = true} : (tensor<i32>, tensor<1x2x3xf32>) -> tensor<*xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @case_branch0
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @case_branch0(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: return
+    // CHECK-SAME: tensor<1x2x3xf32>
+    func.return %arg0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @case_branch1
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @case_branch1(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Identity"(%arg0) : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
+    // CHECK: return
+    // CHECK-SAME: tensor<1x2x3xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: shape_from_case_to_region_bodies_to_output
+  // CHECK-SAME: -> tensor<1x2x3xf32>
+  func.func @shape_from_case_to_region_bodies_to_output(%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %unshaped = "tf.Cast"(%arg1) : (tensor<1x2x3xf32>) -> tensor<*xf32>
+    %0 = "tf.CaseRegion"(%arg0) ({
+      // CHECK: "tf.Add"{{.+}}(tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+      // CHECK: "tf.Yield"{{.+}}(tensor<1x2x3xf32>) -> ()
+      %1 = "tf.Add"(%unshaped, %unshaped) : (tensor<*xf32>,  tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+     }, {
+      // CHECK: "tf.Sub"{{.+}}(tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+      // CHECK: "tf.Yield"{{.+}}(tensor<1x2x3xf32>) -> ()
+      %2 = "tf.Sub"(%unshaped, %unshaped) : (tensor<*xf32>,  tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+      // CHECK: {is_stateless = true} : (tensor<i32>) -> tensor<1x2x3xf32>
+     }) {is_stateless = true} : (tensor<i32>) -> tensor<*xf32>
     // CHECK: return {{.*}} :  tensor<1x2x3xf32>
     func.return %0 : tensor<*xf32>
   }
@@ -1235,6 +1282,21 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %1#1 : tensor<*x!quant.uniform<u8:f32, 0.007:128>>
   }
 
+  // CHECK-LABEL: func @xla_call_module
+  // CHECK-SAME: (%arg0: tensor<f32>) -> tensor<f32>
+  func.func @xla_call_module(%arg0: tensor<f32>) -> tensor<*xf32> {
+    // Equivalent to the following:
+    //
+    // module @jit_sin {
+    //   func.func public @main(%arg0: tensor<f32>) -> tensor<f32> {
+    //     %0 = stablehlo.sine %arg0 : tensor<f32>
+    //     return %0 : tensor<f32>
+    //   }
+    // }
+    %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = [], version = 4 : i64} : (tensor<f32>) -> tensor<*xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
   // CHECK-LABEL: func @xla_host_compute_mlir_empty_module
   func.func @xla_host_compute_mlir_empty_module(%arg0: tensor<2xf32>) -> tensor<*xf32> {
     // CHECK: "tf._XlaHostComputeMlir"
@@ -1932,5 +1994,169 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func.func @test_xla_sharding(%arg0: tensor<1x2x3xf32>) -> tensor<*xf32> {
     %0 = "tf.XlaSharding"(%arg0) : (tensor<1x2x3xf32>) -> tensor<*xf32>
     return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @tensor_list_large
+  func.func @tensor_list_large(%arg0: tensor<i1>) {
+    %0 = "tf.Const"() {device = "", value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tf.Const"() {device = "", value = dense<3> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: TensorListReserve{{.*}}-> tensor<!tf_type.variant<tensor<2x2
+    %2 = "tf.TensorListReserve"(%0, %1) {device = ""} : (tensor<2xi32>, tensor<i32>) -> !tf_variant
+
+    %if0 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%2) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%2) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if1 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if0) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if0) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if2 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if1) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if1) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if3 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if2) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if2) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if4 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if3) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if3) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if5 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if4) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if4) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if6 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if5) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if5) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if7 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if6) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if6) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if8 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if7) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if7) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if9 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if8) : (!tf_variant) -> ()},
+                                 {"tf.Yield"(%if8) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if10 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if9) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if9) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if11 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if10) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if10) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if12 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if11) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if11) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if13 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if12) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if12) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if14 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if13) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if13) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if15 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if14) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if14) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if16 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if15) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if15) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if17 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if16) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if16) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if18 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if17) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if17) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if19 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if18) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if18) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if20 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if19) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if19) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if21 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if20) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if20) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if22 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if21) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if21) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if23 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if22) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if22) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if24 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if23) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if23) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if25 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if24) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if24) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if26 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if25) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if25) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if27 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if26) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if26) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if28 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if27) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if27) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if29 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if28) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if28) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if30 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if29) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if29) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if31 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if30) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if30) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if32 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if31) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if31) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if33 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if32) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if32) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if34 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if33) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if33) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if35 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if34) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if34) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if36 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if35) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if35) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if37 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if36) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if36) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if38 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if37) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if37) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if39 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if38) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if38) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if40 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if39) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if39) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if41 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if40) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if40) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if42 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if41) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if41) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if43 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if42) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if42) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if44 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if43) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if43) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if45 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if44) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if44) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if46 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if45) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if45) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if47 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if46) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if46) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if48 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if47) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if47) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+    %if49 = "tf.IfRegion"(%arg0) ({"tf.Yield"(%if48) : (!tf_variant) -> ()},
+                                  {"tf.Yield"(%if48) : (!tf_variant) -> ()})
+        {is_stateless = true} : (tensor<i1>) -> !tf_variant
+
+    %4 = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %5 = "tf.Const"() {device = "", value = dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
+    %6 = "tf.TensorListSetItem"(%if49, %4, %5) {device = ""} : (!tf_variant, tensor<i32>, tensor<2x2xf32>)-> tensor<*x!tf_type.variant>
+    func.return
   }
 }

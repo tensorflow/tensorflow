@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
@@ -51,9 +52,39 @@ limitations under the License.
 
 namespace xla {
 
+class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
+ public:
+  explicit TfrtCpuDeviceDescription(int id);
+
+  int id() const override { return id_; }
+
+  int process_index() const override { return 0; }
+
+  absl::string_view device_kind() const override;
+
+  absl::string_view DebugString() const override;
+
+  absl::string_view ToString() const override;
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ private:
+  int id_;
+  std::string debug_string_;
+  std::string to_string_;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
+};
+
 class TfrtCpuDevice final : public PjRtDevice {
  public:
   TfrtCpuDevice(int id, bool asynchronous);
+
+  const TfrtCpuDeviceDescription& description() const override {
+    return description_;
+  }
 
   void SetClient(PjRtClient* client) {
     CHECK(client_ == nullptr);
@@ -66,18 +97,8 @@ class TfrtCpuDevice final : public PjRtDevice {
     return process_index() == client()->process_index();
   }
 
-  int id() const override { return id_; }
-
-  int process_index() const override { return 0; }
-
   // Used as `device_ordinal`.
-  int local_hardware_id() const override { return id_; }
-
-  absl::string_view device_kind() const override;
-
-  absl::string_view DebugString() const override;
-
-  absl::string_view ToString() const override;
+  int local_hardware_id() const override { return id(); }
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
@@ -93,22 +114,14 @@ class TfrtCpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
  private:
-  int id_;
   PjRtClient* client_ = nullptr;
-  std::string debug_string_;
-  std::string to_string_;
+  TfrtCpuDeviceDescription description_;
 
   // TODO(zhangqiaorjc): Optimize semaphore related overhead.
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
 };
 
 class TfrtCpuExecutable;
@@ -230,12 +243,13 @@ class TfrtCpuClient final : public PjRtClient {
     return eigen_intraop_device_.get();
   }
 
-  tfrt::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
+  tfrt::AsyncValueRef<runtime::CpuEvent> GetLastCollectiveLaunchEvent() {
     absl::MutexLock lock(&mu_);
     return last_collective_launch_event_.CopyRef();
   }
 
-  void SetLastCollectiveLaunchEvent(tfrt::AsyncValueRef<CpuEvent> event) {
+  void SetLastCollectiveLaunchEvent(
+      tfrt::AsyncValueRef<runtime::CpuEvent> event) {
     absl::MutexLock lock(&mu_);
     last_collective_launch_event_ = std::move(event);
   }
@@ -270,7 +284,7 @@ class TfrtCpuClient final : public PjRtClient {
   // TODO(zhangqiaorjc): Explore alternatives that allow multiple concurrent
   // collectives.
   mutable absl::Mutex mu_;
-  tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event_
+  tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
   // A cache for transpose plans. We use transposes to convert
@@ -349,16 +363,13 @@ class TfrtCpuBuffer final : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  StatusOr<tfrt::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
-      bool discard_cached_copy, std::optional<xla::Layout> layout);
-
   // Acquires the device buffer for shared read-only usages, and it also adds
   // the `usage_event` to it. Any donation event in the future is expected to be
   // serialized after all the usage events added through this method. Returns
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
   TrackedTfrtCpuDeviceBuffer* AcquireUsage(
-      tfrt::AsyncValueRef<CpuEvent> usage_event);
+      tfrt::AsyncValueRef<runtime::CpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
   // success. Otherwise, the donated buffer is returned to the TfrtCpuBuffer.
@@ -473,7 +484,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   TfrtCpuExecutable(
       int num_replicas, int num_partitions,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      bool parameter_is_tupled_arguments,
+      bool parameter_is_tupled_arguments, CompileOptions compile_options,
       std::unique_ptr<Executable> cpu_executable,
       BufferAllocation::Index result_buffer_index,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -574,7 +585,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
+      tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event,
       bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;
@@ -583,6 +594,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   int num_partitions_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
   bool parameter_is_tupled_arguments_;
+  CompileOptions compile_options_;
 
   std::shared_ptr<Executable> cpu_executable_;
 

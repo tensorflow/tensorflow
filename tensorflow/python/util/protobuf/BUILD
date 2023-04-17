@@ -1,5 +1,6 @@
 # Tensorflow protobuf utility package
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 
@@ -44,9 +45,8 @@ tf_py_test(
     tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
-        "@six_archive//:six",
         "//tensorflow/python:platform_test",
-        #"//tensorflow/python/util",
+        "@six_archive//:six",
     ],
 )
 
@@ -65,7 +65,7 @@ filegroup(
 # )
 # copybara:uncomment_end
 
-py_library(
+py_strict_library(
     name = "protobuf",
     srcs = glob(
         ["*.py"],
@@ -86,5 +86,6 @@ py_library(
         "//tensorflow/python:global_test_configuration",
         "@com_google_protobuf//:protobuf_python",
         "@six_archive//:six",
+        "//tensorflow/python/util:compat",
     ],
 )

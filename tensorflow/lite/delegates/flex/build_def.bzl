@@ -94,7 +94,8 @@ def tflite_flex_cc_library(
         additional_deps = [],
         testonly = 0,
         visibility = ["//visibility:public"],
-        link_symbol = True):
+        link_symbol = True,
+        compatible_with = None):
     """A rule to generate a flex delegate with only ops to run listed models.
 
     Args:
@@ -105,6 +106,8 @@ def tflite_flex_cc_library(
       additional_deps: Dependencies for additional TF ops.
       testonly: Mark this library as testonly if true.
       visibility: visibility of the generated rules.
+      link_symbol: If true, add delegate_symbol to deps.
+      compatible_with: The standard compatible_with attribute.
     """
     portable_tensorflow_lib = clean_dep("//tensorflow/core:portable_tensorflow_lib")
     if models:
@@ -125,6 +128,7 @@ def tflite_flex_cc_library(
                 clean_dep("//tensorflow/core/kernels:portable_extended_ops"),
             ]) + [CUSTOM_KERNEL_HEADER.header],
             copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
+            compatible_with = compatible_with,
             defines = [
                 "SELECTIVE_REGISTRATION",
                 "SUPPORT_SELECTIVE_REGISTRATION",
@@ -164,6 +168,7 @@ def tflite_flex_cc_library(
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
         features = tf_features_nolayering_check_if_ios(),
+        compatible_with = compatible_with,
         visibility = visibility,
         deps = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate_data"),
@@ -181,7 +186,7 @@ def tflite_flex_cc_library(
             ],
             "//conditions:default": [
                 clean_dep("//tensorflow/core:tensorflow"),
-                clean_dep("//tensorflow/lite/c:common"),
+                clean_dep("//tensorflow/lite/core/c:private_common"),
             ],
         }) + additional_deps + delegate_symbol,
         testonly = testonly,

@@ -115,14 +115,26 @@ class CheckQuantizableOps
     }
 
     absl::Status check_status;
-    // Skip quantization for read-only ops as only weight-only is supported.
-    if (function_name.contains("gather")) {
+    // TODO(b/270906404): Support weight-only gather for uniform quantized opset
+    // in PTQ mode
+    if (op_set_ == OpSet::UNIFORM_QUANTIZED &&
+        function_name.contains("gather")) {
       check_status.Update(absl::InternalError("Weight-only op is skipped."));
     }
 
     if (op_set_ == OpSet::XLA) {
       check_status.Update(checkQuantizableOpsForXla(call_op, function_name,
                                                     enable_two_input_tensors_));
+    }
+
+    // Only the composite functions with f32 inputs are quantizable.
+    if (call_op.getResults().size() == 1 && !call_op->getResult(0)
+                                                 .getType()
+                                                 .cast<ShapedType>()
+                                                 .getElementType()
+                                                 .isF32()) {
+      check_status.Update(absl::InternalError(
+          "Composite functions for quantization should be f32 type."));
     }
 
     // The OK status means this op is quantizable. Return failure since the
@@ -183,9 +195,11 @@ class CheckQuantizableOps
       }
 
       if (!is_weight_constant) {
-        if (!enable_two_input_tensors || !function_name.contains("matmul")) {
+        if (!enable_two_input_tensors || (!function_name.contains("matmul") &&
+                                          !function_name.contains("einsum"))) {
           return absl::InternalError(
-              "Non-constant weights are not supported at the moment.");
+              "Non-constant weights are not supported at the moment,"
+              " except matmul and einsum.");
         }
       }
     }

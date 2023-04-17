@@ -486,7 +486,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
-    return errors::Internal("Inlining mismatch: ", validation.error_message());
+    return errors::Internal("Inlining mismatch: ", validation.message());
   }
 
   // Placer is responsible for assigning devices for all nodes that we will add
@@ -873,7 +873,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
     FunctionLibraryRuntime::Handle handle;
     Status s = InstantiateFunctionCall(node->def(), lib, &handle);
     if (!s.ok()) {
-      LOG(ERROR) << "Failed to instantiate a function:  " << s.error_message();
+      LOG(ERROR) << "Failed to instantiate a function:  " << s.message();
       continue;
     }
     const FunctionBody* fbody = lib->GetFunctionBody(handle);
@@ -891,7 +891,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
       inlined_any = true;
     } else {
       VLOG(1) << "Failed to inline function call: node=" << p.first->name()
-              << " error=" << inlined.error_message();
+              << " error=" << inlined.message();
     }
   }
 

@@ -149,7 +149,7 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNonTupleFailsGracefully) {
   auto result_status = builder.Build();
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(
-      result_status.status().error_message(),
+      result_status.status().message(),
       ::testing::HasSubstr("Operand to GetTupleElement() is not a tuple"));
 }
 
@@ -381,9 +381,9 @@ XLA_TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Expected instruction to have shape equal to"));
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("actual shape is"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("actual shape is"));
 }
 
 XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {

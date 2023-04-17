@@ -18,12 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -63,6 +66,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::xla::runtime::CpuEvent;
 
 // A RAII helper class used to set an AsyncValueRef<CpuEvent> to a ready state
 // upon destruction. In many cases in PjRt implementation, there will be
@@ -120,20 +125,27 @@ static void EnqueueWorkWhenReady(
   });
 }
 
-TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
-    : id_(id),
-      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int id) : id_(id) {
   debug_string_ = absl::StrCat("TFRT_CPU_", id);
   to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
 }
 
-absl::string_view TfrtCpuDevice::device_kind() const {
+absl::string_view TfrtCpuDeviceDescription::device_kind() const {
   return kCpuPlatformName;
 }
 
-absl::string_view TfrtCpuDevice::DebugString() const { return debug_string_; }
+absl::string_view TfrtCpuDeviceDescription::DebugString() const {
+  return debug_string_;
+}
 
-absl::string_view TfrtCpuDevice::ToString() const { return to_string_; }
+absl::string_view TfrtCpuDeviceDescription::ToString() const {
+  return to_string_;
+}
+
+TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
+    : description_(id),
+      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+}
 
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
@@ -307,25 +319,40 @@ StatusOr<std::string> TfrtCpuExecutable::SerializeExecutable() const {
                       compiler.Export(cpu_executable_.get()));
 
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
-
   if (serialized.empty()) {
     return Internal(
         "TfrtCpuClient::SerializeExecutable proto serialization failed");
   }
-  return serialized;
+  ExecutableAndOptionsProto proto;
+  *proto.mutable_serialized_executable() = std::move(serialized);
+  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                      compile_options_.ToProto());
+  return proto.SerializeAsString();
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
                                      std::optional<CompileOptions> options) {
-  if (!options.has_value()) {
-    return InvalidArgument(
-        "TfrtCpuClient requires `CompileOptions` for "
-        "`DeserializeExecutable()`");
+  ExecutableAndOptionsProto proto;
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "TfrtCpuClient::DeserializeExecutable proto too large (>2GB)");
   }
+  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+    return Internal(
+        "TfrtCpuClient::DeserializeExecutable proto deserialization failed");
+  }
+  CompileOptions compile_options;
+  if (options.has_value()) {
+    compile_options = *std::move(options);
+  } else {
+    TF_ASSIGN_OR_RETURN(compile_options,
+                        CompileOptions::FromProto(proto.compile_options()));
+  }
+  auto input_options = compile_options;
   // Load a CpuExecutable
   cpu::CpuCompiler compiler;
-  std::string str(serialized);
+  std::string str = std::move(*proto.mutable_serialized_executable());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler.LoadAotCompilationResult(str));
   TF_ASSIGN_OR_RETURN(
@@ -339,7 +366,8 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;
   TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
-      options->compile_portable_executable, &options->executable_build_options,
+      compile_options.compile_portable_executable,
+      &compile_options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
       },
@@ -365,7 +393,8 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
   std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
-  ExecutableBuildOptions& build_options = options->executable_build_options;
+  ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
   if (device_assignment != nullptr) {
     addressable_device_logical_ids.reserve(num_replicas * num_partitions);
     addressable_devices.reserve(num_replicas * num_partitions);
@@ -398,12 +427,13 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
 
   auto tfrt_cpu_executable = std::make_unique<TfrtCpuExecutable>(
       num_replicas, num_partitions, std::move(device_assignment),
-      options->parameter_is_tupled_arguments, std::move(executable),
-      result_slice.index(), std::move(result_buffer_indices),
+      compile_options.parameter_is_tupled_arguments, std::move(input_options),
+      std::move(executable), result_slice.index(),
+      std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this);
   TF_RETURN_IF_ERROR(tfrt_cpu_executable->SetUpDonation(
-      options->parameter_is_tupled_arguments));
+      compile_options.parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(tfrt_cpu_executable));
 }
@@ -433,7 +463,9 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   // Run Hlo Passes
-  cpu::CpuCompiler compiler;
+  bool allow_sparse_shapes =
+      hlo_module->config().debug_options().xla_cpu_use_xla_runtime();
+  cpu::CpuCompiler compiler(allow_sparse_shapes);
   xla::Compiler::CompileOptions dummy;
   TF_ASSIGN_OR_RETURN(hlo_module,
                       compiler.RunHloPasses(std::move(hlo_module),
@@ -447,7 +479,10 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile");
+  auto input_options = options;
   ExecutableBuildOptions& build_options = options.executable_build_options;
+
+  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
 
   int num_replicas;
   int num_partitions;
@@ -523,8 +558,9 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 
   auto executable = std::make_unique<TfrtCpuExecutable>(
       num_replicas, num_partitions, std::move(device_assignment),
-      options.parameter_is_tupled_arguments, std::move(cpu_executable),
-      result_slice.index(), std::move(result_buffer_indices),
+      options.parameter_is_tupled_arguments, std::move(input_options),
+      std::move(cpu_executable), result_slice.index(),
+      std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this);
   TF_RETURN_IF_ERROR(
@@ -1258,7 +1294,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
 TfrtCpuExecutable::TfrtCpuExecutable(
     int num_replicas, int num_partitions,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    bool parameter_is_tupled_arguments,
+    bool parameter_is_tupled_arguments, CompileOptions compile_options,
     std::unique_ptr<Executable> cpu_executable,
     BufferAllocation::Index result_buffer_index,
     absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -1269,6 +1305,7 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       num_partitions_(num_partitions),
       device_assignment_(std::move(device_assignment)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
+      compile_options_(std::move(compile_options)),
       cpu_executable_(std::move(cpu_executable)),
       result_buffer_index_(result_buffer_index),
       result_buffer_indices_(std::move(result_buffer_indices)),
@@ -1756,6 +1793,40 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
 
+static void MaybeDumpHloSnapshot(
+    const HloModule& module, RunId run_id,
+    const std::vector<PjRtBuffer*>& arguments,
+    const std::vector<std::unique_ptr<PjRtBuffer>>& results) {
+  if (!DumpingEnabledForHloModule(module)) {
+    return;
+  }
+  if (!module.config().debug_options().xla_dump_hlo_snapshots()) {
+    return;
+  }
+  xla::HloSnapshot hlo_snapshot;
+  *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = module.ToProto();
+
+  for (auto* argument : arguments) {
+    *hlo_snapshot.add_arguments() = (*argument->ToLiteralSync())->ToProto();
+  }
+
+  // If there are multiple results, wrap them in a tuple.
+  if (results.size() == 1) {
+    *hlo_snapshot.mutable_result() = (*results[0]->ToLiteralSync())->ToProto();
+  } else {
+    std::vector<Literal> result_literals;
+    result_literals.reserve(results.size());
+    for (auto& result : results) {
+      result_literals.push_back(std::move(**result->ToLiteralSync()));
+    }
+    *hlo_snapshot.mutable_result() =
+        LiteralUtil::MakeTupleOwned(std::move(result_literals)).ToProto();
+  }
+
+  DumpToFileInDir(module, "", absl::StrCat("snapshot.", run_id.ToInt(), ".pb"),
+                  hlo_snapshot.SerializeAsString());
+}
+
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -1797,6 +1868,9 @@ TfrtCpuExecutable::Execute(
     const int replica = addressable_device_logical_ids_[0].replica;
     const int partition = addressable_device_logical_ids_[0].partition;
 
+    // Dump once before running, in case there's a crash.
+    MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
+                         {});
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
         /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
@@ -1811,6 +1885,8 @@ TfrtCpuExecutable::Execute(
       (*returned_futures)[0] = std::move(*statusor->future);
     }
 
+    MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
+                         wrapped_results[0]);
   } else {
     // Gang schedule collectives to ensure that collectives with the same RunId
     // are run at the same time. We conservatively run only one collective at a

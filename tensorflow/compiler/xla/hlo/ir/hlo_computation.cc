@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -66,7 +67,7 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   }
   // If root_instruction is not specified use the last added instruction.
   HloInstruction* root =
-      root_instruction ? root_instruction : last_added_instruction_;
+      root_instruction ? root_instruction : last_added_instruction();
   CHECK_NE(nullptr, root);
   return absl::WrapUnique(new HloComputation(
       name_, parameter_count, &instructions_, root, fusion_instruction_));
@@ -89,7 +90,7 @@ HloComputation::HloComputation(
     if (instruction->opcode() == HloOpcode::kParameter) {
       int64_t param_no = instruction->parameter_number();
       CHECK(param_no >= 0 && param_no < parameter_count)
-          << "\nERROR: invalid parameter number.  Expected [0, "
+          << "\nERROR: invalid parameter number. Expected [0, "
           << parameter_count << "), got " << param_no;
       CHECK(param_instructions_[param_no] == nullptr)
           << "\nERROR: parameter number " << param_no
@@ -119,7 +120,7 @@ HloComputation::~HloComputation() {
 }
 
 HloInstruction* HloComputation::AddInstruction(
-    std::unique_ptr<HloInstruction> instruction, const std::string& new_name) {
+    std::unique_ptr<HloInstruction> instruction, absl::string_view new_name) {
   CHECK(instruction->opcode() != HloOpcode::kParameter)
       << "Parameter instructions cannot be added to a computation after "
       << "it has been built";
@@ -276,12 +277,13 @@ Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   return OkStatus();
 }
 
-bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction) {
+bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction,
+                                       bool ignore_control_dependency) {
   // If the instruction has control predecessors or successors then we cannot
   // remove the instruction without violating ordering constraints (added, for
   // example, to avert interference due to buffer aliasing).
-  if (!instruction->control_predecessors().empty() ||
-      !instruction->control_successors().empty()) {
+
+  if (!ignore_control_dependency && instruction->HasControlDependencies()) {
     return false;
   }
 
@@ -308,7 +310,8 @@ bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction,
-    std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup) {
+    std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup,
+    bool ignore_control_dependencies) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->IsDead());
@@ -321,10 +324,17 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* item = worklist.front();
     worklist.pop();
 
-    if (removed.contains(item) || !item->IsDead() || !IsSafelyRemovable(item) ||
+    if (removed.contains(item) || !item->IsDead() ||
+        !IsSafelyRemovable(item, ignore_control_dependencies) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
     }
+    if (ignore_control_dependencies) {
+      TF_RETURN_IF_ERROR(item->SafelyDropAllControlDependencies());
+    } else if (item->HasControlDependencies()) {
+      continue;
+    }
+
     for (int i = 0; i < item->operand_count(); ++i) {
       worklist.push(item->mutable_operand(i));
     }
@@ -430,6 +440,15 @@ void HloComputation::ComputeInstructionPostOrder(
     HloInstruction* root, const ChannelDependencies& channel_dependencies,
     absl::flat_hash_map<HloInstruction*, VisitState>& visited,
     std::vector<HloInstruction*>& post_order) const {
+  ForEachInstructionPostOrderImpl(
+      [&post_order](HloInstruction* hlo) { post_order.push_back(hlo); }, root,
+      channel_dependencies, visited);
+}
+
+void HloComputation::ForEachInstructionPostOrderImpl(
+    absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
+    const ChannelDependencies& channel_dependencies,
+    absl::flat_hash_map<HloInstruction*, VisitState>& visited) const {
   std::vector<HloInstruction*> dfs_stack = {root};
   while (!dfs_stack.empty()) {
     HloInstruction& current = *dfs_stack.back();
@@ -441,7 +460,7 @@ void HloComputation::ComputeInstructionPostOrder(
         DCHECK_EQ(current.parent(), this)
             << "Instruction " << current.name()
             << " is not in the current computation (" << name() << ").";
-        post_order.push_back(&current);
+        func(&current);
         it->second = kVisited;
       }
       continue;
@@ -548,6 +567,19 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
   return post_order;
 }
 
+void HloComputation::ForEachInstructionPostOrder(
+    absl::FunctionRef<void(HloInstruction*)> func) const {
+  absl::flat_hash_map<HloInstruction*, VisitState> visited;
+  visited.reserve(instruction_count());
+  auto channel_dependencies = ComputeChannelDependencies();
+  for (auto& instruction : instructions_) {
+    if (instruction->users().empty()) {
+      ForEachInstructionPostOrderImpl(func, instruction.get(),
+                                      channel_dependencies, visited);
+    }
+  }
+}
+
 std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
     const {
   absl::flat_hash_set<HloComputation*> visited;
@@ -571,36 +603,40 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-std::string HloComputation::ToString(const HloPrintOptions& options) const {
-  return ToString(options, MakeInstructionPostOrder());
+void HloComputation::Print(Printer* printer,
+                           const HloPrintOptions& options) const {
+  // Use post-order if order is not specified.
+  Print(printer, options, /*instruction_order=*/{});
 }
 
-std::string HloComputation::ToString(
-    const HloPrintOptions& options,
+void HloComputation::Print(
+    Printer* printer, const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  CHECK_EQ(instruction_order.size(), instruction_count());
+  if (!instruction_order.empty()) {
+    CHECK_EQ(instruction_order.size(), instruction_count());
+  }
   const std::string tab(2 * options.indent_amount(), ' ');
 
-  std::string result;
-  absl::StrAppend(&result, tab);
+  printer->Append(tab);
 
   if (!options.is_in_nested_computation()) {
     if (options.print_percent()) {
-      absl::StrAppend(&result, "%");
+      printer->Append("%");
     }
     if (options.print_ids()) {
       // When print_ids() is false, exclude entry computation's name because it
       // includes and leads to non-deterministic fingerprint.
-      absl::StrAppend(&result, name(), " ");
+      printer->Append(name());
+      printer->Append(" ");
     }
   }
 
   if (options.print_program_shape()) {
-    absl::StrAppend(
-        &result,
-        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())), " ");
+    ShapeUtil::PrintHumanString(printer,
+                                ComputeProgramShape(options.print_ids()));
+    printer->Append(" ");
   }
-  absl::StrAppend(&result, "{\n");
+  printer->Append("{\n");
 
   {
     // Print the instructions in this computation.
@@ -610,27 +646,53 @@ std::string HloComputation::ToString(
             .set_is_in_nested_computation(true);
 
     CanonicalNameMap name_map;
-    for (const HloInstruction* const instruction : instruction_order) {
+    name_map.Reserve(instruction_count());
+    auto print_one = [&](const HloInstruction* instruction) {
       DCHECK_EQ(this, instruction->parent());
       // 2 more spaces than just 'tab' due to indent_amount()+1 above
-      absl::StrAppend(&result, tab, "  ");
+      printer->Append(tab);
+      printer->Append("  ");
       if (instruction == root_instruction_) {
-        absl::StrAppend(&result, "ROOT ");
+        printer->Append("ROOT ");
       }
-      absl::StrAppend(
-          &result,
-          instruction->ToStringWithCanonicalNameMap(new_options, &name_map),
-          "\n");
+      instruction->PrintWithCanonicalNameMap(printer, new_options, &name_map);
+      printer->Append("\n");
+    };
+    // Use post-order if order is not specified.
+    if (instruction_order.empty()) {
+      ForEachInstructionPostOrder(print_one);
+    } else {
+      for (const HloInstruction* const instruction : instruction_order) {
+        print_one(instruction);
+      }
     }
   }
 
-  absl::StrAppend(&result, tab, "}");
+  printer->Append(tab);
+  printer->Append("}");
   if (options.print_ids() && !IsMainThread()) {
     // When print_ids() is false, exclude entry computation's thread name
     // because it includes and leads to non-deterministic fingerprint.
-    absl::StrAppend(&result, ", execution_thread=\"", execution_thread(), "\"");
+    printer->Append(", execution_thread=\"");
+    printer->Append(execution_thread());
+    printer->Append("\"");
   }
-  return result;
+}
+
+std::string HloComputation::ToString() const {
+  return ToString(HloPrintOptions::Default());
+}
+
+std::string HloComputation::ToString(const HloPrintOptions& options) const {
+  return ToString(options, MakeInstructionPostOrder());
+}
+
+std::string HloComputation::ToString(
+    const HloPrintOptions& options,
+    absl::Span<const HloInstruction* const> instruction_order) const {
+  StringPrinter printer;
+  Print(&printer, options, instruction_order);
+  return std::move(printer).ToString();
 }
 
 absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
@@ -640,7 +702,9 @@ absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
 absl::Cord HloComputation::ToCord(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  return absl::Cord(ToString(options, instruction_order));
+  CordPrinter printer;
+  Print(&printer, options, instruction_order);
+  return std::move(printer).ToCord();
 }
 
 HloComputationProto HloComputation::ToProto() const {
@@ -702,7 +766,7 @@ HloComputation::CreateFromProto(
       if (instruction->opcode() == HloOpcode::kParameter) {
         int64_t param_no = instruction->parameter_number();
         TF_RET_CHECK(param_no >= 0 && param_no < parameter_count)
-            << "Invalid parameter number.  Expected [0, " << parameter_count
+            << "Invalid parameter number. Expected [0, " << parameter_count
             << "), got " << param_no;
         TF_RET_CHECK(!parameters_seen[param_no])
             << "Parameter number " << param_no
@@ -769,7 +833,7 @@ HloInstruction* HloComputation::CreateCallInstruction(
 
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-    absl::string_view async_execution_thread) {
+    absl::string_view async_execution_thread, bool replace) {
   Builder builder("async_computation");
   std::vector<HloInstruction*> parameters(instruction->operand_count());
   std::vector<Shape> parameter_shapes(instruction->operand_count());
@@ -799,7 +863,9 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
-  TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+  if (replace) {
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+  }
   return async_done;
 }
 
@@ -894,7 +960,7 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   for (auto* param_instruction : param_instructions_) {
     *program_shape.add_parameters() = param_instruction->shape();
     *program_shape.add_parameter_names() =
-        PrintName(param_instruction->name(), include_ids);
+        std::string(PrintName(param_instruction->name(), include_ids));
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
@@ -978,13 +1044,14 @@ Status HloComputation::ReplaceWithNewEntryComputationParameter(
 
 StatusOr<bool> HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
-    bool preserve_sharding) {
+    bool preserve_sharding, bool relay_control_dependency) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
       << ShapeUtil::HumanString(new_instruction->shape());
   return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction,
-                                              preserve_sharding);
+                                              preserve_sharding,
+                                              relay_control_dependency);
 }
 
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
@@ -998,12 +1065,17 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
 
 StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
-    bool preserve_sharding) {
+    bool preserve_sharding, bool relay_control_dependency) {
   if (preserve_sharding && new_instruction->has_sharding() &&
       old_instruction->has_sharding() &&
       !new_instruction->has_compatible_sharding(old_instruction)) {
     VLOG(10) << "Skipping replacement due to incompatible sharding";
     return false;
+  }
+  if (relay_control_dependency) {
+    TF_RETURN_IF_ERROR(
+        new_instruction->CopyAllControlDepsFrom(old_instruction));
+    TF_RETURN_IF_ERROR(old_instruction->DropAllControlDeps());
   }
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
@@ -1031,7 +1103,7 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   // information on the new instruction we should copy the old sharding
   // information (if any).
   if (!new_instruction->has_sharding()) {
-    new_instruction->set_sharding(old_instruction->sharding_ptr());
+    new_instruction->copy_sharding(old_instruction);
   }
 
   TF_RETURN_IF_ERROR(
@@ -1047,7 +1119,9 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->SetAndSanitizeName(old_instruction->name());
   }
 
-  TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(old_instruction));
+  TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
+      old_instruction, /*cleanup=*/std::nullopt,
+      /*ignore_control_dependencies=*/relay_control_dependency));
   return true;
 }
 
@@ -1312,7 +1386,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   // match the order in instructions_.
   SortClonedInstructions(*context, replace, *this, instructions_, instructions);
 
-  Builder builder(suffix.empty() ? name() : name() + "." + suffix);
+  Builder builder(suffix.empty() ? std::string(name())
+                                 : absl::StrCat(name(), ".", suffix));
   for (auto& instr : instructions) {
     builder.AddInstruction(std::move(instr));
   }

@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "gml_st/transforms/test_passes.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "gml_st/interfaces/bufferizable_op_interface_impl.h"
-#include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -36,48 +36,23 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_TESTGMLSTBUFFERIZATION
 #define GEN_PASS_DEF_TESTGMLSTGREEDYFUSION
 #include "gml_st/transforms/test_passes.h.inc"
-
-struct TestGmlStBufferizationPass
-    : public impl::TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<bufferization::BufferizationDialect, memref::MemRefDialect>();
-    linalg::registerBufferizableOpInterfaceExternalModels(registry);
-    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
-  }
-
-  void runOnOperation() override {
-    bufferization::OneShotBufferizationOptions opts;
-    opts.allowUnknownOps = true;
-    opts.allowReturnAllocs = true;
-    opts.bufferizeFunctionBoundaries = true;
-    opts.functionBoundaryTypeConversion =
-        bufferization::LayoutMapOption::IdentityLayoutMap;
-
-    ModuleOp module = getOperation();
-    if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
-      signalPassFailure();
-      return;
-    }
-  }
-};
 
 static constexpr llvm::StringRef kTestFusionAppliedLabel =
     "__test_fusion_applied_label__";
 
-struct GreedyFusionPattern : public OpRewritePattern<gml_st::ParallelOp> {
-  using OpRewritePattern<gml_st::ParallelOp>::OpRewritePattern;
+struct GreedyFusionPattern : public OpRewritePattern<scf::ForallOp> {
+  using OpRewritePattern<scf::ForallOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(gml_st::ParallelOp op,
+  LogicalResult matchAndRewrite(scf::ForallOp op,
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kTestFusionAppliedLabel)) return failure();
 
     rewriter.updateRootInPlace(op, [&]() {
-      fuseGreedily(rewriter, op.getRegion().front(), [](Operation *op) {
-        return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
+      fuseGreedily(rewriter, &op.getRegion().front(), [](Operation *op) {
+        return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
+                   tensor::CollapseShapeOp, tensor::ExpandShapeOp>(op);
       });
     });
 
@@ -91,7 +66,7 @@ struct TestGmlStGreedyFusionPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
-    registerGmlStTilingInterfaceExternalModels(registry);
+    linalg::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
@@ -105,17 +80,12 @@ struct TestGmlStGreedyFusionPass
     if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns))))
       return signalPassFailure();
 
-    funcOp.walk([](gml_st::ParallelOp op) {
-      removeLabel(op, kTestFusionAppliedLabel);
-    });
+    funcOp.walk(
+        [](scf::ForallOp op) { removeLabel(op, kTestFusionAppliedLabel); });
   }
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass() {
-  return std::make_unique<TestGmlStBufferizationPass>();
-}
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass() {
   return std::make_unique<TestGmlStGreedyFusionPass>();

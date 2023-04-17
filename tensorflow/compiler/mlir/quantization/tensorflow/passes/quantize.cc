@@ -81,18 +81,33 @@ struct TFQuantizationBase
   // range quantization.
   static bool AllowDynamicRangeQuantizedOperand(
       Operation* quantized_op, const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    const bool is_gather = function_name.contains("gather");
+    return quantization_trait != kFullQuantization || is_gather;
   }
 
   // All the quantized ops are supported if the quantization method is dynamic
   // range quantization.
   static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
                                                const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    bool is_gather = false;
+    if (function_name.contains("gather")) is_gather = true;
+    return quantization_trait != kFullQuantization ||
+           (quantization_trait == kFullQuantization && is_gather);
   }
 
-  // All the quantized ops are supported if the quantization method is weight
-  // only quantization.
+  // If weight_only_quantization is true, the legacy weight-only quantization is
+  // applied. The legacy weight-only graph has dequantization logic at the
+  // front.
   static bool IsWeightOnlyOp(Operation* quantized_op,
                              absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,
@@ -533,12 +548,16 @@ void QuantizePass::runOnOperation() {
                                               target_opset_);
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitWarning("Failed to converge pattern at QuantizePass.");
+  }
 
   if (!shouldKeepUnusedQdqPattern()) {
     RewritePatternSet patterns_2(&getContext());
     patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+      signalPassFailure();
+    }
   }
 }
 }  // namespace

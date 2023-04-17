@@ -27,11 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -50,6 +50,7 @@ bool IsProfitableOperand(HloInstruction* instr) {
 }
 
 FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
+                           const GpuDeviceInfo& device_info,
                            FusionInfoCache* fusion_info_cache) {
   CHECK(instr1->opcode() == HloOpcode::kFusion);
 
@@ -66,7 +67,7 @@ FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
   }
 
   // Do this check last, as it may be expensive.
-  return FusionFitsInBudget(*instr1, *instr2,
+  return FusionFitsInBudget(*instr1, *instr2, device_info,
                             /*is_consumer_producer_fusion=*/false,
                             fusion_info_cache);
 }
@@ -161,7 +162,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
                                 << " would introduce a cycle when fused.");
       continue;
     }
-    if (!FusionFitsInBudget(*producer, *consumer,
+    if (!FusionFitsInBudget(*producer, *consumer, device_info,
                             /*is_consumer_producer_fusion=*/false,
                             fusion_info_cache)) {
       dump_negative_explanation(
@@ -260,7 +261,7 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       if (NoFusionPossible sibling_fusible =
               (!IsSiblingFusionCandidate(*j) || !is_disconnected(*i, *j) ||
                !ShapesCompatibleForMultiOutputFusion(*(*i), *(*j)) ||
-               !LegalToFuse(*i, *j, fusion_info_cache))) {
+               !LegalToFuse(*i, *j, device_info_, fusion_info_cache))) {
         // We pick `j` arbitrarily as a consumer.
         if (dump_fusion) {
           RegisterFusionState(
@@ -335,7 +336,7 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     HloInstruction* producer = defs_before_uses.back();
 
     // Copy on purpose: to use after removing the producer.
-    std::string producer_name = producer->name();
+    absl::string_view producer_name = producer->name();
     defs_before_uses.pop_back();
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.
@@ -445,11 +446,6 @@ StatusOr<bool> GpuMultiOutputFusion::Run(
   bool changed = false;
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Skip Softmax CustomCall computations.
-    if (computation->IsCustomCallComputation() &&
-        IsSoftmaxCustomCall(*computation->CustomCallInstruction())) {
-      continue;
-    }
     computation_ = computation;
     TF_ASSIGN_OR_RETURN(bool fusion_changed, DoMultiOutputFusion());
     if (fusion_changed) {

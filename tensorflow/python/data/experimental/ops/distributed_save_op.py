@@ -15,15 +15,9 @@
 """Distributed saving of a dataset to disk."""
 
 from tensorflow.core.protobuf import snapshot_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.ops import gen_experimental_dataset_ops
-from tensorflow.python.util import lazy_loader
-
-# TODO(b/176933539): Use regular import.
 # TODO(b/238903802): Use TypeSpec serialization methods directly.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
+from tensorflow.python.saved_model import nested_structure_coder
 
 
 # TODO(b/250921378): Add example to docstring and export to TF API.
@@ -44,14 +38,11 @@ def distributed_save(dataset,
       used.  If `None`, the `dataset` materialization is not compressed.
 
   Returns:
-    `None`.
+    An operation which when executed performs the distributed save.
 
   Raises:
-    ValueError: If not in eager mode.
+    ValueError: If `dispatcher_address` is invalid.
   """
-  if not context.executing_eagerly():
-    return RuntimeError("must be in eager mode")
-
   if not isinstance(dispatcher_address, str):
     raise ValueError("`dispatcher_address` must be a string, but is a "
                      f"{type(dispatcher_address)} ({dispatcher_address}")
@@ -64,7 +55,7 @@ def distributed_save(dataset,
       compression=compression,
   )
 
-  gen_experimental_dataset_ops.distributed_save(
+  return gen_experimental_dataset_ops.distributed_save(
       dataset._variant_tensor,  # pylint: disable=protected-access
       directory=directory,
       address=dispatcher_address,

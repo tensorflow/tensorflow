@@ -16,15 +16,15 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "./passes.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "transforms/passes.h"
 
 #define GEN_PASS_DEF_TOSAPREPAREMHLOPASS
-#include "transforms/passes.h.inc"
+#include "./passes.h.inc"
 
 #define PASS_NAME "tosa-prepare-mhlo"
 #define DEBUG_TYPE PASS_NAME

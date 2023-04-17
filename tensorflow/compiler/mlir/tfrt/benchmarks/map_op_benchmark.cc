@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
@@ -37,7 +38,7 @@ const char* kMapIR = R"(
 )";
 
 std::string Map(llvm::ArrayRef<bool> dynamic_dims,
-                    llvm::ArrayRef<ssize_t> input_shape) {
+                llvm::ArrayRef<ssize_t> input_shape) {
   llvm::SmallVector<int64_t, 2> mlir_input_shape;
   for (int i = 0; i < input_shape.size(); ++i) {
     mlir_input_shape.push_back(dynamic_dims[i] ? kDynSize : input_shape[i]);
@@ -47,7 +48,7 @@ std::string Map(llvm::ArrayRef<bool> dynamic_dims,
 
 auto EigenMap() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice>) {
+            std::optional<Eigen::ThreadPoolDevice>) {
     Tensor output(DT_FLOAT, {inputs[0].dim_size(0), inputs[0].dim_size(1)});
 
     auto in = inputs[0].tensor<float, 2>();
@@ -64,16 +65,15 @@ llvm::SmallVector<InputTensorSpec> Inputs(ssize_t rows, ssize_t cols) {
 
 #define BM(FN) BM_##FN->Arg(0);
 
-#define BM_SUITE(NAME, DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS)                 \
+#define BM_SUITE(NAME, DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS)             \
   BM(JitrtV(NAME, Map({DYNAMIC_ROW, DYNAMIC_COL}, {ROWS, COLS}), "main", \
-            Inputs(ROWS, COLS)));                                            \
+            Inputs(ROWS, COLS)));                                        \
   BM(Eigen(NAME, EigenMap(), Inputs(ROWS, COLS)));                       \
   BM(Tfrt(NAME, Map({DYNAMIC_ROW, DYNAMIC_COL}, {ROWS, COLS}), "main",   \
           Inputs(ROWS, COLS)))
 
-#define BM_DYNAMIC_ALL(ROWS, COLS)                                            \
-  BM_SUITE(MapDynamicAll_##ROWS##_##COLS, kDynamicDim, kDynamicDim, ROWS, \
-           COLS)
+#define BM_DYNAMIC_ALL(ROWS, COLS) \
+  BM_SUITE(MapDynamicAll_##ROWS##_##COLS, kDynamicDim, kDynamicDim, ROWS, COLS)
 BM_DYNAMIC_ALL(2, 80);
 BM_DYNAMIC_ALL(8, 6);
 BM_DYNAMIC_ALL(80, 1);
@@ -83,7 +83,7 @@ BM_DYNAMIC_ALL(800, 600);
 BM_DYNAMIC_ALL(802, 602);
 
 #define BM_STATIC_ROW(ROWS, COLS) \
-  BM_SUITE(MapStaticRow##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, COLS)
+  BM_SUITE(MapStaticRow_##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, COLS)
 BM_STATIC_ROW(2, 80);
 BM_STATIC_ROW(8, 6);
 BM_STATIC_ROW(80, 1);
@@ -92,9 +92,8 @@ BM_STATIC_ROW(81, 61);
 BM_STATIC_ROW(800, 600);
 BM_STATIC_ROW(802, 602);
 
-#define BM_STATIC_COL(ROWS, COLS)                                           \
-  BM_SUITE(MapStaticCol_##ROWS##_##COLS, kDynamicDim, kStaticDim, ROWS, \
-           COLS)
+#define BM_STATIC_COL(ROWS, COLS) \
+  BM_SUITE(MapStaticCol_##ROWS##_##COLS, kDynamicDim, kStaticDim, ROWS, COLS)
 BM_STATIC_COL(2, 80);
 BM_STATIC_COL(8, 6);
 BM_STATIC_COL(80, 1);

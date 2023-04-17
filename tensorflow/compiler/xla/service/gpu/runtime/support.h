@@ -96,11 +96,10 @@ inline StatusOr<GemmConfig> GetGemmConfig(
     const runtime::StridedMemrefView& out, int64_t algorithm, double alpha_real,
     double alpha_imag, double beta, absl::Span<const int64_t> lhs_batch,
     absl::Span<const int64_t> lhs_contract, absl::Span<const int64_t> rhs_batch,
-    absl::Span<const int64_t> rhs_contract) {
+    absl::Span<const int64_t> rhs_contract, int64_t compute_precision) {
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
-                         alpha_imag, beta, algorithm,
-                         se::blas::kDefaultComputePrecision);
+                         alpha_imag, beta, algorithm, compute_precision);
 }
 
 // adds Dot Dimension Attribute encodings for calls to Gemm and cuBLASLt
@@ -116,6 +115,15 @@ inline void PopulateDotDimsAttrEncoding(
           .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
           .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
+
+class CapturingCudaGraph {
+ public:
+  explicit CapturingCudaGraph(bool capturing) : capturing_(capturing) {}
+  bool capturing() { return capturing_; }
+
+ private:
+  bool capturing_ = false;
+};
 
 }  // namespace gpu
 }  // namespace xla

@@ -235,7 +235,8 @@ InterpreterBuilder::InterpreterBuilder(
     const InterpreterOptions* options_experimental)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(ValidateErrorReporter(error_reporter)) {
+      error_reporter_(ValidateErrorReporter(error_reporter)),
+      metadata_(FlatBufferModel::ReadAllMetadata(model_)) {
   if (options_experimental) {
     options_ = *options_experimental;
   }
@@ -326,15 +327,11 @@ class MallocDataAllocator : public BuiltinDataAllocator {
 
 TfLiteStatus InterpreterBuilder::ParseNodes(
     const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-    Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info) {
+    Subgraph* subgraph) {
   TfLiteStatus status = kTfLiteOk;
 
   // Reduce the number of redundant allocations
   subgraph->ReserveNodes(operators->size());
-  if (subgraph_info) {
-    subgraph_info->op_types.resize(operators->size());
-    subgraph_info->custom_op_names.resize(operators->size());
-  }
 
   for (int i = 0; i < operators->size(); ++i) {
     const auto* op = operators->Get(i);
@@ -356,10 +353,6 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
 
     BuiltinOperator op_type =
         static_cast<BuiltinOperator>(registration->builtin_code);
-    if (subgraph_info) {
-      subgraph_info->op_types[i] = op_type;
-      subgraph_info->custom_op_names[i] = registration->custom_name;
-    }
 
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
@@ -828,8 +821,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     if (ParseTensors(buffers, tensors, modified_subgraph, subgraph_info) !=
         kTfLiteOk)
       return cleanup_and_error();
-    if (operators &&
-        ParseNodes(operators, modified_subgraph, subgraph_info) != kTfLiteOk)
+    if (operators && ParseNodes(operators, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
 
     std::vector<int> variables;

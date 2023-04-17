@@ -1401,6 +1401,8 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
 
+<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
+
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
 <b>`Round(operand)`</b> Element-wise rounding, ties away from zero.

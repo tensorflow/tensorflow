@@ -86,6 +86,7 @@ tf_py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
@@ -206,6 +207,42 @@ tf_py_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "distributed_save_test",
+    size = "medium",
+    srcs = ["distributed_save_test.py"],
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "distributed_save_ft_test",
+    size = "medium",
+    srcs = ["distributed_save_ft_test.py"],
+    shard_count = 17,
+    deps = [
+        ":test_base",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
     ],
 )
 

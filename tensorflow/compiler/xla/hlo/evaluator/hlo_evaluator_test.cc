@@ -461,6 +461,12 @@ TEST_P(HloEvaluatorBf16Test, DoesSinR2) {
   TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
+TEST_P(HloEvaluatorBf16Test, DoesTanR2) {
+  auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
+  auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
+  TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand),
+              use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
+}
 TEST_F(HloEvaluatorTest, DoesNotR2) {
   auto operand =
       LiteralUtil::CreateR2<int32_t>({{0, std::numeric_limits<int>::min()},
@@ -4398,16 +4404,14 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal input_wrong_shape = LiteralUtil::CreateR1<int32_t>({0, 1});
 
-  EXPECT_EQ(HloEvaluator()
-                .Evaluate(*m_, {&input_wrong_shape})
-                .status()
-                .error_message(),
-            "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
-            "but arg was s32[2]{0}.");
+  EXPECT_EQ(
+      HloEvaluator().Evaluate(*m_, {&input_wrong_shape}).status().message(),
+      "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
+      "but arg was s32[2]{0}.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input_wrong_shape})
                 .status()
-                .error_message(),
+                .message(),
             "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
             "but arg was s32[2]{0}.");
 }
@@ -4425,13 +4429,12 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal input = LiteralUtil::CreateR1<int32_t>({0});
 
-  EXPECT_EQ(
-      HloEvaluator().Evaluate(*m_, {&input, &input}).status().error_message(),
-      "Expected 1 argument, but got 2.");
+  EXPECT_EQ(HloEvaluator().Evaluate(*m_, {&input, &input}).status().message(),
+            "Expected 1 argument, but got 2.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input, &input})
                 .status()
-                .error_message(),
+                .message(),
             "Expected 1 argument, but got 2.");
 }
 

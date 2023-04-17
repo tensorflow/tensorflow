@@ -134,12 +134,15 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
             left->value(), right->value(), left_shape, right_shape,
             /*dims_to_ignore=*/2, left_splits, right_splits));
 
-    left_layout = (*left)->Truncate(left_shape.size() - 2, /*end=*/true);
-    right_layout = (*right)->Truncate(right_shape.size() - 2, /*end=*/true);
+    TF_ASSIGN_OR_RETURN(left_layout,
+                        (*left)->Truncate(left_shape.size() - 2, /*end=*/true));
+    TF_ASSIGN_OR_RETURN(
+        right_layout, (*right)->Truncate(right_shape.size() - 2, /*end=*/true));
   } else if (mlir::isa<mlir::TF::MatMulOp>(op)) {
     // There are no batch dims for MatMul op, so get an 'empty' layout that
     // we can concat later.
-    batch_layout = (*left)->Truncate(/*split_point=*/0, /*end=*/false);
+    TF_ASSIGN_OR_RETURN(batch_layout,
+                        (*left)->Truncate(/*split_point=*/0, /*end=*/false));
     left_layout = left->value();
     right_layout = right->value();
   } else {
@@ -414,10 +417,13 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // output->rank() == std::max(left_shape.size(), right_shape.size()) due to
   // broadcasting one of these truncations is just a copy of output and the
   // other may be shorter.
-  Layout left = output_layout.Truncate(output_layout.rank() - left_shape.size(),
-                                       /*end=*/true);
-  Layout right = output_layout.Truncate(
-      output_layout.rank() - right_shape.size(), /*end=*/true);
+  TF_ASSIGN_OR_RETURN(Layout left, output_layout.Truncate(
+                                       output_layout.rank() - left_shape.size(),
+                                       /*end=*/true));
+  TF_ASSIGN_OR_RETURN(
+      Layout right,
+      output_layout.Truncate(output_layout.rank() - right_shape.size(),
+                             /*end=*/true));
 
   // Make sure necessary dimensions are replicated.
   //

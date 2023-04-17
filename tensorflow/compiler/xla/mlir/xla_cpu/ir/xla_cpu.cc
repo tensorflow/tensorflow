@@ -75,24 +75,20 @@ bool AllReduceOp::bufferizesToMemoryWrite(
   return !bufferizesToMemoryRead(opOperand, state);
 }
 
-SmallVector<OpResult> AllReduceOp::getAliasingOpResult(
+bufferization::AliasingOpResultList AllReduceOp::getAliasingOpResults(
     OpOperand &opOperand, const bufferization::AnalysisState &) {
   if (opOperand.getOperandNumber() < getNumOperands() / 2) {
     return {};
   }
-  return {getOperation()->getOpResult(opOperand.getOperandNumber() -
-                                      getNumOperands() / 2)};
+  return {{getOperation()->getOpResult(opOperand.getOperandNumber() -
+                                       getNumOperands() / 2),
+           bufferization::BufferRelation::Equivalent}};
 }
 
 LogicalResult AllReduceOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
   return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
-}
-
-bufferization::BufferRelation AllReduceOp::bufferRelation(
-    OpResult, const bufferization::AnalysisState &) {
-  return bufferization::BufferRelation::Equivalent;
 }
 
 LogicalResult CollectivePermuteOp::bufferize(

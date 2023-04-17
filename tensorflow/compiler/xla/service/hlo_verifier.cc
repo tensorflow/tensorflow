@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
+#include <algorithm>
+#include <iterator>
+#include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -94,11 +100,6 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
 int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
-  // empty replica groups imply all replicas form a single group.
-  int64_t replica_subgroup_size =
-      hlo->replica_groups().empty()
-          ? 0
-          : hlo->replica_groups()[0].replica_ids_size();
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica:
     case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
@@ -113,7 +114,8 @@ int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
       return replica_subgroup_size;
     }
     case CollectiveOpGroupMode::kFlattenedID:
-      return replica_subgroup_size;
+      // Empty replica groups not allowed in this mode.
+      return hlo->replica_groups()[0].replica_ids_size();
     case CollectiveOpGroupMode::kCrossPartition:
       return hlo->replica_groups().empty()
                  ? config.num_partitions()
@@ -145,7 +147,7 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (!hlo->called_computations().empty() && !IsCallerInstruction(hlo)) {
     return InternalError(
-        "Called computations specified for non-caller instruction  %s",
+        "Called computations specified for non-caller instruction %s",
         hlo->ToString());
   }
   std::optional<int> arity = HloOpcodeArity(hlo->opcode());
@@ -556,15 +558,15 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
-
+  const int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
   if (all_to_all->split_dimension()) {
-    int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
     TF_RET_CHECK(hlo->operand_count() == 1);
     return CheckShape(
         hlo, ShapeInference::InferAllToAllShape(
                  hlo->operand(0)->shape(), *all_to_all->split_dimension(),
                  *all_to_all->split_dimension(), split_count));
   } else {
+    TF_RET_CHECK(hlo->operand_count() == split_count);
     std::vector<const Shape*> operand_shapes;
     for (const HloInstruction* operand : hlo->operands()) {
       operand_shapes.push_back(&operand->shape());
@@ -1348,12 +1350,9 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
-  VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
   auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
   auto input_shapes = reduce_window_instr->input_shapes();
-  VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
   auto init_shapes = reduce_window_instr->init_value_shapes();
-  VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";
   TF_RETURN_IF_ERROR(CheckShape(
       reduce_window, ShapeInference::InferReduceWindowShape(
                          input_shapes, init_shapes, reduce_window->window(),
@@ -1413,8 +1412,7 @@ Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
     if (operand0_type != S32) {
       return InvalidArgument(
           "The first operand of indexed conditional must be a scalar of S32. "
-          "Got"
-          " type %s.",
+          "Got type %s.",
           PrimitiveType_Name(operand0_type));
     }
     TF_RET_CHECK(num_branches >= 1);
@@ -1504,14 +1502,13 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
 }
 
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
-  std::optional<absl::string_view> async_execution_thread =
-      async_op->async_execution_thread();
+  absl::string_view async_execution_thread = async_op->async_execution_thread();
   if (async_execution_thread !=
       async_op->async_wrapped_computation()->execution_thread()) {
     return InternalError(
-        "async-start expects same async thread name as wrapped computation's "
+        "%s expects same async thread name as wrapped computation's "
         "thread name (%s vs %s).",
-        async_execution_thread ? absl::StrCat(*async_execution_thread) : "none",
+        HloOpcodeString(async_op->opcode()), async_execution_thread,
         async_op->async_wrapped_computation()->execution_thread());
   }
   return CheckNestedComputationThreadNameEqual(
@@ -1545,7 +1542,8 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_start));
   const Shape& param_shape = async_start->shape().tuple_shapes(0);
   for (int i = 0; i < async_start->operand_count(); ++i) {
-    if (param_shape.tuple_shapes(i) != async_start->operand(i)->shape()) {
+    if (!ShapesSame(param_shape.tuple_shapes(i),
+                    async_start->operand(i)->shape())) {
       return InternalError(
           "The %s expects the shape of operand %d to match the async shape at "
           "index {0} (%s vs %s).",
@@ -1559,7 +1557,7 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
 
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_update));
-  if (async_update->operand(0)->shape() != async_update->shape()) {
+  if (!ShapesSame(async_update->operand(0)->shape(), async_update->shape())) {
     return InternalError(
         "The %s expects the shape of operand and output to match (%s vs %s).",
         HloOpcodeString(async_update->opcode()),
@@ -1576,7 +1574,7 @@ Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationShapes(
       async_done, async_done->operand(0)->shape()));
   const Shape& root_shape = async_done->operand(0)->shape().tuple_shapes(1);
-  if (root_shape != async_done->shape()) {
+  if (!ShapesSame(root_shape, async_done->shape())) {
     return InternalError(
         "The %s expects the shape of output to match the async shape at index "
         "{1} (%s vs %s).",
@@ -1939,7 +1937,7 @@ std::string ComputationsToString(
     absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](std::string* s, const HloComputation* computation) {
-                         s->append(computation->name());
+                         absl::StrAppend(s, computation->name());
                        });
 }
 
@@ -2069,39 +2067,39 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
 Status VerifySingleUser(const HloInstruction* instruction,
                         const absl::flat_hash_set<HloOpcode>& expected_users) {
   TF_RET_CHECK(instruction->users().size() == 1)
-      << "The " << HloOpcodeString(instruction->opcode())
+      << "The " << instruction->opcode()
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* user = instruction->users().front();
   TF_RET_CHECK(expected_users.contains(user->opcode()))
-      << "The consumer of a " << HloOpcodeString(instruction->opcode())
+      << "The consumer of a " << instruction->opcode()
       << " instruction needs to be one of ("
       << absl::StrJoin(expected_users, ", ",
                        [](std::string* out, HloOpcode opcode) {
-                         out->append(HloOpcodeString(opcode));
+                         absl::StrAppend(out, HloOpcodeString(opcode));
                        })
-      << "), found " << HloOpcodeString(user->opcode());
+      << "), found " << user->opcode();
   return OkStatus();
 }
 
 Status VerifySingleOperand(const HloInstruction* instruction,
                            const std::vector<HloOpcode>& expected_operands) {
   TF_RET_CHECK(instruction->operands().size() == 1)
-      << "The " << HloOpcodeString(instruction->opcode())
+      << "The " << instruction->opcode()
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* operand = instruction->operand(0);
   TF_RET_CHECK(absl::c_find(expected_operands, operand->opcode()) !=
                expected_operands.end())
-      << "The operand of a " << HloOpcodeString(instruction->opcode())
+      << "The operand of a " << instruction->opcode()
       << " instruction needs to be "
       << absl::StrJoin(expected_operands, " or ",
                        [](std::string* out, HloOpcode opcode) {
-                         out->append(HloOpcodeString(opcode));
+                         absl::StrAppend(out, HloOpcodeString(opcode));
                        })
-      << ", found " << HloOpcodeString(operand->opcode());
+      << ", found " << operand->opcode();
   return OkStatus();
 }
 
@@ -2287,8 +2285,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
   // Fused root instruction and fused parameters must all be owned by the
   // fusion computation.
   bool root_owned = false;
-  const std::vector<HloInstruction*>& fused_parameters =
-      fusion->fused_parameters();
+  const auto& fused_parameters = fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
   for (auto* instruction : fused_computation->instructions()) {
@@ -2615,7 +2612,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   Status Preprocess(HloInstruction* instruction) override {
     auto [it, inserted] =
-        instructions_by_name_.insert({instruction->name(), instruction});
+        instructions_by_name_.emplace(instruction->name(), instruction);
     TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
                            << instruction->ToString() << " in computation: "
                            << instruction->parent()->name()
@@ -2627,10 +2624,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       Status status =
           instruction->sharding().Validate(instruction->shape(), num_devices_);
       if (!status.ok()) {
-        return Status(status.code(),
-                      absl::StrCat("Invalid sharding for instruction: ",
-                                   instruction->ToString(), ": ",
-                                   status.error_message()));
+        return Status(
+            status.code(),
+            absl::StrCat("Invalid sharding for instruction: ",
+                         instruction->ToString(), ": ", status.message()));
       }
     }
 
@@ -2656,7 +2653,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
-    TF_RETURN_IF_ERROR(VerifyF8Usage(instruction));
+    TF_RETURN_IF_ERROR(VerifyS4U4Usage(instruction));
 
     return OkStatus();
   }
@@ -2675,7 +2672,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         continue;
       }
       TF_RET_CHECK(check_inst->sharding() == common_sharding_inst->sharding())
-          << "Inconsistent " << HloOpcodeString(parent->opcode())
+          << "Inconsistent " << parent->opcode()
           << " sharding among instructions: \n"
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();
@@ -2683,31 +2680,26 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  static Status VerifyF8Usage(HloInstruction* instruction) {
-    bool has_fp8_operand =
+  static Status VerifyS4U4Usage(HloInstruction* instruction) {
+    bool has_s4u4_operand =
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN);
+          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
+                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
         });
-    // TODO(b/259609697): Support FP8 operands in all instructions that support
-    // inputs of other floating-point dtypes. Currently the CPU and GPU backends
-    // only support FP8 operands in the convert, tuple, get-tuple-element and
-    // transpose instructions and FP8 Custom Calls.
-    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert &&
-        instruction->opcode() != HloOpcode::kBitcast &&
-        instruction->opcode() != HloOpcode::kTuple &&
-        instruction->opcode() != HloOpcode::kGetTupleElement &&
-        instruction->opcode() != HloOpcode::kTranspose &&
-        instruction->opcode() != HloOpcode::kDot &&
+    // TODO(b/259306620): Support S4/U4 operands in all instructions that
+    // support inputs of other integer dtypes. Currently only aim to use it in
+    // matmul and convolution op.
+    if (has_s4u4_operand && instruction->opcode() != HloOpcode::kDot &&
+        instruction->opcode() != HloOpcode::kConvolution &&
+        instruction->opcode() != HloOpcode::kConvert &&
         instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kReshape &&
+        instruction->opcode() != HloOpcode::kBitcast &&
         instruction->opcode() != HloOpcode::kCopy &&
-        instruction->opcode() != HloOpcode::kCustomCall) {
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTuple) {
       return InvalidArgument(
-          "FP8 is currently only supported in convert, bitcast, tuple, "
-          "get-tuple-element, transpose, dot, fusion, reshape and copy "
-          "instructions as well as Custom Calls, but got instruction with FP8 "
-          "input: %s",
+          "S4/U4 is currently only supported in matmul and convolution, but "
+          "got instruction with S4/U4 input: %s",
           instruction->ToString());
     }
     return OkStatus();
@@ -2773,8 +2765,73 @@ StatusOr<bool> HloVerifier::Run(
     return status_or_changed.value();
   }
   return Status(status_or_changed.status().code(),
-                absl::StrCat("during context [", context_, "]: ",
-                             status_or_changed.status().error_message()));
+                absl::StrCat("during context [", context_,
+                             "]: ", status_or_changed.status().message()));
+}
+
+MetadataTracker::MetadataTracker(absl::string_view prefix) : prefix_(prefix) {}
+
+MetadataTracker::~MetadataTracker() {
+  if (instruction_count_ == 0) {
+    return;
+  }
+  const std::map<std::string, double> values = {
+      {"instruction_count", 1.0 * instruction_count_},
+      {"op_type_coverage", 1.0 * has_op_type_count_ / instruction_count_},
+      {"op_name_coverage", 1.0 * has_op_name_count_ / instruction_count_},
+      {"source_file_coverage",
+       1.0 * has_source_file_count_ / instruction_count_},
+      {"source_line_coverage",
+       1.0 * has_source_line_count_ / instruction_count_},
+      {"creation_pass_coverage",
+       1.0 * has_creation_pass_id_count_ / instruction_count_},
+      {"logical_creation_pass_coverage",
+       1.0 * has_logical_creation_pass_id_count_ / instruction_count_},
+      {"size_of_generated_code_in_bytes_coverage",
+       1.0 * has_size_of_generated_code_in_bytes_count_ / instruction_count_},
+      {"size_of_memory_working_set_in_bytes_coverage",
+       1.0 * has_size_of_memory_working_set_in_bytes_count_ /
+           instruction_count_},
+      {"profile_info_coverage",
+       1.0 * has_profile_info_count_ / instruction_count_}};
+  LOG(INFO) << prefix_ << " "
+            << absl::StrJoin(values, ",", absl::PairFormatter("="));
+}
+
+void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
+  ++instruction_count_;
+  if (!metadata.op_type().empty()) {
+    ++has_op_type_count_;
+  }
+  if (!metadata.op_name().empty()) {
+    ++has_op_name_count_;
+  }
+  if (!metadata.source_file().empty()) {
+    ++has_source_file_count_;
+  }
+  if (metadata.source_line() != 0) {
+    ++has_source_line_count_;
+  }
+  if (metadata.creation_pass_id() != 0) {
+    ++has_creation_pass_id_count_;
+  }
+  if (metadata.logical_creation_pass_id() != 0) {
+    ++has_logical_creation_pass_id_count_;
+  }
+  if (metadata.size_of_generated_code_in_bytes() != 0) {
+    ++has_size_of_generated_code_in_bytes_count_;
+  }
+  if (metadata.size_of_memory_working_set_in_bytes() != 0) {
+    ++has_size_of_memory_working_set_in_bytes_count_;
+  }
+  if (metadata.has_profile_info()) {
+    ++has_profile_info_count_;
+  }
+}
+
+Status MetadataTracker::DefaultAction(HloInstruction* instruction) {
+  HandleMetadata(instruction->metadata());
+  return OkStatus();
 }
 
 }  // namespace xla

@@ -48,7 +48,6 @@ from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
@@ -68,6 +67,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gen_sync_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -962,10 +962,6 @@ def assert_no_garbage_created(f):
 
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
-    # Force-load `distribution_strategy_context` to prevent GC at
-    # test time when using eager. Remove once b/117329403 is resolved.
-    tape.distribution_strategy_context.get_strategy()
-
     gc.disable()
     previous_debug_flags = gc.get_debug()
     gc.set_debug(gc.DEBUG_SAVEALL)
@@ -2107,7 +2103,7 @@ def disable_cudnn_autotune(func):
 
       return result
 
-    return decorated
+    return tf_decorator.make_decorator(func, decorated)
 
   if func is not None:
     return decorator(func)
@@ -2540,7 +2536,7 @@ class TensorFlowTestCase(googletest.TestCase):
       os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
-  def _AssertProtoEquals(self, a, b, msg=None):
+  def _AssertProtoEquals(self, a, b, msg=None, relative_tolerance=None):
     """Asserts that a and b are the same proto.
 
     Uses ProtoEq() first, as it returns correct results
@@ -2551,11 +2547,28 @@ class TensorFlowTestCase(googletest.TestCase):
       a: a proto.
       b: another proto.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if not compare.ProtoEq(a, b):
-      compare.assertProtoEqual(self, a, b, normalize_numbers=True, msg=msg)
+      compare.assertProtoEqual(
+          self,
+          a,
+          b,
+          normalize_numbers=True,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
 
-  def assertProtoEquals(self, expected_message_maybe_ascii, message, msg=None):
+  def assertProtoEquals(
+      self,
+      expected_message_maybe_ascii,
+      message,
+      msg=None,
+      relative_tolerance=None,
+  ):
     """Asserts that message is same as parsed expected_message_ascii.
 
     Creates another prototype of message, reads the ascii message into it and
@@ -2565,17 +2578,31 @@ class TensorFlowTestCase(googletest.TestCase):
       expected_message_maybe_ascii: proto message in original or ascii form.
       message: the message to validate.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,
           expected_message,
           descriptor_pool=descriptor_pool.Default())
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     else:
       assert False, ("Can't compare protos of type %s and %s." %
                      (type(expected_message_maybe_ascii), type(message)))
@@ -2955,7 +2982,22 @@ class TensorFlowTestCase(googletest.TestCase):
       else:
         a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
-      return np.array(a)
+      try:
+        return np.array(a)
+      except ValueError as e:
+        # TODO(b/264461299): NumPy 1.24 no longer infers dtype=object from
+        # ragged sequences.
+        # See:
+        # https://numpy.org/neps/nep-0034-infer-dtype-is-object.html
+        # Fixing this correctly requires clarifying the API contract of this
+        # function with respect to ragged sequences and possibly updating all
+        # users. As a backwards compatibility measure, if array
+        # creation fails with an "inhomogeneous shape" error, try again with
+        # an explicit dtype=object, which should restore the previous behavior.
+        if "inhomogeneous shape" in str(e):
+          return np.array(a, dtype=object)
+        else:
+          raise
     return a
 
   def evaluate_if_both_tensors(self, a, b):
@@ -3976,3 +4018,59 @@ class TestDelta:
   def Get(self):
     value = _test_metrics_util.test_counter_value(self.name, self.label)
     return value - self.last_value
+
+
+@tf_export("test.experimental.sync_devices")
+def sync_devices():
+  """Synchronizes all devices.
+
+  By default, GPUs run asynchronously. This means that when you run an op on the
+  GPU, like `tf.linalg.matmul`, the op may still be running on the GPU when the
+  function returns. Non-GPU devices can also be made to run asynchronously by
+  calling `tf.config.experimental.set_synchronous_execution(False)`. Calling
+  `sync_devices()` blocks until pending ops have finished executing. This is
+  primarily useful for measuring performance during a benchmark.
+
+  For example, here is how you can measure how long `tf.linalg.matmul` runs:
+
+  >>> import time
+  >>> x = tf.random.normal((4096, 4096))
+  >>> tf.linalg.matmul(x, x)  # Warmup.
+  >>> tf.test.experimental.sync_devices()  # Block until warmup has completed.
+  >>>
+  >>> start = time.time()
+  >>> y = tf.linalg.matmul(x, x)
+  >>> tf.test.experimental.sync_devices()  # Block until matmul has completed.
+  >>> end = time.time()
+  >>> print(f'Time taken: {end - start}')
+
+  If the call to `sync_devices()` was omitted, the time printed could be too
+  small. This is because the op could still be running asynchronously when
+  the line `end = time.time()` is executed.
+
+  Raises:
+    RuntimeError: If run outside Eager mode. This must be called in Eager mode,
+      outside any `tf.function`s.
+  """
+  if not context.executing_eagerly():
+    raise RuntimeError(
+        "sync_devices() must only be called in Eager mode, outside tf.functions"
+    )
+
+  # There are two sources of asynchrony in TensorFlow:
+  #
+  # 1. On GPUs, kernels are run on a CUDA stream, which is inherently
+  #    asynchronous.
+  # 2. Calling `tf.config.experimental.set_synchronous_execution(False)` makes
+  #    all ops asynchronous, in which case TensorFlow maintains internal queues
+  #    of pending ops.
+  #
+  # Calling SyncDevice addresses source (1). Calling async_await addresses
+  # source (2). It is important that SyncDevice() is called before async_wait(),
+  # otherwise the SyncDevice op itself may still be pending on an internal
+  # TensorFlow queue when the sync_devices() Python function returns.
+  devices = config.list_logical_devices()
+  for dev in devices:
+    with ops.device(dev.name):
+      gen_sync_ops.SyncDevice()
+  context.async_wait()

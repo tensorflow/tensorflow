@@ -164,7 +164,6 @@ struct MatrixDiagPart<GPUDevice, T> {
   template struct MatrixDiagPart<GPUDevice, T>;
 
 TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_SPEC);
-TF_CALL_bfloat16(DEFINE_GPU_SPEC);
 
 }  // namespace functor
 }  // namespace tensorflow

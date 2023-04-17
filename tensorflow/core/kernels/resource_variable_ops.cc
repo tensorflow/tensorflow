@@ -145,7 +145,7 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   "This could mean that the variable has been deleted. ",
                   "In TF1, it can also mean the variable is uninitialized. ",
                   "Debug info: container=", handle.container(),
-                  ", status error message=", status.error_message()));
+                  ", status error message=", status.message()));
 
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
@@ -289,7 +289,6 @@ REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
   }
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
@@ -304,7 +303,6 @@ TF_CALL_variant(REGISTER_GPU_KERNELS);
                           VarHandleOp)
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_DEFAULT_KERNELS);
-TF_CALL_bfloat16(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
@@ -369,7 +367,7 @@ void DisableCopyOnReadOp::Compute(OpKernelContext* ctx) {
                   "This could mean that the variable has been deleted. ",
                   "In TF1, it can also mean the variable is uninitialized. ",
                   "Debug info: container=", handle.container(),
-                  ", status error message=", status.error_message()));
+                  ", status error message=", status.message()));
   // If the variable is currently in copy-on-read mode, its refcount is 1
   if (variable->copy_on_read_mode.load()) {
     // Obtain an exclusive lock on the variable and change the access mode
@@ -565,7 +563,6 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -636,7 +633,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
                           AssignUpdateVariableOp<GPUDevice, type, SUB>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -825,7 +821,6 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GATHER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
-TF_CALL_bfloat16(REGISTER_GATHER_GPU);
 
 #undef REGISTER_GATHER_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -898,7 +893,6 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
 #define REGISTER_GATHER_ND_GPU(type) REGISTER_GATHER_ND_ALL_INDICES(GPU, type)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
-TF_CALL_bfloat16(REGISTER_GATHER_ND_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GATHER_ND_GPU);
 
 #undef REGISTER_GATHER_ND_GPU
@@ -1197,13 +1191,10 @@ TF_CALL_variant(REGISTER_SCATTER_UPDATE_CPU);
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_UPDATE_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_UPDATE_GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")

@@ -52,7 +52,6 @@ limitations under the License.
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
@@ -94,8 +93,8 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {86, 80, 75, 72, 70, 62, 61, 60,
-                              53, 52, 50, 37, 35, 32, 30};
+  int supported_versions[] = {90, 89, 87, 86, 80, 75, 72, 70, 62,
+                              61, 60, 53, 52, 50, 37, 35, 32, 30};
   for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
@@ -306,10 +305,15 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const HloModuleConfig& hlo_module_config) {
+  // TODO(b/266678775): Make it always PTX 7.1 as soon as TF driver requirements
+  // are updated.
+  const std::string ptx_ver =
+      hlo_module_config.debug_options().xla_gpu_enable_triton_gemm() ? "+ptx71"
+                                                                     : "+ptx60";
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          hlo_module_config, "+ptx60");
+                          hlo_module_config, ptx_ver);
 }
 
 using TargetModuleLinker = std::function<Status(
@@ -394,7 +398,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   llvm::PassInstrumentationCallbacks pic;
 
   llvm::StandardInstrumentations si(module->getContext(), false);
-  si.registerCallbacks(pic, &fam);
+  si.registerCallbacks(pic, &mam);
 
   llvm::PassBuilder pb(target_machine, pto, std::nullopt, &pic);
   pb.registerModuleAnalyses(mam);

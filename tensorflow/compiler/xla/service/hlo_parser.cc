@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -160,6 +161,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
@@ -217,6 +219,7 @@ bool CanInferShape(HloOpcode code) {
 class HloParserImpl : public HloParser {
  public:
   using LocTy = HloLexer::LocTy;
+  using BoolList = absl::InlinedVector<bool, 1>;
 
   explicit HloParserImpl(absl::string_view str) : lexer_(str) {}
 
@@ -232,6 +235,7 @@ class HloParserImpl : public HloParser {
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
+  StatusOr<BoolList> ParseBooleanListOrSingleBooleanOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
   StatusOr<PaddingConfig> ParsePaddingConfigOnly();
@@ -258,6 +262,7 @@ class HloParserImpl : public HloParser {
     kConvolutionDimensionNumbers,
     kSharding,
     kFrontendAttributes,
+    kBracedBoolListOrBool,
     kParameterReplication,
     kInstructionList,
     kSliceRanges,
@@ -461,6 +466,7 @@ class HloParserImpl : public HloParser {
   bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
+  bool ParseBooleanListOrSingleBoolean(BoolList* boolean_list);
   bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
 
   // Parses the metadata behind a kDOmain instruction.
@@ -903,7 +909,7 @@ bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects custom-call schedule but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -920,7 +926,7 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects custom-call API version but sees: %s, error: %s",
-                  val, status_or_result.status().error_message()));
+                  val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -936,6 +942,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
+  BoolList allow_spmd_sharding_propagation_to_output;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
@@ -945,6 +952,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["entry_computation_layout"] = {/*required=*/false,
                                        AttrTy::kComputationLayout,
                                        &entry_computation_layout};
+  attrs["allow_spmd_sharding_propagation_to_output"] = {
+      /*required=*/false, AttrTy::kBracedBoolListOrBool,
+      &allow_spmd_sharding_propagation_to_output};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -967,7 +977,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
 
   if (parse_module_without_header) {
-    name = "module_" + module->entry_computation()->name();
+    name = absl::StrCat("module_", module->entry_computation()->name());
     entry_computation_layout =
         ComputationLayout(module->entry_computation()->ComputeProgramShape(),
                           /*ignore_layouts*/ false);
@@ -975,17 +985,22 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
 
   module->set_name(name);
 
-  if (is_scheduled.has_value() && *is_scheduled) {
+  if (is_scheduled.value_or(false)) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
   HloModuleConfig config = module->config();
   bool default_config = true;
-  if (alias_passthrough_params.has_value() && *alias_passthrough_params) {
+  if (alias_passthrough_params.value_or(false)) {
     config.set_alias_passthrough_params(true);
     default_config = false;
   }
   if (entry_computation_layout.has_value()) {
     *config.mutable_entry_computation_layout() = *entry_computation_layout;
+    default_config = false;
+  }
+  if (!allow_spmd_sharding_propagation_to_output.empty()) {
+    config.set_allow_spmd_sharding_propagation_to_output(
+        allow_spmd_sharding_propagation_to_output);
     default_config = false;
   }
   if (!default_config) {
@@ -998,7 +1013,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
           alias_config.SetUpAlias(p.first, p.second.parameter_number,
                                   p.second.parameter_index, p.second.kind);
       if (!st.ok()) {
-        return TokenError(st.error_message());
+        return TokenError(st.message());
       }
     }
     module->input_output_alias_config() = alias_config;
@@ -1290,9 +1305,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         auto inferred = infer();
         if (!inferred.ok()) {
-          return TokenError(StrFormat(
-              "failed to infer shape for opcode: %s, error: %s",
-              HloOpcodeString(opcode), inferred.status().error_message()));
+          return TokenError(
+              StrFormat("failed to infer shape for opcode: %s, error: %s",
+                        HloOpcodeString(opcode), inferred.status().message()));
         }
         shape = std::move(inferred).value();
         return true;
@@ -1373,6 +1388,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
@@ -1595,9 +1611,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!slice_sizes.has_value()) {
         if (operands.size() != 1) {
           TokenError(
-              "CollectivePermute and CollectivePermuteStart must "
-              "have exactly  one operand (input buffer) unless "
-              "it performs dynamic-slice and in-place update.");
+              "CollectivePermute and CollectivePermuteStart must have exactly "
+              "one operand (input buffer) unless it performs dynamic-slice and "
+              "in-place update.");
           return nullptr;
         }
         if (opcode == HloOpcode::kCollectivePermute) {
@@ -1612,7 +1628,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                       "CollectivePermuteStart, but got "
-                   << HloOpcodeString(opcode);
+                   << opcode;
       }
       if (operands.size() != 4) {
         TokenError(
@@ -1634,7 +1650,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                     "CollectivePermuteStart, but got "
-                 << HloOpcodeString(opcode);
+                 << opcode;
     }
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
@@ -1667,8 +1683,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               !is_async_shape_correct(operands[0]->shape())) {
             TokenError(
                 "AsyncUpdate and AsyncDone expect a single operand in the form "
-                "of "
-                "((async-operands), async-outputs, state).");
+                "of ((async-operands), async-outputs, state).");
             return nullptr;
           }
           async_wrapped_operand_shapes =
@@ -1704,7 +1719,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         computations_.emplace_back(async_wrapped_builder.Build(root));
         async_computation = computations_.back().get();
-
       } else {
         attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
                           &async_computation};
@@ -3244,6 +3258,47 @@ bool HloParserImpl::ParseParameterReplication(
                     "expected '}' to end parameter_replication attribute");
 }
 
+// boolean_list ::=
+//   ('true' | 'false') | ('{' ('true' | 'false')* (',' ('true' | 'false'))*
+//   '}')
+bool HloParserImpl::ParseBooleanListOrSingleBoolean(BoolList* boolean_list) {
+  if (lexer_.GetKind() != TokKind::kLbrace &&
+      lexer_.GetKind() != TokKind::kw_true &&
+      lexer_.GetKind() != TokKind::kw_false) {
+    TokenError("Expected list of booleans or true/false value");
+    return false;
+  }
+  auto parse_boolean = [this, boolean_list]() {
+    if (lexer_.GetKind() == TokKind::kw_true) {
+      boolean_list->push_back(true);
+      lexer_.Lex();
+      return true;
+    } else if (lexer_.GetKind() == TokKind::kw_false) {
+      boolean_list->push_back(false);
+      lexer_.Lex();
+      return true;
+    }
+    return false;
+  };
+  if (parse_boolean()) {
+    return true;
+  }
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start boolean list attribute")) {
+    return false;
+  }
+  if (lexer_.GetKind() != TokKind::kRbrace) {
+    do {
+      if (!parse_boolean()) {
+        return false;
+      }
+    } while (EatIfPresent(TokKind::kComma));
+  }
+
+  return ParseToken(TokKind::kRbrace,
+                    "expected '}' to end boolean list attribute");
+}
+
 // replica_groups ::='{' int64_tlist_elements '}'
 // int64_tlist_elements
 //   ::= /*empty*/
@@ -3319,6 +3374,8 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
+    case S4:
+      return SetValueInLiteralHelper<s4>(loc, value, index, literal);
     case S8:
       return SetValueInLiteralHelper<int8_t>(loc, value, index, literal);
     case S16:
@@ -3327,6 +3384,8 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
       return SetValueInLiteralHelper<int32_t>(loc, value, index, literal);
     case S64:
       return SetValueInLiteralHelper<int64_t>(loc, value, index, literal);
+    case U4:
+      return SetValueInLiteralHelper<u4>(loc, value, index, literal);
     case U8:
       return SetValueInLiteralHelper<uint8_t>(loc, value, index, literal);
     case U16:
@@ -3533,8 +3592,8 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   const ParsedElemComponentT parsed_real_value = GetReal(value);
   auto literal_real_value =
       static_cast<LiteralNativeComponentT>(parsed_real_value);
-  if (std::is_floating_point<ParsedElemT>::value ||
-      std::is_same<ParsedElemT, std::complex<double>>::value) {
+  if (std::is_floating_point_v<ParsedElemT> ||
+      std::is_same_v<ParsedElemT, std::complex<double>>) {
     if (!handle_nan(parsed_real_value, &literal_real_value)) {
       return false;
     }
@@ -3542,7 +3601,7 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   const ParsedElemComponentT parsed_imag_value = GetImag(value);
   auto literal_imag_value =
       static_cast<LiteralNativeComponentT>(parsed_imag_value);
-  if (std::is_same<ParsedElemT, std::complex<double>>::value) {
+  if constexpr (std::is_same_v<ParsedElemT, std::complex<double>>) {
     if (!handle_nan(parsed_real_value, &literal_imag_value)) {
       return false;
     }
@@ -3701,6 +3760,9 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         break;
       }
       case TokKind::kRbrace: {
+        if (nest_level == 0) {
+          return TokenError("unexpected '}' token");
+        }
         nest_level--;
         if (elems_seen_per_dim[nest_level] != shape.dimensions(nest_level)) {
           return TokenError(absl::StrFormat(
@@ -3715,7 +3777,7 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
       case TokKind::kLparen: {
         if (!primitive_util::IsComplexType(shape.element_type())) {
           return TokenError(
-              absl::StrFormat("unexpected '(' in literal.  Parens are only "
+              absl::StrFormat("unexpected '(' in literal. Parens are only "
                               "valid for complex literals"));
         }
 
@@ -3858,7 +3920,7 @@ std::enable_if_t<std::is_integral<T>::value, bool> IsNaN(T val) {
 
 template <typename LiteralNativeT, typename ParsedElemT>
 bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
-  if (std::is_floating_point<ParsedElemT>::value) {
+  if constexpr (std::is_floating_point_v<ParsedElemT>) {
     auto value_as_native_t = static_cast<LiteralNativeT>(value);
     auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
     if (!IsFinite(value) || IsFinite(value_double_converted)) {
@@ -3872,10 +3934,10 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
        (std::numeric_limits<ParsedElemT>::infinity() == value ||
         -std::numeric_limits<ParsedElemT>::infinity() == value))) {
     // Skip range checking for non-finite value.
-  } else if (std::is_unsigned<LiteralNativeT>::value) {
-    CHECK((std::is_same<ParsedElemT, int64_t>::value ||
-           std::is_same<ParsedElemT, bool>::value))
-        << "Unimplemented checking for ParsedElemT";
+  } else if constexpr (std::is_unsigned<LiteralNativeT>::value) {
+    static_assert(std::is_same_v<ParsedElemT, int64_t> ||
+                      std::is_same_v<ParsedElemT, bool>,
+                  "Unimplemented checking for ParsedElemT");
 
     const uint64_t unsigned_value = value;
     const uint64_t upper_bound =
@@ -3887,14 +3949,20 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
                                PrimitiveType_Name(literal_ty), " namely [0, ",
                                upper_bound, "]."));
     }
-  } else if (value > MinMaxFiniteValue<LiteralNativeT>::max() ||
-             value < MinMaxFiniteValue<LiteralNativeT>::min()) {
+  } else if (value > static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::max()) ||
+             value < static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::min())) {
     // Value is out of range for LiteralNativeT.
-    return Error(loc, StrCat("value ", value,
-                             " is out of range for literal's primitive type ",
-                             PrimitiveType_Name(literal_ty), " namely [",
-                             MinMaxFiniteValue<LiteralNativeT>::min(), ", ",
-                             MinMaxFiniteValue<LiteralNativeT>::max(), "]."));
+    return Error(
+        loc,
+        StrCat(
+            "value ", value, " is out of range for literal's primitive type ",
+            PrimitiveType_Name(literal_ty), " namely [",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::min()),
+            ", ",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::max()),
+            "]."));
   }
   return true;
 }
@@ -4147,8 +4215,8 @@ bool HloParserImpl::ParseAttributeHelper(
                            StrAppend(out, kv.first);
                          }));
     }
-    return Error(loc, StrFormat("unexpected attribute \"%s\".  %s", name,
-                                allowed_attrs));
+    return Error(
+        loc, StrFormat("unexpected attribute \"%s\". %s", name, allowed_attrs));
   }
   AttrTy attr_type = attr_it->second.attr_type;
   void* attr_out_ptr = attr_it->second.result;
@@ -4161,6 +4229,13 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<bool>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kBracedBoolListOrBool: {
+        if (!ParseBooleanListOrSingleBoolean(
+                static_cast<BoolList*>(attr_out_ptr))) {
+          return false;
+        }
         return true;
       }
       case AttrTy::kInt64: {
@@ -4506,7 +4581,7 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
         }
       }
       return TokenError(
-          StrFormat("unexpected attribute \"%s\".  %s", name, allowed_attrs));
+          StrFormat("unexpected attribute \"%s\". %s", name, allowed_attrs));
     }
 
     CHECK(!fd->is_repeated());  // Repeated fields not implemented.
@@ -5558,12 +5633,15 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<std::string> source_file;
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
+  optional<std::string> deduplicated_name;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
   attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
   attrs["profile_type"] = {/*required=*/false, AttrTy::kBracedInt64List,
                            &profile_type};
+  attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
+                                &deduplicated_name};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -5586,6 +5664,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
       }
       metadata->add_profile_type(static_cast<ProfileType>(type));
     }
+  }
+  if (deduplicated_name) {
+    metadata->set_deduplicated_name(*deduplicated_name);
   }
   return true;
 }
@@ -5679,12 +5760,12 @@ bool HloParserImpl::ParseOpcode(
       if (!status_or_result.ok()) {
         return TokenError(
             StrFormat("expects async wrapped opcode but sees: %s, error: %s",
-                      val, status_or_result.status().error_message()));
+                      val, status_or_result.status().message()));
       }
       *async_wrapped_opcode = status_or_result.value();
     } else {
       return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
-                                  status_or_result.status().error_message()));
+                                  status_or_result.status().message()));
     }
   } else {
     *opcode = status_or_result.value();
@@ -5759,8 +5840,7 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
   auto status_or_result = StringToFusionKind(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects fusion kind but sees: %s, error: %s",
-                                val,
-                                status_or_result.status().error_message()));
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5777,7 +5857,7 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects random distribution but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5794,7 +5874,7 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects random algorithm but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5810,8 +5890,7 @@ bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
   auto status_or_result = StringToPrecision(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects precision but sees: %s, error: %s",
-                                val,
-                                status_or_result.status().error_message()));
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5997,6 +6076,19 @@ StatusOr<std::vector<bool>> HloParserImpl::ParseParameterReplicationOnly() {
       parameter_replication.replicated_at_leaf_buffers().end());
 }
 
+StatusOr<HloParserImpl::BoolList>
+HloParserImpl::ParseBooleanListOrSingleBooleanOnly() {
+  lexer_.Lex();
+  BoolList booleans;
+  if (!ParseBooleanListOrSingleBoolean(&booleans)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after boolean list");
+  }
+  return booleans;
+}
+
 StatusOr<std::vector<ReplicaGroup>> HloParserImpl::ParseReplicaGroupsOnly() {
   lexer_.Lex();
   std::vector<ReplicaGroup> replica_groups;
@@ -6091,8 +6183,8 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   if (lexer_.GetKind() != TokKind::kEof) {
     Error(
         lexer_.GetLoc(),
-        "Syntax error:\nExpected eof after parsing single instruction.  Did "
-        "you mean to write an HLO module and forget the \"HloModule\" header?");
+        "Syntax error:\nExpected eof after parsing single instruction. Did you"
+        " mean to write an HLO module and forget the \"HloModule\" header?");
     return false;
   }
 
@@ -6132,6 +6224,12 @@ StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str) {
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseParameterReplicationOnly();
+}
+
+StatusOr<HloParserImpl::BoolList> ParseBooleanListOrSingleBoolean(
+    absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseBooleanListOrSingleBooleanOnly();
 }
 
 StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(

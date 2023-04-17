@@ -234,7 +234,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   auto return_op = llvm::cast<tfg::ReturnOp>(
       func_op.SingleBlock::getBody()->getTerminator());
   ArrayAttr results_attr = func_op.getAllResultAttrs();
-  for (auto &indexed_result : llvm::enumerate(return_op->getOperands())) {
+  for (const auto &indexed_result : llvm::enumerate(return_op->getOperands())) {
     int res_num = indexed_result.index();
     if (res_num >= results_attr.size())
       return InvalidArgument("Can't export function ", func_op.getName().str(),

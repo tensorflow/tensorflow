@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_FFI_FFI_API_H_
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -177,23 +178,26 @@ class Module {
  protected:
   Module(const XLA_FFI_Api* api, std::string module_name,
          std::vector<ExportedFunction> exported_functions,
+         XLA_FFI_Module_StateType state_type,
          XLA_FFI_Module_CreateState* create_state,
          XLA_FFI_Module_DestroyState* destroy_state)
       : api_(api),
         module_name_(std::move(module_name)),
         exported_functions_(std::move(exported_functions)) {
-    Register(create_state, destroy_state);
+    Register(state_type, create_state, destroy_state);
   }
 
  private:
   // Register `this` module with the XLA runtime.
-  void Register(XLA_FFI_Module_CreateState* create_state,
+  void Register(XLA_FFI_Module_StateType state_type,
+                XLA_FFI_Module_CreateState* create_state,
                 XLA_FFI_Module_DestroyState* destroy_state) {
     XLA_FFI_Module_Register_Args args;
     args.struct_size = XLA_FFI_Module_Register_Args_STRUCT_SIZE;
     args.priv = nullptr;
     args.name = module_name_.c_str();
     args.module = reinterpret_cast<XLA_FFI_Module*>(this);
+    args.state_type = state_type;
     args.create_state = create_state;
     args.destroy_state = destroy_state;
 
@@ -233,8 +237,11 @@ class StatefulModule : public Module {
 
  protected:
   StatefulModule(const XLA_FFI_Api* api, std::string module_name,
-                 std::vector<ExportedFunction> exported_functions)
+                 std::vector<ExportedFunction> exported_functions,
+                 bool per_execution_state = false)
       : Module(api, std::move(module_name), std::move(exported_functions),
+               per_execution_state ? XLA_FFI_Module_State_PER_EXECUTION
+                                   : XLA_FFI_Module_State_PER_EXECUTABLE,
                CreateState, DestroyState) {}
 
  private:
@@ -273,6 +280,7 @@ class StatelessModule : public Module {
   StatelessModule(const XLA_FFI_Api* api, std::string module_name,
                   std::vector<ExportedFunction> exported_functions)
       : Module(api, std::move(module_name), std::move(exported_functions),
+               /*state_type=*/XLA_FFI_Module_State_PER_EXECUTABLE,
                /*create_state=*/nullptr, /*destroy_state=*/nullptr) {}
 };
 

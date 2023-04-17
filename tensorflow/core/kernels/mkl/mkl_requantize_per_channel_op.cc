@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #define EIGEN_USE_THREADS
 
 #include <math.h>
@@ -72,14 +72,14 @@ class MklRequantizePerChannelOp : public OpKernel {
           ctx, input_requested_min.NumElements() == 1,
           errors::InvalidArgument("requested_output_min must be a scalar"));
       const float input_requested_min_float =
-          input_requested_min.flat<float>()(0);
+          input_requested_min.scalar<float>()();
 
       const Tensor& input_requested_max = ctx->input(this->kRequestMaxIndex);
       OP_REQUIRES(
           ctx, input_requested_min.NumElements() == 1,
           errors::InvalidArgument("requested_output_max must be a scalar"));
       const float input_requested_max_float =
-          input_requested_max.flat<float>()(0);
+          input_requested_max.scalar<float>()();
 
       if (out_type_ == DT_QINT8) {
         OP_REQUIRES(ctx, input_requested_min_float < 0.0f,
@@ -108,6 +108,7 @@ class MklRequantizePerChannelOp : public OpKernel {
       dnnl::primitive_attr reorder_attr;
       reorder_attr.set_output_scales(2, scales);
 
+      MklDnnThreadPool eigen_tp(ctx);
       memory::dims dims_mkl_order =
           TFShapeToMklDnnDimsInNCHW(input.shape(), FORMAT_NHWC);
       memory::desc input_md = memory::desc(dims_mkl_order, MklDnnType<qint32>(),
@@ -139,7 +140,7 @@ class MklRequantizePerChannelOp : public OpKernel {
           ReorderPd(cpu_engine_, input_mem_prim->get_desc(), cpu_engine_,
                     output_mem_prim->get_desc(), reorder_attr);
       std::shared_ptr<stream> reorder_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine_));
       std::unordered_map<int, dnnl::memory> reorder_args = {
           {DNNL_ARG_FROM, *input_mem_prim}, {DNNL_ARG_TO, *output_mem_prim}};
@@ -154,8 +155,8 @@ class MklRequantizePerChannelOp : public OpKernel {
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_output(kOutputMaxIndex, {}, &output_max));
 
-      output_min->flat<float>()(0) = input_requested_min_float;
-      output_max->flat<float>()(0) = input_requested_max_float;
+      output_min->scalar<float>()() = input_requested_min_float;
+      output_max->scalar<float>()() = input_requested_max_float;
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + std::string(e.message) + ", in file " +
@@ -192,4 +193,4 @@ REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
                         MklRequantizePerChannelOp<CPUDevice, quint8>);
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

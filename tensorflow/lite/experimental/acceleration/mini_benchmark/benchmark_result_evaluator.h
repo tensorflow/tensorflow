@@ -28,7 +28,7 @@ class AbstractBenchmarkResultEvaluator {
   // Returns whether this event means the validation test has passed. It checks
   // that the test has finished successfully, and the test result passed
   // accuracy checks.
-  virtual bool IsValidationSuccessEvent(const BenchmarkEvent& event) {
+  bool IsValidationSuccessEvent(const BenchmarkEvent& event) {
     return event.event_type() == BenchmarkEventType_END && event.result() &&
            HasPassedAccuracyCheck(*event.result());
   }
@@ -40,14 +40,13 @@ class AbstractBenchmarkResultEvaluator {
 // Evaluator for embedded validation scenario.
 class EmbeddedResultEvaluator : public AbstractBenchmarkResultEvaluator {
  public:
-  ~EmbeddedResultEvaluator() override = default;
-
   static EmbeddedResultEvaluator* GetInstance();
 
   bool HasPassedAccuracyCheck(const BenchmarkResult& result) override;
 
  private:
   EmbeddedResultEvaluator() = default;
+  ~EmbeddedResultEvaluator() override = default;
 };
 
 }  // namespace acceleration

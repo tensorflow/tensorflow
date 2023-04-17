@@ -21,14 +21,14 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace host {
@@ -54,12 +54,12 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                         KernelBase* kernel) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const KernelBase& kernel,
                      const KernelArgsArrayBase& args) override {
-    return port::UnimplementedError("Not Implemented");
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
@@ -106,7 +106,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
                                               uint64_t size) override;
 
   bool HostCallback(Stream* stream,
-                    std::function<tsl::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
   tsl::Status AllocateEvent(Event* event) override;
   tsl::Status DeallocateEvent(Event* event) override;

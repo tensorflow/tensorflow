@@ -17,26 +17,4 @@ limitations under the License.
 
 #include "tensorflow/lite/core/experimental/acceleration/configuration/c/delegate_plugin.h"
 
-#if !TFLITE_USE_OPAQUE_DELEGATE
-// If TFLITE_USE_OPAQUE_DELEGATE is set, the following
-// TfLiteOpaqueDelegatePlugin symbols are defined in
-// third_party/tensorflow/lite/core/experimental/acceleration/configuration/c/
-// delegate_plugin.h to use the truly opaque types as the macro name indicates.
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef TfLiteDelegatePluginCreateFunc TfLiteOpaqueDelegatePluginCreateFunc;
-typedef TfLiteDelegatePluginDestroyFunc TfLiteOpaqueDelegatePluginDestroyFunc;
-typedef TfLiteDelegatePluginGetDelegateErrnoFunc
-    TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc;
-typedef TfLiteDelegatePlugin TfLiteOpaqueDelegatePlugin;
-
-#ifdef __cplusplus
-};  // extern "C"
-#endif
-
-#endif  // !TFLITE_USE_OPAQUE_DELEGATE
-
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_PLUGIN_H_

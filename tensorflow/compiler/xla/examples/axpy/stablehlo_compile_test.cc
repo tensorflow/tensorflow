@@ -78,31 +78,31 @@ TEST(StableHloAxpyTest, LoadAndRunCpuExecutable) {
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);
 
-  // Read StableHLO module to string.
-  std::string module_path = tsl::io::JoinPath(
+  // Read StableHLO program to string.
+  std::string program_path = tsl::io::JoinPath(
       tsl::testing::XlaSrcRoot(), "examples", "axpy", "stablehlo_axpy.mlir");
-  std::string module_string;
+  std::string program_string;
 
-  TF_ASSERT_OK(
-      tsl::ReadFileToString(tsl::Env::Default(), module_path, &module_string));
+  TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), program_path,
+                                     &program_string));
 
-  std::cerr << "Loaded StableHLO module from " << module_path << ":\n"
-            << module_string << std::endl;
+  std::cerr << "Loaded StableHLO program from " << program_path << ":\n"
+            << program_string << std::endl;
 
-  // Register MLIR dialects necessary to parse our module. In our case this is
+  // Register MLIR dialects necessary to parse our program. In our case this is
   // just the Func dialect and StableHLO.
   mlir::DialectRegistry dialects;
   dialects.insert<mlir::func::FuncDialect>();
   mlir::stablehlo::registerAllDialects(dialects);
 
-  // Parse StableHLO module.
+  // Parse StableHLO program.
   auto ctx = std::make_unique<mlir::MLIRContext>(dialects);
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString<mlir::ModuleOp>(module_string, ctx.get());
+  mlir::OwningOpRef<mlir::ModuleOp> program =
+      mlir::parseSourceString<mlir::ModuleOp>(program_string, ctx.get());
 
-  // Use our client to compile our StableHLO module to an executable.
+  // Use our client to compile our StableHLO program to an executable.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          pjrt_se_client.Compile(*module, CompileOptions{}));
+                          pjrt_se_client.Compile(*program, CompileOptions{}));
 
   // Create inputs to our computation.
   auto alpha_literal = xla::LiteralUtil::CreateR0<float>(3.14f);

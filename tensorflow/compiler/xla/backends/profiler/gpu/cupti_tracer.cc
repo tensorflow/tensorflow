@@ -90,7 +90,7 @@ Status ToStatus(CUresult result) {
 
 inline void LogIfError(const Status &status) {
   if (status.ok()) return;
-  LOG(ERROR) << status.error_message();
+  LOG(ERROR) << status.message();
 }
 
 // Maps an OverheadKind enum to a const string.
@@ -948,7 +948,6 @@ Status CreateAndRecordEvent(CUevent *event, CUstream stream) {
   return ToStatus(cuEventRecord(*event, stream));
 }
 
-#if CUDA_VERSION >= 10000
 // Maintain and restore current thread's CUDA context.
 // Note: cuStreamGetCtx only available after CUDA 9.2.
 class ScopedCudaContext {
@@ -983,7 +982,6 @@ class ScopedCudaContext {
   std::optional<tsl::uint32> device_ordinal_;
   bool context_pushed_ = false;
 };
-#endif
 
 // Stores a series of kernel and memcpy records.
 class CudaEventRecorder {
@@ -1318,7 +1316,6 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         break;
       }
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice: {
-#if CUDA_VERSION >= 10000
         const auto *params =
             static_cast<const cuLaunchCooperativeKernelMultiDevice_params *>(
                 cbdata->functionParams);
@@ -1346,9 +1343,6 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         callback_contexts_.insert(callback_context);
         *cbdata->correlationData =
             reinterpret_cast<tsl::uint64>(callback_context);
-#else
-        VLOG(1) << "Unhandled cuLaunchCooperativeKernelMultiDevice.";
-#endif
       } break;
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
         const auto *params =
@@ -1407,7 +1401,6 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         start_tsc = recorder->StopKernel(*cbdata->correlationData);
         break;
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice: {
-#if CUDA_VERSION >= 10000
         auto *callback_context = reinterpret_cast<CuptiApiCallbackContext *>(
             *cbdata->correlationData);
         callback_contexts_.erase(callback_context);
@@ -1426,7 +1419,6 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
           start_tsc =
               cuda_event_recorders_[*dev_id]->StopKernel(record_indices[i]);
         }
-#endif
       } break;
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpy:
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync:

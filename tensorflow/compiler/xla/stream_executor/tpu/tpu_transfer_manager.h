@@ -93,7 +93,7 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) override;
 
   tsl::Status ReadDynamicShapes(se::Stream* stream,
-                                xla::ShapedBuffer* device_buffer,
+                                const xla::ShapedBuffer* device_buffer,
                                 xla::Shape* device_shape) override;
 
  private:

@@ -90,7 +90,7 @@ TfLiteStatus QuantizeModel(
   }
 
   // Apply quantization passes.
-  PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
+  PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
   quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
@@ -124,7 +124,7 @@ TfLiteStatus QuantizeModel(
   // If the first or final ops are not quantized, remove QDQ.
   pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
   if (failed(pm.run(module.get()))) {
-    const std::string& err = statusHandler.ConsumeStatus().error_message();
+    const std::string err(statusHandler.ConsumeStatus().message());
     error_reporter->Report("Failed to quantize: %s", err.c_str());
     return kTfLiteError;
   }

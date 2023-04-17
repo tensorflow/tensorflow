@@ -19,6 +19,9 @@ load(
     "tf_exec_properties",
 )
 
+def register_extension_info(**kwargs):
+    pass
+
 def xla_py_proto_library(**kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
     _ignore = kwargs
@@ -45,6 +48,7 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
         "//tensorflow/compiler/xla:xla_proto_cc_impl",
         "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
+        "//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
         "//tensorflow/tsl/platform:env_impl",
@@ -75,6 +79,7 @@ def xla_cc_test(
                        "//tensorflow/compiler/xla:xla_proto_cc_impl",
                        "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
                        "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
+                       "//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl",
                        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
                        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
                        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
@@ -106,3 +111,8 @@ def xla_cc_test(
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
+
+register_extension_info(
+    extension = xla_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)

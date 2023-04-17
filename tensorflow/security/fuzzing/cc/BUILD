@@ -5,8 +5,8 @@ load(
     "tf_proto_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
 )
 
 package(
@@ -14,31 +14,27 @@ package(
     licenses = ["notice"],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "status_fuzz",
     srcs = ["status_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_helpers",
+        ":fuzz_domains",
         "//tensorflow/core/platform:status",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "arg_def_case_fuzz",
     srcs = ["arg_def_case_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "base64_fuzz",
     srcs = ["base64_fuzz.cc"],
     tags = ["no_oss"],
@@ -46,24 +42,20 @@ tf_cc_test(
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "bfloat16_fuzz",
     srcs = ["bfloat16_fuzz.cc"],
     tags = ["no_oss"],  # b/175698644
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core/framework:bfloat16",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "checkpoint_reader_fuzz",
     srcs = ["checkpoint_reader_fuzz.cc"],
     data = glob(["checkpoint_reader_testdata/*"]),
@@ -78,8 +70,6 @@ tf_cc_test(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/platform:status",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -93,121 +83,105 @@ tf_proto_library(
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "cleanpath_fuzz",
     srcs = ["cleanpath_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/strings",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "consume_leading_digits_fuzz",
     srcs = ["consume_leading_digits_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "joinpath_fuzz",
     srcs = ["joinpath_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/strings",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "status_group_fuzz",
     srcs = ["status_group_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_helpers",
+        ":fuzz_domains",
         "//tensorflow/core/platform:status",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_library(
-    name = "fuzz_helpers",
-    hdrs = ["fuzz_helpers.h"],
+    name = "fuzz_domains",
+    testonly = True,
+    hdrs = ["fuzz_domains.h"],
     deps = [
         "//tensorflow/core/platform:status",
+        "@com_google_fuzztest//fuzztest",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "stringprintf_fuzz",
     srcs = ["stringprintf_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:stringprintf",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "string_replace_fuzz",
     srcs = ["string_replace_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "tstring_fuzz",
     srcs = ["tstring_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:tstring",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "AreAttrValuesEqual_fuzz",
     srcs = ["AreAttrValuesEqual_fuzz.cc"],
     tags = ["no_oss"],  # b/175698644
     deps = [
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:attr_value_util",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "ParseAttrValue_fuzz",
     srcs = ["ParseAttrValue_fuzz.cc"],
     tags = ["no_oss"],  # b/175698644
     deps = [
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:attr_value_util",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
-tf_cc_test(
+tf_cc_fuzz_test(
     name = "parseURI_fuzz",
     srcs = ["parseURI_fuzz.cc"],
     tags = ["no_oss"],
@@ -215,8 +189,6 @@ tf_cc_test(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/strings",
-        "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -237,5 +209,21 @@ cc_library(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/platform:status",
         "@com_google_fuzztest//fuzztest",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "end_to_end_fuzz",
+    srcs = ["end_to_end_fuzz.cc"],
+    deps = [
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
     ],
 )

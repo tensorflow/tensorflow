@@ -6,26 +6,28 @@
 func.func @main(%arg0: tensor<i32>) {
   // CHECK:      "tf_device.cluster"
   // CHECK-NEXT:   "tf.Identity"
-  // CHECK-NEXT:   %[[RECV_ID_TO_ORDINAL:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[RECV_SIZE_TYPE:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[RECV_DEVICE_ID:.*]] = "tf.Reshape"(%[[DEVICE_ID]], %[[RECV_SIZE_TYPE]])
-  // CHECK-NEXT:   %[[RECV_SLICE_SIZE:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[RECV_DEVICE_ORDINAL:.*]] = "tf.Slice"(%[[RECV_ID_TO_ORDINAL]], %[[RECV_DEVICE_ID]], %[[RECV_SLICE_SIZE]])
-  // CHECK-NEXT:   %[[RECV_SCALAR_TYPE:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[RECV_DEVICE_ORDINAL_SCALAR:.*]] = "tf.Reshape"(%[[RECV_DEVICE_ORDINAL]], %[[RECV_SCALAR_TYPE]])
-  // CHECK-NEXT:   %[[RECV_DEVICE_ORDINAL_SCALAR_64:.*]] = "tf.Cast"(%[[RECV_DEVICE_ORDINAL_SCALAR]])
-  // CHECK-NEXT:   %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
-  // CHECK-NEXT:   %[[CONST_OUT:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[LAYOUT_OUT:.*]] = "tf.DTensorLayout"
-  // CHECK-NEXT:   %[[SEND_ID_TO_ORDINAL:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[SEND_SIZE_TYPE:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[SEND_DEVICE_ID:.*]] = "tf.Reshape"(%[[DEVICE_ID]], %[[SEND_SIZE_TYPE]])
-  // CHECK-NEXT:   %[[SEND_SLICE_SIZE:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[SEND_DEVICE_ORDINAL:.*]] = "tf.Slice"(%[[SEND_ID_TO_ORDINAL]], %[[SEND_DEVICE_ID]], %[[SEND_SLICE_SIZE]])
-  // CHECK-NEXT:   %[[SEND_SCALAR_TYPE:.*]] = "tf.Const"
-  // CHECK-NEXT:   %[[SEND_DEVICE_ORDINAL_SCALAR:.*]] = "tf.Reshape"(%[[SEND_DEVICE_ORDINAL]], %[[SEND_SCALAR_TYPE]])
-  // CHECK-NEXT:   %[[SEND_DEVICE_ORDINAL_SCALAR_64:.*]] = "tf.Cast"(%[[SEND_DEVICE_ORDINAL_SCALAR]])
-  // CHECK-NEXT:   "tf._XlaSendFromHostV2"(%[[LAYOUT_OUT]], %[[PROGRAM_KEY]], %[[SEND_DEVICE_ORDINAL_SCALAR_64]])
+  // COMMENT: Check Recv before Send
+  // CHECK-DAG:    %[[RECV_DEVICE_ID:.*]] = "tf.Reshape"(%[[DEVICE_ID]], %[[RECV_SIZE_TYPE:[^)]*]])
+  // CHECK-DAG:   %[[RECV_DEVICE_ORDINAL:.*]] = "tf.Slice"(%[[RECV_ID_TO_ORDINAL:.*]], %[[RECV_DEVICE_ID]], %[[RECV_SLICE_SIZE:[^)]*]])
+  // CHECK-DAG:   %[[RECV_DEVICE_ORDINAL_SCALAR:.*]] = "tf.Reshape"(%[[RECV_DEVICE_ORDINAL]], %[[RECV_SCALAR_TYPE:[^)]*]])
+  // CHECK-DAG:   %[[RECV_DEVICE_ORDINAL_SCALAR_64:.*]] = "tf.Cast"(%[[RECV_DEVICE_ORDINAL_SCALAR]])
+  // CHECK-DAG:    %[[RECV_ID_TO_ORDINAL]] = "tf.Const"() {value = dense<0> : tensor<1xi32>}
+  // CHECK-DAG:    %[[RECV_SIZE_TYPE]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
+  // CHECK-DAG:    %[[RECV_SLICE_SIZE]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
+  // CHECK-DAG:    %[[RECV_SCALAR_TYPE]] = "tf.Const"() {value = dense<> : tensor<0xi32>}
+  // COMMENT: Recv and Send seperated by the output tensor.
+  // CHECK:   %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+  // CHECK-NEXT:   %[[CONST_OUT:.*]] = "tf.Const"() {value = dense<10> : tensor<1xi32>}
+  // CHECK-NEXT:   %[[LAYOUT_OUT:.*]] = "tf.DTensorLayout"(%[[CONST_OUT]])
+  // CHECK-DAG:   %[[SEND_DEVICE_ID:.*]] = "tf.Reshape"(%[[DEVICE_ID]], %[[SEND_SIZE_TYPE:[^)]*]])
+  // CHECK-DAG:   %[[SEND_DEVICE_ORDINAL:.*]] = "tf.Slice"(%[[SEND_ID_TO_ORDINAL:.*]], %[[SEND_DEVICE_ID]], %[[SEND_SLICE_SIZE:[^)]*]])
+  // CHECK-DAG:   %[[SEND_DEVICE_ORDINAL_SCALAR:.*]] = "tf.Reshape"(%[[SEND_DEVICE_ORDINAL]], %[[SEND_SCALAR_TYPE:[^)]*]])
+  // CHECK-DAG:   %[[SEND_DEVICE_ORDINAL_SCALAR_64:.*]] = "tf.Cast"(%[[SEND_DEVICE_ORDINAL_SCALAR]])
+  // CHECK-DAG:    %[[SEND_ID_TO_ORDINAL]] = "tf.Const"() {value = dense<0> : tensor<1xi32>}
+  // CHECK-DAG:    %[[SEND_SIZE_TYPE]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
+  // CHECK-DAG:    %[[SEND_SLICE_SIZE]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
+  // CHECK-DAG:    %[[SEND_SCALAR_TYPE]] = "tf.Const"() {value = dense<> : tensor<0xi32>}
+  // CHECK:   "tf._XlaSendFromHostV2"(%[[LAYOUT_OUT]], %[[PROGRAM_KEY]], %[[SEND_DEVICE_ORDINAL_SCALAR_64]])
   // CHECK-NEXT:   %[[RECV_OUT:.*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_KEY]], %[[RECV_DEVICE_ORDINAL_SCALAR_64]])
   // CHECK-SAME:   key = "CPU|x=1|0|0|/job:localhost/task:0/device:CPU:0_2"
   // CHECK:      "tf_device.cluster"

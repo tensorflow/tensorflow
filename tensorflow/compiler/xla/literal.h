@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -91,15 +92,38 @@ class LiteralBase {
   // array.
   std::string GetR1U8AsString() const;
 
+  // Prints a string representation of the literal value. The Shape of the
+  // literal is a prefix of the literal value in the string.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
+  void Print(Printer* printer) const;
+
+  // Similar to Print, but prints the result in a compact one-line form.
+  void PrintOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which does *not*
+  // include the shape string.
+  void PrintWithoutShape(Printer* printer) const;
+
+  // Similar to PrintWithoutShape, but prints the result in a compact one-line
+  // form.
+  void PrintWithoutShapeOneline(Printer* printer) const;
+
+  // Prints a string representation of the literal value which includes the
+  // shape string with its layout.does *not* include the shape string.
+  void PrintWithLayout(Printer* printer) const;
+
+  // Similar to PrintWithLayout, but prints the result in a compact one-line
+  // form.
+  void PrintWithLayoutOneline(Printer* printer) const;
+
   // Returns a string representation of the literal value. The Shape of the
   // literal is a prefix of the literal value in the string.
-
-  // Warning: this function can take minutes for multi-million
-  // element Literals.
+  //
+  // Warning: this function can take minutes for multi-million element Literals.
   std::string ToString() const;
 
-  // Similar to ToString, but return the result in a compact
-  // one-line form.
+  // Similar to ToString, but return the result in a compact one-line form.
   std::string ToStringOneline() const;
 
   // Returns a string representation of the literal value which does *not*
@@ -114,8 +138,8 @@ class LiteralBase {
   // shape string with its layout.does *not* include the shape string.
   std::string ToStringWithLayout() const;
 
-  // Similar to ToStringWithLayout, but return the result in a compact
-  // one-line form.
+  // Similar to ToStringWithLayout, but return the result in a compact one-line
+  // form.
   std::string ToStringWithLayoutOneline() const;
 
   // Gets an element in the literal at the given index. The multi_index is
@@ -190,6 +214,11 @@ class LiteralBase {
   // This literal must be an array.
   std::optional<complex128> GetAsComplex128(
       absl::Span<const int64_t> multi_index) const;
+
+  // Convert each element whose *linear* index is listed in "linear_indices"
+  // to a double and return the sum of all of these elements.
+  std::optional<double> GetSumAsDouble(
+      absl::Span<const int64_t> linear_indices) const;
 
   // Invokes the "per cell" callback for each element in the provided
   // literal with the element's indices and a string representation of
@@ -344,7 +373,7 @@ class LiteralBase {
   // literal's dynamic sizes.
   Literal ToStatic() const;
 
-  // Expand a static literal into a new one with a bounded dyanmic literal. The
+  // Expand a static literal into a new one with a bounded dynamic literal. The
   // static dimensions of the original literal becomes dynamic dimensions of the
   // new literal, where the argument `bounded_shape` becomes the bounded shape
   // of the new literal.
@@ -549,7 +578,7 @@ class LiteralBase {
     }
 
     // Returns the size of children pieces of this piece.
-    int64_t children_size() {
+    int64_t children_size() const {
       if (auto* tuple_rep = GetTupleRep()) {
         return tuple_rep->children.size();
       }
@@ -665,20 +694,6 @@ class LiteralBase {
       char data[kMaxInlinedBytes];
     };
 
-    // Helper visiter to access the buffer in the representation variant.
-    struct BufferVisitor {
-      char* operator()(Uninitialized&) { return nullptr; }
-      const char* operator()(const Uninitialized&) const { return nullptr; }
-      char* operator()(TupleRep&) { return nullptr; }
-      const char* operator()(const TupleRep&) const { return nullptr; }
-      char* operator()(DenseInlinedRep& rep) { return rep.data; }
-      const char* operator()(const DenseInlinedRep& rep) const {
-        return rep.data;
-      }
-      char* operator()(DenseRep& rep) { return rep.data; }
-      const char* operator()(const DenseRep& rep) const { return rep.data; }
-    };
-
     const DenseInlinedRep* GetDenseInlinedRep() const {
       return std::get_if<DenseInlinedRep>(&rep_);
     }
@@ -771,10 +786,6 @@ class LiteralBase {
   friend class BorrowingLiteral;
 
  private:
-  template <typename NativeT>
-  Literal SliceInternal(const Shape& result_shape,
-                        absl::Span<const int64_t> start_indices) const;
-
   // Like IsAllFloat, but if round_value is false and the value is not
   // representable with the literal's type (e.g., due to rounding error or
   // overflow/underflow when casting the value to the literal's type), returns
@@ -843,9 +854,9 @@ class MutableLiteralBase : public LiteralBase {
                        absl::Span<const int64_t> copy_size);
 
   // Copies one element from src_literal[src_index] to (*this)[dest_index].
-  Status CopyElementFrom(const LiteralSlice& src_literal,
-                         absl::Span<const int64_t> src_index,
-                         absl::Span<const int64_t> dest_index);
+  void CopyElementFrom(const LiteralSlice& src_literal,
+                       absl::Span<const int64_t> src_index,
+                       absl::Span<const int64_t> dest_index);
 
   // Sets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
@@ -909,6 +920,22 @@ class MutableLiteralBase : public LiteralBase {
   Status PopulateParallel(
       absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator);
 
+  // Similar to Populate() but takes a populator function that allows caller
+  // specify how to write to the destination buffer rather than a generator that
+  // returns the values. This is useful when the value population simply does
+  // memcpy without compute therefore can be written in a type agnostic way, so
+  // that we can avoid templatizing the method for better code size.
+  //
+  // This literal must have a dense layout.
+  Status PopulateInplace(
+      absl::FunctionRef<void(void*, absl::Span<const int64_t>)> populator);
+
+  // A parallel version of PopulateInplace(). This can be used if the generator
+  // is thread-safe and the values for the shape's different elements are
+  // independent.
+  Status PopulateInplaceParallel(
+      absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator);
+
   // Fills this literal with the given value.
   template <typename NativeT>
   void PopulateWithValue(NativeT value);
@@ -938,29 +965,6 @@ class MutableLiteralBase : public LiteralBase {
                                absl::Span<const int64_t> src_base,
                                absl::Span<const int64_t> dest_base,
                                absl::Span<const int64_t> copy_size);
-
-  // Utility structure which is used to create the optimal configuration for
-  // a ShapeUtil::ForEachIndex() scan across two literals.
-  struct StrideConfig {
-    StrideConfig(const Shape& source_shape, const Shape& dest_shape,
-                 absl::Span<const int64_t> dimensions);
-
-    // The dimensions of the stride operation. Essentially every dimension
-    // will be iterated from base[i] to base[i]+dimensions[i], in step[i]
-    // steps.
-    absl::Span<const int64_t> dimensions;
-    DimensionVector base;
-    DimensionVector step;
-    int64_t minor_dimension = 0;
-    // The size of the strides for source and destination. One of the two
-    // (the one looping through its most minor dimension) will be 1, while
-    // the other will be the stride size at the dimension matching the other
-    // shape most minor dimension being scanned.
-    int64_t dest_stride = 1;
-    int64_t source_stride = 1;
-    // The size of the inner loop on the most minor dimension.
-    int64_t minor_loop_size = 1;
-  };
 
   // A unique_ptr like class which may or may not have ownership of its pointer.
   // The literal may or may not own the storage of the shape. Creating/copying a
@@ -1062,6 +1066,9 @@ class MutableLiteralBase : public LiteralBase {
   template <typename NativeT>
   Status PopulateInternal(
       absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
+      bool parallel);
+  void PopulateInplaceInternal(
+      absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator,
       bool parallel);
 
   friend class LiteralBase;
@@ -1432,8 +1439,7 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
     absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
     bool parallel) {
   const Shape& this_shape = shape();
-  const int64_t rank = this_shape.rank();
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
+  DCHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>())
       << "Failing to populate literal with element type "
@@ -1441,49 +1447,18 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
       << " using data of type "
       << primitive_util::LowercasePrimitiveTypeName(
              primitive_util::NativeToPrimitiveType<NativeT>());
-  absl::Span<NativeT> literal_data = data<NativeT>();
-  if (rank > 0) {
-    StrideConfig stride_config(this_shape, this_shape, this_shape.dimensions());
-    int64_t minor_dimension_size =
-        ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
-
-    auto init_function = [&](absl::Span<const int64_t> indexes,
-                             int thread_id) -> StatusOr<bool> {
-      DimensionVector minor_scan_indexes(rank, 0);
-      const int64_t index =
-          IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
-      std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
-      for (int64_t i = 0; i < minor_dimension_size; ++i) {
-        minor_scan_indexes[stride_config.minor_dimension] = i;
-        literal_data.at(index + i) = generator(minor_scan_indexes, thread_id);
-      }
-      return true;
-    };
-    if (parallel) {
-      ShapeUtil::ForEachIndexParallel(this_shape, stride_config.base,
-                                      stride_config.dimensions,
-                                      stride_config.step, init_function);
-    } else {
-      ShapeUtil::ForEachIndex(
-          this_shape, stride_config.base, stride_config.dimensions,
-          stride_config.step,
-          [&init_function](
-              absl::Span<const int64_t> indexes) -> StatusOr<bool> {
-            auto result_ignored = init_function(indexes, /*thread_id=*/-1);
-            return true;
-          });
-    }
-  } else {
-    // For scalars.
-    literal_data.at(0) = generator({}, /*thread_id=*/-1);
-  }
+  PopulateInplaceInternal(
+      [&](void* dest, absl::Span<const int64_t> indices, int thread_id) {
+        *static_cast<NativeT*>(dest) = generator(indices, thread_id);
+      },
+      parallel);
   return OkStatus();
 }
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
     absl::FunctionRef<NativeT(absl::Span<const int64_t>)> generator) {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
@@ -1494,20 +1469,16 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
     absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator) {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
-  return PopulateInternal<NativeT>(
-      [&](absl::Span<const int64_t> indexes, int thread_id) {
-        return generator(indexes, thread_id);
-      },
-      /*parallel=*/data<NativeT>().size() > 32);
+  return PopulateInternal<NativeT>(generator,
+                                   /*parallel=*/data<NativeT>().size() > 32);
 }
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateWithValue(NativeT value) {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
-  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   for (NativeT& element : data<NativeT>()) {

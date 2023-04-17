@@ -11,16 +11,14 @@ enum MemBwType {
   // available as in C++.
   MEM_BW_TYPE_FIRST = 0;
   // Aggregated BW across on-chip and off-chip memory.
-  MEM_BW_TYPE_ALL = 0;
-  // Off-chip hbm memory bw, read and write combined since it's a shared bus.
-  MEM_BW_TYPE_HBM_RW = 1;
+  MEM_BW_TYPE_HBM_RW = 0;
   // On-chip memory read bw.
-  MEM_BW_TYPE_SRAM_RD = 2;
+  MEM_BW_TYPE_SRAM_RD = 1;
   // On-chip memory write bw.
-  MEM_BW_TYPE_SRAM_WR = 3;
+  MEM_BW_TYPE_SRAM_WR = 2;
 
   // Leave last.
-  MEM_BW_TYPE_MAX = 3;
+  MEM_BW_TYPE_MAX = 2;
 }
 
 // Tensorflow generic memory space names.

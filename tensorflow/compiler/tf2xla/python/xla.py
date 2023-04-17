@@ -102,6 +102,7 @@ real = _unary_op(math_ops.real)
 round = _unary_op(math_ops.round)
 sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
+tan = _unary_op(math_ops.tan)
 tanh = _unary_op(math_ops.tanh)
 
 # Bessel
@@ -603,11 +604,12 @@ def custom_call_v2(
   )
 
 
-def call_module(args, *, version=2, module, Tout, Sout, dim_args_spec=()):
+def call_module(args, *, version=4, module, Tout, Sout,
+                dim_args_spec=(), platforms=()):
   # See documentation for the XlaCallModule op.
   return gen_xla_ops.xla_call_module(
       args, version=version, module=module, dim_args_spec=dim_args_spec,
-      Tout=Tout, Sout=Sout)
+      Tout=Tout, Sout=Sout, platforms=platforms)
 
 
 def gather(operand,

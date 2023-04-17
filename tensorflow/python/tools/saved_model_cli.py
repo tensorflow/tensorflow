@@ -246,6 +246,15 @@ def _get_ops_in_metagraph(meta_graph_def):
   return set(meta_graph_lib.ops_used_by_graph_def(meta_graph_def.graph_def))
 
 
+def _show_ops_in_metagraph_mgd(meta_graph_def):
+  all_ops_set = _get_ops_in_metagraph(meta_graph_def)
+  print(
+      'The MetaGraph with tag set %s contains the following ops:'
+      % meta_graph_def.meta_info_def.tags,
+      all_ops_set,
+  )
+
+
 def _show_ops_in_metagraph(saved_model_dir, tag_set):
   """Prints the ops in the MetaGraph.
 
@@ -259,10 +268,7 @@ def _show_ops_in_metagraph(saved_model_dir, tag_set):
   """
   meta_graph_def = saved_model_utils.get_meta_graph_def(saved_model_dir,
                                                         tag_set)
-  all_ops_set = _get_ops_in_metagraph(meta_graph_def)
-  print(
-      'The MetaGraph with tag set %s contains the following ops:' %
-      meta_graph_def.meta_info_def.tags, all_ops_set)
+  _show_ops_in_metagraph_mgd(meta_graph_def)
 
 
 def _show_signature_def_map_keys(saved_model_dir, tag_set):
@@ -327,23 +333,20 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
   return meta_graph_def.signature_def[signature_def_key].outputs
 
 
-def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
+def _show_inputs_outputs_mgd(meta_graph_def, signature_def_key, indent):
   """Prints input and output TensorInfos.
 
   Prints the details of input and output TensorInfos for the SignatureDef mapped
   by the given signature_def_key.
 
   Args:
-    saved_model_dir: Directory containing the SavedModel to inspect.
-    tag_set: Group of tag(s) of the MetaGraphDef, in string format, separated by
-        ','. For tag-set contains multiple tags, all tags must be passed in.
+    meta_graph_def: MetaGraphDef to inspect.
     signature_def_key: A SignatureDef key string.
     indent: How far (in increments of 2 spaces) to indent each line of output.
   """
-  meta_graph_def = saved_model_utils.get_meta_graph_def(saved_model_dir,
-                                                        tag_set)
   inputs_tensor_info = _get_inputs_tensor_info_from_meta_graph_def(
-      meta_graph_def, signature_def_key)
+      meta_graph_def, signature_def_key
+  )
   outputs_tensor_info = _get_outputs_tensor_info_from_meta_graph_def(
       meta_graph_def, signature_def_key)
 
@@ -366,13 +369,32 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
            meta_graph_def.signature_def[signature_def_key].method_name)
 
 
-def _show_defined_functions(saved_model_dir):
+def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
+  """Prints input and output TensorInfos.
+
+  Prints the details of input and output TensorInfos for the SignatureDef mapped
+  by the given signature_def_key.
+
+  Args:
+    saved_model_dir: Directory containing the SavedModel to inspect.
+    tag_set: Group of tag(s) of the MetaGraphDef, in string format, separated by
+      ','. For tag-set contains multiple tags, all tags must be passed in.
+    signature_def_key: A SignatureDef key string.
+    indent: How far (in increments of 2 spaces) to indent each line of output.
+  """
+  meta_graph_def = saved_model_utils.get_meta_graph_def(
+      saved_model_dir, tag_set
+  )
+  _show_inputs_outputs_mgd(meta_graph_def, signature_def_key, indent)
+
+
+def _show_defined_functions(saved_model_dir, meta_graphs):
   """Prints the callable concrete and polymorphic functions of the Saved Model.
 
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
+    meta_graphs: Already-extracted MetaGraphDef of the SavedModel.
   """
-  meta_graphs = saved_model_utils.read_saved_model(saved_model_dir).meta_graphs
   has_object_graph_def = False
 
   for meta_graph_def in meta_graphs:
@@ -491,19 +513,22 @@ def _show_all(saved_model_dir):
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
   """
-  tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
-  for tag_set in sorted(tag_sets):
+  saved_model = saved_model_utils.read_saved_model(saved_model_dir)
+  for meta_graph_def in sorted(
+      saved_model.meta_graphs,
+      key=lambda meta_graph_def: meta_graph_def.meta_info_def.tags,
+  ):
+    tag_set = meta_graph_def.meta_info_def.tags
     print("\nMetaGraphDef with tag-set: '%s' "
           "contains the following SignatureDefs:" % ', '.join(tag_set))
 
     tag_set = ','.join(tag_set)
-    signature_def_map = get_signature_def_map(saved_model_dir, tag_set)
+    signature_def_map = meta_graph_def.signature_def
     for signature_def_key in sorted(signature_def_map.keys()):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
-      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
-                           indent=1)
-    _show_ops_in_metagraph(saved_model_dir, tag_set)
-  _show_defined_functions(saved_model_dir)
+      _show_inputs_outputs_mgd(meta_graph_def, signature_def_key, indent=1)
+    _show_ops_in_metagraph_mgd(meta_graph_def)
+  _show_defined_functions(saved_model_dir, saved_model.meta_graphs)
 
 
 def get_meta_graph_def(saved_model_dir, tag_set):

@@ -17,13 +17,16 @@
 import abc
 import math
 import typing
-from typing import Any, Dict, Callable, List, Optional, Text, Tuple, TypeVar, Union
+from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, TypeVar, Union
 
 from absl import logging
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import init_ops_v2
@@ -1021,7 +1024,7 @@ class TableConfig:
       optimizer: An optional instance of an optimizer parameters class, instance
         of one of `tf.tpu.experimental.embedding.SGD`,
         `tf.tpu.experimental.embedding.Adagrad` or
-        `tf.tpu.experimental.embedding.Adam`. It set will override the global
+        `tf.tpu.experimental.embedding.Adam`. If set will override the global
         optimizer passed to `tf.tpu.experimental.embedding.TPUEmbedding`.
       combiner: A string specifying how to reduce if there are multiple entries
         in a single row. Currently 'mean', 'sqrtn', 'sum' are supported, with
@@ -1129,7 +1132,7 @@ class TableConfig:
     # Use optimizer to handle the rest of the parameters.
     self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
     if self.quantization_config:
-      self.quantization_config._set_quantization_parameters(parameters)  # pylint: disable=protected-access
+      self.quantization_config._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")
@@ -1262,3 +1265,31 @@ def log_tpu_embedding_configuration(
   for line in str(config).splitlines():
     logging.info(line)
   logging.info("Done with log of TPUEmbeddingConfiguration.")
+
+
+def _sort_device_spec_strings(device_strings: Iterable[str]) -> List[str]:
+  sorted_specs = sorted(
+      (device_spec.DeviceSpecV2.from_string(spec) for spec in device_strings),
+      key=lambda s: (s.replica, s.task, s.device_index),
+  )
+  return [spec.to_string() for spec in sorted_specs]
+
+
+def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
+  """Returns a sorted list of CPU devices for the remote jobs.
+
+  Args:
+    strategy: A TPUStrategy object.
+
+  Returns:
+    A sorted list of device host strings.
+  """
+
+  list_of_hosts = []
+  # Elsewehere we assume that the list of hosts is sorted.
+  for tpu_device in _sort_device_spec_strings(strategy.extended.worker_devices):
+    host = device_util.get_host_for_device(tpu_device)
+    if host not in list_of_hosts:
+      list_of_hosts.append(host)
+  assert len(list_of_hosts) == strategy.extended.num_hosts
+  return list_of_hosts

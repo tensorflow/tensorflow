@@ -21,14 +21,16 @@ limitations under the License.
 #include <string.h>
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/mem.h"
@@ -53,9 +55,9 @@ tsl::Status HostExecutor::Init(int device_ordinal,
       device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
   if (it != device_options.non_portable_tags.end()) {
     if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
-      return port::InvalidArgumentError(absl::StrCat(
+      return tsl::errors::InvalidArgument(
           "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
-          it->second));
+          it->second);
     }
   }
   return ::tsl::OkStatus();
@@ -183,8 +185,8 @@ tsl::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
 }
 
 bool HostExecutor::HostCallback(Stream* stream,
-                                std::function<tsl::Status()> callback) {
-  AsHostStream(stream)->EnqueueTaskWithStatus(callback);
+                                absl::AnyInvocable<tsl::Status() &&> callback) {
+  AsHostStream(stream)->EnqueueTaskWithStatus(std::move(callback));
   return true;
 }
 
@@ -303,7 +305,7 @@ blas::BlasSupport* HostExecutor::CreateBlas() {
                                                         plugin_config_.blas());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve BLAS factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
@@ -324,7 +326,7 @@ fft::FftSupport* HostExecutor::CreateFft() {
                                                        plugin_config_.fft());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
@@ -345,7 +347,7 @@ rng::RngSupport* HostExecutor::CreateRng() {
                                                        plugin_config_.rng());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve RNG factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 

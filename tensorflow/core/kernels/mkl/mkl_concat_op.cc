@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #define EIGEN_USE_THREADS
 
 #include <limits>
@@ -108,8 +108,8 @@ class EigenConcatBaseOp : public OpKernel {
     float overall_min = std::numeric_limits<float>::max();
     float overall_max = std::numeric_limits<float>::lowest();
     for (int i = 0; i < N; ++i) {
-      const float input_min = input_mins[i].flat<float>()(0);
-      const float input_max = input_maxes[i].flat<float>()(0);
+      const float input_min = input_mins[i].scalar<float>()();
+      const float input_max = input_maxes[i].scalar<float>()();
       input_mins_and_maxes->emplace_back(input_min, input_max);
       overall_min = std::min(overall_min, input_min);
       overall_max = std::max(overall_max, input_max);
@@ -227,11 +227,11 @@ class EigenConcatBaseOp : public OpKernel {
     if (quantized_input) {
       Tensor* output_min_tensor = nullptr;
       OP_REQUIRES_OK(c, c->allocate_output(1, {}, &output_min_tensor));
-      output_min_tensor->flat<float>()(0) = output_min;
+      output_min_tensor->scalar<float>()() = output_min;
 
       Tensor* output_max_tensor = nullptr;
       OP_REQUIRES_OK(c, c->allocate_output(2, {}, &output_max_tensor));
-      output_max_tensor->flat<float>()(0) = output_max;
+      output_max_tensor->scalar<float>()() = output_max;
     }
   }
 };
@@ -568,12 +568,25 @@ class MklConcatOp : public OpKernel {
                     errors::InvalidArgument(
                         "QuantizedConcatOp : Expected maxes input list length ",
                         input_maxes.size(), " to equal values length ", N));
-        float input_min = input_mins[0].flat<float>()(0);
-        float input_max = input_maxes[0].flat<float>()(0);
+
+        for (int i = 0; i < N; i++) {
+          OP_REQUIRES(context,
+                      TensorShapeUtils::IsScalar(input_mins[i].shape()),
+                      errors::InvalidArgument("`input_mins[", i,
+                                              "]` must be rank 0 but is rank ",
+                                              input_mins[i].dims()));
+          OP_REQUIRES(context,
+                      TensorShapeUtils::IsScalar(input_maxes[i].shape()),
+                      errors::InvalidArgument("`input_maxes[", i,
+                                              "]` must be rank 0 but is rank ",
+                                              input_maxes[i].dims()));
+        }
+        float input_min = input_mins[0].scalar<float>()();
+        float input_max = input_maxes[0].scalar<float>()();
         const float eps = 1.0e-6;
         for (int i = 1; i < N; ++i) {
-          float min = input_mins[i].flat<float>()(0);
-          float max = input_maxes[i].flat<float>()(0);
+          float min = input_mins[i].scalar<float>()();
+          float max = input_maxes[i].scalar<float>()();
 
           if (fabs(input_min - min) > eps || fabs(input_max - max) > eps) {
             invoke_eigen = true;
@@ -695,7 +708,7 @@ class MklConcatOp : public OpKernel {
           // When memory::format_tag::nc, dst_dims are already in oneDNN order
           dst_md = memory::desc(dst_dims, MklDnnType<T>(), mkl_common_format);
         } else {
-          TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
+          TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
                              "Unsupported tensor dimension or"
                              "oneDNN memory format"));
         }
@@ -723,7 +736,7 @@ class MklConcatOp : public OpKernel {
       // then since MklDnn order is NCHW, concat_dim needs to be 1.
       if (are_all_mkl_inputs)
         concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
-
+      MklDnnThreadPool eigen_tp(context);
       if (!inputs.empty()) {
         if (are_all_mkl_inputs) {
           auto concat_pd =
@@ -744,7 +757,7 @@ class MklConcatOp : public OpKernel {
           DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
 
           std::shared_ptr<stream> fwd_cpu_stream;
-          MklDnnThreadPool eigen_tp(context);
+
           fwd_cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
           if (dnn_shape_dst.IsMklTensor())
@@ -782,7 +795,7 @@ class MklConcatOp : public OpKernel {
           dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
                                                : dst_md;
           std::shared_ptr<stream> fwd_cpu_stream;
-          MklDnnThreadPool eigen_tp(context);
+
           fwd_cpu_stream.reset(
               CreateStream(&eigen_tp, concat_fwd->GetEngine()));
           dst.SetUsrMem(dst_md, dst_tensor);
@@ -805,8 +818,8 @@ class MklConcatOp : public OpKernel {
                                     output_max_mkl_shape, native_format);
           // All input tensors should have the same range, just use the
           // first one
-          output_min->flat<float>()(0) = input_mins[0].flat<float>()(0);
-          output_max->flat<float>()(0) = input_maxes[0].flat<float>()(0);
+          output_min->scalar<float>()() = input_mins[0].scalar<float>()();
+          output_max->scalar<float>()() = input_maxes[0].scalar<float>()();
         }
       } else {
         MklDnnShape dnn_shape_dst;
@@ -972,4 +985,4 @@ REGISTER_QUANTIZED_CONCATV2(qint8);
 #undef REGISTER_CONCAT_MKL
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

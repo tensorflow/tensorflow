@@ -132,7 +132,7 @@ Status TFGGrapplerOptimizer::Optimize(
     // Import errors are not fatal. Log the error here and return `Aborted` so
     // the meta optimizer knows to swallow the error.
     LOG(ERROR) << name() << " failed: " << status.ToString();
-    return tensorflow::errors::Aborted(status.error_message());
+    return tensorflow::errors::Aborted(status.message());
   }
   metrics.ReportAndStop();
 

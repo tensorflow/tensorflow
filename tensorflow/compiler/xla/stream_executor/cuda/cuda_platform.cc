@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -117,7 +117,7 @@ tsl::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
   }
 
   return tsl::Status(
-      port::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       absl::StrFormat("Executor for bus %d not found.", bus_ordinal));
 }
 
@@ -177,7 +177,7 @@ CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status(
-        port::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
             config.ordinal, init_status.ToString()));
@@ -202,7 +202,7 @@ static void InitializeCudaPlatform() {
   // registered platforms.
 
   std::unique_ptr<gpu::CudaPlatform> platform(new gpu::CudaPlatform);
-  SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace stream_executor

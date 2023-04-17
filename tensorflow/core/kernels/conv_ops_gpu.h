@@ -57,11 +57,11 @@ class DnnScratchAllocator : public se::ScratchAllocator {
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
-      return tsl::Status{se::port::error::INVALID_ARGUMENT,
+      return tsl::Status{absl::StatusCode::kInvalidArgument,
                          "Requested negative byte size!"};
     }
     if (byte_size > memory_limit_) {
-      return tsl::Status{se::port::error::UNAVAILABLE,
+      return tsl::Status{absl::StatusCode::kUnavailable,
                          absl::StrCat("Requested memory size (", byte_size,
                                       ") exceeds the max memory limit (",
                                       memory_limit_, ").")};
@@ -73,7 +73,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
       return tsl::Status{
-          se::port::error::UNAVAILABLE,
+          absl::StatusCode::kUnavailable,
           absl::StrCat("Failed to allocate the requested memory size (",
                        byte_size, ").")};
     }

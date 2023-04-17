@@ -247,7 +247,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     return model, input_name, output_name
 
   def _createReadAssignModel(self, number_of_states=2):
-    dtype = np.float
+    dtype = float
 
     class ReadAssign(tf.keras.layers.Layer):
       """ReadAssign model for the variable quantization test."""

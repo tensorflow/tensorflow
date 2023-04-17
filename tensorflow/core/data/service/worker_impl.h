@@ -59,7 +59,7 @@ class DataServiceWorkerImpl {
   // the address isn't known until the worker has started and decided which port
   // to bind to.
   Status Start(const std::string& worker_address,
-               const std::string& transfer_address);
+               const std::vector<DataTransferServerInfo>& transfer_servers);
   // Stops the worker, attempting a clean shutdown by rejecting new requests
   // and waiting for outstanding requests to complete.
   void Stop();
@@ -85,6 +85,9 @@ class DataServiceWorkerImpl {
                     GetElementResponse* response);
   Status GetWorkerTasks(const GetWorkerTasksRequest* request,
                         GetWorkerTasksResponse* response);
+  Status GetSnapshotTaskProgresses(
+      const GetSnapshotTaskProgressesRequest* request,
+      GetSnapshotTaskProgressesResponse* response);
 
   // Exports the worker state for debugging.
   WorkerStateExport ExportState() const;
@@ -122,6 +125,9 @@ class DataServiceWorkerImpl {
 
   // Validates the worker config.
   Status ValidateWorkerConfig() const;
+  // Creates and initializes a dispatcher client.
+  StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
+  CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_);
   // Sends task status to the dispatcher and checks for dispatcher commands.
   Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
@@ -144,7 +150,8 @@ class DataServiceWorkerImpl {
   void UpdateTasks(const WorkerHeartbeatResponse& response)
       TF_LOCKS_EXCLUDED(mu_);
   // Updates the distributed snapshot tasks according to the heartbeat response.
-  Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response);
+  Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response)
+      TF_LOCKS_EXCLUDED(mu_);
   // Creates an dataset iterator for snapshot writers.
   StatusOr<std::unique_ptr<StandaloneTaskIterator>> MakeSnapshotTaskIterator(
       const SnapshotTaskDef& snapshot_task,
@@ -166,7 +173,8 @@ class DataServiceWorkerImpl {
 
   // The worker's own address.
   std::string worker_address_;
-  std::string transfer_address_;
+  // The data transfer servers available to worker clients.
+  std::vector<DataTransferServerInfo> transfer_servers_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
   mutable mutex mu_;
@@ -190,7 +198,7 @@ class DataServiceWorkerImpl {
 
   absl::flat_hash_map<SnapshotTask, std::unique_ptr<SnapshotStreamWriter>,
                       absl::Hash<SnapshotTask>>
-      snapshot_writers_;
+      snapshot_writers_ TF_GUARDED_BY(mu_);
 
   // A thread for notifying the dispatcher when tasks complete.
   std::unique_ptr<Thread> task_completion_thread_;

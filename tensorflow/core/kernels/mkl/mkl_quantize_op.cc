@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #define EIGEN_USE_THREADS
 
@@ -271,6 +271,18 @@ class MklQuantizeV2Op : public OpKernel {
                     "Scalar calculation in MKL is supported only for"
                     "MIN_FIRST mode for now."));
 
+    // Min and max values of input range should be scalar.
+    const Tensor& min_tensor = ctx->input(1);
+    const Tensor& max_tensor = ctx->input(2);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(min_tensor.shape()),
+        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
+                                min_tensor.dims()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(max_tensor.shape()),
+        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
+                                max_tensor.dims()));
+
     auto cpu_engine = engine(engine::kind::cpu, 0);
     const unsigned int src_idx = 0;
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
@@ -304,8 +316,8 @@ class MklQuantizeV2Op : public OpKernel {
     T* out_data = output_tensor->flat<T>().data();
 
     out_data[0] = (src_data[0] - min_range) * scale_factor;
-    output_min_tensor->flat<float>()(0) = min_range;
-    output_max_tensor->flat<float>()(0) = max_range;
+    output_min_tensor->scalar<float>()() = min_range;
+    output_max_tensor->scalar<float>()() = max_range;
 
     return;
   }
@@ -313,8 +325,8 @@ class MklQuantizeV2Op : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const unsigned int src_idx = 0;
     const Tensor& input = ctx->input(src_idx);
-    const float input_min_range = ctx->input(1).flat<float>()(0);
-    const float input_max_range = ctx->input(2).flat<float>()(0);
+    const float input_min_range = ctx->input(1).scalar<float>()();
+    const float input_max_range = ctx->input(2).scalar<float>()();
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
     OP_REQUIRES(ctx, (input_max_range >= input_min_range),
@@ -479,17 +491,18 @@ class MklQuantizeV2Op : public OpKernel {
     fwdParams.post_op_params.name = "scale";
     fwdParams.post_op_params.param.push_back(scale_factor);
 
+    MklDnnThreadPool eigen_tp(ctx);
     MklReorderWithScalePrimitive* reorder_prim =
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
+
     cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
     reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
                           cpu_stream);
 
-    output_min_tensor->flat<float>()(0) = min_range;
-    output_max_tensor->flat<float>()(0) = max_range;
+    output_min_tensor->scalar<float>()() = min_range;
+    output_max_tensor->scalar<float>()() = max_range;
   }
 
  private:
@@ -512,4 +525,4 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
                         MklQuantizeV2Op<CPUDevice, qint8, true>);
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

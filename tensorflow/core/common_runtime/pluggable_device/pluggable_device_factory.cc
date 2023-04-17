@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -177,7 +178,7 @@ Status PluggableDeviceFactory::CreateDevices(
   std::vector<PlatformDeviceId> visible_device_order;
 
   if (num_tf_devices > 0) {
-    TF_RETURN_IF_ERROR(se::DeviceIdUtil::ParseVisibleDeviceList(
+    TF_RETURN_IF_ERROR(tsl::ParseVisibleDeviceList(
         device_options.visible_device_list(), platform->VisibleDeviceCount(),
         &visible_device_order));
   }
@@ -232,8 +233,8 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
       name_prefix, "/device:", device_type_, ":", tf_device_id.value());
 
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
-  se::DeviceIdUtil::CheckValidTfDeviceId(DeviceType(device_type_), platform,
-                                         tf_device_id);
+  tsl::CheckValidTfDeviceId(DeviceType(device_type_),
+                            platform->VisibleDeviceCount(), tf_device_id);
   PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(DeviceIdManager::TfToPlatformDeviceId(
       DeviceType(device_type_), tf_device_id, &platform_device_id));

@@ -11,9 +11,9 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         "@six_archive//:six",
+        "//tensorflow:tensorflow_py",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python:no_contrib",
@@ -29,8 +29,9 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         "//tensorflow:tensorflow_py",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow/python:lib",
         "//tensorflow/python:no_contrib",
         "//tensorflow/tools/common:public_api",

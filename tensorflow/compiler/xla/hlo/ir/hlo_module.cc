@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -31,11 +31,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -55,6 +57,16 @@ namespace xla {
 
 HloModule::HloModule(const std::string& name, HloModuleConfig config)
     : HloModule(name, config, std::make_unique<CompilationEnvironments>()) {}
+
+HloModule::HloModule(const std::string& name, HloModuleConfig config,
+                     std::unique_ptr<CompilationEnvironments> comp_envs)
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(std::move(config)),
+      unique_id_(next_unique_module_id_++),
+      metadata_(tsl::Env::Default()),
+      comp_envs_(std::move(comp_envs)) {
+  metadata_.set_canonical_module_id(unique_id_);
+}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
@@ -162,6 +174,28 @@ HloComputation* HloModule::AddEmbeddedComputation(
                                 /*preserve_entry_layouts=*/false);
 }
 
+void HloModule::MarkFusionDuplications(
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
+  for (std::unique_ptr<HloComputation>& computation : computations_) {
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        auto rep =
+            replacements.find(instruction->fused_instructions_computation());
+        if (rep != replacements.end()) {
+          xla::HloComputation* new_comp = rep->second;
+          if (new_comp->IsFusionComputation()) {
+            auto dedup_name = new_comp->FusionInstruction()->name();
+            new_comp->FusionInstruction()->set_metadata_deduplicated_name(
+                std::string(dedup_name));
+            instruction->set_metadata_deduplicated_name(
+                std::string(dedup_name));
+          }
+        }
+      }
+    }
+  }
+}
+
 void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
@@ -233,40 +267,41 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-std::string HloModule::ToString(const HloPrintOptions& options) const {
-  return std::string(ToCord(options));
-}
-
-absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
-  absl::Cord result;
-  result.Append("HloModule ");
+void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
+  printer->Append("HloModule ");
   if (options.print_ids()) {
     // When print_ids() is false, exclude module's name because it includes and
     // leads to non-deterministic fingerprint.
-    result.Append(name());
+    printer->Append(name());
   }
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
-    result.Append(", is_scheduled=true");
+    printer->Append(", is_scheduled=true");
   }
   std::string serialized_aliasing = input_output_alias_config().ToShortString();
   if (!serialized_aliasing.empty()) {
-    result.Append(", input_output_alias={ ");
-    result.Append(std::move(serialized_aliasing));
-    result.Append(" }");
+    printer->Append(", input_output_alias={ ");
+    printer->Append(std::move(serialized_aliasing));
+    printer->Append(" }");
   }
   if (config_.alias_passthrough_params()) {
-    result.Append(", alias_passthrough_params=true");
+    printer->Append(", alias_passthrough_params=true");
   }
   if (config_.has_entry_computation_layout()) {
-    result.Append(", entry_computation_layout={");
-    result.Append(entry_computation_layout().ToString());
-    result.Append("}");
+    printer->Append(", entry_computation_layout={");
+    entry_computation_layout().Print(printer);
+    printer->Append("}");
   }
-  if (config_.allow_spmd_sharding_propagation_to_output()) {
-    result.Append(", allow_spmd_sharding_propagation_to_output=true");
+  if (config_.allow_spmd_sharding_propagation_to_output().size() != 1 ||
+      config_.allow_spmd_sharding_propagation_to_output().back()) {
+    printer->Append(", allow_spmd_sharding_propagation_to_output={");
+    AppendJoin(printer, config_.allow_spmd_sharding_propagation_to_output(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
+    printer->Append("}");
   }
-  result.Append("\n\n");
+  printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
@@ -277,17 +312,28 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
       continue;
     }
     if (computation == entry_computation()) {
-      result.Append("ENTRY ");
+      printer->Append("ENTRY ");
     }
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
-      result.Append(computation->ToCord(
-          options, schedule().sequence(computation).instructions()));
+      computation->Print(printer, options,
+                         schedule().sequence(computation).instructions());
     } else {
-      result.Append(computation->ToCord(options));
+      computation->Print(printer, options);
     }
-    result.Append("\n\n");
+    printer->Append("\n\n");
   }
-  return result;
+}
+
+std::string HloModule::ToString(const HloPrintOptions& options) const {
+  StringPrinter printer;
+  Print(&printer, options);
+  return std::move(printer).ToString();
+}
+
+absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
+  CordPrinter printer;
+  Print(&printer, options);
+  return std::move(printer).ToCord();
 }
 
 HloModuleProto HloModule::ToProto() const {
@@ -295,7 +341,8 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_id(unique_id_);
   proto.set_name(name_);
   if (entry_computation_) {
-    proto.set_entry_computation_name(entry_computation_->name());
+    *proto.mutable_entry_computation_name() =
+        std::string(entry_computation_->name());
     proto.set_entry_computation_id(entry_computation_->unique_id());
     *proto.mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
@@ -359,9 +406,9 @@ StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
 }
 
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
-  absl::flat_hash_set<std::string> computation_names;
+  absl::flat_hash_set<absl::string_view> computation_names;
   absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<std::string> instruction_names;
+  absl::flat_hash_set<absl::string_view> instruction_names;
   absl::flat_hash_set<int> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
@@ -550,8 +597,11 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
-    module_config.set_allow_spmd_sharding_propagation_to_output(
-        execution_options->allow_spmd_sharding_propagation_to_output());
+    if (!execution_options->allow_spmd_sharding_propagation_to_output()
+             .empty()) {
+      module_config.set_allow_spmd_sharding_propagation_to_output(
+          execution_options->allow_spmd_sharding_propagation_to_output());
+    }
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -892,9 +942,9 @@ std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::WrapUnique(new HloModule(
+  auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config,
-      std::make_unique<CompilationEnvironments>(*comp_envs_)));
+      std::make_unique<CompilationEnvironments>(*comp_envs_));
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
@@ -945,7 +995,8 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
 Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
   auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config());
+      absl::StrCat(name_, "-", suffix), config(),
+      std::make_unique<CompilationEnvironments>(*comp_envs_));
   HloCloneContext context(module.get(), suffix);
   entry_computation_->Clone(suffix, &context);
   std::vector<HloComputation*> to_remove;
@@ -989,14 +1040,11 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
   return it == computations_in_module.end() ? nullptr : *it;
 }
 
-HloModule::HloModule(const std::string& name, HloModuleConfig config,
-                     std::unique_ptr<CompilationEnvironments> comp_envs)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      config_(std::move(config)),
-      unique_id_(next_unique_module_id_++),
-      metadata_(tsl::Env::Default()),
-      comp_envs_(std::move(comp_envs)) {
-  metadata_.set_canonical_module_id(unique_id_);
+std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
+  const tsl::Fprint128 fingerprint = tsl::Fingerprint128(ToString(options));
+  absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
+                             sizeof(tsl::Fprint128));
+  return absl::BytesToHexString(fp_bytes);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -29,9 +29,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.parallel_for.pfor import PFor
 from tensorflow.python.ops.parallel_for.pfor import PForConfig
 from tensorflow.python.platform import tf_logging as logging
@@ -82,7 +83,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
       # TODO(agarwal): support returning Operation objects from loop_fn.
       if out is not None:
         # out may be a ref tensor, wrap it in identity to get a non-ref tensor.
-        ta = ta.write(i, array_ops.expand_dims(out, 0))
+        ta = ta.write(i, out)
       outputs.append(ta)
     return tuple([i + 1] + outputs)
 
@@ -90,23 +91,35 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     extra_args = {"parallel_iterations": parallel_iterations}
   else:
     extra_args = {}
-  ta_list = control_flow_ops.while_loop(
-      lambda i, *ta: i < iters,
-      while_body,
-      [0] + [tensor_array_ops.TensorArray(dtype.base_dtype, iters)
-             for dtype in flat_loop_fn_dtypes],
-      **extra_args)[1:]
+  ta_list = while_loop.while_loop(lambda i, *ta: i < iters, while_body, [0] + [
+      tensor_array_ops.TensorArray(dtype.base_dtype, iters)
+      for dtype in flat_loop_fn_dtypes
+  ], **extra_args)[1:]
 
   # TODO(rachelim): enable this for sparse tensors
 
-  output = [None if is_none else ta.concat()
-            for ta, is_none in zip(ta_list, is_none_list)]
+  output = [
+      None if is_none else ta.stack()
+      for ta, is_none in zip(ta_list, is_none_list)
+  ]
   assert len(output) in (0, len(flat_loop_fn_dtypes))
   if not output:
     # This may happen for the case where iters == 0.
-    return None
-  else:
-    return nest.pack_sequence_as(loop_fn_dtypes, output)
+    # Pack a list of empty tensors with the proper ranks to match pfor output on 0 iters
+    loop_var = array_ops.placeholder_with_default(0, shape=[])
+    try:
+      loop_fn_out = loop_fn(loop_var)
+      out_shapes = [
+          [0] + ops.convert_to_tensor(x).shape
+          for x in nest.flatten(loop_fn_out)
+      ]
+      output = [
+          array_ops.zeros(out_shapes[i], dt)
+          for i, dt in enumerate(flat_loop_fn_dtypes)
+      ]
+    except Exception:
+      output = [array_ops.zeros([0])]
+  return nest.pack_sequence_as(loop_fn_dtypes, output)
 
 
 def _flatten_first_two_dims(x):
@@ -387,7 +400,7 @@ def _pfor_impl(loop_fn,
 
     with ops.name_scope("pfor"):
       if iters_value is None or iters_value % parallel_iterations:
-        output_tensors = control_flow_ops.cond(
+        output_tensors = cond.cond(
             math_ops.equal(num_remaining_iterations, 0),
             lambda: tiled_output_tensors,
             lambda: [array_ops.concat([x, y], axis=0)  # pylint: disable=g-long-lambda
@@ -404,7 +417,6 @@ def _pfor_impl(loop_fn,
         output.set_shape(
             tensor_shape.TensorShape([iters_value]).concatenate(
                 original_output.shape))
-
   return nest.map_structure_up_to(
       loop_fn_outputs,
       functools.partial(_composite_from_tensors, batch_size=iters_value),

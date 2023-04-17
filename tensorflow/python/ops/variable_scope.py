@@ -21,16 +21,20 @@ import sys
 import threading
 import traceback
 
+from tensorflow.core.framework import variable_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
@@ -41,6 +45,7 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
+
 __all__ = [
     "AUTO_REUSE", "VariableScope", "get_variable_scope", "get_variable",
     "get_local_variable", "variable_scope", "variable_op_scope",
@@ -50,6 +55,56 @@ __all__ = [
 _api_usage_gauge = monitoring.BoolGauge(
     "/tensorflow/api/resource_variables",
     "Whether variable_scope.enable_resource_variables() is called.")
+
+
+def _to_proto_fn(v, export_scope=None):
+  """Converts Variable and ResourceVariable to VariableDef for collections."""
+  return v.to_proto(export_scope=export_scope)
+
+
+def _from_proto_fn(v, import_scope=None):
+  """Creates Variable or ResourceVariable from VariableDef as needed."""
+  if v.is_resource:
+    return resource_variable_ops.ResourceVariable.from_proto(
+        v, import_scope=import_scope)
+  return variable_v1.VariableV1.from_proto(v, import_scope=import_scope)
+
+
+ops.register_proto_function(
+    ops.GraphKeys.GLOBAL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.TRAINABLE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.LOCAL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.MODEL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.GLOBAL_STEP,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.METRIC_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
 
 
 class _PartitionInfo:
@@ -953,7 +1008,7 @@ class _VariableStore:
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = _DEFAULT_USE_RESOURCE
-    v = variables.VariableV1(
+    v = variable_v1.VariableV1(
         initial_value=init_val,
         name=name,
         trainable=trainable,
@@ -1087,7 +1142,7 @@ for _name in _op_list:
   setattr(_LazyEvalTensor, _name, _make_op_method(_name))
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     _LazyEvalTensor,
     lambda val, dtype, name, as_ref: val._as_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
     )
@@ -2719,7 +2774,7 @@ def default_variable_creator(next_creator=None, **kwargs):
         aggregation=aggregation,
         shape=shape)
   else:
-    return variables.RefVariable(
+    return ref_variable.RefVariable(
         initial_value=initial_value,
         trainable=trainable,
         collections=collections,
@@ -2783,7 +2838,7 @@ def _make_getter(captured_getter, captured_previous):
 
 
 # TODO(apassos) remove forwarding symbol
-variable = variables.VariableV1
+variable = variable_v1.VariableV1
 
 
 @tf_export(v1=["variable_creator_scope"])

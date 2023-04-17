@@ -102,9 +102,8 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   if (op_name == "Const") {
     cached_tensor_values_[op->getResult(0)] =
         op->getAttrOfType<DenseElementsAttr>("value");
-  } else if (op_name == "Identity" ||
-             (op_name == "IdentityN" &&
-              TFOp(op).getNonControlOperands().size() == 1)) {
+  } else if ((op_name == "Identity" || op_name == "IdentityN") &&
+             TFOp(op).getNonControlOperands().size() == 1) {
     DenseElementsAttr operand_tensor_value = GetTensorValue(op->getOperand(0));
     if (!operand_tensor_value) return;
     cached_tensor_values_[op->getResult(0)] = operand_tensor_value;
@@ -307,7 +306,7 @@ void ShapeInference::runOnOperation() {
     Operation *return_op = func.SingleBlock::getBody()->getTerminator();
 
     bool types_updated = false;
-    for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {
+    for (const auto &indexed_type : llvm::enumerate(func_type.getResults())) {
       int res_num = indexed_type.index();
       Type return_arg_type = return_op->getOperand(res_num).getType();
       if (return_arg_type != indexed_type.value()) {

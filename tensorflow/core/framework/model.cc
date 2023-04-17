@@ -46,50 +46,85 @@ constexpr uint64_t kGapDurationThresholdUsec = 10000000;  // 10 seconds
 // In outlier computation, points that are larger than `kOutlierSigmas` standard
 // deviations are considered outliers.
 constexpr double kOutlierSigmas = 2.0;
+// In target time computation, compute the target time as `kTargetTimeSigmas`
+// from the mean of the gap time distribution to account for variance in
+// processing time. For example, a value of 1 would mean that the target time is
+// faster than 84% of the gap times.
+constexpr double kTargetTimeSigmas = 1.0;
+// The scaling factors to apply to buffer optimization when upsizing or
+// downsizing a buffer.
+constexpr double kBufferUpsizeMultiplier = 2.0;
+constexpr double kBufferDownsizeMultipliter = 0.9;
+
+constexpr char kFlatMap[] = "FlatMap";
+constexpr char kInterleave[] = "Interleave";
+constexpr char kParallelInterleave[] = "ParallelInterleave";
 
 // A class to prune outliers given a set of points. To use it, instantiate an
 // object and call the `GetCleanPoints()` method.
-class OutlierPruner {
+class TargetTimeCalculator {
  public:
-  explicit OutlierPruner(const std::vector<uint64_t>& points)
-      : points_(points.begin(), points.end()) {}
+  explicit TargetTimeCalculator(const std::vector<uint64_t>& points_usec,
+                                double outlier_sigmas,
+                                double target_time_sigmas)
+      : points_usec_(points_usec.begin(), points_usec.end()),
+        outlier_sigmas_(outlier_sigmas),
+        target_time_sigmas_(target_time_sigmas) {}
 
-  // Returns the remaining points after removing outliers from the original set
-  // of points.
-  std::vector<uint64_t> GetCleanPoints() {
-    if (points_.empty()) {
-      return points_;
+  double GetTargetTimeUsec() const {
+    if (points_usec_.empty()) {
+      return 0.0;
     }
-    // Compute the outlier threshold
     double mean;
     double standard_deviation;
-    ComputeMeanAndStandardDeviation(&mean, &standard_deviation);
-    double threshold = mean + standard_deviation * kOutlierSigmas;
-    std::vector<uint64_t> clean_points;
-    for (auto point : points_) {
-      if (static_cast<double>(point) > threshold) {
-        continue;
-      }
-      clean_points.push_back(point);
+    ComputeMeanAndStandardDeviation(points_usec_, &mean, &standard_deviation);
+    // Remove outliers.
+    std::vector<uint64_t> clean_points_usec =
+        GetCleanPoints(points_usec_, mean, standard_deviation);
+    if (clean_points_usec.empty()) {
+      return 0.0;
     }
-    return clean_points;
+    // Compute mean and standard deviation after outliers are removed.
+    ComputeMeanAndStandardDeviation(clean_points_usec, &mean,
+                                    &standard_deviation);
+    // Compute target time.
+    return mean - standard_deviation * target_time_sigmas_;
   }
 
  private:
-  void ComputeMeanAndStandardDeviation(double* mean,
-                                       double* standard_deviation) {
-    uint64_t sum = std::accumulate(points_.begin(), points_.end(), 0);
-    *mean = static_cast<double>(sum) / static_cast<double>(points_.size());
+  // Returns the remaining points after removing outliers from the original set
+  // of points.
+  std::vector<uint64_t> GetCleanPoints(const std::vector<uint64_t>& points_usec,
+                                       double mean,
+                                       double standard_deviation) const {
+    double threshold = mean + standard_deviation * outlier_sigmas_;
+    std::vector<uint64_t> clean_points_usec;
+    for (auto point : points_usec) {
+      if (static_cast<double>(point) > threshold) {
+        continue;
+      }
+      clean_points_usec.push_back(point);
+    }
+    return clean_points_usec;
+  }
+
+  void ComputeMeanAndStandardDeviation(const std::vector<uint64_t>& points_usec,
+                                       double* mean,
+                                       double* standard_deviation) const {
+    uint64_t sum = std::accumulate(points_usec.begin(), points_usec.end(), 0);
+    *mean = static_cast<double>(sum) / static_cast<double>(points_usec.size());
     double accum = 0.0;
-    for (auto point : points_) {
+    for (auto point : points_usec) {
       accum += (static_cast<double>(point) - *mean) *
                (static_cast<double>(point) - *mean);
     }
-    *standard_deviation = std::sqrt(accum / (points_.size() - 1));
+    *standard_deviation = std::sqrt(accum / (points_usec.size() - 1));
   }
 
   // Points to cluster.
-  std::vector<uint64_t> points_;
+  std::vector<uint64_t> points_usec_;
+  double outlier_sigmas_;
+  double target_time_sigmas_;
 };
 
 // A priority queue that holds stage roots where the top of the priority queue
@@ -161,6 +196,29 @@ class NodeParallelismParameters {
   absl::flat_hash_map<const Node*, Parameter*> node_parallelism_;
 };
 
+// Replaces `\[[0-9].+\]` with `\[\]`.
+std::string RemoveArrayIndices(absl::string_view s) {
+  absl::string_view::size_type start_pos = 0;
+  absl::string_view::size_type pos;
+  std::string res;
+  do {
+    pos = s.find("[", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + start_pos, pos - start_pos + 1);
+    start_pos = pos + 1;
+    pos = s.find("]", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + pos, 1);
+    start_pos = pos + 1;
+  } while (true);
+  res.append(s.data() + start_pos, s.length() - start_pos);
+  return res;
+}
+
 // Returns true if all parameters have reached their max values.
 bool AreAllParametersMax(const Model::ModelParameters& parameters) {
   for (const auto& pair : parameters) {
@@ -206,6 +264,21 @@ inline bool IsSyncNode(const std::shared_ptr<Node> node) {
 // Helper function for node traversal that returns only asynchronous nodes.
 inline bool IsAsyncNode(const std::shared_ptr<Node> node) {
   return node->IsAsync();
+}
+
+// Helper function for node traversal that returns only asynchronous interleave
+// many nodes.
+inline bool IsAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
+  return absl::StartsWith(node->name(), kParallelInterleave);
+}
+inline bool IsAsyncInterleaveManyNode(const Node* node) {
+  return absl::StartsWith(node->name(), kParallelInterleave);
+}
+
+// Helper function for node traversal that returns nodes other than asynchronous
+// interleave many nodes.
+inline bool IsNotAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
+  return !absl::StartsWith(node->name(), kParallelInterleave);
 }
 
 // Wrapper for the square function to reduce verbosity.
@@ -1804,12 +1877,12 @@ bool Node::TryDownsizeBuffer() {
           (buffered_elements_high_ - buffered_elements_low_ + 1) <
               parameter->value) {
         double old_value = parameter->value;
-        // By default, we double buffer sizes if there is enough RAM in
-        // upsize. We cap the downsize by 1/4 of the current size to avoid
-        // undoing the previous upsize.
-        parameter->value =
-            std::max(buffered_elements_high_ - buffered_elements_low_ + 1,
-                     static_cast<int64_t>(old_value * 0.75));
+        // By default, we increase the buffer sizes by `kBufferUpsizeMultiplier`
+        // if there is enough RAM in upsize. We cap the downsize by
+        // `kBufferDownsizeMultipliter` of the current size.
+        parameter->value = std::max(
+            buffered_elements_high_ - buffered_elements_low_ + 1,
+            static_cast<int64_t>(old_value * kBufferDownsizeMultipliter));
         if (old_value != parameter->value) {
           VLOG(2) << "Downsize buffer " << long_name()
                   << "::" << parameter->name << " from " << old_value << " to "
@@ -2120,7 +2193,25 @@ Model::Model()
   model_gauge_cell_->Set(
       [this, my_safe_to_collect_metrics = this->safe_to_collect_metrics_]() {
         mutex_lock l(my_safe_to_collect_metrics->mu);
-        return my_safe_to_collect_metrics->val ? DebugString() : std::string();
+        if (!my_safe_to_collect_metrics->val) {
+          return std::string();
+        }
+        {
+          tf_shared_lock snapshot_lock(mu_);
+          if (snapshot_ != nullptr) {
+            ModelProto model_proto;
+            Status s = ModelToProtoHelper(snapshot_, &model_proto);
+            if (s.ok()) {
+              *model_proto.mutable_optimization_params() = optimization_params_;
+              tf_shared_lock l(gap_mu_);
+              *model_proto.mutable_gap_times() = {gap_times_usec_.begin(),
+                                                  gap_times_usec_.end()};
+              return model_proto.DebugString();
+            }
+            LOG(WARNING) << s.message();
+          }
+        }
+        return DebugString();
       });
 }
 
@@ -2206,8 +2297,15 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
                  "optimization.";
       return;
   }
-  if (experiment_ == "autotune_buffer_optimization") {
+  if (experiments_.contains("autotune_buffer_optimization")) {
     OptimizeBuffers(snapshot, optimization_params.ram_budget());
+  }
+  {
+    // Save the snapshot of the model proto including the parameters used by
+    // autotune. This will be used as the model proto returned in `tfstreamz`.
+    mutex_lock l(mu_);
+    snapshot_ = snapshot;
+    optimization_params_ = optimization_params;
   }
 }
 
@@ -2421,7 +2519,8 @@ void Model::OptimizeHillClimbHelper(
 
   // Skip buffer size optimization if we are running the new buffering
   // algorithm.
-  bool skip_buffer_sizes = (experiment_ == "autotune_buffer_optimization");
+  bool skip_buffer_sizes =
+      (experiments_.contains("autotune_buffer_optimization"));
   if (skip_buffer_sizes) {
     constexpr float TEN_MINUTES = 60.0 * 10.0;
     LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
@@ -2465,6 +2564,7 @@ void Model::OptimizeHillClimbHelper(
       pair.second->value--;
     }
     if (!best_parameter) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("local_maximum_reached");
       VLOG(2) << "Failed to find a tunable parameter that would further "
                  "decrease the output time. This suggests that the hill-climb "
                  "optimization got stuck in a local maximum. The optimization "
@@ -2493,36 +2593,118 @@ double Model::ComputeTargetTimeNsec() {
   if (gap_times_usec_.empty()) {
     return 0.0;
   }
-  // Remove outliers.
-  std::vector<uint64_t> clean_gap_times_usec =
-      OutlierPruner({gap_times_usec_.begin(), gap_times_usec_.end()})
-          .GetCleanPoints();
-  if (clean_gap_times_usec.empty()) {
-    return 0.0;
+  double target_time_sigmas = 0.0;
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    target_time_sigmas = kTargetTimeSigmas;
   }
-  // Compute mean after outliers are removed.
-  double sum_gap_time_usec = std::accumulate(clean_gap_times_usec.begin(),
-                                             clean_gap_times_usec.end(), 0);
-  return sum_gap_time_usec / static_cast<double>(clean_gap_times_usec.size()) *
+  return TargetTimeCalculator({gap_times_usec_.begin(), gap_times_usec_.end()},
+                              kOutlierSigmas, target_time_sigmas)
+             .GetTargetTimeUsec() *
          1.0e3;
 }
 
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
                                CancellationManager* cancellation_manager) {
-  return OptimizeStageBasedParallelism(
+  VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
+             "optimization with a target time of "
+          << optimization_params.model_input_time() << " nanoseconds.";
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    OptimizeStageBasedAsyncInterleaveManyNodes(snapshot, optimization_params,
+                                               cancellation_manager);
+  }
+  OptimizeStageBasedNonAsyncInterleaveManyNodes(
       snapshot, optimization_params.model_input_time(), optimization_params,
       cancellation_manager);
 }
 
-void Model::OptimizeStageBasedParallelism(
+void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
+  VLOG(2) << "Optimizing async interleave many nodes.";
+  Node::NodeVector interleave_many_nodes =
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncInterleaveManyNode);
+  if (IsAsyncInterleaveManyNode(snapshot)) {
+    interleave_many_nodes.push_back(snapshot);
+  }
+  Node::ModelParameters tunable_parameters;
+  for (auto node : interleave_many_nodes) {
+    Node::ModelParameters node_tunable_parameters =
+        node->CollectNodeTunableParameters();
+    tunable_parameters.insert(tunable_parameters.end(),
+                              node_tunable_parameters.begin(),
+                              node_tunable_parameters.end());
+  }
+  ModelTiming model_timing(snapshot);
+  ModelTimingPriorityQueue priority_queue(model_timing);
+  NodeParallelismParameters node_parallelism;
+  while (!cancellation_manager->IsCancelled()) {
+    StatusOr<std::pair<double, Node*>> critical_root_status =
+        priority_queue.PopSlowestStageRoot();
+    if (!critical_root_status.ok()) {
+      // All async interleave many nodes have been processed.
+      break;
+    }
+    std::pair<double, Node*> critical_root = critical_root_status.value();
+    if (!IsAsyncInterleaveManyNode(critical_root.second)) {
+      continue;
+    }
+    Parameter* parallelism_parameter =
+        node_parallelism.Get(critical_root.second);
+    if (parallelism_parameter == nullptr ||
+        parallelism_parameter->value >= parallelism_parameter->max) {
+      continue;
+    }
+    parallelism_parameter->value += 1.0;
+    if (TotalMaximumBufferedBytes(snapshot) >
+        optimization_params.ram_budget()) {
+      // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
+      // stop optimization because we cannot improve the most critical stage.
+      // There is also a decent chance that the current optimization iteration
+      // is under-optimized. For that reason, return immediately without
+      // updating the parameter state values.
+      parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "ram_budget_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      return;
+    }
+    model_timing.ComputeNodeTotalTime(*critical_root.second);
+    // This async interleave many node has not reached its max parallelism
+    // value. Push it back to the priority queue.
+    const ModelTiming::NodeTiming* root_timing =
+        model_timing.GetTiming(critical_root.second);
+    priority_queue.Push(critical_root.second, *root_timing);
+  }
+  UpdateStateValues(&tunable_parameters);
+}
+
+void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     std::shared_ptr<Node> snapshot, double target_time_nsec,
     const OptimizationParams& optimization_params,
     CancellationManager* cancellation_manager) {
-  VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
-             "optimization with a target time of "
-          << optimization_params.model_input_time() << " nanoseconds.";
-  Node::ModelParameters tunable_parameters = CollectTunableParameters(snapshot);
+  VLOG(2) << "Optimizing nodes other than async interleave many nodes.";
+  Node::NodeVector all_nodes;
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS,
+                                       IsNotAsyncInterleaveManyNode);
+    if (!IsAsyncInterleaveManyNode(snapshot)) {
+      all_nodes.push_back(snapshot);
+    }
+  } else {
+    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
+    all_nodes.push_back(snapshot);
+  }
+  Node::ModelParameters tunable_parameters;
+  for (auto node : all_nodes) {
+    Node::ModelParameters node_tunable_parameters =
+        node->CollectNodeTunableParameters();
+    tunable_parameters.insert(tunable_parameters.end(),
+                              node_tunable_parameters.begin(),
+                              node_tunable_parameters.end());
+  }
   // Initialize the parallelism parameter values to minimal before tuning.
   for (std::pair<string, std::shared_ptr<Parameter>>& pair :
        tunable_parameters) {
@@ -2536,6 +2718,7 @@ void Model::OptimizeStageBasedParallelism(
   StatusOr<std::pair<double, Node*>> critical_root_status =
       priority_queue.PopSlowestStageRoot();
   if (!critical_root_status.ok()) {
+    metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
     return;
   }
   NodeParallelismParameters node_parallelism;
@@ -2545,19 +2728,34 @@ void Model::OptimizeStageBasedParallelism(
         node_parallelism.Get(critical_root.second);
     // Stop optimization if the critical stage has no `parallelism` parameter or
     // it has reached the max parallelism value.
-    if (parallelism_parameter == nullptr ||
-        parallelism_parameter->value >= parallelism_parameter->max) {
+    if (parallelism_parameter == nullptr) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "no_optimizable_parameter:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      break;
+    }
+    if (parallelism_parameter->value >= parallelism_parameter->max) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "parameter_max_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     parallelism_parameter->value += 1.0;
-    if (TotalMaximumBufferedBytes(snapshot) >
-        optimization_params.ram_budget()) {
-      // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
-      // stop optimization because we cannot improve the most critical stage.
-      // There is also a decent chance that the current optimization iteration
-      // is under-optimized. For that reason, return immediately without
-      // updating the parameter state values.
-      parallelism_parameter->value -= 1.0;
+    if (cancellation_manager->IsCancelled() ||
+        TotalMaximumBufferedBytes(snapshot) >
+            optimization_params.ram_budget()) {
+      // Either the optimization thread is cancelled or increasing the
+      // parallelism by 1 exceeded ram budget. There is a decent chance that the
+      // current optimization iteration is under-optimized. For that reason,
+      // return immediately without updating the parameter state values after
+      // recording the stopping criteria.
+
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "ram_budget_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       return;
     }
     // Compute the new total time and put the node back in the queue after its
@@ -2569,6 +2767,10 @@ void Model::OptimizeStageBasedParallelism(
     if (critical_root.first <=
         (root_timing->total_time_nsec * root_timing->pipeline_ratio)) {
       parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "total_time_not_improved:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     // Push it back to the priority queue.
@@ -2576,6 +2778,7 @@ void Model::OptimizeStageBasedParallelism(
     // Get the next critical stage root.
     critical_root_status = priority_queue.PopSlowestStageRoot();
     if (!critical_root_status.ok()) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
       break;
     }
     critical_root = critical_root_status.value();
@@ -2623,7 +2826,7 @@ bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   }
 
   // Compute a uniform scaling factor for all buffers. Cap the factor at 2.
-  double scaling_factor = 2.0;
+  double scaling_factor = kBufferUpsizeMultiplier;
   if (max_buffered_bytes > 0) {
     scaling_factor =
         1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);
@@ -2797,7 +3000,7 @@ std::string Model::DebugString() {
   if (s.ok()) {
     cached_debug_string_ = model_proto.DebugString();
   } else {
-    LOG(WARNING) << s.error_message();
+    LOG(WARNING) << s.message();
   }
   cache_until_ = absl::Now() + absl::Seconds(kMinSecondsBetweenCalls);
   return cached_debug_string_;
@@ -2851,9 +3054,24 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
       const auto& output_timing = timing_nodes_[node->output()];
       parent_pipeline_ratio = output_timing.pipeline_ratio;
-      if (node->num_elements() > 0 && node->output()->num_elements() > 0) {
+      auto should_estimate_first_input_ratio = [node]() {
+        // Elements of the first input of some transformations like `Interleave`
+        // are used to produce "derived" inputs whose elements are then produced
+        // as the output of the transformation. For this reason, the ratio of
+        // such inputs is not known statically and is instead estimated as the
+        // ratio of `num_elements` it produces and `num_elements` its output
+        // produces.
+        return (absl::StartsWith(node->output()->name(), kFlatMap) ||
+                absl::StartsWith(node->output()->name(), kInterleave) ||
+                absl::StartsWith(node->output()->name(),
+                                 kParallelInterleave)) &&
+               node.get() == node->output()->inputs().begin()->get() &&
+               node->num_elements() > 0 && node->output()->num_elements() > 0;
+      };
+      if (should_estimate_first_input_ratio()) {
         parent_ratio = static_cast<double>(node->num_elements()) /
-                       static_cast<double>(node->output()->num_elements());
+                       static_cast<double>(node->output()->num_elements() +
+                                           node->output()->buffered_elements());
       } else {
         parent_ratio = node->output()->Ratio();
       }
@@ -2868,30 +3086,35 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
 
 void ModelTiming::ComputeNonAsyncInterleaveManyTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
-  auto& node_timing = timing_nodes_[&node];
-  double input_total_time_nsec = 0.0;
-  for (auto input : node.inputs()) {
-    if (input->IsAsync()) {
-      continue;
+  auto inputs = node.inputs();
+  auto input = inputs.begin();
+  double first_input_total_time = 0.0;
+  // The total time of a node is scaled by its ratio to account for how many
+  // elements it needs to produce for its output node to produce an element. If
+  // this is an interleave node or a flat map node, then the ratio is not known
+  // statically and is instead estimated using empirical data.
+  if (absl::StartsWith(node.name(), kFlatMap) ||
+      absl::StartsWith(node.name(), kInterleave)) {
+    first_input_total_time = ComputeInterleaveManyFirstInputTotalTime(node);
+    if (input != inputs.end()) {
+      ++input;
     }
-    if (!input->autotune() || input->num_elements() <= 0) {
-      continue;
-    }
-    DCHECK(timing_nodes_.contains(input.get()))
-        << "Input " << input->long_name() << " of node " << node.long_name()
-        << " has no timing node.";
-    // We use the dynamic ratio of `num_elements` of input over that of output
-    // rather than the static `Ratio()` computed based on the type of the node
-    // (e.g. batch size of a `Batch`) because the static value can be inaccurate
-    // for nodes like an interleave node where the ratio of the first input is
-    // different from the ratio of the interleaved inputs. Moreover, this
-    // dynamic quantity should closely match the static one for nodes other than
-    // interleave nodes and is more generic since its value is specific to an
-    // input to output pair rather than a single numnber for the output node.
-    input_total_time_nsec += timing_nodes_[input.get()].total_time_nsec *
-                             static_cast<double>(input->num_elements()) /
-                             static_cast<double>(node.num_elements());
   }
+  double input_total_time_nsec = first_input_total_time;
+  for (; input != inputs.end(); ++input) {
+    if ((*input)->IsAsync()) {
+      continue;
+    }
+    if (!(*input)->autotune() || (*input)->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains((*input).get()))
+        << "Input " << (*input)->long_name() << " of node " << node.long_name()
+        << " has no timing node.";
+    input_total_time_nsec +=
+        timing_nodes_[(*input).get()].total_time_nsec * node.Ratio();
+  }
+  auto& node_timing = timing_nodes_[&node];
   node_timing.total_time_nsec =
       node_timing.self_time_nsec + input_total_time_nsec;
 }
@@ -2901,7 +3124,7 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   auto& node_timing = timing_nodes_[&node];
   node_timing.total_time_nsec =
       node_timing.self_time_nsec +
-      ComputeAsyncInterleaveManyFirstInputTotalTime(node) +
+      ComputeInterleaveManyFirstInputTotalTime(node) +
       ComputeAsyncInterleaveManyInterleavedInputsTotalTime(node);
 }
 
@@ -2982,10 +3205,9 @@ double ModelTiming::ComputeAsyncInterleaveManyInterleavedInputsTotalTime(
   return input_total_time_nsec;
 }
 
-double ModelTiming::ComputeAsyncInterleaveManyFirstInputTotalTime(
-    const Node& node) {
+double ModelTiming::ComputeInterleaveManyFirstInputTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
-  // `ParallelInterleave` is often used to interleave processing of datasets
+  // An interleave node is often used to interleave processing of datasets
   // generated from the first input, e.g. reading from IO where the first input
   // has the list of all filenames. The contribution of the first input total
   // time is proportional to the number of elements it produces over the number
@@ -3000,7 +3222,8 @@ double ModelTiming::ComputeAsyncInterleaveManyFirstInputTotalTime(
       << "Input " << (*first_input)->long_name() << " of node "
       << node.long_name() << " has no timing node.";
   return timing_nodes_[(*first_input).get()].total_time_nsec *
-         (*first_input)->num_elements() / node.num_elements();
+         (*first_input)->num_elements() /
+         (node.num_elements() + node.buffered_elements());
 }
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
@@ -3015,17 +3238,11 @@ void ModelTiming::ComputeNodeTotalTime(const Node& node) {
   if (!node.autotune() || node.num_elements() <= 0) {
     return;
   }
-#if !defined(IS_MOBILE_PLATFORM)
-  // This block of code is defined only for non-mobile platform because mobile
-  // platform lacks RTTI, i.e. the use of `dynamic_cast`.
-  if (dynamic_cast<const AsyncInterleaveMany*>(&node) != nullptr) {
+  if (absl::StartsWith(node.name(), kParallelInterleave)) {
     ComputeAsyncInterleaveManyTotalTime(node);
-  } else {
-    ComputeNonAsyncInterleaveManyTotalTime(node);
+    return;
   }
-#else   // !IS_MOBILE_PLATFORM
   ComputeNonAsyncInterleaveManyTotalTime(node);
-#endif  // !IS_MOBILE_PLATFORM
 }
 
 std::vector<std::shared_ptr<Node>> ModelTiming::GetStageRoots() const {

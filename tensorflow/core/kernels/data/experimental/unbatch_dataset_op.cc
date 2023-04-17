@@ -12,20 +12,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/batch_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
 namespace experimental {
 namespace {
+
+using tsl::mutex;
+using tsl::mutex_lock;
+using tsl::OkStatus;
+using tsl::Status;
+using tsl::strings::StrCat;
 
 constexpr char kInputImplEmpty[] = "input_impl_empty";
 
@@ -66,9 +85,9 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::Unbatch")});
+          Iterator::Params{this, StrCat(prefix, "::Unbatch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -78,10 +97,12 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
+    std::string DebugString() const override {
+      return "UnbatchDatasetOp::Dataset";
+    }
 
-    int64_t CardinalityInternal() const override {
-      int64_t n = input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      int64_t n = input_->Cardinality(options);
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
@@ -211,7 +232,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         if (current_index_ < current_batch_size_) {
           for (size_t i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat("tensors[", i, "]")), tensors_[i]));
+                full_name(StrCat("tensors[", i, "]")), tensors_[i]));
           }
         }
         return OkStatus();
@@ -237,7 +258,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         if (current_index_ < current_batch_size_) {
           for (size_t i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(), full_name(strings::StrCat("tensors[", i, "]")),
+                ctx->flr(), full_name(StrCat("tensors[", i, "]")),
                 &tensors_[i]));
             shapes_[i] = tensors_[i].shape();
             shapes_[i].RemoveDim(0);

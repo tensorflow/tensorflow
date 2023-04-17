@@ -35,7 +35,7 @@ def ConvertLmhloToCpuRuntimePass :
 
 def LegalizeXlaAbiPass :
     Pass<"xla-legalize-abi", "mlir::ModuleOp"> {
-  let summary = "Convers layouts and data formats at ABI boundaries";
+  let summary = "Converts layouts and data formats at ABI boundaries";
 
   let description = [{
       Converts layouts defined in entry_computation_layout to the default
@@ -60,7 +60,8 @@ def LegalizeCollectiveOpsPass :
   }];
 
   let dependentDialects = [
-    "mlir::mhlo::MhloDialect", "mlir::xla_cpu::XlaCpuDialect"
+    "mlir::mhlo::MhloDialect", "mlir::tensor::TensorDialect",
+    "mlir::xla_cpu::XlaCpuDialect"
   ];
 
   let constructor = "createLegalizeCollectiveOpsPass()";
@@ -94,6 +95,56 @@ def ConvertXlaCpuMemRefElementCastToLLVMPass :
   let dependentDialects = ["mlir::LLVM::LLVMDialect"];
 
   let constructor = "createConvertXlaCpuMemRefElementCastToLLVMPass()";
+}
+
+def RemoveCopiesToOutParamsPass :
+   Pass<"xla-remove-copies-to-out-params", "mlir::func::FuncOp"> {
+  let summary = "Removes redundant alloc/copy pairs to out params.";
+
+  let description = [{
+      Removes redundant alloc/alloca + copy pairs that can remain after running
+      bufferization's BufferResultsToOutParams pass.
+  }];
+
+  let constructor = "createRemoveCopiesToOutParamsPass()";
+}
+
+def SparseCustomCallRewritingPass :
+    Pass<"xla-sparse-custom-call-to-pack", "mlir::func::FuncOp"> {
+  let summary = "Converts CustomCall operations to sparse operations";
+
+  let description = [{
+      Converts CustomCallOp operations to sparse operations
+      to avoid dropping sparsity information during the
+      HLO roundtrip.
+  }];
+
+  let dependentDialects = [
+      "mlir::sparse_tensor::SparseTensorDialect",
+      "mlir::chlo::ChloDialect",
+  ];
+
+  let constructor = "createSparseCustomCallRewritingPass()";
+}
+
+def RewriteReallocToAllocPass :
+    Pass<"xla-rewrite-realloc-to-alloc", "mlir::func::FuncOp"> {
+  let summary = "Rewrites realloc to alloc + copy";
+
+  let description = [{
+    Rewrites realloc to alloc + copy.
+
+    This pass is actually undesirable. However, the current buffer-deallocation
+    pass fails to handle reallocation correctly, and causes double free issues
+    when using memref::ReallocOp. We should remove this pass after the bug is
+    fixed upstream.
+  }];
+
+  let dependentDialects = [
+      "mlir::memref::MemRefDialect"
+  ];
+
+  let constructor = "createRewriteReallocToAllocPass()";
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

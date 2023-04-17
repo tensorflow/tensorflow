@@ -22,15 +22,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -56,32 +55,32 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                               \
-  struct DynLoadShim__##__name {                                          \
-    static const char *kName;                                             \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void *GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
-      return s.value();                                              \
-    }                                                                     \
-    static FuncPtrT LoadOrDie() {                                         \
-      void *f;                                                            \
-      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                          kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                         \
-                    << " in rocfft DSO; dlerror: " << s.error_message();  \
-      return reinterpret_cast<FuncPtrT>(f);                               \
-    }                                                                     \
-    static FuncPtrT DynLoad() {                                           \
-      static FuncPtrT f = LoadOrDie();                                    \
-      return f;                                                           \
-    }                                                                     \
-    template <typename... Args>                                           \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) {          \
-      gpu::ScopedActivateExecutorContext sac{parent};                     \
-      return DynLoad()(args...);                                          \
-    }                                                                     \
-  } __name;                                                               \
+#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                         \
+    static const char *kName;                                            \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void *GetDsoHandle() {                                        \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();          \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void *f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in rocfft DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {         \
+      gpu::ScopedActivateExecutorContext sac{parent};                    \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;                                                              \
   const char *DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -186,7 +185,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                    ROCMFftType(type), 1 /* = batch */);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 1d plan:" << ret;
-            return tsl::Status{port::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 1d plan."};
           }
           return tsl::OkStatus();
@@ -196,7 +195,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                    elem_count_[1], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 2d plan:" << ret;
-            return tsl::Status{port::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 2d plan."};
           }
           return tsl::OkStatus();
@@ -207,7 +206,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                  elem_count_[2], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 3d plan:" << ret;
-            return tsl::Status{port::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 3d plan."};
           }
           return tsl::OkStatus();
@@ -215,20 +214,20 @@ tsl::Status ROCMFftPlan::Initialize(
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return tsl::Status{port::error::INVALID_ARGUMENT,
+          return tsl::Status{absl::StatusCode::kInvalidArgument,
                              "hipfftPlan only takes rank 1, 2, or 3."};
       }
     } else {
       ret = wrap::hipfftCreate(parent, &plan_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT plan:" << ret;
-        return tsl::Status{port::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT plan."};
       }
       ret = wrap::hipfftSetAutoAllocation(parent, plan_, 0);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for rocFFT plan:" << ret;
-        return tsl::Status{port::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to set auto allocation for rocFFT plan."};
       }
       switch (rank) {
@@ -238,7 +237,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                        &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 1d plan:" << ret;
-            return tsl::Status{port::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 1d plan."};
           }
           break;
@@ -248,7 +247,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                        &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 2d plan:" << ret;
-            return tsl::Status{port::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 2d plan."};
           }
           break;
@@ -258,7 +257,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                        ROCMFftType(type), &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 3d plan:" << ret;
-            return tsl::Status{port::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 3d plan."};
           }
           break;
@@ -266,7 +265,7 @@ tsl::Status ROCMFftPlan::Initialize(
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return tsl::Status{port::error::INVALID_ARGUMENT,
+          return tsl::Status{absl::StatusCode::kInvalidArgument,
                              "hipfftPlan only takes rank 1, 2, or 3."};
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
@@ -281,14 +280,14 @@ tsl::Status ROCMFftPlan::Initialize(
           output_distance, ROCMFftType(type), batch_count);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
-        return tsl::Status{port::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT batched plan."};
       }
     } else {
       auto ret = wrap::hipfftCreate(parent, &plan_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
-        return tsl::Status{port::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT batched plan."};
       }
       ret = wrap::hipfftSetAutoAllocation(parent, plan_, 0);
@@ -296,7 +295,7 @@ tsl::Status ROCMFftPlan::Initialize(
         LOG(ERROR) << "failed to set auto allocation for rocFFT batched plan:"
                    << ret;
         return tsl::Status{
-            port::error::INTERNAL,
+            absl::StatusCode::kInternal,
             "Failed to set auto allocation for rocFFT batched plan."};
       }
       ret = wrap::hipfftMakePlanMany(
@@ -307,7 +306,7 @@ tsl::Status ROCMFftPlan::Initialize(
           &scratch_size_bytes_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to make rocFFT batched plan:" << ret;
-        return tsl::Status{port::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to make rocFFT batched plan."};
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
@@ -341,7 +340,7 @@ tsl::Status ROCMFftPlan::UpdateScratchAllocator(
   auto ret = wrap::hipfftSetWorkArea(parent_, plan_, scratch_.opaque());
   if (ret != HIPFFT_SUCCESS) {
     LOG(ERROR) << "failed to set work area for rocFFT plan:" << ret;
-    return tsl::Status(port::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "Failed to set work area for rocFFT plan.");
   }
   return tsl::OkStatus();

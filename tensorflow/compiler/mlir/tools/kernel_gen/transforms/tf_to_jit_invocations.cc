@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -25,9 +26,9 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -63,6 +64,10 @@ bool IsUnaryTFOperation(Operation *op) {
   return IsSingleResultTFOperation(op) && op->getNumOperands() == 1;
 }
 
+bool IsBinaryTFOperation(Operation *op) {
+  return IsSingleResultTFOperation(op) && op->getNumOperands() == 2;
+}
+
 struct TFToJITInvocationsPattern : public RewritePattern {
   explicit TFToJITInvocationsPattern(MLIRContext *ctx)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
@@ -81,7 +86,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
     // Create the JIT compile op.
     auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
         loc, rewriter.getType<tf_framework::JITCallableType>(),
-        /*ctx=*/llvm::None);
+        /*ctx=*/std::nullopt);
 
     // Move the TF operation into the body.
     {
@@ -115,20 +120,30 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (!IsUnaryTFOperation(op) ||
+    if ((!IsUnaryTFOperation(op) && !IsBinaryTFOperation(op)) ||
         !llvm::isa<func::FuncOp>(op->getParentOp())) {
       return failure();
     }
 
     // Create large argument condition.
     auto loc = op->getLoc();
-    auto arg = op->getOperands().front();
-    auto shape = rewriter.create<shape::ShapeOfOp>(loc, arg);
-    auto num_elems = rewriter.create<shape::NumElementsOp>(loc, shape);
+    auto arg_1 = op->getOperands().front();
+    auto shape_1 = rewriter.create<shape::ShapeOfOp>(loc, arg_1);
+    auto num_elems_1 = rewriter.create<shape::NumElementsOp>(loc, shape_1);
     Value cst_i32_limit =
         rewriter.create<arith::ConstantIndexOp>(loc, i32Limit);
     Value large_tensor_predicate = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::sgt, num_elems, cst_i32_limit);
+        loc, arith::CmpIPredicate::sgt, num_elems_1, cst_i32_limit);
+    if (IsBinaryTFOperation(op)) {
+      auto arg_2 = op->getOperands().back();
+      auto shape_2 = rewriter.create<shape::ShapeOfOp>(loc, arg_2);
+      auto num_elems_2 = rewriter.create<shape::NumElementsOp>(loc, shape_2);
+      large_tensor_predicate = rewriter.create<arith::OrIOp>(
+          loc, large_tensor_predicate,
+          // Compare op to check size of the second op
+          rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt,
+                                         num_elems_2, cst_i32_limit));
+    }
 
     // Create dispatch code.
     auto jit_body_builder_fn = [&](OpBuilder &b, Location loc) {
@@ -151,9 +166,10 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
       }
 
       // Create JIT execute op.
+      assert(op->getOperands().size() == 1 || op->getOperands().size() == 2);
       auto jit_execute_op = b.create<tf_framework::JITExecuteOp>(
           loc, op->getResultTypes().front(), /*ctx=*/Value(),
-          jit_compile_op.getResult(), arg);
+          jit_compile_op.getResult(), op->getOperands());
       b.create<scf::YieldOp>(loc, jit_execute_op.getResult());
     };
     auto aot_body_builder_fn = [&](OpBuilder &b, Location loc) {
@@ -163,8 +179,7 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
 
     // Create and replace in two steps to clone the original op.
     auto ifOp = rewriter.create<scf::IfOp>(
-        loc, op->getResultTypes(), large_tensor_predicate, jit_body_builder_fn,
-        aot_body_builder_fn);
+        loc, large_tensor_predicate, jit_body_builder_fn, aot_body_builder_fn);
     rewriter.replaceOp(op, ifOp.getResults());
     return success();
   }

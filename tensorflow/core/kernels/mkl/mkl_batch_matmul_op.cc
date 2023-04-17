@@ -23,7 +23,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
@@ -144,7 +144,7 @@ class BatchMatMulMkl : public OpKernel {
                                          out_shape, adj_x_, adj_y_);
 
     this->ExtendMklMatMulParams(ctx, *params);
-
+    MklDnnThreadPool eigen_tp(ctx);
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<Tlhs, Trhs, Toutput>* matmul_prim =
         MklMatMulPrimitiveFactory<float, Tlhs, Trhs, Toutput>::Get(
@@ -198,7 +198,6 @@ class BatchMatMulMkl : public OpKernel {
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
     if (fused_ops_.size() > 0) {
       void* mul_data = nullptr;
@@ -332,14 +331,12 @@ class FusedBatchMatMulMkl
           .TypeConstraint<TYPE>("T"),         \
       FusedBatchMatMulMkl<CPUDevice, TYPE, TYPE, TYPE, true>)
 
-#ifdef INTEL_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_float(REGISTER_FUSED_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_bfloat16(REGISTER_FUSED_BATCH_MATMUL_MKL);
-#endif  // INTEL_MKL
 
 }  // end namespace tensorflow
-#endif
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

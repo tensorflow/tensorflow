@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -46,6 +47,15 @@ StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 SingleDeviceSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   return InvalidArgument("Single-device sharding does not support disassembly");
+}
+
+StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
+    const Shape& shape) const {
+  DCHECK(this);
+  std::vector<IndexDomain> result;
+  result.reserve(1);
+  result.push_back(IndexDomain(shape));
+  return result;
 }
 
 std::string SingleDeviceSharding::DebugString() const {
@@ -103,6 +113,13 @@ OpaqueSharding::Disassemble(const Shape& shape) const {
         {std::move(shapes[i]), SingleDeviceSharding::Create(devices_[i])});
   }
   return result;
+}
+
+StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
+    const Shape& shape) const {
+  DCHECK(this);
+  return InvalidArgument(
+      "OpaqueSharding does not have index domain information");
 }
 
 std::string OpaqueSharding::DebugString() const {

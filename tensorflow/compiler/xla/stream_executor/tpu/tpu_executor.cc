@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 
 #include <cstdint>
+#include <utility>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -317,8 +319,7 @@ Status TpuExecutor::SynchronousMemcpy(
 Status TpuExecutor::SynchronousMemcpyDeviceToDevice(
     ::stream_executor::DeviceMemoryBase* device_dst,
     const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
-  return ::stream_executor::port::UnimplementedError(
-      "This operation not supported on TPU");
+  return tsl::errors::Unimplemented("This operation not supported on TPU");
 }
 
 bool TpuExecutor::MemcpyDeviceToDevice(
@@ -342,21 +343,21 @@ Status TpuExecutor::EnqueueCompactionOnStreamForHbm(Stream* compaction_stream) {
 }
 
 struct HostCallbackContext {
-  std::function<Status()> callback;
+  absl::AnyInvocable<Status() &&> callback;
 };
 
 TSL_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
-  Status status = host_ctx->callback();
+  Status status = std::move(host_ctx->callback)();
   TSL_Status* c_status = ExecutorApiFn()->TpuStatus_CreateFn(
-      status.code(), status.error_message().c_str());
+      status.raw_code(), tsl::NullTerminatedMessage(status));
   delete host_ctx;
   return c_status;
 }
 
 bool TpuExecutor::HostCallback(Stream* stream,
-                               std::function<Status()> callback) {
-  HostCallbackContext* ctx = new HostCallbackContext{callback};
+                               absl::AnyInvocable<Status() &&> callback) {
+  HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
   return ExecutorApiFn()->TpuExecutor_HostCallbackFn(
       executor_, get_stream(stream->implementation()), &HostCallbackTrampoline,
       ctx);

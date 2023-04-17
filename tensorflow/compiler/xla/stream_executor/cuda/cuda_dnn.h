@@ -20,14 +20,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -275,6 +276,54 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode) override;
 
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxRunner>>
+  FusedMHASoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
+  FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
+  FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasRunner>>
+  FusedMHAScaleBiasSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -399,6 +448,13 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
+
+  tsl::Status CudnnReorderConvolutionFilterAndBias(
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8_t>& filter_input,
+      DeviceMemory<int8_t>* filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) override;
 
   bool DoConvolveQuantized(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,

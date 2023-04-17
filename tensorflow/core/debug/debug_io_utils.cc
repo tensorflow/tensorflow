@@ -273,7 +273,7 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
       return errors::FailedPrecondition(
           "Failed to send chunk ", i, " of ", num_chunks,
           " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes, ",
-          "due to: ", s.error_message());
+          "due to: ", s.message());
     }
   }
   return OkStatus();
@@ -460,7 +460,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
       CHECK(callback) << "No callback registered for: " << dump_root_dir;
       (*callback)(debug_node_key, tensor);
     } else {
-      return Status(error::UNAVAILABLE,
+      return Status(absl::StatusCode::kUnavailable,
                     strings::StrCat("Invalid debug target URL: ", url));
     }
   }
@@ -473,10 +473,10 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
         " debug target URLs failed, due to the following errors:");
     for (Status& status : fail_statuses) {
       error_message =
-          strings::StrCat(error_message, " ", status.error_message(), ";");
+          strings::StrCat(error_message, " ", status.message(), ";");
     }
 
-    return Status(error::INTERNAL, error_message);
+    return Status(absl::StatusCode::kInternal, error_message);
   }
 }
 
@@ -624,9 +624,9 @@ Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
 
   Status s = RecursiveCreateDir(env, dir_name);
   if (!s.ok()) {
-    return Status(error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   strings::StrCat("Failed to create directory  ", dir_name,
-                                  ", due to: ", s.error_message()));
+                                  ", due to: ", s.message()));
   }
 
   const string file_path = io::JoinPath(dir_name, file_name);
@@ -665,13 +665,13 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
     Status s = RecursiveCreateDir(env, parent_dir);  // Recursive call
     if (!s.ok()) {
       return Status(
-          error::FAILED_PRECONDITION,
+          absl::StatusCode::kFailedPrecondition,
           strings::StrCat("Failed to create directory  ", parent_dir));
     }
   } else if (env->FileExists(parent_dir).ok() &&
              !env->IsDirectory(parent_dir).ok()) {
     // The path exists, but it is a file.
-    return Status(error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   strings::StrCat("Failed to create directory  ", parent_dir,
                                   " because the path exists as a file "));
   }
@@ -682,7 +682,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
     return OkStatus();
   } else {
-    return Status(error::ABORTED,
+    return Status(absl::StatusCode::kAborted,
                   strings::StrCat("Failed to create directory  ", parent_dir));
   }
 }
@@ -782,7 +782,7 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
   if (reader_writer_->Finish().ok()) {
     return OkStatus();
   } else {
-    return Status(error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "Failed to close debug GRPC stream.");
   }
 }

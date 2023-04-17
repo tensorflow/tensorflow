@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SplitDedupData"
   input_arg {
     name: "input"
@@ -38,5 +38,12 @@ op {
   attr {
     name: "tuple_mask"
     type: "string"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }

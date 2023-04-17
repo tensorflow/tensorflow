@@ -26,9 +26,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -47,12 +47,10 @@ void ReshapeTester::Test(TensorType tensor_type,
   auto input_rng = std::bind(input_distribution, std::ref(rng));
 
   T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
-  std::generate(default_input_data, default_input_data + InputSize(),
-                std::ref(input_rng));
+  std::generate_n(default_input_data, InputSize(), std::ref(input_rng));
 
   T* delegate_input_data = delegate_interpreter->typed_input_tensor<T>(0);
-  std::copy(default_input_data, default_input_data + InputSize(),
-            delegate_input_data);
+  std::copy_n(default_input_data, InputSize(), delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -75,13 +73,11 @@ void ReshapeTester::Test<float>(TensorType tensor_type,
       std::bind(std::uniform_real_distribution<float>(), std::ref(rng));
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data, default_input_data + InputSize(),
-                std::ref(input_rng));
+  std::generate_n(default_input_data, InputSize(), std::ref(input_rng));
 
   float* delegate_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + InputSize(),
-            delegate_input_data);
+  std::copy_n(default_input_data, InputSize(), delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);

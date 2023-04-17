@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for operations in eager execution."""
 import gc
+import sys
 import threading
 import weakref
 
@@ -32,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -111,7 +113,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testExecuteListOutputLen0(self):
     empty = constant_op.constant([], dtype=dtypes.int32)
-    result = array_ops.unstack(empty, 0)
+    result = array_ops_stack.unstack(empty, 0)
     self.assertIsInstance(result, list)
     self.assertEmpty(result)
 
@@ -434,6 +436,9 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t1.join()
 
   def testWeakrefEagerTensor(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest('Not working in Python 3.11')
     x = constant_op.constant([[1.]])
     x.at1 = constant_op.constant([[2.]])
     x.at2 = 3.

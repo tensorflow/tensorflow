@@ -1476,6 +1476,8 @@ An op that groups a list of partitioned inputs together. Supports ND sharding.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [Pure]> {
@@ -1865,5 +1867,83 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [Pure, ResultsBroadcastableShape]> {
     OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
 }
+
+def TF_TPUCopyWithDynamicShapeOp : TF_Op<"TPUCopyWithDynamicShape", [Pure, AttrSizedOperandSegments]> {
+  let summary = [{
+Op that copies host tensors to device with bounded dynamic shape support.
+  }];
+
+  let description = [{
+This op copies the padded tensor on cpu to TPU without the padded data. `tensors` 
+is a list of cpu tensors with padded data. `unpadded_sizes` is a list of shape
+tensors which describes unpadded size of each dimension for each cpu tensor. 
+The size of the `unpadded_sizes` should be the same as `tensors`. They are both
+on host. `tpu_tensors` are list of tpu device tensors without the padded data.
+`tpu_tensors` also has the same size of the `tensors` and the shapes of 
+`tpu_tensors` are determined by the `unpadded_sizes`.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$tensors,
+    Variadic<TF_Int32Tensor>:$unpadded_sizes
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$tpu_tensors
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
+def TF_TPUAnnotateTensorsWithDynamicShapeOp : TF_Op<"TPUAnnotateTensorsWithDynamicShape", []> {
+  let summary = [{
+Placeholder op which takes the output of TPUCopyWithDynamicShapeOp and pass
+them to the following tpu ops.
+  }];
+
+  let description = [{
+This op serves as an annotation for the dynamic shaped tensor and will be
+removed during the bridge rewrite.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$tensors
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$tpu_tensors
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
+
+def TF_ConvertToCooTensorOp : TF_Op<"ConvertToCooTensor", [Pure]> {
+  let summary = [{
+Op that converts tensors into coo format.
+  }];
+
+  let description = [{
+This op coverts the dense, sparse and ragged tensor into standard coo tensor
+format which contains three 1D tensors.
+  }];
+
+  let arguments = (ins
+    TF_Int32Tensor:$indices_or_row_splits,
+    TF_Int32Tensor:$values,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    StrAttr:$combiner
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$row_ids,
+    TF_Int32Tensor:$col_ids,
+    TF_Float32Tensor:$gains
+  );
+}
+
 
 #endif // TF_OPS

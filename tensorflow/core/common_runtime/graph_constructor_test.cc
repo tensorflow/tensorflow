@@ -63,13 +63,12 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
-      EXPECT_TRUE(status.error_message().find(error) != string::npos)
+      EXPECT_TRUE(absl::StrContains(status.message(), error))
           << "Expected to find '" << error << "' in " << status;
     }
 
     if (!not_expected_error_str.empty()) {
-      EXPECT_TRUE(status.error_message().find(not_expected_error_str) ==
-                  string::npos)
+      EXPECT_TRUE(!absl::StrContains(status.message(), not_expected_error_str))
           << "Expected not to find '" << not_expected_error_str << "' in "
           << status;
     }
@@ -89,7 +88,7 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
-      EXPECT_TRUE(status.error_message().find(error) != string::npos)
+      EXPECT_TRUE(absl::StrContains(status.message(), error))
           << "Expected to find '" << error << "' in " << status;
     }
 
@@ -1166,9 +1165,9 @@ node {
   def.mutable_versions()->set_producer(10);
   s = ImportGraphDef(ImportGraphDefOptions(), def, &g2, nullptr);
   EXPECT_EQ(error::UNIMPLEMENTED, s.code());
-  EXPECT_TRUE(s.error_message().find("BatchNormWithGlobalNormalization is not "
-                                     "available in GraphDef version 10") !=
-              string::npos)
+  EXPECT_TRUE(absl::StrContains(s.message(),
+                                "BatchNormWithGlobalNormalization is not "
+                                "available in GraphDef version 10"))
       << s;
 }
 
@@ -2450,18 +2449,18 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   EXPECT_EQ(3, graph_.num_edges());
   const string original_graph_description = GraphDebugString();
 
-#define EXPECT_IMPORT_FAILURE(graph_def, options, expected_err)             \
-  do {                                                                      \
-    Status s = ImportGraphDef(options, graph_def, &graph_, nullptr);        \
-    EXPECT_NE(OkStatus(), s) << s;                                          \
-    EXPECT_TRUE(s.error_message().find(expected_err) != string::npos) << s; \
-    const string graph_description = GraphDebugString();                    \
-    EXPECT_EQ(original_graph_description, graph_description);               \
-    EXPECT_EQ(3, graph_.num_nodes());                                       \
-    EXPECT_TRUE(HasControlEdge(source, sink));                              \
-    EXPECT_TRUE(HasControlEdge(source, "scope/A"));                         \
-    EXPECT_TRUE(HasControlEdge("scope/A", sink));                           \
-    EXPECT_EQ(3, graph_.num_edges());                                       \
+#define EXPECT_IMPORT_FAILURE(graph_def, options, expected_err)       \
+  do {                                                                \
+    Status s = ImportGraphDef(options, graph_def, &graph_, nullptr);  \
+    EXPECT_NE(OkStatus(), s) << s;                                    \
+    EXPECT_TRUE(s.message().find(expected_err) != string::npos) << s; \
+    const string graph_description = GraphDebugString();              \
+    EXPECT_EQ(original_graph_description, graph_description);         \
+    EXPECT_EQ(3, graph_.num_nodes());                                 \
+    EXPECT_TRUE(HasControlEdge(source, sink));                        \
+    EXPECT_TRUE(HasControlEdge(source, "scope/A"));                   \
+    EXPECT_TRUE(HasControlEdge("scope/A", sink));                     \
+    EXPECT_EQ(3, graph_.num_edges());                                 \
   } while (0)
 
   EXPECT_IMPORT_FAILURE(def, opts,
@@ -2731,9 +2730,9 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   // Check that Inner and Outer have been imported
   const OpDef* op_def;
   Status s = graph_.op_registry()->LookUpOpDef("Inner_d03c39a3", &op_def);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   s = graph_.op_registry()->LookUpOpDef("Outer_966fa13d", &op_def);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
 
   // Re-serialize and run the graph. This tests that re-serialized functions can
   // be imported again and that imported functions can be run.
@@ -2741,7 +2740,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   graph_.ToGraphDef(&gdef);
   std::unique_ptr<Session> sess(NewSession(SessionOptions()));
   s = sess->Create(gdef);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
 
   Tensor p1(DT_FLOAT, TensorShape({1}));
   p1.scalar<float>()() = 1.0;
@@ -2753,7 +2752,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   std::vector<string> target_names;
   std::vector<Tensor> outputs;
   s = sess->Run(inputs, output_names, target_names, &outputs);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
 
   ASSERT_EQ(outputs.size(), 1);
   EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);

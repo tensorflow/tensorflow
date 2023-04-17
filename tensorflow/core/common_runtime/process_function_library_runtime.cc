@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
@@ -557,80 +559,41 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(device_mgr_->LookupDevice("CPU:0", &cpu_device));
 
   const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
-  TF_ASSIGN_OR_RETURN(auto optimized_graph_info,
-                      OptimizeFunctionGraph(
-                          function_name, attrs, options, *dev_set, lib_def_,
-                          composite_devices, cpu_device, default_device, env_));
+  // Look up for optimized function graph in library. If found, skip
+  // `OptimizeFunctionGraph` step.
+  OptimizedFunctionGraph* optimized_graph_proto =
+      options.lib_def != nullptr
+          ? options.lib_def->FindOptimizedFunctionGraph(function_name)
+          : lib_def_->FindOptimizedFunctionGraph(function_name);
+  if (optimized_graph_proto != nullptr) {
+    LOG(INFO) << "Found AOT'd graph for function: " << function_name;
+  }
+  StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
+      optimized_graph_proto == nullptr
+          ? OptimizeFunctionGraphOrReadFromFileCache(
+                function_name, attrs, options, *dev_set, lib_def_,
+                composite_devices, cpu_device, default_device, env_)
+          : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
+  if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 
-  auto& graph = optimized_graph_info.function_graph;
-  graph->mutable_flib_def()->set_default_registry(
-      &(optimized_graph_info.lib_def));
+  // Resets the library registration correctly.
+  optimized_graph_info->function_graph->mutable_flib_def()
+      ->set_default_registry(&(optimized_graph_info->lib_def));
 
-  // Expand the nodes assigned to a CompositeDevice before graph partition to
-  // avoid generating a subgraph on a virtual device for execution.
-  // This transformation should happen as late as possible, in order to run as
-  // more graph optimization passes (e.g. PRE_PLACEMENT, PLACER,
-  // POST_PLACEMENT, POST_REWRITE_FOR_EXEC) on a smaller graph as possible.
-  TF_RETURN_IF_ERROR(ReplicatePerReplicaNodesInFunctionGraph(
-      options.composite_devices, graph.get()));
+  TF_ASSIGN_OR_RETURN(
+      auto subgraphs,
+      PreprocessAndPartitionGraph(function_name, *optimized_graph_info, options,
+                                  *dev_set, lib_def_, composite_devices, env_));
+  const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
+  const uint64 graph_optimization_duration =
+      optimization_end_time_usecs - optimization_start_time_usecs;
+  metrics::UpdateFunctionGraphOptimizationTime(graph_optimization_duration);
+  VLOG(1) << "Finished graph optimizations for MultiDevice function \""
+          << function_name << "\" with target device \"" << options.target
+          << "\". Took " << graph_optimization_duration / 1000000 << " secs.";
 
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? lib_def_ : options.lib_def;
-  if (options.graph_collector != nullptr) {
-    GraphDef def;
-    graph->ToGraphDef(&def);
-    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
-    options.graph_collector->CollectOptimizedGraph(def);
-  }
-
-  VLOG(4) << "Main function graph to be partitioned:";
-  VLOG(4) << DebugString(graph->ToGraphDefDebug());
-
-  auto subgraphs =
-      std::make_unique<std::unordered_map<string, std::unique_ptr<Graph>>>();
-  TF_RETURN_IF_ERROR(
-      PartitionFunctionGraph(*dev_set, std::move(graph), subgraphs.get()));
-
-  for (const auto& pair : *subgraphs) {
-    DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
-                              pair.first, ")"),
-              pair.second.get());
-  }
-
-  GraphOptimizationPassOptions optimization_options;
-  optimization_options.flib_def = &(optimized_graph_info.lib_def);
-  optimization_options.is_function_graph = true;
-  optimization_options.graph = nullptr;
-  optimization_options.device_set = nullptr;
-  optimization_options.partition_graphs = subgraphs.get();
-  optimization_options.debug_filename_prefix = "pflr_imd_";
-  env_->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
-
-  // Normally POST_PARTITIONING passes are run by distributed workers.
-  // Distributed workers are currently not supported in this code path, so we
-  // run the passes here.
-  const bool should_run_optimization_passes = !options.is_component_function;
-  if (should_run_optimization_passes) {
-    TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-        OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
-  }
-  for (const auto& pair : *subgraphs) {
-    const auto* optimized_subgraph = pair.second.get();
-    DumpGraph(
-        strings::StrCat("After all optimization passes (", pair.first, ")"),
-        optimized_subgraph);
-    if (VLOG_IS_ON(3)) {
-      DumpGraphDefToFile(
-          strings::StrCat("pflr_after_all_optimization_passes_",
-                          reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
-                          pair.first),
-          optimized_subgraph->ToGraphDefDebug());
-    }
-  }
-  const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
-  metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
-                                               optimization_start_time_usecs);
-
   if (options.graph_collector != nullptr) {
     for (const auto& pair : *subgraphs) {
       GraphDef def;
@@ -641,7 +604,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   const auto& node_name_to_control_ret =
-      optimized_graph_info.node_name_to_control_ret;
+      optimized_graph_info->node_name_to_control_ret;
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
@@ -655,9 +618,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   };
 
   auto data = std::make_unique<MultiDeviceFunctionData>(
-      function_name, function_key, optimized_graph_info.num_return_nodes,
-      std::move(optimized_graph_info.lib_def),
-      std::move(optimized_graph_info.ret_types));
+      function_name, function_key, optimized_graph_info->num_return_nodes,
+      std::move(optimized_graph_info->lib_def),
+      std::move(optimized_graph_info->ret_types));
 
   int i = 0;
   // Generate a random function_name to avoid one function reuse the partition
@@ -711,6 +674,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       bool ints_on_device =
           (device_type == "TPU" || device_type == "XLA_CPU" ||
            device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
+      Int32FulltypePass int32_fulltype(
+          "ProcessFunctionLibraryRuntime::InstantiateMultiDevice");
+      status->Update(int32_fulltype.ProcessGraph(subgraph, ints_on_device));
+      if (!status->ok()) {
+        counter.DecrementCount();
+        return;
+      }
       status->Update(UpdateArgAndRetvalMetadata(
           subgraph, &comp_data->arg_indices, &comp_data->ret_indices,
           &comp_data->arg_alloc_attrs, &comp_data->ret_alloc_attrs,
@@ -963,7 +933,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
         VLOG(2) << "Component function execution failed: " << run_status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            run_status.error_message());
+            run_status.message());
         if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
@@ -1053,7 +1023,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
                 << comp_handle << " failed: " << status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            status.error_message());
+            status.message());
         refcounted_done->UpdateStatus(
             errors::CreateWithUpdatedMessage(status, function_and_msg));
         // Cancel the execution of other component functions.
@@ -1269,11 +1239,16 @@ void ProcessFunctionLibraryRuntime::CleanupCreatedRendezvous(
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
-    FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
+    FunctionLibraryRuntime::DoneCallback done,
+    const FunctionLibraryRuntime::Options& opts,
     const Rendezvous* created_rendezvous) const {
-  return [this, items, done = std::move(done), step_id,
-          created_rendezvous](const Status& status) {
-    this->CleanupCreatedRendezvous(created_rendezvous, step_id);
+  const Rendezvous* rendezvous_to_cleanup = nullptr;
+  if (opts.cleanup_rendezvous_after_run) {
+    rendezvous_to_cleanup = created_rendezvous;
+  }
+  return [this, items, done = std::move(done), step_id = opts.step_id,
+          rendezvous_to_cleanup](const Status& status) {
+    this->CleanupCreatedRendezvous(rendezvous_to_cleanup, step_id);
     auto* local_status = new Status(status);
     CleanUp(items, [local_status, done](const Status& cleanup_status) {
       local_status->Update(cleanup_status);
@@ -1372,8 +1347,8 @@ void ProcessFunctionLibraryRuntime::Run(
   }
 
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done),
-                                    new_opts.step_id, created_rendezvous);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done), new_opts,
+                                    created_rendezvous);
   std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
   done = [rets, function_rets, done = std::move(done)](const Status& s) {
     Status status = s;
@@ -1562,7 +1537,9 @@ Status ProcessFunctionLibraryRuntime::RunSync(
 
     Status status = RunMultiDeviceSync(new_opts, handle, &function_rets,
                                        std::move(get_component_args));
-    CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
+    if (new_opts.cleanup_rendezvous_after_run) {
+      CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
+    }
     status.Update(FunctionRetsToTensors(&function_rets, rets));
     return status;
   } else {
@@ -1627,8 +1604,8 @@ void ProcessFunctionLibraryRuntime::Run(
   return;
 #else   // !IS_MOBILE_PLATFORM
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts.step_id,
-                                    created_rendezvous);
+  done =
+      ApplyCleanUpToDoneCallback(cleanup_items, done, opts, created_rendezvous);
 
   auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                     InternalArgs* comp_args) -> Status {

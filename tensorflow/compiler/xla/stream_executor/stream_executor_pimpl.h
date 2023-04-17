@@ -28,20 +28,21 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
@@ -617,12 +618,9 @@ class StreamExecutor {
 
   // Entrains on a stream a user-specified function to be run on the host.
   // See Stream::ThenDoHostCallback for full details.
-  bool HostCallback(Stream* stream, std::function<void()> callback);
-
-  // Entrains on a stream a user-specified function to be run on the host.
-  // See Stream::ThenDoHostCallback for full details.
   // This is the preferred form for a callback that may return an error.
-  bool HostCallback(Stream* stream, std::function<tsl::Status()> callback);
+  bool HostCallback(Stream* stream,
+                    absl::AnyInvocable<tsl::Status() &&> callback);
 
   // Performs platform-specific allocation and initialization of an event.
   tsl::Status AllocateEvent(Event* event);
@@ -667,7 +665,7 @@ class StreamExecutor {
   // ownership transfer to caller.
   std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
-  // Adds a task to the port::ThreadPool work queue. These tasks must be
+  // Adds a task to the tsl::thread::ThreadPool work queue. These tasks must be
   // fire-and-forget and have no external data or timing dependencies; their
   // execution order and completion time have no guarantees.
   // For an example of an appropriate task, see HostBlas::DoBlasGemmInternal;
@@ -750,7 +748,7 @@ class StreamExecutor {
   // here.
   //
   // Immutable post-initialization. Object is thread-safe.
-  std::unique_ptr<port::ThreadPool> background_threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> background_threads_;
 
   // Counter for the current number of live streams. This is used to check
   // for accidentally-outstanding streams at StreamExecutor teardown time, as

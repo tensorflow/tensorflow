@@ -18,13 +18,13 @@ limitations under the License.
 #include <vector>
 
 #include "grpcpp/channel.h"
-#include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
 #include "grpcpp/generic/generic_stub.h"
+#include "grpcpp/impl/codegen/client_context.h"
+#include "grpcpp/impl/codegen/server_context.h"
+#include "grpcpp/impl/codegen/status.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
-#include "grpcpp/server_context.h"
-#include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
@@ -777,7 +777,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       [ctx, done, handle](const Status& status, const CallResponse& response) {
         Tensor error_code(DT_INT64, TensorShape({})),
             error_message(DT_STRING, TensorShape({}));
-        error_code.scalar<int64_t>()() = status.code();
+        error_code.scalar<int64_t>()() = status.raw_code();
         error_message.scalar<tstring>()() = status.error_message();
 
         ctx->set_output(0, error_code);

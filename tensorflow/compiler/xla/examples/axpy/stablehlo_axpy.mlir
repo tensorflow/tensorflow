@@ -1,14 +1,9 @@
-module @axpy {
-  func.func public @main(
-    %alpha: tensor<f32>,
-    %x: tensor<4 x f32>,
-    %y: tensor<4 x f32>
-  ) -> tensor<4 x f32> {
-    %a = "stablehlo.broadcast_in_dim" (%alpha) {
-      broadcast_dimensions = dense<[]> : tensor<0 x i64>
-    } : (tensor<f32>) -> tensor<4 x f32>
-    %ax = stablehlo.multiply %a, %x : tensor<4 x f32>
-    %result = stablehlo.add %ax, %y : tensor<4 x f32>
-    return %result: tensor<4 x f32>
-  }
+func.func @main(
+  %alpha: tensor<f32>, %x: tensor<4xf32>, %y: tensor<4xf32>
+) -> tensor<4xf32> {
+  %0 = stablehlo.broadcast_in_dim %alpha, dims = []
+    : (tensor<f32>) -> tensor<4xf32>
+  %1 = stablehlo.multiply %0, %x : tensor<4xf32>
+  %2 = stablehlo.add %1, %y : tensor<4xf32>
+  func.return %2: tensor<4xf32>
 }

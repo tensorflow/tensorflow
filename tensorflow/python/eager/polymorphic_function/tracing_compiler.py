@@ -15,6 +15,7 @@
 """Tracing Compiler implementation."""
 
 import collections
+import contextlib
 import threading
 import types as types_lib
 from typing import List
@@ -29,13 +30,14 @@ from tensorflow.python.eager.polymorphic_function import attributes as attribute
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import tf_method_target
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -108,8 +110,11 @@ class TracingCompiler:
     """
     self._python_function = python_function
     pure_function = attributes and attributes_lib.IMPLEMENTS in attributes
-    self._function_spec = function_spec.FunctionSpec.from_function_and_signature(
-        python_function, input_signature, is_pure=pure_function)
+    self._function_spec = (
+        function_spec.FunctionSpec.from_function_and_signature(
+            python_function, input_signature, is_pure=pure_function
+        )
+    )
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
@@ -194,8 +199,9 @@ class TracingCompiler:
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
     """
-    if self.input_signature:
-      self._function_spec.validate_inputs_with_signature(args, kwargs)
+    if self.input_signature and (args or kwargs):
+      # Check to see if a valid type can be generated from the args, kwargs
+      self._function_spec.make_canonicalized_monomorphic_type(args, kwargs)
 
     with self._lock:
       concrete_function, _ = self._maybe_define_concrete_function(args, kwargs)
@@ -278,13 +284,23 @@ class TracingCompiler:
     arglen = len(args)
     base_arg_names = self._function_spec.arg_names[:arglen]
     num_missing_args = arglen - len(self._function_spec.arg_names)
-    missing_arg_names = [self._function_spec.vararg_name] * num_missing_args
-    # Produce a list of missing args of the form ["arg_0", "arg_1", ...],
-    # where arg is based on the self._function_spec.vararg_name.
-    missing_arg_names = [
-        "%s_%d" % (arg, i) for i, arg in enumerate(missing_arg_names)
-    ]
-    arg_names = base_arg_names + missing_arg_names
+    if num_missing_args > 0:
+      # Must have variable positional args if there are missing args.
+      var_arg_name = next(
+          p.name
+          for p in self._function_spec.function_type.parameters.values()
+          if p.kind is function_type_lib.Parameter.VAR_POSITIONAL
+      )
+      missing_arg_names = [var_arg_name] * num_missing_args
+      # Produce a list of missing args of the form ["arg_0", "arg_1", ...],
+      # where arg is based on the self._function_spec.vararg_name.
+      missing_arg_names = [
+          "%s_%d" % (arg, i) for i, arg in enumerate(missing_arg_names)
+      ]
+      arg_names = base_arg_names + missing_arg_names
+    else:
+      arg_names = base_arg_names
+
     concrete_function = monomorphic_function.ConcreteFunction(
         func_graph_module.func_graph_from_py_func(
             self._name,
@@ -349,7 +365,11 @@ class TracingCompiler:
     if concrete_function is not None:
       return concrete_function, filtered_flat_args
 
-    with monitoring.MonitoredTimer(_graph_building_time_counter.get_cell()):
+    # Use a timer for graph building only if not already inside a function. This
+    # avoids double counting graph building time for nested functions.
+    with monitoring.MonitoredTimer(
+        _graph_building_time_counter.get_cell()
+    ) if not ops.inside_function() else contextlib.nullcontext():
       with trace.Trace("tf.function-graph_building"):
         logging.vlog(
             1, "Creating new FuncGraph for Python function %r (key: %r, %r)",
@@ -375,65 +395,27 @@ class TracingCompiler:
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)
-          if self.function_spec.is_method:
-            # TODO(fmuham): canonicalize_function_inputs removes self arg.
-            args = placeholder_bound_args.args[1:]
-          else:
-            args = placeholder_bound_args.args
+          args = placeholder_bound_args.args
           kwargs = placeholder_bound_args.kwargs
 
           concrete_function = self._create_concrete_function(
               args, kwargs, func_graph)
 
           # TODO(b/263520817): Remove access to private attribute.
-          graph_capture_container = concrete_function.graph._function_captures  # pylint: disable=protected-access
+          graph_capture_container = concrete_function.graph.function_captures
           # Maintain the list of all captures
           self._func_captures.merge_by_ref_with(graph_capture_container)
           # Get current active captures snapshot
           captures = graph_capture_container.get_by_ref_snapshot()
 
           # Create a cache_key with args and captures
-          traced_func_deletion_observer = lookup_func_context.deletion_observer
           traced_func_type = _insert_capture_type(
               target_func_type, captures, lookup_func_context)
 
           self._function_cache.add(current_func_context, traced_func_type,
-                                   traced_func_deletion_observer,
                                    concrete_function)
 
           return concrete_function, filtered_flat_args
-
-
-# When a method is bound to objects of this type, it allows AutoGraph to
-# recover a weak reference the original method's self pointer, so that it can
-# execute it consistent with class_method_to_instance_method's
-# bound_method_wrapper.
-# TODO(b/119246461): This is not pretty. Use a descriptor instead?
-class TfMethodTarget:
-  """Binding target for methods replaced by function and defun."""
-
-  __slots__ = ("weakrefself_target__", "weakrefself_func__")
-
-  def __init__(self, target, original_python_function):
-    self.weakrefself_target__ = target
-    self.weakrefself_func__ = weakref.ref(original_python_function)
-
-  @property
-  def target(self):
-    return self.weakrefself_target__()
-
-  @property
-  def target_class(self):
-    true_self = self.weakrefself_target__()
-    if tf_inspect.isclass(true_self):
-      # Class method
-      return true_self
-    else:
-      return true_self.__class__
-
-  def call(self, args, kwargs):
-    wrapped_fn = self.weakrefself_func__()
-    return wrapped_fn(self.weakrefself_target__(), *args, **kwargs)
 
 
 def class_method_to_instance_method(original_function, instance):
@@ -444,7 +426,8 @@ def class_method_to_instance_method(original_function, instance):
   # bound method to be unhashable.
   bound_method = types_lib.MethodType(
       original_function.python_function,
-      TfMethodTarget(weak_instance, original_function.python_function))
+      tf_method_target.TfMethodTarget(weak_instance,
+                                      original_function.python_function))
 
   # original_function is expected to be either `TracingCompiler` or
   # def_function.Function

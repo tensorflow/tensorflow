@@ -39,7 +39,7 @@ bool OverrideGlobalThreadPoolFromEnvironment() {
     auto status = ReadBoolFromEnvVar("TF_OVERRIDE_GLOBAL_THREADPOOL",
                                      /*default_val=*/false, &flag);
     if (!status.ok()) {
-      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.error_message();
+      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.message();
       return false;
     }
     return flag;
@@ -154,6 +154,11 @@ LocalDevice::LocalDevice(const SessionOptions& options,
         options, port::kNUMANoAffinity, nullptr));
     tp_info = owned_tp_info_.get();
   }
+
+  VLOG(1) << "LocalDevice using CPU work thread pool: "
+          << tp_info->eigen_worker_threads_.workers
+          << ", num_threads=" << tp_info->eigen_worker_threads_.num_threads;
+
   set_tensorflow_cpu_worker_threads(&tp_info->eigen_worker_threads_);
   set_eigen_cpu_device(tp_info->eigen_device_.get());
 }

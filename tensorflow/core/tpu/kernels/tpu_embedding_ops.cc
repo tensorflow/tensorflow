@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
@@ -34,8 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
-#include "tensorflow/core/tpu/tpu_configuration.h"
+#include "tensorflow/core/tpu/tpu_embedding_spmd_sharding_utils.h"
 
 namespace tensorflow {
 
@@ -60,15 +60,6 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
   ~RecvTPUEmbeddingActivationsOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
-    ResourceMgr* rm = GetTPUConfigResourceMgr();
-    OP_REQUIRES(ctx, rm, errors::Internal("No TPUConfigResourceMgr."));
-
-    tensorflow::tpu::TpuMeshStateInterface* mesh_state;
-    OP_REQUIRES_OK(
-        ctx, rm->Lookup(rm->default_container(),
-                        tensorflow::tpu::kTpuMeshStateInterfaceResourceName,
-                        &mesh_state));
-    core::ScopedUnref mesh_state_unref(mesh_state);
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 1,
         errors::Internal("Kernel has ", ctx->num_inputs(),
@@ -81,7 +72,6 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
     params.tpu_embedding_config.size = config_string_.size();
     StatusHelper status;
     params.status = status.c_status;
-    params.tpu_mesh_state = mesh_state->data();
     auto builder = ctx->builder();
     OP_REQUIRES_VALUE(auto shape, ctx, builder->GetShape(deduplication_data));
     TpuSerializedProto xla_computation_serialized;
@@ -167,16 +157,6 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     VLOG(1) << "Compile RecvTPUEmbeddingDeduplicationDataOp";
 
-    ResourceMgr* rm = GetTPUConfigResourceMgr();
-    OP_REQUIRES(ctx, rm, errors::Internal("No TPUConfigResourceMgr."));
-
-    tensorflow::tpu::TpuMeshStateInterface* mesh_state;
-    OP_REQUIRES_OK(
-        ctx, rm->Lookup(rm->default_container(),
-                        tensorflow::tpu::kTpuMeshStateInterfaceResourceName,
-                        &mesh_state));
-    core::ScopedUnref mesh_state_unref(mesh_state);
-
     TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params
         params;
 
@@ -189,7 +169,6 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
     params.xla_computation = &xla_computation_serialized;
     StatusHelper status;
     params.status = status.c_status;
-    params.tpu_mesh_state = mesh_state->data();
 
     TpuSerializedProto op_sharding_proto_serialized;
     if (ctx->builder()->sharding().has_value()) {
@@ -258,16 +237,6 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     VLOG(1) << "Compile SendTPUEmbeddingGradientsOp";
 
-    ResourceMgr* rm = GetTPUConfigResourceMgr();
-    OP_REQUIRES(ctx, rm, errors::Internal("No TPUConfigResourceMgr."));
-
-    tensorflow::tpu::TpuMeshStateInterface* mesh_state;
-    OP_REQUIRES_OK(
-        ctx, rm->Lookup(rm->default_container(),
-                        tensorflow::tpu::kTpuMeshStateInterfaceResourceName,
-                        &mesh_state));
-    core::ScopedUnref mesh_state_unref(mesh_state);
-
     std::vector<xla::XlaOp> gradients;
     std::vector<TensorShape> tf_gradient_shapes;
     OP_REQUIRES_OK(
@@ -301,7 +270,6 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
     params.xla_computation = &xla_computation_serialized;
     StatusHelper status;
     params.status = status.c_status;
-    params.tpu_mesh_state = mesh_state->data();
     OP_REQUIRES_VALUE(auto deduplication_shape, ctx,
                       builder->GetShape(deduplication_data));
     XLA_Shape gradient_tuple_c_shape;
@@ -374,6 +342,14 @@ class SplitDedupDataOp : public XlaOpKernel {
     OP_REQUIRES(ctx, tuple_mask_tensor_.ParseFromString(tuple_mask_string_),
                 errors::InvalidArgument(
                     "Malformed `tuple_mask` attr in SplitDedupData Op."));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    if (!config_string_.empty()) {
+      OP_REQUIRES(
+          ctx, tpu_embedding_config_.ParseFromString(config_string_),
+          errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                  "proto from config attr"));
+      spmd_enabled_ = tpu_embedding_config_.spmd_sharding().enabled();
+    }
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -409,9 +385,12 @@ class SplitDedupDataOp : public XlaOpKernel {
     // Split tuple elements in `input_tuple` into two vectors: integers_vec and
     // floats_vec, corresponding to their mask.
     std::vector<xla::XlaOp> integers_vec, floats_vec;
+    int integer_offset = 0;  // Offset of integer elements in tuple.
+    int float_offset = 0;    // Offset of floating elements in tuple.
     for (int i = 0; i < num_tuple_elements; ++i) {
       const xla::XlaOp& element = xla::GetTupleElement(input_tuple, i);
       const int element_type = tuple_mask_tensor_.int_val(2 * i);
+      const int span_size = tuple_mask_tensor_.int_val(2 * i + 1);
       OP_REQUIRES(
           ctx,
           element_type == DedupTupleElementType::kInteger ||
@@ -421,14 +400,19 @@ class SplitDedupDataOp : public XlaOpKernel {
               "DedupTupleElementType, which can only be 0 or 1. Where 0 ",
               "represents integer and 1 represents float. But gets unexpected ",
               "enum = ", element_type));
+      OP_REQUIRES_VALUE(auto element_shape, ctx, builder->GetShape(element));
+      OP_REQUIRES(
+          ctx, element_shape.dimensions_size() == 1,
+          errors::InvalidArgument("Elements of input tuple should be 1-D."));
 
       if (element_type == DedupTupleElementType::kInteger) {
         integers_vec.push_back(element);
+        integer_offset += span_size;
       } else {
         floats_vec.push_back(element);
+        float_offset += span_size;
       }
     }
-
     // Concatenate elements of integer and floating as return tensors.
     xla::XlaOp integer_tensor = xla::ConcatInDim(builder,
                                                  /*operands=*/integers_vec,
@@ -436,11 +420,74 @@ class SplitDedupDataOp : public XlaOpKernel {
     xla::XlaOp float_tensor = xla::ConcatInDim(builder,
                                                /*operands=*/floats_vec,
                                                /*dimension=*/0);
-    ctx->SetOutput(0, integer_tensor);
-    ctx->SetOutput(1, float_tensor);
+
+    if (config_string_.empty() || !spmd_enabled_) {
+      ctx->SetOutput(0, integer_tensor);
+      ctx->SetOutput(1, float_tensor);
+      return;
+    }
+
+    const int num_cores_per_replica =
+        tpu_embedding_config_.spmd_sharding().num_cores_per_replica();
+    // Creating full shape of integer tensor based on accumulated
+    // `integer_offset` from original tuple mask proto. Similarly, make full
+    // shape of float tensor in following.
+    xla::PrimitiveType int_elements_type = xla::U32;
+    if (!integers_vec.empty()) {
+      int_elements_type = builder->GetShape(integers_vec[0])->element_type();
+    }
+    xla::Shape integer_tensor_full_shape =
+        xla::ShapeUtil::MakeShape(int_elements_type, {integer_offset});
+
+    // Compute SPMD sharding if TPUEmbeddingConfig SPMD is enabled.
+    // When using TPUEmbedding SPMD, we need manually convert integer tensor
+    // and floating tensor to full shape, and convert them to local shards
+    // in `MergeDedupDataOp`.
+    OP_REQUIRES_VALUE(
+        const xla::OpSharding integer_tensor_spmd, ctx,
+        tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
+            integer_tensor_full_shape, num_cores_per_replica, builder));
+
+    OP_REQUIRES_VALUE(xla::XlaOp full_shaped_integer_tensor, ctx,
+                      xla::ConvertSpmdShardToFullShape(
+                          builder,
+                          /*input=*/integer_tensor,
+                          /*output_shape=*/integer_tensor_full_shape,
+                          /*single_dim=*/0,
+                          /*manual_sharding=*/integer_tensor_spmd,
+                          /*unspecified_dims=*/absl::Span<const int64_t>{}));
+
+    xla::PrimitiveType float_elements_type = xla::F32;
+    if (!floats_vec.empty()) {
+      float_elements_type = builder->GetShape(floats_vec[0])->element_type();
+    }
+    xla::Shape float_tensor_full_shape =
+        xla::ShapeUtil::MakeShape(float_elements_type, {float_offset});
+    OP_REQUIRES_VALUE(
+        const xla::OpSharding float_tensor_spmd, ctx,
+        tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
+            float_tensor_full_shape, num_cores_per_replica, builder));
+    OP_REQUIRES_VALUE(xla::XlaOp full_shaped_float_tensor, ctx,
+                      xla::ConvertSpmdShardToFullShape(
+                          builder,
+                          /*input=*/float_tensor,
+                          /*output_shape=*/float_tensor_full_shape,
+                          /*single_dim=*/0,
+                          /*manual_sharding=*/float_tensor_spmd,
+                          /*unspecified_dims=*/absl::Span<const int64_t>{}));
+
+    ctx->SetOutput(0, full_shaped_integer_tensor);
+    ctx->SetOutput(1, full_shaped_float_tensor);
+    VLOG(1) << "Compile SplitDedupDataOp done";
   }
 
  private:
+  // TPU Embedding config.
+  std::string config_string_;
+  tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config_;
+  bool spmd_enabled_ = false;
+
+  // Deduplication data tuple mask string.
   std::string tuple_mask_string_;
   tensorflow::TensorProto tuple_mask_tensor_;
 
@@ -457,6 +504,14 @@ class MergeDedupDataOp : public XlaOpKernel {
     OP_REQUIRES(ctx, tuple_mask_tensor_.ParseFromString(tuple_mask_string_),
                 errors::InvalidArgument(
                     "Malformed `tuple_mask` attr in MergeDedupData Op"));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    if (!config_string_.empty()) {
+      OP_REQUIRES(
+          ctx, tpu_embedding_config_.ParseFromString(config_string_),
+          errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                  "proto from config attr"));
+      spmd_enabled_ = tpu_embedding_config_.spmd_sharding().enabled();
+    }
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -465,8 +520,48 @@ class MergeDedupDataOp : public XlaOpKernel {
         errors::InvalidArgument("MergeDedupDataOp expects 2 inputs, but ",
                                 "gets ", ctx->num_inputs()));
 
+    auto builder = ctx->builder();
+    xla::XlaOp integer_input = ctx->Input(0);
+    xla::XlaOp float_input = ctx->Input(1);
+
+    xla::XlaOp integer_tensor, float_tensor;
+    if (spmd_enabled_) {
+      // Compute SPMD sharding of integer tensor and float tensor.
+      const int num_cores_per_replica =
+          tpu_embedding_config_.spmd_sharding().num_cores_per_replica();
+
+      OP_REQUIRES_VALUE(const xla::Shape integer_input_shape, ctx,
+                        builder->GetShape(integer_input));
+      OP_REQUIRES_VALUE(
+          const xla::OpSharding integer_tensor_spmd, ctx,
+          tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
+              integer_input_shape, num_cores_per_replica, builder));
+      OP_REQUIRES_VALUE(integer_tensor, ctx,
+                        xla::ConvertSpmdFullToShardShape(
+                            builder,
+                            /*input=*/integer_input,
+                            /*single_dim=*/0,
+                            /*manual_sharding=*/integer_tensor_spmd,
+                            /*unspecified_dims=*/absl::Span<const int64_t>{}));
+
+      OP_REQUIRES_VALUE(const xla::Shape float_input_shape, ctx,
+                        builder->GetShape(float_input));
+      OP_REQUIRES_VALUE(const xla::OpSharding float_tensor_spmd, ctx,
+                        tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
+                            float_input_shape, num_cores_per_replica, builder));
+      OP_REQUIRES_VALUE(float_tensor, ctx,
+                        xla::ConvertSpmdFullToShardShape(
+                            builder,
+                            /*input=*/float_input,
+                            /*single_dim=*/0,
+                            /*manual_sharding=*/float_tensor_spmd,
+                            /*unspecified_dims=*/absl::Span<const int64_t>{}));
+    } else {
+      integer_tensor = integer_input;
+      float_tensor = float_input;
+    }
+
     // `integer_tensor` should be a 1-D tensor.
-    xla::XlaOp integer_tensor = ctx->Input(0);
     StatusOr<xla::Shape> integer_tensor_shape =
         ctx->builder()->GetShape(integer_tensor);
     OP_REQUIRES_OK(ctx, integer_tensor_shape.status());
@@ -477,7 +572,6 @@ class MergeDedupDataOp : public XlaOpKernel {
     const int64_t num_integers = integer_tensor_shape->dimensions(0);
 
     // `float_tensor` should be a 1-D tensor.
-    xla::XlaOp float_tensor = ctx->Input(1);
     StatusOr<xla::Shape> float_tensor_shape =
         ctx->builder()->GetShape(float_tensor);
     OP_REQUIRES_OK(ctx, float_tensor_shape.status());
@@ -487,7 +581,6 @@ class MergeDedupDataOp : public XlaOpKernel {
     const int64_t num_floats = float_tensor_shape->dimensions(0);
 
     // Get total number of elements in deduplication data tuple.
-    auto builder = ctx->builder();
     const tensorflow::TensorShapeProto& tuple_tensor_shape =
         tuple_mask_tensor_.tensor_shape();
     const int64_t num_tuple_elements = tuple_tensor_shape.dim(0).size();
@@ -509,12 +602,26 @@ class MergeDedupDataOp : public XlaOpKernel {
     std::vector<xla::XlaOp> output_vec;
     output_vec.reserve(num_tuple_elements);
 
+    const int num_cores_per_replica =
+        tpu_embedding_config_.spmd_sharding().num_cores_per_replica();
     // Merge elements of integer and float tensor into a tuple.
     int integer_offset = 0;
     int float_offset = 0;
     for (int i = 0; i < num_tuple_elements; ++i) {
       const int element_type = tuple_mask_tensor_.int_val(2 * i);
-      const int span_size = tuple_mask_tensor_.int_val(2 * i + 1);
+      int span_size = tuple_mask_tensor_.int_val(2 * i + 1);
+      if (spmd_enabled_) {
+        // When TPUEmbedding SPMD is enabled, the `span_size` got from
+        // `tuple_mask` is full size of this span, need to be divided by
+        // `num_cores_per_replica` for local span size.
+        OP_REQUIRES(
+            ctx, span_size % num_cores_per_replica == 0,
+            errors::InvalidArgument(
+                "Expects all `span_size` in tuple mask are divisible by ",
+                "`num_cores_per_replica`. But get span_size = ", span_size,
+                "while num_cores_per_replica = ", num_cores_per_replica));
+        span_size /= num_cores_per_replica;
+      }
       OP_REQUIRES(
           ctx,
           element_type == DedupTupleElementType::kInteger ||
@@ -565,6 +672,12 @@ class MergeDedupDataOp : public XlaOpKernel {
   }
 
  private:
+  // TPU Embedding config.
+  std::string config_string_;
+  tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config_;
+  bool spmd_enabled_ = false;
+
+  // Deduplication data tuple mask string.
   std::string tuple_mask_string_;
   tensorflow::TensorProto tuple_mask_tensor_;
 
@@ -572,6 +685,59 @@ class MergeDedupDataOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("MergeDedupData").AllowVariantTypes(), MergeDedupDataOp);
+
+// This op computes deduplication data tuple mask.
+class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
+ public:
+  explicit ComputeDedupDataTupleMaskOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES(
+        ctx,
+        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
+            config_string_),
+        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                "proto from config attr"));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    VLOG(1) << "Compile ComputeDeduplicationDataShapeOp";
+
+    TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params params;
+    params.tpu_embedding_config.bytes = config_string_.c_str();
+    params.tpu_embedding_config.size = config_string_.size();
+
+    TpuSerializedProto xla_computation_serialized;
+    auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
+      StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
+    });
+
+    params.xla_computation = &xla_computation_serialized;
+    StatusHelper status;
+    params.status = status.c_status;
+
+    stream_executor::tpu::OpsApiFn()
+        ->TpuEmbeddingEngine_DedupDataTupleMaskComputationFn(&params);
+    OP_REQUIRES_OK(ctx, status.status());
+
+    auto xla_computation =
+        stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
+            xla_computation_serialized);
+    const xla::XlaOp deduplication_data_tuple_mask =
+        xla::Call(ctx->builder(), xla_computation, {});
+    ctx->SetOutput(0, deduplication_data_tuple_mask);
+    VLOG(1) << "Compile ComputeDedupDataTupleMaskOp done";
+  }
+
+ private:
+  // TPU Embedding config string.
+  std::string config_string_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ComputeDedupDataTupleMaskOp);
+};
+
+REGISTER_XLA_OP(Name("ComputeDedupDataTupleMask").AllowVariantTypes(),
+                ComputeDedupDataTupleMaskOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

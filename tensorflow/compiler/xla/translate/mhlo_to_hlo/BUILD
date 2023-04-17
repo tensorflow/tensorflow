@@ -2,6 +2,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -64,6 +65,7 @@ cc_library(
         ":location_exporter",
         ":type_to_shape",
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -79,8 +81,8 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:float8",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -89,11 +91,19 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+build_test(
+    name = "operator_writer_gen_build_test",
+    targets = [
+        ":operator_writer_gen",
     ],
 )
 
@@ -164,6 +174,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:SparseTensorEnums",
         "@llvm-project//mlir:Support",
     ],
 )

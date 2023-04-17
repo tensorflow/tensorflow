@@ -1,4 +1,3 @@
-# TODO(jakeharmon): Remove this comment
 load("tsl.bzl", "if_google", "if_oss")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
@@ -264,6 +263,24 @@ config_setting(
 config_setting(
     name = "linux_s390x",
     values = {"cpu": "s390x"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "linux_x86_64_with_onednn_v2",
+    match_all = [
+        ":linux_x86_64",
+        "@org_tensorflow//third_party/mkl_dnn:build_with_onednn_v2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "linux_x86_64_with_onednn_v3",
+    match_all = [
+        ":linux_x86_64",
+        "@org_tensorflow//third_party/mkl_dnn:build_with_onednn_v3",
+    ],
     visibility = ["//visibility:public"],
 )
 

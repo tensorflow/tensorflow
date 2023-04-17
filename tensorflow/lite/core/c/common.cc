@@ -219,11 +219,11 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   return kTfLiteOk;
 }
 
-void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
-                                 bool preserve_data) {
+TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                         bool preserve_data) {
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
-    return;
+    return kTfLiteOk;
   }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
@@ -258,9 +258,15 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
   tflite::PauseHeapMonitoring(/*pause=*/false);
 #endif
   tensor->bytes = num_bytes;
+  if (tensor->data.data == nullptr && num_bytes != 0) {
+    // We are done allocating but tensor is pointing to null and a valid size
+    // was requested, so we error.
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
+TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   return TfLiteTensorResizeMaybeCopy(num_bytes, tensor, true);
 }
 #endif  // TF_LITE_STATIC_MEMORY
@@ -340,7 +346,7 @@ void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
   const auto* tflite_delegate =
       reinterpret_cast<const TfLiteDelegate*>(delegate);
 
-  if (!tflite_delegate->opaque_delegate_builder) return nullptr;
+  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
 
   return tflite_delegate->opaque_delegate_builder->data;
 }

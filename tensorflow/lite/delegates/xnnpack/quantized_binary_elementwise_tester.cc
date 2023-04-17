@@ -27,8 +27,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -73,28 +73,24 @@ void QuantizedBinaryElementwiseTester::Test(
   auto input2_rng = std::bind(input2_distribution, std::ref(rng));
   if (!Input1Static()) {
     T* default_input1_data = default_interpreter->typed_input_tensor<T>(0);
-    std::generate(default_input1_data,
-                  default_input1_data + ComputeSize(Input1Shape()),
-                  std::ref(input1_rng));
+    std::generate_n(default_input1_data, ComputeSize(Input1Shape()),
+                    std::ref(input1_rng));
 
     T* xnnpack_input1_data = delegate_interpreter->typed_input_tensor<T>(0);
-    std::copy(default_input1_data,
-              default_input1_data + ComputeSize(Input1Shape()),
-              xnnpack_input1_data);
+    std::copy_n(default_input1_data, ComputeSize(Input1Shape()),
+                xnnpack_input1_data);
   }
 
   if (!Input2Static()) {
     T* default_input2_data =
         default_interpreter->typed_input_tensor<T>(Input1Static() ? 0 : 1);
-    std::generate(default_input2_data,
-                  default_input2_data + ComputeSize(Input2Shape()),
-                  std::ref(input2_rng));
+    std::generate_n(default_input2_data, ComputeSize(Input2Shape()),
+                    std::ref(input2_rng));
 
     T* xnnpack_input2_data =
         delegate_interpreter->typed_input_tensor<T>(Input1Static() ? 0 : 1);
-    std::copy(default_input2_data,
-              default_input2_data + ComputeSize(Input2Shape()),
-              xnnpack_input2_data);
+    std::copy_n(default_input2_data, ComputeSize(Input2Shape()),
+                xnnpack_input2_data);
   }
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);

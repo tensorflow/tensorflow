@@ -25,7 +25,7 @@ inline Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
     return OkStatus();
   } else {
-    return Status(static_cast<tsl::error::Code>(s.error_code()),
+    return Status(static_cast<absl::StatusCode>(s.error_code()),
                   s.error_message());
   }
 }
@@ -35,7 +35,7 @@ inline ::grpc::Status ToGrpcStatus(const Status& s) {
     return ::grpc::Status::OK;
   } else {
     return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()),
-                          s.error_message());
+                          std::string(s.message()));
   }
 }
 

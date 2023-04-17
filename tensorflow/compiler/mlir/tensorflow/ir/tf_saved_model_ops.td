@@ -80,7 +80,6 @@ def TfSavedModel_Dialect : Dialect {
     and implicitly passed in when the function is invoked from a user-level API.
     TODO(silvasean): Consider replacing tf_saved_model.bound_input arg attrs
     with "get_global @some_global_tensor" in the function body.
-    let  useFoldAPI = kEmitFoldAdaptorFolder;
   }];
 
   let cppNamespace = "::mlir::tf_saved_model";
@@ -122,7 +121,7 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
 
   let arguments = (ins
     StrAttr:$sym_name,
-    ElementsAttr:$value,
+    OptionalAttr<ElementsAttr>:$value,
     TypeAttr:$type,
     UnitAttr:$is_mutable
   );

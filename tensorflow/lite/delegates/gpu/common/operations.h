@@ -79,6 +79,7 @@ enum class OperationType {
   NOT_EQUAL,
   ONE_HOT,
   PAD,
+  PAD_V2,
   POOLING_2D,
   POW,
   PRELU,
@@ -93,8 +94,10 @@ enum class OperationType {
   RESHAPE,
   RESIZE,
   RSQRT,
+  SELECT,
   SELECT_V2,
   SIGMOID,
+  SIGN,
   SIN,
   SLICE,
   SOFTMAX,
@@ -121,7 +124,6 @@ using TensorOrScalarBase = std::variant<std::monostate, Tensor<HWC, DataTypeT>,
 using TensorOrScalar = TensorOrScalarBase<DataType::FLOAT32, float>;
 
 struct Padding2D {
-  Padding2D& operator=(const Padding2D& value);
   bool operator==(const Padding2D& value) const;
   bool operator!=(const Padding2D& value) const;
   Padding2D& operator-(const Padding2D& value);
@@ -134,8 +136,6 @@ struct Padding2D {
 };
 
 struct Padding3D {
-  Padding3D() = default;
-  Padding3D& operator=(const Padding3D& value);
   bool operator==(const Padding3D& value);
   bool operator!=(const Padding3D& value);
   Padding3D& operator-(const Padding3D& value);
@@ -486,6 +486,7 @@ struct PadAttributes {
 
   BHWC prepended;
   BHWC appended;
+  float constant_values = 0;
 };
 
 // @return shape of a tensor after Pad operation is applied to the given input.
@@ -625,6 +626,7 @@ struct QuantizeAndDequantizeAttributes {
 
 struct GatherAttributes {
   Axis axis = Axis::UNKNOWN;
+  Tensor<Linear, DataType::INT32> indices;
 };
 
 struct OneHotAttributes {
@@ -635,6 +637,7 @@ struct OneHotAttributes {
 struct SelectV2Attributes {
   bool broadcast_true = false;
   bool broadcast_false = false;
+  bool scalar_cond = false;
 };
 
 struct CumsumAttributes {

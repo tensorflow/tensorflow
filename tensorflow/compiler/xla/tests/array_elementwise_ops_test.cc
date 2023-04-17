@@ -2480,6 +2480,38 @@ XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
                     ErrorSpec(0, std::numeric_limits<float>::epsilon()));
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, TanF32s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
+  auto a = ConstantR1<float>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f, -3.14159f,
+       3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f,
+       -2.19993846e+10, -1.70141183e+38, -kInf, kInf, kQNaN});
+  Tan(a);
+
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon()));
+}
+
+// TODO(rmlarsen): Fix Sin/Cos for large F64 arguments.
+XLA_TEST_F(ArrayElementwiseOpTest, TanF64s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<double>::infinity();
+  auto kQNaN = std::numeric_limits<double>::quiet_NaN();
+  auto a = ConstantR1<double>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -2.3564024f, -3.14159f, 3.14159f, -0.0f,
+       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, kInf, kInf, kQNaN});
+  Tan(a);
+
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 100 * std::numeric_limits<double>::epsilon()));
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, RealF64s) {
   XlaBuilder builder(TestName());
   std::vector<double> xs = {3.14159f, 0.0f, 1.570796f, -0.78539f};
@@ -3258,7 +3290,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
 
   auto computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_THAT(computation_status.status().error_message(),
+  EXPECT_THAT(computation_status.status().message(),
               ::testing::ContainsRegex("must.*be the identity"));
 }
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -25,17 +26,15 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -49,12 +48,28 @@ namespace {
 using ::mlir::tf_executor::FetchOp;
 using ::mlir::tf_executor::GraphOp;
 using ::mlir::tf_executor::IslandOp;
+using ::mlir::tf_saved_model::GetInitializerFunctions;
 using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
-using ::tensorflow::quantization::kInitOpNamePrefix;
+
+// Array of initializer functions' types. The corresponding initializer
+// functions should be merged in this order. This is because:
+//   1) Variable restoration usually happens before initialization of other
+//   resources when a SavedModel is loaded. This ordering follows this semantic.
+//   2) The `tf_saved_model` dialect requires that the arguments with
+//   `tf_saved_model.index_path` attributes should precede those with
+//   `tf_saved_model.bound_input` attributes. The init function of type
+//   `kTfSavedModelInitializerRestoreType` usually has an argument with
+//   `tf_saved_model.index_path`, whereas the init function of type
+//   `kTfSavedModelInitializerInitType` may have arguments with
+//   `tf_saved_model.bound_input`. This ordering avoids breaking the argument
+//   ordering constraint.
+constexpr std::array<StringRef, 2> kInitializerTypesByMergeOrder = {
+    kTfSavedModelInitializerRestoreType, kTfSavedModelInitializerInitType};
 
 // This pass moves all ops from initializer functions to the main function. A
 // new `tf.NoOp` that has control dependency to the initializer function for
@@ -134,44 +149,17 @@ std::string GetTypeName(const Type type) {
 }
 
 // Retrieves the value of `tf_saved_model.initializer_type` attribute from the
-// initializer function. Returns "unknown_initializer_type" iff the attribute is
-// not set.
+// initializer function. Assumes that there exists such an attribute.
 std::string GetInitializerType(func::FuncOp init_func_op) {
-  const auto initializer_type_attr =
-      init_func_op->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr);
-
-  if (!initializer_type_attr) {
-    init_func_op->emitWarning()
-        << "Initializer func op does not have tf_saved_model.initializer_type "
-           "attribute. Func op: "
-        << init_func_op.getSymName();
-    return "unknown_initializer_type";
-  }
-
-  return initializer_type_attr.str();
+  return init_func_op
+      ->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr)
+      .str();
 }
 
 // An initializer function should satisfy the follwing conditions:
-// 1. The arguments should not be used if the type is "init_op" (it assumes
-//    non-variable resources like tables aren't being initialized by the asset
-//    files passed as arguments).
-// 2. Its GraphOp should only have control outputs.
+// * Its GraphOp should only have control outputs.
+// * "tf_saved_model.initializer_type" attribute must exist.
 LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
-  if (GetInitializerType(init_func_op) == kTfSavedModelInitializerInitType) {
-    for (BlockArgument arg : init_func_op.getArguments()) {
-      if (!arg.use_empty()) {
-        const int arg_idx = arg.getArgNumber();
-        const int num_uses = absl::c_distance(arg.getUses());
-        init_func_op.emitError(absl::StrFormat(
-            "Validation failed for the initializer function: %s. "
-            "The initializer function's arguments should have no "
-            "usages. Instead, argument index: %d has number of usages: %d.",
-            init_func_op.getName().str(), arg_idx, num_uses));
-        return failure();
-      }
-    }
-  }
-
   GraphOp graph_op = GetGraphOpFromFuncOp(init_func_op);
   if (!graph_op) return success();  // Consider empty FuncOp valid.
 
@@ -187,6 +175,15 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
     }
   }
 
+  if (const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
+          kTfSavedModelInitializerTypeAttr);
+      !init_type_attr) {
+    return init_func_op->emitError() << "Initializer func op does not have "
+                                        "tf_saved_model.initializer_type "
+                                        "attribute. Func op: "
+                                     << init_func_op.getSymName();
+  }
+
   return success();
 }
 
@@ -194,23 +191,15 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
 // initializers. The initializer functions are validated for whether it can be
 // moved to the main function. Returns failure() iff validation fails.
 FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> GetInitFuncOps(
-    SessionInitializerOp session_init_op, SymbolTable symbol_table) {
-  const auto initializer_symbol_refs =
-      session_init_op.getInitializersAttr()
-          .getAsValueRange<FlatSymbolRefAttr>();
-
+    ModuleOp module_op) {
   absl::flat_hash_map<std::string, func::FuncOp> init_func_ops;
 
-  for (auto initializer_symbol_ref : initializer_symbol_refs) {
-    auto init_func_op =
-        symbol_table.lookup<func::FuncOp>(initializer_symbol_ref);
-
+  for (func::FuncOp init_func_op : GetInitializerFunctions(module_op)) {
     if (failed(ValidateInitFunc(init_func_op))) {
       return failure();
     }
 
-    const std::string initializer_type = GetInitializerType(init_func_op);
-    init_func_ops[initializer_type] = init_func_op;
+    init_func_ops[GetInitializerType(init_func_op)] = init_func_op;
   }
 
   return init_func_ops;
@@ -255,8 +244,8 @@ void MaybeAddEntryFunctionInput(const StringRef input_name,
 // Creates new arguments to the main function that corresponds to the source
 // function's arguments. Returns the `IRMapping` that contains the
 // relationship.
-IRMapping CloneSrcFuncArgumentsToMainFunc(
-    func::FuncOp src_func_op, func::FuncOp main_func_op) {
+IRMapping CloneSrcFuncArgumentsToMainFunc(func::FuncOp src_func_op,
+                                          func::FuncOp main_func_op) {
   IRMapping mapper{};
 
   for (auto [src_arg_idx, src_arg] :
@@ -310,8 +299,7 @@ SmallVector<Value> CopyOpsToMainFunction(func::FuncOp src_func_op,
   };
 
   // TODO(b/245473863): Handle when assets are actually used in the body.
-  IRMapping mapper =
-      CloneSrcFuncArgumentsToMainFunc(src_func_op, main_func_op);
+  IRMapping mapper = CloneSrcFuncArgumentsToMainFunc(src_func_op, main_func_op);
 
   // Clones each op from src to main_body.
   Block& main_body = main_graph_op.GetBody();
@@ -398,7 +386,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   // initializer_type -> init_func_op mapping.
   SymbolTable symbol_table{module_op};
   FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> init_func_ops =
-      GetInitFuncOps(session_init_op, symbol_table);
+      GetInitFuncOps(module_op);
   if (failed(init_func_ops)) {
     module_op->emitError("Validation on initializer functions failed.");
     return signalPassFailure();
@@ -408,9 +396,14 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   }
 
   // Find the initializer functions and clone their ops to @main.
-  for (auto& [init_type, init_op_func] : *init_func_ops) {
+  for (const StringRef init_type : kInitializerTypesByMergeOrder) {
+    const auto it = init_func_ops->find(init_type);
+    if (it == init_func_ops->end()) continue;
+
+    func::FuncOp init_func_op = it->second;
+
     const SmallVector<Value> init_op_fetches =
-        CopyOpsToMainFunction(init_op_func, main_func_op);
+        CopyOpsToMainFunction(init_func_op, main_func_op);
     if (init_op_fetches.empty()) {
       VLOG(1) << "No fetch values exist from initializer functions.";
       return;
@@ -418,7 +411,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
 
     // Creates a NoOp that has control dependency to the initializer function
     // for non-variables.
-    const Location init_op_loc = CreateInitOpLoc(ctx, init_op_func);
+    const Location init_op_loc = CreateInitOpLoc(ctx, init_func_op);
     IslandOp noop_wrapper_island_op = CreateNoOpWithControlDependencies(
         init_op_loc, main_graph_op,
         /*control_dependencies=*/init_op_fetches);
@@ -427,7 +420,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
         main_graph_op,
         /*fetch_operand=*/noop_wrapper_island_op.getControl());
 
-    symbol_table.erase(init_op_func);
+    symbol_table.erase(init_func_op);
   }
 
   // Empties the "initializers" attribute from the `SessionInitializerOp` since

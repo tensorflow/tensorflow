@@ -19,7 +19,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.trackable import constants
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_contextlib
@@ -121,7 +121,7 @@ class CheckpointInitialValueCallable(object):
 
 
 @tf_export("__internal__.tracking.CheckpointInitialValue", v1=[])
-class CheckpointInitialValue(ops.Tensor):
+class CheckpointInitialValue(object):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
   When supplied as an initial value, objects of this type let a `Variable`
@@ -146,11 +146,10 @@ class CheckpointInitialValue(ops.Tensor):
         {VARIABLE_VALUE_KEY: shape_and_slice})[VARIABLE_VALUE_KEY]
     self._checkpoint_position = checkpoint_position
 
-  def __getattr__(self, attr):
-    try:
-      return getattr(self.wrapped_value, attr)
-    except AttributeError:
-      return self.__getattribute__(attr)
+  def __tf_tensor__(self, dtype=None, name=None):
+    del dtype
+    del name
+    return self.wrapped_value
 
   @property
   def checkpoint_position(self):
@@ -166,7 +165,7 @@ class NoRestoreSaveable(saveable_object.SaveableObject):
     super(NoRestoreSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
-    return control_flow_ops.no_op()
+    return gen_control_flow_ops.no_op()
 
 
 _SlotVariableRestoration = collections.namedtuple(
@@ -668,15 +667,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    # TODO(kathywu): In order to remove this circular dependency, remove all
-    # external calls to _gather_saveables_for_checkpoint.
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.training.saving import saveable_object_util
-    # pylint: enable=g-import-not-at-top
-    if saveable_object_util.trackable_has_serialize_to_tensor(self):
-      return saveable_object_util.saveable_objects_from_trackable(self)
-    else:
-      return getattr(self, "_self_saveable_object_factories", {})
+    return getattr(self, "_self_saveable_object_factories", {})
 
   def _serialize_to_tensors(self):
     """Gathers tensors to save to the checkpoint.

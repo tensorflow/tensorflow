@@ -19,8 +19,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/framework/function.h"
@@ -28,6 +30,14 @@ limitations under the License.
 
 namespace tensorflow {
 // TODO(b/246646753): add more tests.
+
+// The name of the env variable for the caching location of graph optimization.
+// Note: if the caching location retrieved by the env variable is empty it means
+// no caching would be performed.
+static const char kGraphCachingEnvVariableName[] = "TF_GRAPH_CACHING";
+// The threshold of the graph optimization duration to be cached.
+// Note: setting this threshold to 0 means to cache for every function.
+constexpr absl::Duration kCachingThresholdDuration = absl::Seconds(3);
 
 // Generates graph and return information given the input function name,
 // attributes and function definition.
@@ -58,7 +68,32 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
-    Device* default_device, Env* env);
+    Device* default_device, Env* env,
+    OptimizedFunctionGraph::OptimizationSource optimization_source);
+
+// Outputs graph optimization results (as OptimizedFunctionGraphInfo proto),
+// either by running the actual graph optimization passes,  or by reloading from
+// the file cache if existent. If cache loading fails, it goes ahead and runs
+// the graph optimization passes. Returns error if running the optimization
+// passes fails.
+StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
+    const string& function_name, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
+    const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
+    Device* default_device, Env* env,
+    absl::Duration caching_threshold_duration = kCachingThresholdDuration);
+
+// Pre-processes, partitions and post-optimizes the input graph; returns
+// subgraph result (maps from device name to the subgraph); returns error if any
+// optimization or partitioning step fails.
+StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+PreprocessAndPartitionGraph(
+    const std::string& function_name,
+    OptimizedFunctionGraphInfo& input_optimized_graph,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
+    const std::vector<CompositeDevice*>& composite_devices, Env* env);
 
 }  // namespace tensorflow
 

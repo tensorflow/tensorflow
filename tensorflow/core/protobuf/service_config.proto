@@ -7,7 +7,7 @@ import "tensorflow/core/protobuf/data_service.proto";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // Configuration for a tf.data service DispatchServer.
-// Next id: 10
+// Next id: 11
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
   // dispatcher may bind to any available port.
@@ -41,10 +41,13 @@ message DispatcherConfig {
   // heartbeated to the dispatcher. A value of 0 indicates that the timeout
   // should be left to the runtime.
   int64 client_timeout_ms = 8;
+  // How long to wait for a worker to heartbeat before considering it missing.
+  // A value of 0 indicates that the timeout should be left to the runtime.
+  int64 worker_timeout_ms = 10;
 }
 
 // Configuration for a tf.data service WorkerServer.
-// Next id: 12
+// Next id: 13
 message WorkerConfig {
   // The port for the worker to bind to. A value of 0 indicates that the
   // worker may bind to any available port.
@@ -78,6 +81,9 @@ message WorkerConfig {
   // Maximum size of the cross-trainer cache in bytes. If enabled, make sure
   // your training job provides sufficient memory resources.
   int64 cross_trainer_cache_size_bytes = 11;
+  // The maximum size of a distributed snapshot chunk file. A value of 0
+  // indicates that the decision should be left up to the runtime.
+  int64 snapshot_max_chunk_size_bytes = 12;
   // When shutting down a worker, how long to wait for the gRPC server to
   // process the final requests. This is used to achieve clean shutdown in unit
   // tests.

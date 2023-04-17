@@ -21,12 +21,23 @@ limitations under the License.
 
 namespace tflite {
 
+// Converts the provided TFLiteSettings from proto to flatbuffer format.
+// The returned TFLiteSettings pointer is only valid until either the
+// FlatBufferBuilder is modified or when the FlatBufferBuilder's lifetime ends.
+const TFLiteSettings* ConvertFromProto(
+    const proto::TFLiteSettings& proto_settings,
+    flatbuffers::FlatBufferBuilder* builder);
+
 // Converts the provided ComputeSettings from proto to flatbuffer format.
+// The returned ComputeSettings pointer is only valid until either the
+// FlatBufferBuilder is modified or when the FlatBufferBuilder's lifetime ends.
 const ComputeSettings* ConvertFromProto(
     const proto::ComputeSettings& proto_settings,
     flatbuffers::FlatBufferBuilder* builder);
 
 // Converts the provided MiniBenchmarkSettings from proto to flatbuffer format.
+// The returned MinibenchmarkSettings pointer is only valid until either the
+// FlatBufferBuilder is modified or when the FlatBufferBuilder's lifetime ends.
 const MinibenchmarkSettings* ConvertFromProto(
     const proto::MinibenchmarkSettings& proto_settings,
     flatbuffers::FlatBufferBuilder* builder);

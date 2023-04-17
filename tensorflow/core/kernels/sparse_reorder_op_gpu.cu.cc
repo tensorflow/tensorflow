@@ -134,7 +134,6 @@ struct SparseReorderFunctor<GPUDevice, T> {
   template struct functor::SparseReorderFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
-TF_CALL_bfloat16(DEFINE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC);
 DEFINE_GPU_SPEC(bool);
 

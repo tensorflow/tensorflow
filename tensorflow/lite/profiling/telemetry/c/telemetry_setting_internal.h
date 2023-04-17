@@ -30,14 +30,25 @@ struct TfLiteTelemetryConversionMetadata {
 };
 
 struct TfLiteTelemetrySubgraphInfo {
-  std::vector<int32_t> op_types;
   std::vector<TfLiteQuantization> quantizations;
-  std::vector<const char*> custom_op_names;
 };
 
 struct TfLiteTelemetryInterpreterSettings {
   std::unique_ptr<TfLiteTelemetryConversionMetadata> conversion_metadata;
   std::vector<TfLiteTelemetrySubgraphInfo> subgraph_infos;
+};
+
+struct TfLiteTelemetryGpuDelegateSettings {
+  // Reported by "GpuDelegate::DelegatePrepare" event.
+  size_t num_nodes_delegated;
+
+  // Reported by "GpuDelegateKernel::Prepare" event.
+  enum Backend : int {
+    UNKNOWN = 0,
+    OPENCL = 1,
+    OPENGL = 2,
+  };
+  Backend backend;
 };
 
 #ifdef __cplusplus

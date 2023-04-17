@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
+
+#include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -125,11 +126,33 @@ void RecordTFDataServiceClientIterators(
     int64_t worker_uid, data::DeploymentMode deployment_mode,
     const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
+// Records that a tf.data service worker client has been created that will use
+// `data_transfer_protocol` to get data from the worker server.
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol);
+
+// Records that a tf.data service worker client fell back to gRPC rather than
+// use `data_transfer_protocol` because of an error of type `code` with message
+// `error_message`.
+void RecordTFDataServiceDataTransferProtocolFallback(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
+// Records that a tf.data service worker client got an error of non-retriable
+// type `code` with message `error_message` when trying to transfer data over
+// `data_transfer_protocol`.
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
+
+// Records distributed tf.data snapshot bytes committed.
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
 
 // Records the file name read by a tf.data Dataset.
 //
@@ -225,6 +248,13 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& allow_soft_placement,
     const std::string& use_spmd_for_xla_partitioning,
     const std::string& unsupported_reason, bool has_unsupported_features);
+
+// Records whether a graph contains any of the TF1 features
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps);
 
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>

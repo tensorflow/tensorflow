@@ -1,180 +1,26 @@
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
---- stablehlo/stablehlo/dialect/ChloOps.cpp
-+++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -43,7 +43,7 @@
- // support quantization or sparsity.
- #define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
-   LogicalResult Op::inferReturnTypeComponents(                                \
--      MLIRContext* context, Optional<Location> location,                      \
-+      MLIRContext* context, std::optional<Location> location,                 \
-       ValueShapeRange operands, DictionaryAttr attributes,                    \
-       RegionRange regions,                                                    \
-       SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
-@@ -132,7 +132,7 @@
- }
- 
- LogicalResult InferBroadcastBinaryOpReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueRange operands,
-+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
-     DictionaryAttr attributes, Type elementType,
-     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-   // Find broadcast_dimensions.
-@@ -188,8 +188,9 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
--    DictionaryAttr attributes, RegionRange /*regions*/,
-+    MLIRContext* context, std::optional<Location> location,
-+    ValueShapeRange operands, DictionaryAttr attributes,
-+    RegionRange /*regions*/,
-     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-   ShapedType lhsType = operands[0].getType().dyn_cast<ShapedType>();
-   if (!lhsType) {
-@@ -223,8 +224,9 @@
- }
- 
- LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
--    DictionaryAttr attributes, RegionRange /*regions*/,
-+    MLIRContext* context, std::optional<Location> location,
-+    ValueShapeRange operands, DictionaryAttr attributes,
-+    RegionRange /*regions*/,
-     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-   Type elementType = IntegerType::get(context, 1);
-   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
-@@ -250,7 +252,7 @@
- }
- 
- LogicalResult IsInfOp::inferReturnTypes(
--    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
-+    MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
-     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
-   return success();
-@@ -261,7 +263,7 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult IsNegInfOp::inferReturnTypes(
--    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
-+    MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
-     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
-   return success();
-@@ -272,7 +274,7 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult IsPosInfOp::inferReturnTypes(
--    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
-+    MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
-     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
-   return success();
-@@ -284,7 +286,7 @@
- 
- #define BROADCAST_BINARY_OP_DEFS(Op)                                       \
-   LogicalResult Op::inferReturnTypeComponents(                             \
--      MLIRContext* context, Optional<Location> location,                   \
-+      MLIRContext* context, std::optional<Location> location,              \
-       ValueShapeRange operands, DictionaryAttr attributes,                 \
-       RegionRange regions,                                                 \
-       SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {        \
-@@ -346,7 +348,7 @@
- }
- 
- LogicalResult ConstantLikeOp::inferReturnTypeComponents(
--    MLIRContext* /*context*/, Optional<Location> location,
-+    MLIRContext* /*context*/, std::optional<Location> location,
-     ValueShapeRange operands, DictionaryAttr attributes,
-     RegionRange /*regions*/,
-     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-@@ -380,7 +382,7 @@
- }
- 
- LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
--    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
-+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
-     DictionaryAttr, RegionRange,
-     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-   BroadcastSelectOp::Adaptor op(operands.getValues());
-@@ -418,7 +420,7 @@
- //===----------------------------------------------------------------------===//
- 
- void RankSpecializationClusterOp::getSuccessorRegions(
--    Optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
-+    std::optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
-     SmallVectorImpl<RegionSuccessor>& regions) {
-   // RankSpecializationClusterOp has unconditional control flows into the region
-   // and back to the parent, so return the correct RegionSuccessor purely based
-@@ -455,8 +457,8 @@
- //===----------------------------------------------------------------------===//
- 
- LogicalResult TopKOp::inferReturnTypeComponents(
--    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
--    DictionaryAttr attributes, RegionRange regions,
-+    MLIRContext* context, std::optional<Location> location,
-+    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
-     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-   Builder builder(context);
-   TopKOp::Adaptor adaptor(operands, attributes, regions);
-@@ -498,8 +500,9 @@
- }
- 
- LogicalResult ConstantOp::inferReturnTypes(
--    MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
--    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-+    MLIRContext*, std::optional<Location>, ValueRange,
-+    DictionaryAttr attributes, RegionRange,
-+    SmallVectorImpl<Type>& inferredReturnTypes) {
-   Type type = attributes.get("value").cast<TypedAttr>().getType();
-   inferredReturnTypes.push_back(type);
-   return success();
-@@ -526,12 +529,11 @@
-   // We don't have any special restrictions on what can be inlined into
-   // destination regions (e.g. while/conditional bodies). Always allow it.
-   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
--                       BlockAndValueMapping& valueMapping) const final {
-+                       IRMapping& valueMapping) const final {
-     return true;
-   }
-   // Operations in CHLO dialect are always legal to inline since they are pure.
--  bool isLegalToInline(Operation*, Region*, bool,
--                       BlockAndValueMapping&) const final {
-+  bool isLegalToInline(Operation*, Region*, bool, IRMapping&) const final {
-     return true;
-   }
- };
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -2484,13 +2484,13 @@
-   // We don't have any special restrictions on what can be inlined into
-   // destination regions (e.g. while/conditional bodies). Always allow it.
-   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
--                       BlockAndValueMapping& valueMapping) const final {
-+                       IRMapping& valueMapping) const final {
-     return true;
-   }
-   // Operations in StableHLO dialect are always legal to inline since they are
-   // pure.
-   bool isLegalToInline(Operation*, Region*, bool,
--                       BlockAndValueMapping&) const final {
-+                       IRMapping&) const final {
-     return true;
-   }
- };
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -2186,7 +2186,9 @@
-   }
- 
-   auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
--    return sliceSizes.getValues<int64_t>()[index];
-+    return sliceSizes.getValues<int64_t>()[index] == -1
-+               ? ShapedType::kDynamic
-+               : sliceSizes.getValues<int64_t>()[index];
-   };
- 
-   return inferGatherReturnTypeComponents(
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -671,6 +671,7 @@
+     ],
+     strip_include_prefix = ".",
+     deps = [
++        ":base",
+         ":chlo_ops",
+         ":stablehlo_ops",
+         ":stablehlo_ops_inc_gen",
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+@@ -17,3 +17,10 @@
+ # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
+ from ._stablehlo_ops_gen import *
+ from .._mlir_libs._stablehlo import *
++
++
++def get_earliest_forward_compatible_version():
++  """Return the earliest StableHLO version that the current StableHLO version
++    is still forward compatible with.
++  """
++  return "0.9.0"
 

@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/mathutil.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
 #include "tensorflow/tsl/platform/numbers.h"
 
 namespace stream_executor {
@@ -141,15 +141,11 @@ bool ThreadDimOk(const DeviceDescription &device_description,
   return ok;
 }
 
-uint64_t DivideCeil(uint64_t x, uint64_t y) {
-  return port::MathUtil::CeilOfRatio(x, y);
-}
-
 void CalculateDimensionality(const DeviceDescription &device_description,
                              int64_t element_count, int64_t *threads_per_block,
                              int64_t *block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
-  *block_count = port::MathUtil::CeilOfRatio(element_count, *threads_per_block);
+  *block_count = tsl::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {
     CHECK_LE(element_count, *threads_per_block);
     *threads_per_block = element_count;

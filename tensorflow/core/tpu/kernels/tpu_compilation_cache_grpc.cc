@@ -16,16 +16,16 @@ limitations under the License.
 
 #include <functional>
 
-#include "grpcpp/impl/channel_interface.h"
-#include "grpcpp/impl/client_unary_call.h"
-#include "grpcpp/impl/service_type.h"
-#include "grpcpp/impl/rpc_service_method.h"
-#include "grpcpp/support/async_stream.h"
-#include "grpcpp/support/async_unary_call.h"
-#include "grpcpp/support/client_callback.h"
-#include "grpcpp/support/method_handler.h"
-#include "grpcpp/support/server_callback.h"
-#include "grpcpp/support/sync_stream.h"
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/channel_interface.h"
+#include "grpcpp/impl/codegen/client_callback.h"
+#include "grpcpp/impl/codegen/client_unary_call.h"
+#include "grpcpp/impl/codegen/method_handler.h"
+#include "grpcpp/impl/codegen/rpc_service_method.h"
+#include "grpcpp/impl/codegen/server_callback.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
 
 namespace tensorflow {
 namespace tpu {

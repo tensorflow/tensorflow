@@ -19,13 +19,16 @@ import functools
 import os
 import sys
 
+from absl import logging
+
+from tensorflow.core.function.capture import restore_captures
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint import restore
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -36,10 +39,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import fingerprinting
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
@@ -48,7 +54,6 @@ from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
@@ -86,7 +91,7 @@ def _unused_handle():
       "Try saving a tf.function with input_signature instead, and file a bug if"
       " there are still issues.")
 
-  assert_op = control_flow_ops.Assert(
+  assert_op = control_flow_assert.Assert(
       array_ops.placeholder_with_default(False, shape=()), [error_message])
   if (not context.executing_eagerly()
      ) and ops.get_default_graph().building_function:
@@ -116,7 +121,7 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+  def _call_flat(self, args, captured_inputs):
 
     def get_handle(x):
       return x.handle if distribute_utils.is_distributed_variable(x) else x
@@ -125,7 +130,7 @@ class _WrapperFunction(function.ConcreteFunction):
       return _unused_handle() if distribute_utils.is_distributed_variable(x)   \
           else x
 
-    if (ds_context.get_replica_context() is not None or
+    if (distribute_lib.get_replica_context() is not None or
         values_util.is_saving_non_distributed()):
       # If we're in the replica context or are saving a non-distributed version
       # of the model, we resolve the captured variables to the corresponding
@@ -138,8 +143,7 @@ class _WrapperFunction(function.ConcreteFunction):
       captured_inputs = list(map(get_handle, captured_inputs))
     else:  # cross-replica context
       captured_inputs = list(map(get_unused_handle, captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
-                                                    cancellation_manager)
+    return super()._call_flat(args, captured_inputs)
 
 
 class Loader(object):
@@ -163,6 +167,12 @@ class Loader(object):
     self._restored_concrete_functions = set()
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
+
+    # Metagraph has a mapping from FunctionDef name to aliases
+    self._concrete_function_aliases = meta_graph.meta_info_def.function_aliases
+    # Create a mapping from alias to Function, which can be used with
+    # SaveOptions
+    self.function_aliases = {}
 
     self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
@@ -369,7 +379,7 @@ class Loader(object):
     concrete_function = self._concrete_functions[concrete_function_name]
     proto = self._proto.concrete_functions[concrete_function_name]
     inputs = [nodes[node_id] for node_id in proto.bound_inputs]
-    function_saved_model_utils.restore_captures(concrete_function, inputs)
+    restore_captures.restore_captures(concrete_function, inputs)
 
   def _initialize_loaded_nodes(self):
     nodes = {}
@@ -677,6 +687,18 @@ class Loader(object):
         proto, self._concrete_functions)
     for name in proto.concrete_functions:
       self._setup_function_captures(name, dependencies)
+
+    if self._save_options.experimental_load_function_aliases:
+      for name in proto.concrete_functions:
+        if name in self._concrete_function_aliases:
+          alias = self._concrete_function_aliases[name]
+          self.function_aliases[alias] = fn
+          # We only need to save the mapping from alias to a tf.Function
+          # once even though it can appear multiple times in
+          # self._concrete_function_aliases due to one-to-many mapping from
+          # tf.Function to concrete functions.
+          break
+
     return fn, setattr
 
   def _recreate_bare_concrete_function(self, proto, dependencies):
@@ -984,11 +1006,31 @@ def load_partial(export_dir, filters, tags=None, options=None):
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
       root.graph_debug_info = debug_info
+  # For privacy concerns, please see the note in
+  #  tensorflow/cc/saved_model/metrics.h
+  metrics.SetReadPath(saved_model_path=str(export_dir))
 
   # Read and log SavedModel checksum, if it is nonzero.
-  saved_model_checksum = fingerprinting.MaybeReadSavedModelChecksum(export_dir)
-  if saved_model_checksum != 0:
-    metrics.SetReadFingerprint(saved_model_checksum=str(saved_model_checksum))
+  try:
+    fingerprint = fingerprinting.read_fingerprint(export_dir)
+  except FileNotFoundError:
+    logging.exception("Unable to load fingerprint when loading saved model.")
+    singleprint = ""
+  else:
+    metrics.SetReadFingerprint(
+        fingerprint=fingerprinting_utils.to_proto(
+            fingerprint).SerializeToString())
+    singleprint = fingerprint.singleprint()
+  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+
+  if options.experimental_load_function_aliases:
+    if hasattr(root, "function_aliases"):
+      raise ValueError(
+          "Could not load with experimental_load_function_aliases option"
+          " because the top-level object already has an attributed with name"
+          " 'function_aliases'"
+      )
+    root.function_aliases = loader.function_aliases
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

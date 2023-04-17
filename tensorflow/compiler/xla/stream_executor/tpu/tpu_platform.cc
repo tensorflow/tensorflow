@@ -208,7 +208,7 @@ bool RegisterTpuPlatform() {
     tpu_registered_platform = new TpuPlatform();
     std::unique_ptr<stream_executor::Platform> platform(
         tpu_registered_platform);
-    SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+    TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
         std::move(platform)));
     tpu_platform_registered = true;
   }

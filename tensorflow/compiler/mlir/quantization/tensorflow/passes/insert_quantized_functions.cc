@@ -119,8 +119,9 @@ llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
     // Uniform quantized opset is not supported for weight-only as inputs for
     // weight quantization are floats. And only dequantize_i8 is used from the
     // quantized function library.
-    function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR},
-                            {OpSet::XLA, kQuantizedFunctionLibraryInMLIR}};
+    function_library_map = {
+        {OpSet::TF, kQuantizedFunctionLibraryInMLIR},
+        {OpSet::XLA, kQuantizedFunctionLibraryInMLIR_XLA_WEIGHT_ONLY}};
   } else {
     function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR},
                             {OpSet::UNIFORM_QUANTIZED,
@@ -170,9 +171,8 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
   StatusScopedDiagnosticHandler diagnostic_handler(context);
   if (failed(pm.run(*module_ref))) {
-    emitError(module.getLoc())
-        << "failed to apply the optimization: "
-        << diagnostic_handler.ConsumeStatus().error_message();
+    emitError(module.getLoc()) << "failed to apply the optimization: "
+                               << diagnostic_handler.ConsumeStatus().message();
     signalPassFailure();
     return;
   }

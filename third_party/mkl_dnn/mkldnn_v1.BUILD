@@ -2,7 +2,7 @@ load("@org_tensorflow//tensorflow/tsl:tsl.bzl", "tf_openmp_copts")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl")
 load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl_ml")
-load("@org_tensorflow//third_party:common.bzl", "template_rule")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 exports_files(["LICENSE"])
 
@@ -65,14 +65,14 @@ _DNNL_RUNTIME_THREADPOOL = {
 
 _DNNL_RUNTIME_THREADPOOL.update(_CMAKE_COMMON_LIST)
 
-template_rule(
+expand_template(
     name = "dnnl_config_h",
-    src = "include/oneapi/dnnl/dnnl_config.h.in",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
+    template = "include/oneapi/dnnl/dnnl_config.h.in",
 )
 
 # Create the file dnnl_version.h with DNNL version numbers.
@@ -82,16 +82,16 @@ template_rule(
 # set to "version_major.version_minor.version_patch". The git hash version can
 # be set to NA.
 # TODO(agramesh1): Automatically get the version numbers from CMakeLists.txt.
-template_rule(
+expand_template(
     name = "dnnl_version_h",
-    src = "include/oneapi/dnnl/dnnl_version.h.in",
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "2",
         "@DNNL_VERSION_MINOR@": "7",
-        "@DNNL_VERSION_PATCH@": "1",
+        "@DNNL_VERSION_PATCH@": "3",
         "@DNNL_VERSION_HASH@": "N/A",
     },
+    template = "include/oneapi/dnnl/dnnl_version.h.in",
 )
 
 _COPTS_LIST = select({
@@ -155,6 +155,7 @@ cc_library(
         ],
         exclude = [
             "src/cpu/aarch64/**",
+            "src/cpu/rv64/**",
             "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
         ],
     ),

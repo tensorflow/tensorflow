@@ -33,17 +33,15 @@ class DTensorMlirPassRunner {
  public:
   DTensorMlirPassRunner();
 
-  // Translates and transforms `graph` to MLIR ModuleOp.
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> RunOnGraph(
+  // Imports Graph to MLIR module in tf_execute Dialect with DTensor attributes.
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportGraphToMlir(
       const DeviceSet& device_set, bool is_func,
-      FunctionLibraryDefinition* flib_def, const Graph& graph,
+      const dtensor::Mesh& default_mesh,
+      const FunctionLibraryDefinition& flib_def, const Graph& graph,
       Fprint128 cache_key);
 
-  // Converts MLIR to graphdef for execution and adds it to Graph.
-  Status AddMlirModuleToGraph(mlir::ModuleOp module,
-                              FunctionLibraryDefinition* flib_def,
-                              absl::flat_hash_set<Node*>& control_ret_nodes,
-                              std::unique_ptr<Graph>* out_graph);
+  // Transforms input MLIR module with DTensor Pass pipeline.
+  Status Run(mlir::ModuleOp module);
 
  private:
   // N.B. op_registration_ must be initialized before context/pass-manager to

@@ -180,7 +180,6 @@ namespace functor {
 // clang-format on
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 
@@ -193,7 +192,6 @@ TF_CALL_bfloat16(DECLARE_GPU_SPEC);
       ExtractVolumePatchesOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 

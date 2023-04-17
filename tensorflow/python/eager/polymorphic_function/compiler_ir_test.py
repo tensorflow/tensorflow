@@ -23,6 +23,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -43,9 +44,9 @@ class CompilerIrTest(xla_test.XLATestCase):
 
     if hlo_1 != hlo_2:
       self.fail(
-          'The tensor_spec way experimental_get_compiler_ir give diff result to'
-          f' normal experimental_get_compiler_ir. \nhlo_1:\n{hlo_1}'
-          f'\nhlo_2:\n{hlo_2}\n'
+          'The tensor_spec way experimental_get_compiler_ir give diff result'
+          ' to normal experimental_get_compiler_ir.'
+          f' \nhlo(concrete_input):\n{hlo_1}\nhlo(tensor_spec):\n{hlo_2}\n'
       )
 
   def test_zero_input(self):
@@ -126,30 +127,112 @@ class CompilerIrTest(xla_test.XLATestCase):
       else:
         _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
 
-  def test_unsupported_capture_outside_variable(self):
-    """Those cases define tf.Variable outside function body."""
+  def test_make_handledata_tensor_specs(self):
     with ops.device('device:{}:0'.format(self.device)):
-      error_msg = (
-          'The function to be lowered uses some tf.Variable defined outside_'
-          '_the_function body.'
-      )
-
-      v = variables.Variable([0.1, 0.1])
+      v1 = variables.Variable([0.1, 0.1])
+      v3 = variables.Variable([1], dtype=dtypes.int32)
 
       @polymorphic_function.function(jit_compile=True)
       def f4(a, b):
-        return (a + b) * v
+        return (a + b) * v1 - math_ops.cast(v3, dtypes.float32)
 
       a = constant_op.constant([1.1, 1.1])
       b = constant_op.constant([2.2, 2.2])
 
       kwargs = {'b': a, 'a': b}
-      with self.assertRaisesRegex(ValueError, error_msg):
-        kwargs_spec = nest.map_structure(
-            tensor_spec.TensorSpec.from_tensor, kwargs
-        )
-        concrete_fn = f4.get_concrete_function(**kwargs_spec)
-        _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
+
+      kwargs_spec = nest.map_structure(
+          tensor_spec.TensorSpec.from_tensor, kwargs
+      )
+      concrete_fn = f4.get_concrete_function(**kwargs_spec)
+      captured_inputs = concrete_fn.captured_inputs
+      captured_spec = compiler_ir.make_handledata_tensor_specs(captured_inputs)
+      self.assertEqual(len(captured_spec), 2)
+      self.assertEqual(
+          captured_spec[0], tensor_spec.TensorSpec((2), dtype=dtypes.float32)
+      )
+      self.assertEqual(
+          captured_spec[1], tensor_spec.TensorSpec((1), dtype=dtypes.int32)
+      )
+
+  def test_capture_variable_1(self):
+    if 'gpu' in self.device.lower():
+      self.skipTest('Skip test on GPU')
+
+    with ops.device('device:{}:0'.format(self.device)):
+      v1 = variables.Variable([0.1, 0.1])
+      v3 = variables.Variable([1], dtype=dtypes.int32)
+
+      @polymorphic_function.function(jit_compile=True)
+      def f4(a, b):
+        return (a + b) * v1 - math_ops.cast(v3, dtypes.float32)
+
+      a = constant_op.constant([1.1, 1.1])
+      b = constant_op.constant([2.2, 2.2])
+
+      kwargs = {'b': a, 'a': b}
+      self._compareTwoMethodsCompilerIROutput(f4, [], kwargs)
+
+  def test_capture_variable_2(self):
+    if not test_util.is_mlir_bridge_enabled():
+      self.skipTest('Non_milr_bridge will fail here.')
+
+    if 'gpu' in self.device.lower():
+      self.skipTest('Skip test on GPU')
+
+    with ops.device('device:{}:0'.format(self.device)):
+      v2 = variables.Variable(2.0, dtype=dtypes.float32)
+      v3 = variables.Variable(3.0, dtype=dtypes.float32)
+
+      @polymorphic_function.function(jit_compile=True)
+      def fun_tf(x):
+        # Defining tf.constants inside func_body is okay.
+        t4 = constant_op.constant(4.0, dtype=dtypes.float32)
+        t5 = constant_op.constant(5.0, dtype=dtypes.float32)
+        return (x * v3 + t4 + v2) * v3 + t5
+
+      x = constant_op.constant(2.0, dtype=dtypes.float32)
+      self._compareTwoMethodsCompilerIROutput(fun_tf, [x], {})
+
+  def test_capture_constants(self):
+    if 'gpu' in self.device.lower():
+      self.skipTest('Skip test on GPU')
+
+    with ops.device('device:{}:0'.format(self.device)):
+      v2 = variables.Variable(2.0, dtype=dtypes.float32)
+      v3 = variables.Variable(3.0, dtype=dtypes.float32)
+      t4 = constant_op.constant([4.0, 5.0], dtype=dtypes.float32)
+      t5 = constant_op.constant([5.0, 6.0], dtype=dtypes.float32)
+
+      @polymorphic_function.function(jit_compile=True)
+      def fun_tf(x):
+        return (x * v3 + t4 + v2) * v3 + t5
+
+      x = constant_op.constant([2.0, 3.0], dtype=dtypes.float32)
+      self._compareTwoMethodsCompilerIROutput(fun_tf, [x], {})
+
+  def test_from_concrete_function_with_args(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      v2 = variables.Variable(2.0, dtype=dtypes.float32)
+      v3 = variables.Variable(3.0, dtype=dtypes.float32)
+      # Capturing tf.constants outside func_body is not okay.
+      t4 = constant_op.constant(4.0, dtype=dtypes.float32)
+      t5 = constant_op.constant(5.0, dtype=dtypes.float32)
+
+      @polymorphic_function.function(jit_compile=True)
+      def fun_tf(x):
+        return (x * v3 + t4 + v2) * v3 + t5
+
+      concrete_fn = fun_tf.get_concrete_function(
+          tensor_spec.TensorSpec((None,), dtype=dtypes.float32)
+      )
+
+      x = tensor_spec.TensorSpec((10,), dtype=dtypes.float32)
+      hlo_1 = compiler_ir.from_concrete_function(concrete_fn, [x])(stage='hlo')
+      self.assertIn('f32[10]', hlo_1)
+      x = tensor_spec.TensorSpec((20,), dtype=dtypes.float32)
+      hlo_2 = compiler_ir.from_concrete_function(concrete_fn, [x])(stage='hlo')
+      self.assertIn('f32[20]', hlo_2)
 
 
 if __name__ == '__main__':

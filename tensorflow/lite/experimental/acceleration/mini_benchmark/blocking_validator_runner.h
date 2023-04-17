@@ -49,7 +49,7 @@ class BlockingValidatorRunner {
 
  private:
   int per_test_timeout_ms_ = 0;
-  std::string storage_path_;
+  const std::string storage_path_base_;
   std::unique_ptr<ValidatorRunnerImpl> validator_runner_impl_;
 };
 

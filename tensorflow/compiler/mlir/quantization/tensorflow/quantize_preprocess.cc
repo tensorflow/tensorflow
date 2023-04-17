@@ -15,11 +15,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -28,6 +30,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/debugging/mlir_dump.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
@@ -64,8 +67,9 @@ absl::Status RunPassesOnModuleOp(const absl::string_view mlir_dump_file_name,
 
 absl::Status PreprocessAndFreezeGraph(
     const absl::string_view mlir_dump_file_prefix, const bool is_inliner_run,
+    const absl::flat_hash_set<std::string>& noinline_functions,
     mlir::ModuleOp module_op, mlir::MLIRContext* context,
-    llvm::Optional<Session*> session) {
+    std::optional<Session*> session) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);
@@ -82,6 +86,12 @@ absl::Status PreprocessAndFreezeGraph(
   mlir::PassManager pm_after_freezing_variables(context);
   pm_after_freezing_variables.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm_after_freezing_variables.addPass(mlir::createCanonicalizerPass());
+
+  // Makes certain functions immune to the `InlinerPass`. Used to preserve
+  // aliased functions.
+  pm_after_freezing_variables.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateMarkFunctionsNoinlinePass(std::vector<std::string>(
+          noinline_functions.begin(), noinline_functions.end())));
   if (is_inliner_run) {
     pm_after_freezing_variables.addPass(mlir::createInlinerPass());
   }

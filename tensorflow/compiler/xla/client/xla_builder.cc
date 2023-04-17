@@ -1090,7 +1090,7 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
     if (!status_or_shape.status().ok()) {
       return InvalidArgument(
           "%s Input scalar shapes may have been changed to non-scalar shapes.",
-          status_or_shape.status().error_message());
+          status_or_shape.status().message());
     }
 
     return AddOpWithShape(triop, status_or_shape.value(),
@@ -4044,7 +4044,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
         *const_instr.mutable_shape() = instr_proto->shape();
       }
-      *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+      *const_instr.mutable_opcode() =
+          std::string(HloOpcodeString(HloOpcode::kConstant));
       const_instr.set_id(handle);
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
@@ -4220,7 +4221,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
 
   const int64_t handle = GetNextId();
   instr.set_id(handle);
-  instr.set_opcode(HloOpcodeString(opcode));
+  *instr.mutable_opcode() = std::string(HloOpcodeString(opcode));
   if (instr.name().empty()) {
     instr.set_name(instr.opcode());
   }
@@ -5111,6 +5112,9 @@ XlaOp Cos(const XlaOp operand) {
 }
 XlaOp Sin(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSin, operand);
+}
+XlaOp Tan(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kTan, operand);
 }
 XlaOp Tanh(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kTanh, operand);

@@ -45,6 +45,174 @@ See [sample_stable_delegate_external_test.cc](https://github.com/tensorflow/tens
 for a standalone test driver that loads the sample stable delegate dynamically
 and runs inference on a TF Lite model.
 
+### Delegate Test Suite
+
+The Delegate Test Suite provides correctness testing for a delegate at the
+operation level. It checks whether a delegate produces results that meet the
+accuracy thresholds of the supported operations.
+
+Support for stable delegate binaries has been integrated into the Delegate Test
+Suite.
+
+#### Run on Android
+
+The following instructions show how to run the test suite on Android.
+
+First, we build the sample stable delegate shared library file,
+`libtensorflowlite_sample_stable_delegate.so`, which we will later load
+dynamically as part of the test:
+
+```bash
+bazel build -c opt --config=android_arm64 //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate
+
+adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so /data/local/tmp
+```
+
+Next, we create a configuration file for the component that loads the stable
+delegate:
+
+```bash
+adb shell 'echo "{
+  \"stable_delegate_loader_settings\": {
+    \"delegate_path\": \"/data/local/tmp/libtensorflowlite_sample_stable_delegate.so\"
+  }
+  // Add concrete delegate settings for the test target delegate.
+}
+"> /data/local/tmp/stable_delegate_settings.json'
+```
+
+Then, we build the test suite itself:
+
+```bash
+bazel build -c opt --config=android_arm64 //tensorflow/lite/kernels:combined_all_kernel_tests
+
+adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/kernels/combined_all_kernel_tests /data/local/tmp
+```
+
+Now, we can execute the test suite with providing the settings file:
+
+```bash
+adb shell "/data/local/tmp/combined_all_kernel_tests \
+  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json"
+```
+
+The test suite will show the following output in console after all tests are
+passed:
+
+```
+...
+[==========] 3338 tests from 349 test suites ran. (24555 ms total)
+[  PASSED  ] 3338 tests.
+```
+
 ### Benchmark Tools
 
-See the [Delegate Performance Benchmark app](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md)
+#### Delegate Performance Benchmark app
+
+The [Delegate Performance Benchmark app](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md)
+is the recommended tool to test the latency and accuracy of a stable delegate.
+
+#### TF Lite Benchmark Tool
+
+During early development stages of a new stable delegate it can also be useful
+to directly load the delegate's shared library file into TF Lite's
+`benchmark_model` tool, because this development workflow works on regular linux
+desktop machines and also allows users to benchmark any TF Lite model file they
+are interested in.
+
+Support for stable delegate binaries has been integrated into TF Lite's
+[`benchmark_model`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
+CLI tool. We can use this tool to test the sample stable delegate with a
+provided TF Lite model file.
+
+##### A) Run on a regular linux host
+
+The following instructions show how to run the
+tool on regular desktop linux machine.
+
+First, we build the sample stable delegate shared library file,
+`libtensorflowlite_sample_stable_delegate.so`, which we will later load
+dynamically with the `benchmark_model` tool:
+
+```bash
+bazel build -c opt //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate
+```
+
+Next, we create a configuration file for the component that loads the stable
+delegate:
+
+```bash
+echo "{
+  \"stable_delegate_loader_settings\": {
+    \"delegate_path\": \"$(bazel info -c opt bazel-bin)/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so\"
+  }
+  // Add concrete delegate settings for the test target delegate.
+}
+"> stable_delegate_settings.json
+```
+
+Then, we build the `benchmark_model` tool itself:
+
+```bash
+bazel build -c opt //tensorflow/lite/tools/benchmark:benchmark_model
+```
+
+Now, we can execute the benchmark tool.  We provide the settings file together
+with a TF Lite file that contains ADD operations.  We do this because the sample
+stable delegate only support ADD and SUB:
+
+```bash
+$(bazel info -c opt bazel-bin)/tensorflow/lite/tools/benchmark/benchmark_model \
+  --stable_delegate_settings_file=$(pwd)/stable_delegate_settings.json \
+    --graph=$(pwd)/tensorflow/lite/testdata/add.bin
+```
+
+Note that when you make changes to the sample delegate you need to rebuild the
+delegate's shared library file, in order for benchmark_model to pick up the new
+delegate code.
+
+##### B) Run on Android
+
+The following instructions show how to run the tool on Android.
+
+First, we build the sample stable delegate shared library file,
+`libtensorflowlite_sample_stable_delegate.so`, which we will later load
+dynamically with the `benchmark_model` tool:
+
+```bash
+bazel build -c opt --config=android_arm64 //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate
+
+adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so /data/local/tmp
+```
+
+Next, we create a configuration file for the component that loads the stable
+delegate:
+
+```bash
+adb shell 'echo "{
+  \"stable_delegate_loader_settings\": {
+    \"delegate_path\": \"/data/local/tmp/libtensorflowlite_sample_stable_delegate.so\"
+  }
+  // Add concrete delegate settings for the test target delegate.
+}
+"> /data/local/tmp/stable_delegate_settings.json'
+```
+
+Then, we build the `benchmark_model` tool itself:
+
+```bash
+bazel build -c opt --config=android_arm64 //tensorflow/lite/tools/benchmark:benchmark_model
+
+adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/tools/benchmark/benchmark_model /data/local/tmp
+```
+
+Now, we can execute the benchmark tool. We provide the settings file together
+with a TF Lite file that contains ADD operations. We do this because the sample
+stable delegate only support ADD and SUB:
+
+```bash
+adb push tensorflow/lite/testdata/add.bin /data/local/tmp/add.bin
+adb shell "/data/local/tmp/benchmark_model \
+  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
+  --graph=/data/local/tmp/add.bin"
+```

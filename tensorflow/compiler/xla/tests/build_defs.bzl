@@ -30,20 +30,15 @@ def xla_test(
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
-    This rule generates a cc_test target for one or more XLA backends and also a
-    platform-agnostic cc_library rule. The arguments are identical to cc_test with
-    two additions: 'backends' and 'backend_args'. 'backends' specifies the
-    backends to generate tests for ("cpu", "gpu"), and
-    'backend_args'/'backend_tags' specifies backend-specific args parameters to
-    use when generating the cc_test.
+    This rule generates a cc_test target for one or more XLA backends. The arguments
+    are identical to cc_test with two additions: 'backends' and 'backend_args'.
+    'backends' specifies the backends to generate tests for ("cpu", "gpu"), and
+    'backend_args'/'backend_tags' specifies backend-specific args parameters to use
+    when generating the cc_test.
 
     The name of the cc_tests are the provided name argument with the backend name
-    appended, and the cc_library target name is the provided name argument with
-    "_lib" appended. For example, if name parameter is "foo_test", then the cpu
-    test target will be "foo_test_cpu" and the cc_library target is "foo_lib".
-
-    The cc_library target can be used to link with other plugins outside of
-    xla_test.
+    appended. For example, if name parameter is "foo_test", then the cpu
+    test target will be "foo_test_cpu".
 
     The build rule also defines a test suite ${name} which includes the tests for
     each of the supported backends.
@@ -108,14 +103,6 @@ def xla_test(
         for backend in backends
         if backend not in disabled_backends
     ]
-
-    native.cc_library(
-        name = "%s_lib" % name,
-        srcs = srcs,
-        copts = copts,
-        testonly = True,
-        deps = deps,
-    )
 
     for backend in backends:
         test_name = "%s_%s" % (name, backend)

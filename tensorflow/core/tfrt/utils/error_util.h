@@ -30,43 +30,43 @@ tensorflow::Status CreateTfErrorStatus(const DecodedDiagnostic& error);
 tensorflow::Status ToTfStatus(const AsyncValue* av);
 
 inline std::string MakeStatusString(tensorflow::Status status) {
-  switch (status.code()) {
-    case tensorflow::error::OK:
+  switch (static_cast<absl::StatusCode>(status.code())) {
+    case absl::StatusCode::kOk:
       return "OK";
-    case tensorflow::error::CANCELLED:
-      return absl::StrCat("Cancelled: ", status.error_message());
-    case tensorflow::error::UNKNOWN:
-      return absl::StrCat("Unknown: ", status.error_message());
-    case tensorflow::error::INVALID_ARGUMENT:
-      return absl::StrCat("Invalid argument: ", status.error_message());
-    case tensorflow::error::DEADLINE_EXCEEDED:
-      return absl::StrCat("Deadline exceeded: ", status.error_message());
-    case tensorflow::error::NOT_FOUND:
-      return absl::StrCat("Not found: ", status.error_message());
-    case tensorflow::error::ALREADY_EXISTS:
-      return absl::StrCat("Already exists: ", status.error_message());
-    case tensorflow::error::PERMISSION_DENIED:
-      return absl::StrCat("Permission denied: ", status.error_message());
-    case tensorflow::error::UNAUTHENTICATED:
-      return absl::StrCat("Unauthenticated: ", status.error_message());
-    case tensorflow::error::RESOURCE_EXHAUSTED:
-      return absl::StrCat("Resource exhausted: ", status.error_message());
-    case tensorflow::error::FAILED_PRECONDITION:
-      return absl::StrCat("Failed precondition: ", status.error_message());
-    case tensorflow::error::ABORTED:
-      return absl::StrCat("Aborted: ", status.error_message());
-    case tensorflow::error::OUT_OF_RANGE:
-      return absl::StrCat("Out of range: ", status.error_message());
-    case tensorflow::error::UNIMPLEMENTED:
-      return absl::StrCat("Unimplemented: ", status.error_message());
-    case tensorflow::error::INTERNAL:
-      return absl::StrCat("Internal: ", status.error_message());
-    case tensorflow::error::UNAVAILABLE:
-      return absl::StrCat("Unavailable: ", status.error_message());
-    case tensorflow::error::DATA_LOSS:
-      return absl::StrCat("Data loss: ", status.error_message());
+    case absl::StatusCode::kCancelled:
+      return absl::StrCat("Cancelled: ", status.message());
+    case absl::StatusCode::kUnknown:
+      return absl::StrCat("Unknown: ", status.message());
+    case absl::StatusCode::kInvalidArgument:
+      return absl::StrCat("Invalid argument: ", status.message());
+    case absl::StatusCode::kDeadlineExceeded:
+      return absl::StrCat("Deadline exceeded: ", status.message());
+    case absl::StatusCode::kNotFound:
+      return absl::StrCat("Not found: ", status.message());
+    case absl::StatusCode::kAlreadyExists:
+      return absl::StrCat("Already exists: ", status.message());
+    case absl::StatusCode::kPermissionDenied:
+      return absl::StrCat("Permission denied: ", status.message());
+    case absl::StatusCode::kUnauthenticated:
+      return absl::StrCat("Unauthenticated: ", status.message());
+    case absl::StatusCode::kResourceExhausted:
+      return absl::StrCat("Resource exhausted: ", status.message());
+    case absl::StatusCode::kFailedPrecondition:
+      return absl::StrCat("Failed precondition: ", status.message());
+    case absl::StatusCode::kAborted:
+      return absl::StrCat("Aborted: ", status.message());
+    case absl::StatusCode::kOutOfRange:
+      return absl::StrCat("Out of range: ", status.message());
+    case absl::StatusCode::kUnimplemented:
+      return absl::StrCat("Unimplemented: ", status.message());
+    case absl::StatusCode::kInternal:
+      return absl::StrCat("Internal: ", status.message());
+    case absl::StatusCode::kUnavailable:
+      return absl::StrCat("Unavailable: ", status.message());
+    case absl::StatusCode::kDataLoss:
+      return absl::StrCat("Data loss: ", status.message());
     default:
-      return absl::StrCat("Unknown code: ", status.error_message());
+      return absl::StrCat("Unknown code: ", status.message());
   }
 }
 

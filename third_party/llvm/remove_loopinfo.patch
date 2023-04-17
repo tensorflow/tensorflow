@@ -1,0 +1,30 @@
+index c2feffd02695..4eb8ac27a6a4 100644
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -6712,12 +6712,18 @@ cc_library(
+             "lib/Analysis/*/*.cpp",
+             "lib/Analysis/*/*.h",
+         ],
++        exclude = [
++            "lib/Analysis/CFGLoopInfo.cpp"
++        ],
+     ),
+     hdrs = glob(
+         [
+             "include/mlir/Analysis/*.h",
+             "include/mlir/Analysis/*/*.h",
+         ],
++        exclude = [
++            "include/mlir/Analysis/CFGLoopInfo.h"
++        ],
+     ),
+     includes = ["include"],
+     deps = [
+@@ -6732,7 +6738,6 @@ cc_library(
+         ":SideEffectInterfaces",
+         ":Support",
+         ":ViewLikeInterface",
+-        "//llvm:Analysis",
+         "//llvm:Support",
+     ],
+ )

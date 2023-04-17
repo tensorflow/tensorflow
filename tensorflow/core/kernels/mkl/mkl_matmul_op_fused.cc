@@ -17,7 +17,7 @@ limitations under the License.
 
 // This file uses oneDNN InnerProduct for acceleration of TF Matrix-Matrix
 // Multiplication (MatMul) with bias (BiasAdd) operations.
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -133,7 +133,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
-
+    auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
+    MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -260,8 +261,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         }
       }
       std::shared_ptr<stream> cpu_stream;
-      auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
-      MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
       UserScratchPad<unsigned char> scratch_pad;
@@ -339,4 +339,4 @@ TF_CALL_bfloat16(REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

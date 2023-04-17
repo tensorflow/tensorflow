@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -25,6 +25,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using memory_space_assignment::AsynchronousCopy;
+using memory_space_assignment::AsynchronousCopyOrdering;
 using memory_space_assignment::AsynchronousCopyResource;
 using memory_space_assignment::CostAnalysisPrefetchIntervalPicker;
 using memory_space_assignment::InstructionCountPrefetchIntervalPicker;
@@ -532,6 +533,512 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[2], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config = "op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_before_instruction:"
+      "negate.3";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[5], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
+      "negate.1";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[4], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
+      "negate.5";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  // Ensure the Async copy is not scheduled.
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5;instruction_"
+      "name_exact:add:op_number_exact:1:put_after_instruction:negate.1";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
+      "negate.1;op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[4], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config = "op_size_gte:25:op_size_lte:24:prefetch_eagerness:0.5";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -4431,11 +4938,9 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
               kAlternateMemorySpace);
     const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
     EXPECT_EQ(gte1->user_count(), 2);
-    EXPECT_NE(absl::c_find_if(gte1->users(),
-                              [](const HloInstruction* use) {
-                                return use->opcode() == HloOpcode::kCopyStart;
-                              }),
-              gte1->users().end());
+    EXPECT_NE(
+        absl::c_find_if(gte1->users(), HloPredicateIsOp<HloOpcode::kCopyStart>),
+        gte1->users().end());
   }
 }
 
@@ -5969,6 +6474,58 @@ INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
 
+using AsynchronousCopyOrderingTest = ::testing::Test;
+
+TEST_F(AsynchronousCopyOrderingTest, Simple) {
+  // Given asynchronous copies like the following, ensure the pipelining order
+  // is maintained (earlier start time must have earlier end time).
+  // 3,11       +-------+         OK
+  // 1,8      +------+            OK
+  // 5,14         +--------+      OK
+  // 7,14           +------+      OK
+  // 2,16      +-------------+    Violate
+  // 9,12             +--+        Violate
+  // 6,17          +----------+   Violate
+  // 5,13         +-------+       OK (same start as 5,14)
+  // 5,14         +--------+      OK (same as 5,14)
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
+  ordering.AddCopy({3, 11, 1, alternate_mem_space, 0});
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
+  ordering.AddCopy({1, 8, 1, alternate_mem_space, 1});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, 1, alternate_mem_space, 2});
+  EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
+  ordering.AddCopy({7, 14, 1, alternate_mem_space, 3});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
+  EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
+  EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
+  ordering.AddCopy({5, 13, 1, alternate_mem_space, 4});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, 1, alternate_mem_space, 5});
+}
+
+TEST_F(AsynchronousCopyOrderingTest, SameInterval) {
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 5));
+  EXPECT_FALSE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 0});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 1});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.AddCopy({1, 5, 1, alternate_mem_space, 2});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 1});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 2});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 4));
+  ordering.RemoveCopy({1, 5, 1, alternate_mem_space, 0});
+  EXPECT_FALSE(ordering.ViolatesOrdering(2, 4));
+}
+
 using AsynchronousCopyResourceTest = ::testing::Test;
 
 TEST_F(AsynchronousCopyResourceTest, Simple) {
@@ -7415,7 +7972,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/22);
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/22, std::nullopt);
 
   // Expect that the first interval is (15, 22), which has elapsed time of 6.0,
   // twice of the async copy elased (3.0). Then we expect that intervals will be
@@ -7447,7 +8004,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
 
   // Expect that if the time between start_time and end_time is too short, there
   // won't be any available intervals.
-  interval_picker.Begin(use, /*start_time=*/19, /*end_time=*/22);
+  interval_picker.Begin(use, /*start_time=*/19, /*end_time=*/22, std::nullopt);
   LOG(INFO) << interval_picker.ToDebugString();
   EXPECT_TRUE(interval_picker.Done());
 }
@@ -7517,7 +8074,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
             5);
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/31);
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/31, std::nullopt);
 
   // Because there are while loop computations between [19, 24], we ensure that
   // the interval picker avoids this interval.
@@ -7719,7 +8276,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
-  interval_picker.Begin(use, /*start_time=*/1, /*end_time=*/3);
+  interval_picker.Begin(use, /*start_time=*/1, /*end_time=*/3, std::nullopt);
 
   LOG(INFO) << interval_picker.ToDebugString();
   EXPECT_FALSE(interval_picker.Done());

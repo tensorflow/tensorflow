@@ -32,11 +32,12 @@ void TSL_SetStatus(TSL_Status* s, TSL_Code code, const char* msg) {
     s->status = ::tsl::OkStatus();
     return;
   }
-  s->status = Status(static_cast<Code>(code), tsl::StringPiece(msg));
+  s->status =
+      Status(static_cast<absl::StatusCode>(code), tsl::StringPiece(msg));
 }
 
 void TSL_SetPayload(TSL_Status* s, const char* key, const char* value) {
-  s->status.SetPayload(key, value);
+  s->status.SetPayload(key, absl::Cord(absl::string_view(value)));
 }
 
 void TSL_SetStatusFromIOError(TSL_Status* s, int error_code,
@@ -50,5 +51,5 @@ TSL_Code TSL_GetCode(const TSL_Status* s) {
 }
 
 const char* TSL_Message(const TSL_Status* s) {
-  return s->status.error_message().c_str();
+  return tsl::NullTerminatedMessage(s->status);
 }

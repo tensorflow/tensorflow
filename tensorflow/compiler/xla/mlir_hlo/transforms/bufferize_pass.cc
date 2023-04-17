@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -84,6 +83,9 @@ namespace mlir {
 #include "transforms/passes.h.inc"
 
 namespace {
+
+// Label for functions created by fusion outlining.
+static constexpr char kFusionFunctionLabel[] = "fusion";
 
 /// A helper type converter class that automatically populates the relevant
 /// materializations and type conversions for bufferization.
@@ -222,7 +224,6 @@ struct OneShotBufferizePass
     arith::registerBufferizableOpInterfaceExternalModels(registry);
     bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
         registry);
-    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     scf::registerBufferizableOpInterfaceExternalModels(registry);
@@ -236,8 +237,19 @@ struct OneShotBufferizePass
     bufferization::OneShotBufferizationOptions opts;
     opts.allowReturnAllocs = true;
     opts.bufferizeFunctionBoundaries = true;
-    opts.functionBoundaryTypeConversion =
-        bufferization::LayoutMapOption::IdentityLayoutMap;
+    opts.functionArgTypeConverterFn =
+        [=](TensorType tensorType, Attribute memorySpace, func::FuncOp funcOp,
+            const bufferization::BufferizationOptions& options) {
+          // Functions created by fusion outlining should have fully dynamic
+          // layout. All other functions (for now only "main") gets static
+          // layout.
+          if (funcOp->hasAttr(kFusionFunctionLabel))
+            return bufferization::getMemRefTypeWithFullyDynamicLayout(
+                tensorType, memorySpace);
+          return bufferization::getMemRefTypeWithStaticIdentityLayout(
+              tensorType, memorySpace);
+        };
+    opts.inferFunctionResultLayout = false;
     opts.createDeallocs = false;
     opts.bufferAlignment = 64;
 

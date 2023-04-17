@@ -38,6 +38,10 @@ using MeanOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_MEAN>;
 using SumOpConstModel = BaseConstOpModel<BuiltinOperator_SUM>;
 using SumOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_SUM>;
 
+template <typename T>
+using ProdOpFullyConstModel =
+    BaseFullyConstOpModel<T, BuiltinOperator_REDUCE_PROD, true>;
+
 using ProdOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_PROD, true>;
 using ProdOpDynamicModel =
     BaseDynamicOpModel<BuiltinOperator_REDUCE_PROD, true>;
@@ -415,7 +419,11 @@ TEST(ConstUint8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({163, 168, 192}));
+  // Different quantization algorithms in TFLite and NNAPI can give slightly
+  // different results.
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              testing::AnyOf(ElementsAreArray({163, 168, 192}),
+                             ElementsAreArray({163, 169, 192})));
 }
 
 TEST(ConstInt8MeanOpTest, Rounding) {
@@ -425,7 +433,11 @@ TEST(ConstInt8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<int8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({34, 39, 63}));
+  // Different quantization algorithms in TFLite and NNAPI can give slightly
+  // different results.
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              testing::AnyOf(ElementsAreArray({34, 39, 63}),
+                             ElementsAreArray({34, 40, 63})));
 }
 
 template <typename integer_type, TensorType tensor_dtype>
@@ -881,6 +893,34 @@ TEST(ConstInt8SumOpTest, Rescale) {
 }
 
 // Tests for reduce_prod
+TEST(FullyConstFloatProdOpTest, SmallInput) {
+  const std::vector<int32_t> data = {2, 3, 4};
+  ProdOpFullyConstModel<int32_t> m({TensorType_INT32, {3}}, data,
+                                   {TensorType_INT32, {1}}, {1}, {0}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({24}));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+}
+
+TEST(FullyConstFloatProdOpTest, LargeInput) {
+  const std::vector<int32_t> data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  ProdOpFullyConstModel<int32_t> m({TensorType_INT32, {9}}, data,
+                                   {TensorType_INT32, {1}}, {1}, {0}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({362880}));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+}
+
+TEST(ConstFloatProdOpTest, AllInputsAreConstantLargeOutput) {
+  const std::vector<int> data = {1,  2,  3,  4,  5,  6,  7,  8,  9,
+                                 10, 11, 12, 13, 14, 15, 16, 17, 18};
+  ProdOpFullyConstModel<int> m({TensorType_INT32, {2, 1, 3, 3}}, data,
+                               {TensorType_INT32, {1}}, {1}, {1}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 3}));
+  EXPECT_THAT(m.GetOutput<int>(), ElementsAreArray(data));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+}
 
 TEST(ConstFloatProdOpTest, NotKeepDimsLarge) {
   const std::vector<float> data = {

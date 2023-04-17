@@ -546,7 +546,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       Env::Default()->SleepForMicroseconds(500000);
       call_opts.StartCancel();
       n.WaitForNotification();
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
     } else {
       n.WaitForNotification();
       TF_ASSERT_OK(status);
@@ -639,7 +639,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     }
     n.WaitForNotification();
     if (test_cancel) {
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
     } else {
       TF_ASSERT_OK(status);
       // Retrieve the output.
@@ -791,7 +791,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
                                    Rendezvous** r) {
-          *r = worker_env_.rendezvous_mgr->Find(step_id);
+          *r = worker_env_.rendezvous_mgr->Find(step_id).release();
           return OkStatus();
         }});
   }
@@ -1265,7 +1265,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
                                              &remote_enqueue_response);
   EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "Unable to find a context_id matching the specified one"));
 
   // The request can be handled after adding the master eager context to
@@ -1302,7 +1302,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
 
   EXPECT_EQ(status.code(), error::ABORTED);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
-                      status.error_message());
+                      std::string(status.message()));
 
   uint64 new_context_id = random::New64();
   // Create a new context.

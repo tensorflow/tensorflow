@@ -188,7 +188,8 @@ namespace stablehlo {
 // illegal types also get converted.
 void populateHloToStablehloPatterns(RewritePatternSet *patterns,
                                     TypeConverter *converter,
-                                    MLIRContext *context);
+                                    MLIRContext *context,
+                                    bool allowExperimentalFeatures);
 
 // Populates StableHLO ops to MHLO ops rewriting patterns.
 // Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns

@@ -27,8 +27,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/conv_reorder.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
@@ -87,6 +89,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterCollectiveCustomCalls(registry);
   RegisterGemmCustomCalls(registry);
   RegisterConvCustomCalls(registry);
+  RegisterConvReorderCustomCalls(registry);
   RegisterMemcpyCustomCalls(registry);
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
@@ -301,6 +304,7 @@ Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
+    NonAtomicallyUpgradeableRWLock& gpu_lock,
     const BufferAllocation* temp_alloc) {
   // We pass a pointer to the executable through UserData, so that we can
   // get access to other exported functions from custom call handlers.
@@ -341,11 +345,12 @@ Status GpuRuntimeExecutable::Execute(
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(device_ordinal);
 
-  // Async collective support instantiated for each Gpu executable run, so that
-  // concurrent executions can run independenty using a separate set of events
-  // for communication.
+  // Async Collectives support and Send/Recv events instantiated for each Gpu
+  // executable run, so that concurrent executions can run independenty using a
+  // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  SendRecvEvents send_recv_events;
 
   // Always pass in the temp buffer, even if it is null, to accommodate the
   // 0-sized buffer corner case.
@@ -361,6 +366,9 @@ Status GpuRuntimeExecutable::Execute(
 #if GOOGLE_CUDA
   StreamExecutorGraphInstances::Snapshot graph_instances =
       graph_instances_(executor)->snapshot();
+  CapturedFunctionExecutionCount::Snapshot execution_count =
+      captured_function_counts_(executor)->snapshot();
+  CapturingCudaGraph capturing_cuda_graph(false);
 #endif  // GOOGLE_CUDA
 
   // State cached globally for gpu executable.
@@ -372,16 +380,17 @@ Status GpuRuntimeExecutable::Execute(
 #endif  // GOOGLE_CUDA
 
   // Initialize state required for running functions exported from FFI modules.
-  FfiStateVector ffi_state = ffi_modules_state_.state_vector();
+  absl::StatusOr<FfiStateVector> ffi_state = ffi_modules_state_.state_vector();
+  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
-      &collectives_, &fft_plans,
+      &ffi_state.value(), &binary, &kernels, &gemm_configs, &conv_runners,
+      &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances,
+      &matmul_plans, &graph_instances, &execution_count, &capturing_cuda_graph,
 #endif  // GOOGLE_CUDA
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.

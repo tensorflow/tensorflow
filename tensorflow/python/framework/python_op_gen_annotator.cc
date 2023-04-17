@@ -17,18 +17,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/framework/kythe_metadata.pb.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
-
-#define KYTHE_CORPUS "github.com/tensorflow/tensorflow"
 
 namespace tensorflow {
 namespace python_op_gen_internal {
@@ -56,7 +53,7 @@ void GeneratedCodeAnnotator::FillSourceOffsets(
 string GeneratedCodeAnnotator::BuildKytheMetadata() {
   GeneratedCodeInfo generated_code_info;
   generated_code_info.set_type(GeneratedCodeInfo::KYTHE0);
-  for (const auto& [_, offsets] : byte_offsets_map_) {
+  for (const auto& [name, offsets] : byte_offsets_map_) {
     if (offsets.file_path.empty()) {
       continue;
     }
@@ -69,9 +66,10 @@ string GeneratedCodeAnnotator::BuildKytheMetadata() {
     meta->set_target_end(offsets.generated_end);
 
     VName* vname = meta->mutable_source_vname();
-    vname->set_signature(
-        absl::StrFormat("@%d:%d", offsets.source_start, offsets.source_end));
-    vname->set_corpus(KYTHE_CORPUS);
+    vname->set_signature(absl::StrFormat(
+        "@%d:%d@tensorflow_op#%s#%s#%s", offsets.source_start,
+        offsets.source_end, name, kKytheCorpus, offsets.file_path));
+    vname->set_corpus(std::string(kKytheCorpus));
     vname->set_path(offsets.file_path);
     vname->set_language("c++");
   }

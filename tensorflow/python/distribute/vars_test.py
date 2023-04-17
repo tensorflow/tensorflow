@@ -36,6 +36,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
@@ -490,11 +491,11 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
       ctx = ds_context.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
-          values=array_ops.stack([
+          values=array_ops_stack.stack([
               math_ops.cast(replica_id, dtypes.float32),
               math_ops.cast(replica_id + 1, dtypes.float32)
           ]),
-          indices=array_ops.stack([replica_id, replica_id + 1]),
+          indices=array_ops_stack.stack([replica_id, replica_id + 1]),
           dense_shape=(3,))
       return v.scatter_sub(value)
 
@@ -515,8 +516,8 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
       ctx = ds_context.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
-          values=array_ops.stack([replica_id, replica_id + 1]),
-          indices=array_ops.stack([replica_id, replica_id + 1]),
+          values=array_ops_stack.stack([replica_id, replica_id + 1]),
+          indices=array_ops_stack.stack([replica_id, replica_id + 1]),
           dense_shape=(3,))
       return v.scatter_add(value)
 

@@ -484,18 +484,14 @@ Status MaybeRegisterFingerprint(
     if (node->type_string() == "TPUCompile" ||
         node->type_string() == "_TPUCompileMlir") {
       num_dynamic_shapes = node->attrs().Find("NumDynamicShapes")->i();
-      if (num_dynamic_shapes <= 0) {
-        break;
-      }
+      if (num_dynamic_shapes <= 0) break;
       int visited = 0;
       // TPUCompileOp/_TPUCompileMlirOp take Shape nodes as inputs.
       // The number of Shape nodes matches the number of dynamic shaped inputs.
       // The Shape nodes come from the input nodes:
       //   [TPU Input] --> [Input Shape] --> [TPUCompileOp]
       for (auto in_node : node->in_nodes()) {
-        if (in_node->type_string() != "Shape") {
-          continue;
-        }
+        if (in_node->type_string() != "Shape") continue;
         for (auto input_node : in_node->in_nodes()) {
           auto iter = named_input_shapes.find(input_node->name());
           if (iter != named_input_shapes.end()) {
@@ -503,9 +499,7 @@ Status MaybeRegisterFingerprint(
           }
         }
         visited++;
-        if (visited == num_dynamic_shapes) {
-          break;
-        }
+        if (visited == num_dynamic_shapes) break;
       }
       std::string metadata = node->attrs().Find("metadata")->s();
       metadata_proto.ParseFromString(metadata);
@@ -534,7 +528,7 @@ Status MaybeRegisterFingerprint(
   auto status =
       tpu::ComputeArgumentShapes(metadata_proto, input_shapes, &arg_shapes);
   if (!status.ok()) {
-    VLOG(2) << status.error_message();
+    VLOG(2) << status.message();
     return OkStatus();
   }
   uint64 tf_fingerprint =
@@ -810,7 +804,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
@@ -995,7 +989,7 @@ Status CreateConcatAndSplitNodesForOutputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
@@ -2043,9 +2037,7 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
           });
     }
 
-    for (auto& func : to_remove) {
-      func();
-    }
+    for (auto& func : to_remove) func();
 
     int resource_arg_index = node->attrs().Find("index")->i();
 
@@ -2530,11 +2522,9 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
       }
       if (ordinal == -1) {
         ordinal = attr->i();
-      } else {
-        if (ordinal != attr->i()) {
-          return errors::InvalidArgument(
-              "Can only partition graphs that use a single device ordinal.");
-        }
+      } else if (ordinal != attr->i()) {
+        return errors::InvalidArgument(
+            "Can only partition graphs that use a single device ordinal.");
       }
       node->ClearAttr(kDeviceOrdinalAttr);
       node->AddAttr(kDeviceOrdinalAttr, device_ordinal);
@@ -2725,9 +2715,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
        ordinal_selector = ordinal_selector_](const Status& status) {
         delete local_cm;
         rendez->Unref();
-        if (!status.ok()) {
-          ctx->SetStatus(status);
-        }
+        if (!status.ok()) ctx->SetStatus(status);
         done();
         if (req_id >= 0) {
           ordinal_selector->DequeueFromCoreSelector(device_ordinal, req_id);

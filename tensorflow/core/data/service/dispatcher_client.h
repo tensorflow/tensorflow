@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -43,6 +44,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                               const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
+  Status Initialize() override;
+
   // Sends a heartbeat to the dispatcher. If the worker wasn't already
   // registered with the dispatcher, this will register the worker. The
   // dispatcher will report which new tasks the worker should run, and which
@@ -65,14 +68,16 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                   bool& end_of_splits);
 
   // Gets the next split for the specified source of a stream of the snapshot in
-  // `directory`. If `end_of_splits` returns true, then there are no more splits
+  // `base_path`. If `end_of_splits` returns true, then there are no more splits
   // to be processed for the specified stream source.
-  Status GetSnapshotSplit(const std::string& directory, int64_t stream_index,
-                          int64_t source_index, Tensor& split,
-                          bool& end_of_splits);
+  virtual Status GetSnapshotSplit(const std::string& worker_address,
+                                  const std::string& base_path,
+                                  int64_t stream_index, int64_t source_index,
+                                  Tensor& split, int64_t& local_split_index,
+                                  bool& end_of_splits);
 
-  // Initiates the process of materializing `dataset`'s output to `directory`.
-  Status Snapshot(const DatasetDef& dataset, const std::string& directory,
+  // Initiates the process of materializing `dataset`'s output to `path`.
+  Status Snapshot(const DatasetDef& dataset, const std::string& path,
                   const experimental::DistributedSnapshotMetadata& metadata);
 
   // Registers a dataset with the tf.data service, and stores the generated

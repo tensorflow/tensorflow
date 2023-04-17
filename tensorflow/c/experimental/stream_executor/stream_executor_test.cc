@@ -65,7 +65,7 @@ TEST(StreamExecutor, NameNotSet) {
   tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  ASSERT_EQ(status.error_message(), "'name' field in SP_Platform must be set.");
+  ASSERT_EQ(status.message(), "'name' field in SP_Platform must be set.");
 }
 
 TEST(StreamExecutor, InvalidNameWithSemicolon) {
@@ -81,7 +81,7 @@ TEST(StreamExecutor, InvalidNameWithSemicolon) {
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       testing::ContainsRegex("Device name/type 'INVALID:NAME' must match"));
 }
 
@@ -97,7 +97,7 @@ TEST(StreamExecutor, InvalidNameWithSlash) {
   tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               testing::ContainsRegex("Device name/type 'INVALID/' must match"));
 }
 
@@ -113,7 +113,7 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
   tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  ASSERT_EQ(status.error_message(),
+  ASSERT_EQ(status.message(),
             "'create_device' field in SP_PlatformFns must be set.");
 }
 
@@ -130,7 +130,7 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
-      status.error_message(),
+      status.message(),
       "'unified_memory_allocate' field in SP_StreamExecutor must be set.");
 }
 
@@ -327,7 +327,7 @@ TEST_F(StreamExecutorTest, StreamStatus) {
   status_ok = false;
   auto updated_status = stream.RefreshStatus();
   ASSERT_FALSE(stream.ok());
-  ASSERT_EQ(updated_status.error_message(), "Test error");
+  ASSERT_EQ(updated_status.message(), "Test error");
 }
 
 TEST_F(StreamExecutorTest, CreateEvent) {
@@ -745,7 +745,7 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   Stream stream(executor);
   stream.Init();
   std::function<tsl::Status()> callback = []() -> tsl::Status {
-    return port::UnimplementedError("Unimplemented");
+    return tsl::errors::Unimplemented("Unimplemented");
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_FALSE(stream.ok());

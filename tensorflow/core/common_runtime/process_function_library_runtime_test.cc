@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -259,7 +260,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
-    EXPECT_TRUE(absl::StrContains(status.error_message(), "not found."));
+    EXPECT_TRUE(absl::StrContains(status.message(), "not found."));
 
     return OkStatus();
   }
@@ -627,8 +628,8 @@ void TestTwoDeviceMult(
   if (!error.empty()) {
     EXPECT_TRUE(errors::IsInvalidArgument(status))
         << "Actual status: " << status;
-    EXPECT_TRUE(absl::StrContains(status.error_message(), error))
-        << "Actual error message: " << status.error_message();
+    EXPECT_TRUE(absl::StrContains(status.message(), error))
+        << "Actual error message: " << status.message();
     return;
   }
 
@@ -787,9 +788,32 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListInput) {
       MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "FuncWithListInput has an input named \"x1\" that is a list of tensors"))
-      << "Actual error message: " << status.error_message();
+      << "Actual error message: " << status.message();
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, FullTypeForInt32) {
+  FunctionDef def = test::function::XTimesTwoInt32();
+  // Add bad full type information to a node to cause Int32FulltypePass to
+  // return an error (TFT_PRODUCT[TFT_TENSOR] instead of
+  // TFT_PRODUCT[TFT_TENSOR[TFT_INT32]]).
+  def.mutable_node_def(2)->mutable_experimental_type()->set_type_id(
+      TFT_PRODUCT);
+  def.mutable_node_def(2)->mutable_experimental_type()->add_args()->set_type_id(
+      TFT_TENSOR);
+  Init({def});
+  FunctionLibraryRuntime::Handle handle;
+  Status status =
+      proc_flr_->Instantiate("XTimesTwoInt32", test::function::Attrs({}),
+                             MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
+  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  // Check that the error is found by earlier in ProcessFunctionLibraryRuntime
+  // and not later in FunctionLibraryRuntime.
+  EXPECT_TRUE(absl::StrContains(
+      status.message(),
+      "in 'ProcessFunctionLibraryRuntime::InstantiateMultiDevice' has "
+      "TFT_TENSOR output 0 which has 0 args instead of 1"));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {
@@ -801,9 +825,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {
       MakeOptions("CPU:0", {}, {"CPU:0"}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "FuncWithListOutput has an output named \"y\" that is a list of tensors"))
-      << "Actual error message: " << status.error_message();
+      << "Actual error message: " << status.message();
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest,
@@ -1003,7 +1027,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
   resource->is_initialized = true;
   ResourceMgr* mgr = gpu_device_->resource_manager();
   Status status = mgr->Create(mgr->default_container(), "my_gpu_var", resource);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // Run the function taking a resource and outputting it
   FunctionLibraryRuntime::Options opts;
@@ -1049,7 +1073,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_PlacerError) {
       "ResourceOutput", test::function::Attrs({{"T", DT_FLOAT}}), inst_opts,
       &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  ASSERT_TRUE(absl::StrContains(status.error_message(), "Cannot place"));
+  ASSERT_TRUE(absl::StrContains(status.message(), "Cannot place"));
 }
 
 REGISTER_OP("BrokenOp")
@@ -1133,7 +1157,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_StateHandle) {
   *resource->tensor() = resource_value;
   resource->is_initialized = true;
   Status status = mgr->Create(mgr->default_container(), "my_gpu_var", resource);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   Tensor x = GetResourceHandle("my_gpu_var", mgr->default_container(),
                                "/job:a/replica:0/task:0/device:GPU:0");

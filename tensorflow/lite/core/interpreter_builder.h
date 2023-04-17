@@ -30,7 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -67,6 +67,10 @@ namespace tflite {
 /// Interpreter. Note: The user must ensure the lifetime of the model (and error
 /// reporter, if provided) is at least as long as interpreter's lifetime, and
 /// a single model instance may safely be used with multiple interpreters.
+using InterpreterBuilder = impl::InterpreterBuilder;
+
+namespace impl {
+
 class InterpreterBuilder {
  public:
   /// For this constructor, the ErrorReporter will be extracted from the
@@ -126,7 +130,7 @@ class InterpreterBuilder {
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
       const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
+      Subgraph* subgraph);
   TfLiteStatus ParseTensors(
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
@@ -165,6 +169,8 @@ class InterpreterBuilder {
 
   std::unique_ptr<telemetry::TelemetryProfiler> telemetry_profiler_;
 };
+
+}  // namespace impl
 
 }  // namespace tflite
 

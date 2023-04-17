@@ -199,17 +199,17 @@ func.func @reduce_sum(%arg0: tensor<5x4xf32>, %arg1: tensor<f32>) -> tensor<4xf3
 }
 
 // CHECK-LABEL: @shift_left
-func.func @shift_left(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+func.func @shift_left(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
   // CHECK: tosa.logical_left_shift
-  %0 = "mhlo.shift_left"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-  return %0 : tensor<10xf32>
+  %0 = "mhlo.shift_left"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
 }
 
 // CHECK-LABEL: @shift_right_logical
-func.func @shift_right_logical(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+func.func @shift_right_logical(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
   // CHECK: tosa.logical_right_shift
-  %0 = "mhlo.shift_right_logical"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-  return %0 : tensor<10xf32>
+  %0 = "mhlo.shift_right_logical"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
 }
 
 // CHECK-LABEL: @subtract

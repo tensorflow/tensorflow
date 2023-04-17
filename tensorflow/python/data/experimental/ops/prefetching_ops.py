@@ -164,7 +164,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           Tout=self._input_dataset._flat_types,  # pylint: disable=protected-access
           f=next_func_concrete)
 
-    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
 
     @def_function.function(

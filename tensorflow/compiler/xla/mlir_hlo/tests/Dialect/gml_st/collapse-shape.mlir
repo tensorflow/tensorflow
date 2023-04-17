@@ -108,14 +108,10 @@ func.func @reduction(%arg0: tensor<2x4x2048x4096xf32>) -> tensor<2x4x2048xf32> {
   %0 = tensor.empty() : tensor<2x4x2048xf32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<2x4x2048xf32>)
       -> tensor<2x4x2048xf32>
-  %2 = linalg.reduce
+  %2 = linalg.reduce { arith.maxf }
       ins(%arg0 : tensor<2x4x2048x4096xf32>)
       outs(%1 : tensor<2x4x2048xf32>)
       dimensions = [3]
-      (%in: f32, %out: f32) {
-        %3 = arith.maxf %out, %in : f32
-        linalg.yield %3 : f32
-      }
   return %2 : tensor<2x4x2048xf32>
 }
 
@@ -142,13 +138,9 @@ func.func @reduction(%arg0: tensor<2x4x2048x4096xf32>) -> tensor<2x4x2048xf32> {
 func.func @cwise(%arg0: tensor<2x4x2048x4096xf32>,
     %arg1: tensor<2x4x2048x4096xf32>) -> tensor<2x4x2048x4096xf32> {
   %0 = tensor.empty() : tensor<2x4x2048x4096xf32>
-  %1 = linalg.map
-      ins(%arg0, %arg1 : tensor<2x4x2048x4096xf32>, tensor<2x4x2048x4096xf32>)
-      outs(%0 : tensor<2x4x2048x4096xf32>)
-    (%in: f32, %in_0: f32) {
-       %2 = arith.subf %in, %in_0 : f32
-       linalg.yield %2 : f32
-    }
+  %1 = linalg.map { arith.subf }
+         ins(%arg0, %arg1 : tensor<2x4x2048x4096xf32>, tensor<2x4x2048x4096xf32>)
+         outs(%0 : tensor<2x4x2048x4096xf32>)
   return %1 : tensor<2x4x2048x4096xf32>
 }
 
@@ -203,26 +195,18 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
   %0 = tensor.empty() : tensor<2x4x2048xf32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<2x4x2048xf32>)
       -> tensor<2x4x2048xf32>
-  %2 = linalg.reduce
-      ins(%arg0 : tensor<2x4x2048x4096xf32>)
-      outs(%1 : tensor<2x4x2048xf32>)
-      dimensions = [3]
-  (%in: f32, %out: f32) {
-    %6 = arith.maxf %out, %in : f32
-    linalg.yield %6 : f32
-  }
+  %2 = linalg.reduce { arith.maxf }
+         ins(%arg0 : tensor<2x4x2048x4096xf32>)
+         outs(%1 : tensor<2x4x2048xf32>)
+         dimensions = [3]
   %3 = tensor.empty() : tensor<2x4x2048x4096xf32>
   %4 = linalg.broadcast
-      ins(%2 : tensor<2x4x2048xf32>)
-      outs(%3 : tensor<2x4x2048x4096xf32>)
-      dimensions = [3]
-  %5 = linalg.map
-      ins(%arg0, %4 : tensor<2x4x2048x4096xf32>, tensor<2x4x2048x4096xf32>)
-      outs(%3 : tensor<2x4x2048x4096xf32>)
-  (%in: f32, %in_0: f32) {
-    %6 = arith.subf %in, %in_0 : f32
-    linalg.yield %6 : f32
-  }
+         ins(%2 : tensor<2x4x2048xf32>)
+         outs(%3 : tensor<2x4x2048x4096xf32>)
+         dimensions = [3]
+  %5 = linalg.map { arith.subf }
+         ins(%arg0, %4 : tensor<2x4x2048x4096xf32>, tensor<2x4x2048x4096xf32>)
+         outs(%3 : tensor<2x4x2048x4096xf32>)
   return %5 : tensor<2x4x2048x4096xf32>
 }
 
@@ -285,13 +269,9 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
 
 func.func @collapse_shape_of_cwise(%arg0: tensor<2x4xf32>) -> tensor<8xf32> {
   %0 = tensor.empty() : tensor<2x4xf32>
-  %1 = linalg.map
-      ins(%arg0 : tensor<2x4xf32>)
-      outs(%0 : tensor<2x4xf32>)
-    (%in: f32) {
-       %2 = arith.negf %in : f32
-       linalg.yield %2 : f32
-    }
+  %1 = linalg.map { arith.negf }
+         ins(%arg0 : tensor<2x4xf32>)
+         outs(%0 : tensor<2x4xf32>)
   %3 = tensor.collapse_shape %1 [[0, 1]] : tensor<2x4xf32> into tensor<8xf32>
   return %3 : tensor<8xf32>
 }

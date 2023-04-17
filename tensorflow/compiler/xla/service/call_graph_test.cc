@@ -565,8 +565,7 @@ TEST_F(CallGraphTest, VisitWithError) {
 
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.code(), tsl::error::INTERNAL);
-  ASSERT_THAT(status.error_message(),
-              ::testing::HasSubstr("Visitation failed"));
+  ASSERT_THAT(status.message(), ::testing::HasSubstr("Visitation failed"));
 }
 
 }  // namespace

@@ -12,7 +12,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -23,7 +23,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )
@@ -49,6 +49,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -76,7 +77,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )

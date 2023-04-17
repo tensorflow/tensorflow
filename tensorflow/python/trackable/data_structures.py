@@ -15,7 +15,6 @@
 # ==============================================================================
 import collections
 import copy
-import operator
 import sys
 
 try:
@@ -27,7 +26,6 @@ except ImportError:
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.ops import variables
-from tensorflow.python.saved_model import revived_types
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import layer_utils
 from tensorflow.python.util.compat import collections_abc
@@ -1096,38 +1094,14 @@ def _is_function(x):
   return isinstance(x, (def_function.Function, defun.ConcreteFunction))
 
 
-revived_types.register_revived_type(
-    "trackable_dict_wrapper",
-    lambda obj: isinstance(obj, _DictWrapper),
-    versions=[revived_types.VersionedTypeRegistration(
-        # Standard dependencies are enough to reconstruct the trackable
-        # items in dictionaries, so we don't need to save any extra information.
-        object_factory=lambda proto: _DictWrapper({}),
-        version=1,
-        min_producer_version=1,
-        min_consumer_version=1,
-        setter=operator.setitem)])
-
-
-def _set_list_item(list_object, index_string, value):
+def set_list_item(list_object, index_string, value):
   item_index = int(index_string)
   if len(list_object) <= item_index:
     list_object.extend([None] * (1 + item_index - len(list_object)))
   list_object[item_index] = value
 
 
-revived_types.register_revived_type(
-    "trackable_list_wrapper",
-    lambda obj: isinstance(obj, ListWrapper),
-    versions=[revived_types.VersionedTypeRegistration(
-        object_factory=lambda proto: ListWrapper([]),
-        version=1,
-        min_producer_version=1,
-        min_consumer_version=1,
-        setter=_set_list_item)])
-
-
-def _set_tuple_item(list_object, index_string, value):
+def set_tuple_item(list_object, index_string, value):
   try:
     item_index = int(index_string)
   except ValueError:
@@ -1136,15 +1110,3 @@ def _set_tuple_item(list_object, index_string, value):
   if len(list_object) <= item_index:
     list_object.extend([None] * (1 + item_index - len(list_object)))
   list_object[item_index] = value
-
-
-# Revive tuples as lists so we can append any dependencies during loading.
-revived_types.register_revived_type(
-    "trackable_tuple_wrapper",
-    lambda obj: isinstance(obj, _TupleWrapper),
-    versions=[revived_types.VersionedTypeRegistration(
-        object_factory=lambda proto: ListWrapper([]),
-        version=1,
-        min_producer_version=1,
-        min_consumer_version=1,
-        setter=_set_tuple_item)])

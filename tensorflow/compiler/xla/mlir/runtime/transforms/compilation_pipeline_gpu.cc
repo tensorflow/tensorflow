@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib.h"
@@ -47,6 +48,7 @@ void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects) {
                    mlir::async::AsyncDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
+  mlir::registerBuiltinDialectTranslation(*dialects);
   mlir::registerLLVMDialectTranslation(*dialects);
 }
 
@@ -84,8 +86,8 @@ static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
   pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
-  // Convert everythinG else to LLVM dialect.
-  pm.addPass(mlir::createMemRefToLLVMConversionPass());
+  // Convert everything else to LLVM dialect.
+  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 

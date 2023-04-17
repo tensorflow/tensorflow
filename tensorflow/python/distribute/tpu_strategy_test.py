@@ -43,7 +43,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import logging_ops
@@ -56,8 +56,8 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_hardware_feature
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
@@ -224,13 +224,14 @@ class TPUTest(test.TestCase):
     def foo():
       return 1 + 1
 
-    func1 = function.defun_with_attributes(
-        foo, attributes={"_XlaMustCompile": False})
+    func1 = function.defun_with_attributes(foo, jit_compile=False)
     func2 = function.defun_with_attributes(
-        foo, attributes={
+        foo,
+        jit_compile=False,
+        attributes={
             "_OutputsOnOpDevice": True,
-            "_XlaMustCompile": False
-        })
+        },
+    )
 
     with ops.device("/device:TPU:0"):
       ret1 = func1()
@@ -382,7 +383,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           1: (lambda: do_inference("/device:TPU:1", inference_fn, 1)),
       }
       branch_index = inference_iteration.assign_add(1, use_locking=True) % 2
-      return control_flow_ops.switch_case(branch_index, branch_fns)
+      return control_flow_switch_case.switch_case(branch_index, branch_fns)
 
     self.assertAllEqual(2., run_inference(1))  # Use TPU core 0.
     self.assertAllEqual(3., run_inference(1))  # Use TPU core 1.
@@ -766,6 +767,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           synchronization=variables.VariableSynchronization.ON_READ,
           aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
 
+    self.assertFalse(w._is_mirrored())
+
     @def_function.function
     def run(iterator):
 
@@ -975,7 +978,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     def sparse_lookup(iterator):
 
       def tpu_function(sparse):
-        lookup = tpu.outside_compilation(
+        lookup = tpu_replication.outside_compilation(
             embedding_ops.safe_embedding_lookup_sparse, table, sparse)
         return math_ops.reduce_sum(lookup, axis=0)
 

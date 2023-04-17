@@ -25,9 +25,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <type_traits>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -389,7 +392,7 @@ class Stream {
                              convolution_descriptor, algorithm_desc,
                              scratch_memory, output_profile_result);
     }
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
 
   template <typename InputT, typename ScaleT, typename SideInputT,
@@ -417,7 +420,21 @@ class Stream {
           bias_descriptor, biases, activation_mode, output_descriptor, *output,
           scratch_allocator, algorithm_config, output_profile_result);
     }
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  tsl::Status CudnnReorderConvolutionFilterAndBias(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8_t> &filter_input,
+      DeviceMemory<int8_t> *filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->CudnnReorderConvolutionFilterAndBias(
+          this, filter_descriptor, filter_input, filter_output,
+          std::move(bias_input), std::move(bias_output));
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
 
   tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
@@ -429,7 +446,7 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
-      return port::UnimplementedError("DNN library is not found.");
+      return tsl::errors::Unimplemented("DNN library is not found.");
     }
     return dnn_support->ConvolveRunnerFromDesc(
         this, algorithm_desc, kind, element_type, output_type, input_descriptor,
@@ -450,13 +467,94 @@ class Stream {
       dnn::ActivationMode activation_mode) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
-      return port::UnimplementedError("DNN library is not found.");
+      return tsl::errors::Unimplemented("DNN library is not found.");
     }
     return dnn_support->FusedConvolveRunnerFromDesc(
         this, algorithm_desc, kind, element_type, bias_type, output_type,
         conv_input_scale, side_input_scale, leakyrelu_alpha, input_descriptor,
         filter_descriptor, bias_descriptor, output_descriptor,
         convolution_descriptor, activation_mode);
+  }
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxRunner>>
+  FusedMHASoftmaxRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor &bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor &output_descriptor,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return tsl::errors::Unimplemented("DNN library is not found.");
+    }
+    return dnn_support->FusedMHASoftmaxRunnerFromDesc(
+        this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
+        bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
+        output_descriptor, dropout_rate, seed);
+  }
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
+  FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor &bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor &output_descriptor,
+      const dnn::TensorDescriptor &mask_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return tsl::errors::Unimplemented("DNN library is not found.");
+    }
+    return dnn_support->FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+        this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
+        bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
+        output_descriptor, mask_descriptor, scale, dropout_rate, seed);
+  }
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
+  FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor &bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor &output_descriptor,
+      const dnn::TensorDescriptor &mask_descriptor,
+      const dnn::TensorDescriptor &bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return tsl::errors::Unimplemented("DNN library is not found.");
+    }
+    return dnn_support->FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+        this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
+        bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
+        output_descriptor, mask_descriptor, bias_descriptor, scale,
+        dropout_rate, seed);
+  }
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasRunner>>
+  FusedMHAScaleBiasSoftmaxRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor &bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor &output_descriptor,
+      const dnn::TensorDescriptor &bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return tsl::errors::Unimplemented("DNN library is not found.");
+    }
+    return dnn_support->FusedMHAScaleBiasSoftmaxRunnerFromDesc(
+        this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
+        bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
+        output_descriptor, bias_descriptor, scale, dropout_rate, seed);
   }
 
   Stream &ThenSeparableConvolve(
@@ -507,7 +605,7 @@ class Stream {
                                 input_data, output_dimensions, *output_data,
                                 workspace_allocator);
     }
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
 
   template <typename ElementType>
@@ -526,7 +624,7 @@ class Stream {
           input_dimensions, input_data, output_dimensions, output_data,
           input_diff_data, *output_diff_data, workspace_allocator);
     }
-    return port::UnimplementedError("DNN library is not found.");
+    return tsl::errors::Unimplemented("DNN library is not found.");
   }
 
   Stream &ThenNormalizeWithDimensions(
@@ -821,7 +919,7 @@ class Stream {
         "If input is not Eigen::half, constant and input types have to match");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "Attempting to perform BLAS operation using "
           "StreamExecutor without BLAS support");
     }
@@ -918,7 +1016,7 @@ class Stream {
 
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "Attempting to perform BLAS operation using "
           "StreamExecutor without BLAS support");
     }
@@ -957,7 +1055,7 @@ class Stream {
 
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "Attempting to perform BLAS operation using "
           "StreamExecutor without BLAS support");
     }
@@ -1077,7 +1175,7 @@ class Stream {
         "Mismatched input and alpha/beta types");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
-      return port::InternalError(
+      return tsl::errors::Internal(
           "Attempting to perform BLAS operation using "
           "StreamExecutor without BLAS support");
     }
@@ -1463,7 +1561,7 @@ class Stream {
   // This is kept for backward compatibility. Future code should use
   // ThenDoHostCallbackWithStatus and explicitly return a success status.
   // TODO(b/112125301): Eventually remove this method.
-  Stream &ThenDoHostCallback(std::function<void()> callback);
+  Stream &ThenDoHostCallback(absl::AnyInvocable<void() &&> callback);
 
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
@@ -1477,13 +1575,15 @@ class Stream {
   //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
-  Stream &ThenDoHostCallbackWithStatus(std::function<tsl::Status()> callback);
+  Stream &ThenDoHostCallbackWithStatus(
+      absl::AnyInvocable<tsl::Status() &&> callback);
 
   // Runs the given callback after the next call to BlockHostUntilDone on this
   // stream (or after the Stream does BlockHostUntilDone in its destructor).
   // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
   // some use cases.
-  Stream &ThenRunAfterNextBlockHostUntilDone(std::function<void()> callback);
+  Stream &ThenRunAfterNextBlockHostUntilDone(
+      absl::AnyInvocable<void() &&> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
@@ -1553,10 +1653,10 @@ class Stream {
     }();
 
     if (!valid_computation_type) {
-      return port::InternalError(absl::StrCat(
+      return tsl::errors::Internal(
           "Invalid computation type ",
           blas::ComputationTypeString(computation_type), " for output type: ",
-          blas::DataTypeString(blas::ToDataType<CType>::value)));
+          blas::DataTypeString(blas::ToDataType<CType>::value));
     }
     return ::tsl::OkStatus();
   }
@@ -1617,8 +1717,8 @@ class Stream {
   internal::TemporaryMemoryManager temporary_memory_manager_;
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
-  std::vector<std::function<void()>> after_block_host_until_done_callbacks_
-      ABSL_GUARDED_BY(mu_);
+  std::vector<absl::AnyInvocable<void() &&>>
+      after_block_host_until_done_callbacks_ ABSL_GUARDED_BY(mu_);
 
   // Non-extended BLAS interface requires alpha/beta to be floats when input
   // type is Eigen::half. However, for consistency purposes it is convenient

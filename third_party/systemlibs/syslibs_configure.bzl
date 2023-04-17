@@ -30,7 +30,6 @@ VALID_LIBS = [
     "icu",
     "jsoncpp_git",
     "libjpeg_turbo",
-    "lmdb",
     "nasm",
     "nsync",
     "opt_einsum_archive",

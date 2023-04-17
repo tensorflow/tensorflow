@@ -17,15 +17,17 @@ package org.tensorflow.lite.benchmark.delegateperformance;
 
 import android.util.Log;
 import com.google.flatbuffers.FlatBufferBuilder;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance.BenchmarkEventType;
-import com.google.protos.tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import tflite.BenchmarkEvent;
 import tflite.TFLiteSettings;
+import tflite.proto.benchmark.DelegatePerformance.BenchmarkEventType;
+import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
 
 /** Helper class for running delegate performance benchmark. */
 class DelegatePerformanceBenchmark {
@@ -34,7 +36,7 @@ class DelegatePerformanceBenchmark {
   private static final String MODEL_EXT = ".tflite";
 
   static {
-    System.loadLibrary("tensorflowlite_delegate_performance_benchmark");
+    System.loadLibrary("delegate_performance_benchmark");
   }
 
   public static String createResultFolder(File filesDir, String resultFolder) throws IOException {
@@ -129,23 +131,30 @@ class DelegatePerformanceBenchmark {
   /**
    * Loads the input TFLiteSettings JSON files into TfLiteSettingsListEntry instances.
    *
-   * <p>If the number of input TFLiteSettings JSON files is 1, we add one default entry at the
-   * beginning as reference. The default entry contains a dummy TFLiteSettings structure, which lets
-   * the interpreter to apply the default acceleration.
+   * <p>Adds default entry at the beginning as a reference delegate. The default entry contains a
+   * dummy TFLiteSettings structure, which lets the interpreter to apply the default acceleration.
+   * Positions the test target delegate at the end of the entry list.
    */
   public static List<TfLiteSettingsListEntry> loadTfLiteSettingsList(String[] jsonFilePaths) {
     List<TfLiteSettingsListEntry> tfliteSettingsList = new ArrayList<>();
-    if (jsonFilePaths.length == 1) {
-      FlatBufferBuilder tfliteSettingsBuilder = new FlatBufferBuilder();
+    // Always add the default delegate to compare.
+    FlatBufferBuilder tfliteSettingsBuilder = new FlatBufferBuilder();
       TFLiteSettings.startTFLiteSettings(tfliteSettingsBuilder);
       int tfliteSettingsOffset = TFLiteSettings.endTFLiteSettings(tfliteSettingsBuilder);
       tfliteSettingsBuilder.finish(tfliteSettingsOffset);
-      tfliteSettingsList.add(
-          TfLiteSettingsListEntry.create(
-              TFLiteSettings.getRootAsTFLiteSettings(tfliteSettingsBuilder.dataBuffer()),
-              "default_delegate"));
-    }
-    for (String jsonFilePath : jsonFilePaths) {
+    tfliteSettingsList.add(
+        TfLiteSettingsListEntry.create(
+            TFLiteSettings.getRootAsTFLiteSettings(tfliteSettingsBuilder.dataBuffer()),
+            "default_delegate",
+            /* isTestTarget= */ false));
+    // To avoid system-level initialization negatively impacting benchmark results, the test target
+    // delegate is positioned at the end of the list in reverse order. This ensures initialization
+    // latency is added to the reference delegate that is executed first among the delegates that
+    // share the same delegate type. Otherwise, it could introduce false positive results when
+    // comparing  delegates that share the same initialization. The order of the input settings
+    // files will be reinstated when computing the model-level reports.
+    for (int i = jsonFilePaths.length - 1; i >= 0; i--) {
+      String jsonFilePath = jsonFilePaths[i];
       byte[] tfliteSettingsByteArray = loadTfLiteSettingsJsonNative(jsonFilePath);
       if (tfliteSettingsByteArray == null || tfliteSettingsByteArray.length == 0) {
         Log.e(TAG, "Failed to load TFLiteSetting from JSON file " + jsonFilePath);
@@ -155,9 +164,79 @@ class DelegatePerformanceBenchmark {
       ByteBuffer byteBuffer = ByteBuffer.wrap(tfliteSettingsByteArray);
       tfliteSettingsList.add(
           TfLiteSettingsListEntry.create(
-              TFLiteSettings.getRootAsTFLiteSettings(byteBuffer), jsonFilePath));
+              TFLiteSettings.getRootAsTFLiteSettings(byteBuffer),
+              jsonFilePath,
+              /* isTestTarget= */ i == 0));
     }
     return tfliteSettingsList;
+  }
+
+  /**
+   * Aggregates a list of {@link BenchmarkResultType} into a {@link BenchmarkResultType} based on
+   * the requirements. {@code strict} is set to {@code true} when comparing two delegates with the
+   * same types or aggregating the results into model-level and session-level. {@code strict} is set
+   * to {@code false} when comparing two delegates with different types.
+   *
+   * <p>If {@code strict} is set to {@code true}, returns:
+   *
+   * <ul>
+   *   <li>PASS if all elements in {@code results} are PASS.
+   *   <li>PASS_WITH_WARNING if at least one element in {@code results} is PASS_WITH_WARNING and
+   *       {@code results} doesn't contain FAIL.
+   *   <li>FAIL if at least one element in {@code results} is FAIL.
+   * </ul>
+   *
+   * Otherwise, returns:
+   *
+   * <ul>
+   *   <li>PASS if all elements in {@code results} are PASS.
+   *   <li>PASS_WITH_WARNING if at least one element in {@code results} is PASS_WITH_WARNING or
+   *       PASS.
+   *   <li>FAIL if all elements in {@code results} are FAIL.
+   * </ul>
+   */
+  public static BenchmarkResultType aggregateResults(
+      boolean strict, List<BenchmarkResultType> results) {
+    checkState(!results.isEmpty());
+    checkState(
+        allMatch(
+            results,
+            EnumSet.of(
+                BenchmarkResultType.PASS,
+                BenchmarkResultType.PASS_WITH_WARNING,
+                BenchmarkResultType.FAIL)));
+
+    if (strict) {
+      if (results.contains(BenchmarkResultType.FAIL)) {
+        return BenchmarkResultType.FAIL;
+      }
+      if (results.contains(BenchmarkResultType.PASS_WITH_WARNING)) {
+        return BenchmarkResultType.PASS_WITH_WARNING;
+      }
+      return BenchmarkResultType.PASS;
+    } else {
+      if (allMatch(results, EnumSet.of(BenchmarkResultType.PASS))) {
+        return BenchmarkResultType.PASS;
+      }
+      if (allMatch(results, EnumSet.of(BenchmarkResultType.FAIL))) {
+        return BenchmarkResultType.FAIL;
+      }
+      return BenchmarkResultType.PASS_WITH_WARNING;
+    }
+  }
+
+  /**
+   * Returns {@code true} when all elements in {@code results} are in the value range specified by
+   * {@code targets}.
+   */
+  private static boolean allMatch(
+      List<BenchmarkResultType> results, Set<BenchmarkResultType> targets) {
+    for (BenchmarkResultType result : results) {
+      if (!targets.contains(result)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

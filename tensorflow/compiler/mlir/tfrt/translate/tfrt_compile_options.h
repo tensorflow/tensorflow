@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/protobuf/config.pb.h"
+
 namespace tensorflow {
 
 enum class TfrtDeviceInfraTarget {
@@ -46,6 +48,10 @@ struct TfrtCompileOptions {
 
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
+
+  // Graph rewrite options that will be applied on GraphDef before converting to
+  // MLIR.
+  GraphOptions graph_options;
 
   // Force data format for all layout sensitive operations, eg. setting it to
   // "NHWC" will changes all data format in the graph to "NHWC" by inserting
@@ -78,12 +84,27 @@ struct TfrtCompileOptions {
   // tpu host allocator. This options is experimental.
   bool use_tpu_host_allocator_for_inputs = false;
 
+  // To allow unpadded batch for TPU execution.
+  enum class TpuAllowUnpaddedBatch {
+    // Disable this feature.
+    kDisabled,
+    // Enable this feature when in-graph batching is detected.
+    kAuto,
+    // Force to enable this feature.
+    kEnforced,
+  };
+  TpuAllowUnpaddedBatch tpu_allow_unpadded_batch =
+      TpuAllowUnpaddedBatch::kDisabled;
+
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the
   // runtime cost during later running.
   // TODO(tfrt-devs): Set the default value to true after testing as it is
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
+
+  // If true, get_resource_op will be fused during hoisting.
+  bool fuse_get_resource_ops_in_hoisting = true;
 
   // If true, the compiler will try to sink in the invariant ops (e.g. const
   // ops, var handle ops, etc.) to the nested function (e.g. batch function) to

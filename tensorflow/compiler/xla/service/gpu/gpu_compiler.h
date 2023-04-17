@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -117,7 +116,6 @@ class GpuCompiler : public LLVMCompiler {
  public:
   GpuCompiler(se::Platform::Id platform_id, const char* target_triple,
               const char* data_layout);
-  ~GpuCompiler() override {}
 
   using LLVMCompiler::Compile;
 
@@ -182,8 +180,7 @@ class GpuCompiler : public LLVMCompiler {
   // autotune_results != null.
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator,
-      const GpuTargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results);
 
  private:
@@ -192,12 +189,13 @@ class GpuCompiler : public LLVMCompiler {
   // autotune_results != null.
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* device_allocator,
+                           const CompileOptions& options,
                            const GpuTargetConfig& gpu_target_config,
                            const AutotuneResults* autotune_results);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+      HloModule* hlo_module, GpuVersion gpu_version,
+      se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
@@ -240,16 +238,6 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
-
-// Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
-// The GpuExecutable (and the Thunks that are part of it) are not returned.
-StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
-    HloModule* hlo_module, llvm::LLVMContext* llvm_context,
-    const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, const se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability,
-    se::RocmComputeCapability rocm_compute_capability, int pointer_size);
 
 // Compiles the given LMHLO module to an executable.
 // ir_emitter_context should be partially populated: buffer_assignment

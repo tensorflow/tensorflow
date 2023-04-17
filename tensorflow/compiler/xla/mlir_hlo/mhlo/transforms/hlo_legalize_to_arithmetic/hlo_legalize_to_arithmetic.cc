@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -132,7 +133,7 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
 
     auto loc = op.getLoc();
 
-    Optional<ShapedType> resultTy;
+    std::optional<ShapedType> resultTy;
     resultTy = this->typeConverter->convertType(op->getResultTypes().front())
                    .template dyn_cast<ShapedType>();
 
@@ -236,6 +237,7 @@ void populateScalarHloToArithmeticConversionPatterns(
       ScalarHloToArithmeticPattern<mhlo::SineOp>,
       ScalarHloToArithmeticPattern<mhlo::SqrtOp>,
       ScalarHloToArithmeticPattern<mhlo::SubtractOp>,
+      ScalarHloToArithmeticPattern<mhlo::TanOp>,
       ScalarHloToArithmeticPattern<mhlo::TanhOp>,
       ScalarHloToArithmeticPattern<mhlo::XorOp>
   >(typeConverter, context, filterFn);

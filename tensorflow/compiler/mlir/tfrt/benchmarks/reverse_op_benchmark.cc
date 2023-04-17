@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
@@ -35,15 +36,12 @@ const char* kReverseIR = R"(
   }
 )";
 
-std::string Reverse(llvm::ArrayRef<int32_t> input_shape,
+std::string Reverse(llvm::ArrayRef<int64_t> input_shape,
                     llvm::ArrayRef<bool> dynamic_dims,
                     llvm::ArrayRef<int32_t> reverse_dims,
                     llvm::StringRef element_type) {
-  llvm::SmallVector<int64_t, 4> mlir_input_shape;
-  for (int i = 0; i < input_shape.size(); ++i) {
-    mlir_input_shape.push_back(dynamic_dims[i] ? kDynSize : input_shape[i]);
-  }
-
+  llvm::SmallVector<int64_t, 4> mlir_input_shape =
+      GetTensorTypeShape(input_shape, dynamic_dims);
   return llvm::formatv(
       kReverseIR,
       PrintTensorType(mlir_input_shape, element_type),  // Input type {0}
@@ -53,10 +51,10 @@ std::string Reverse(llvm::ArrayRef<int32_t> input_shape,
   );
 }
 
-template <int32_t INPUT_RANK, size_t N_REVERSE_DIMS>
-auto EigenReverse(std::array<int32_t, N_REVERSE_DIMS> reverse_dims) {
+template <int64_t INPUT_RANK, size_t N_REVERSE_DIMS>
+auto EigenReverse(std::array<int64_t, N_REVERSE_DIMS> reverse_dims) {
   return [reverse_dims](llvm::ArrayRef<Tensor> inputs,
-                        llvm::Optional<Eigen::ThreadPoolDevice> device) {
+                        std::optional<Eigen::ThreadPoolDevice> device) {
     std::array<bool, INPUT_RANK> bool_reverse_dims;
     bool_reverse_dims.fill(false);
     for (auto i : reverse_dims) {
@@ -90,16 +88,11 @@ llvm::SmallVector<InputTensorSpec> GetInputSpec(
      GetInputSpec({INPUT_SHAPE}));                                            \
   BM(Eigen, NAME,                                                             \
      (EigenReverse<INPUT_RANK>(                                               \
-         std::array<int32_t, N_REVERSE_DIMS>{REVERSE_DIMS})),                 \
+         std::array<int64_t, N_REVERSE_DIMS>{REVERSE_DIMS})),                 \
      GetInputSpec({INPUT_SHAPE}));                                            \
   BM(Tfrt, NAME,                                                              \
      Reverse({INPUT_SHAPE}, {DYNAMIC_DIMS}, {REVERSE_DIMS}, "f32"), "main",   \
      GetInputSpec({INPUT_SHAPE}))
-
-// TODO(manany): For all commented test cases below, there is an issue with
-// peeling for cases of size < perfect size not functioning as intended.
-// Uncomment these cases when this issue is fixed.
-// tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/peeling/peeling.cc:181
 
 ////////////////////////////////////////////////////////////////////////////////
 // Reverse 1D tensors.
@@ -108,7 +101,7 @@ llvm::SmallVector<InputTensorSpec> GetInputSpec(
 #define BM_STATIC_1D(SIZE)                                               \
   BM_SUITE(ReverseStatic_1D_##SIZE, 1, INTS(SIZE), BOOLS(kStaticDim), 1, \
            INTS(0))
-// BM_STATIC_1D(3);
+BM_STATIC_1D(3);
 BM_STATIC_1D(8);
 BM_STATIC_1D(80);
 BM_STATIC_1D(800);
@@ -120,7 +113,7 @@ BM_STATIC_1D(1010131);
 #define BM_DYNAMIC_1D(SIZE)                                                \
   BM_SUITE(ReverseDynamic_1D_##SIZE, 1, INTS(SIZE), BOOLS(kDynamicDim), 1, \
            INTS(0))
-// BM_DYNAMIC_1D(3);
+BM_DYNAMIC_1D(3);
 BM_DYNAMIC_1D(8);
 BM_DYNAMIC_1D(80);
 BM_DYNAMIC_1D(800);
@@ -139,6 +132,8 @@ BM_DYNAMIC_1D(1010131);
 BM_STATIC_2D_ROW(2, 80);
 BM_STATIC_2D_ROW(8, 6);
 BM_STATIC_2D_ROW(80, 1);
+BM_STATIC_2D_ROW(80, 3);
+BM_STATIC_2D_ROW(80, 7);
 BM_STATIC_2D_ROW(80, 60);
 BM_STATIC_2D_ROW(81, 61);
 BM_STATIC_2D_ROW(800, 600);
@@ -148,8 +143,10 @@ BM_STATIC_2D_ROW(802, 602);
   BM_SUITE(ReverseStatic_2D_COL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kStaticDim, kStaticDim), 1, INTS(1))
 BM_STATIC_2D_COL(2, 80);
-// BM_STATIC_2D_COL(8, 6);
+BM_STATIC_2D_COL(8, 6);
 BM_STATIC_2D_COL(80, 1);
+BM_STATIC_2D_COL(80, 3);
+BM_STATIC_2D_COL(80, 7);
 BM_STATIC_2D_COL(80, 60);
 BM_STATIC_2D_COL(81, 61);
 BM_STATIC_2D_COL(800, 600);
@@ -159,8 +156,10 @@ BM_STATIC_2D_COL(802, 602);
   BM_SUITE(ReverseStatic_2D_ALL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kStaticDim, kStaticDim), 2, INTS(0, 1))
 BM_STATIC_2D_ALL(2, 80);
-// BM_STATIC_2D_ALL(8, 6);
+BM_STATIC_2D_ALL(8, 6);
 BM_STATIC_2D_ALL(80, 1);
+BM_STATIC_2D_ALL(80, 3);
+BM_STATIC_2D_ALL(80, 7);
 BM_STATIC_2D_ALL(80, 60);
 BM_STATIC_2D_ALL(81, 61);
 BM_STATIC_2D_ALL(800, 600);
@@ -172,6 +171,8 @@ BM_STATIC_2D_ALL(802, 602);
 BM_DYNAMIC_2D_ROW(2, 80);
 BM_DYNAMIC_2D_ROW(8, 6);
 BM_DYNAMIC_2D_ROW(80, 1);
+BM_DYNAMIC_2D_ROW(80, 3);
+BM_DYNAMIC_2D_ROW(80, 7);
 BM_DYNAMIC_2D_ROW(80, 60);
 BM_DYNAMIC_2D_ROW(81, 61);
 BM_DYNAMIC_2D_ROW(800, 600);
@@ -181,8 +182,10 @@ BM_DYNAMIC_2D_ROW(802, 602);
   BM_SUITE(ReverseDynamic_2D_COL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kStaticDim, kDynamicDim), 1, INTS(1))
 BM_DYNAMIC_2D_COL(2, 80);
-// BM_DYNAMIC_2D_COL(8, 6);
+BM_DYNAMIC_2D_COL(8, 6);
 BM_DYNAMIC_2D_COL(80, 1);
+BM_DYNAMIC_2D_COL(80, 3);
+BM_DYNAMIC_2D_COL(80, 7);
 BM_DYNAMIC_2D_COL(80, 60);
 BM_DYNAMIC_2D_COL(81, 61);
 BM_DYNAMIC_2D_COL(800, 600);
@@ -192,8 +195,10 @@ BM_DYNAMIC_2D_COL(802, 602);
   BM_SUITE(ReverseDynamic_2D_ALL_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
            BOOLS(kDynamicDim, kDynamicDim), 2, INTS(0, 1))
 BM_DYNAMIC_2D_ALL(2, 80);
-// BM_DYNAMIC_2D_ALL(8, 6);
+BM_DYNAMIC_2D_ALL(8, 6);
 BM_DYNAMIC_2D_ALL(80, 1);
+BM_DYNAMIC_2D_ALL(80, 3);
+BM_DYNAMIC_2D_ALL(80, 7);
 BM_DYNAMIC_2D_ALL(80, 60);
 BM_DYNAMIC_2D_ALL(81, 61);
 BM_DYNAMIC_2D_ALL(800, 600);

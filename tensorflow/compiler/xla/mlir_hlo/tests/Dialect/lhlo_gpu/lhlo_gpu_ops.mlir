@@ -32,6 +32,7 @@ func.func @conv_forward_generic(%input : memref<1x1x8x8xf16>, %filter: memref<1x
     backend_config = #lmhlo_gpu.convolution_backend_config<
         algorithm = 0,
         tensor_ops_enabled = true,
+        is_cudnn_reordered_int8 = false,
         knob_ids = [],
         knob_values = [],
         is_cudnn_frontend = false,
@@ -62,6 +63,7 @@ func.func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf1
         knob_ids = [],
         knob_values = [],
         is_cudnn_frontend = false,
+        is_cudnn_reordered_int8 = false,
         workspace_size = -1,
         operand_0_layout = [3,2,1,0],
         operand_1_layout = [3,2,1,0],
@@ -86,6 +88,7 @@ func.func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x
         knob_ids = [],
         knob_values = [],
         is_cudnn_frontend = false,
+        is_cudnn_reordered_int8 = false,
         workspace_size = -1,
         operand_0_layout = [3,2,1,0],
         operand_1_layout = [3,2,1,0],
@@ -114,6 +117,7 @@ func.func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7
         knob_ids = [],
         knob_values = [],
         is_cudnn_frontend = false,
+        is_cudnn_reordered_int8 = false,
         workspace_size = -1,
         operand_0_layout = [3,2,1,0],
         operand_1_layout = [3,2,1,0],
@@ -143,6 +147,7 @@ func.func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32x
         knob_ids = [],
         knob_values = [],
         is_cudnn_frontend = false,
+        is_cudnn_reordered_int8 = false,
         workspace_size = -1,
         operand_0_layout = [3,2,1,0],
         operand_1_layout = [3,2,1,0],
@@ -172,6 +177,7 @@ func.func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref
         knob_ids = [],
         knob_values = [],
         is_cudnn_frontend = false,
+        is_cudnn_reordered_int8 = false,
         workspace_size = -1,
         operand_0_layout = [3,2,1,0],
         operand_1_layout = [3,2,1,0],
@@ -212,5 +218,28 @@ func.func @cholesky(%arg : memref<10x10xf32>, %out: memref<10x10xf32>) {
   %info = memref.alloc() : memref<32xi32>
   "lmhlo_gpu.cholesky"(%arg, %out, %scratch, %info) { is_lower = true }
       : (memref<10x10xf32>, memref<10x10xf32>, memref<32xi8>, memref<32xi32>) -> ()
+  func.return
+}
+
+// CHECK-LABEL: func @ag_start
+func.func @ag_start(%arg : memref<10x10xf32>, %out: memref<20x10xf32>) {
+  %0 = "lmhlo_gpu.all_gather_start"(%arg, %out)
+    {
+      replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      all_gather_dimension = 0
+    }
+    : (memref<10x10xf32>, memref<20x10xf32>) -> (!mhlo.token)
+  func.return
+}
+
+// CHECK-LABEL: func @ag_start_mixed
+func.func @ag_start_mixed(%arg0 : memref<10x10xf32>, %arg1 : memref<10x10xf16>,
+                    %out0: memref<20x10xf32>, %out1: memref<20x10xf16>) {
+  %0 = "lmhlo_gpu.all_gather_start"(%arg0, %arg1, %out0, %out1)
+    {
+      replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      all_gather_dimension = 0
+    }
+    : (memref<10x10xf32>, memref<10x10xf16>, memref<20x10xf32>, memref<20x10xf16>) -> (!mhlo.token)
   func.return
 }

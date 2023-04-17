@@ -100,8 +100,7 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
     if (IsDynamicTensor(dst_tensor)) {
       TfLiteTensorRealloc(src_tensor->bytes, dst_tensor);
     }
-    TF_LITE_ENSURE_EQ(context, src_tensor->bytes, dst_tensor->bytes);
-    TfLiteTensorCopy(src_tensor, dst_tensor);
+    TF_LITE_ENSURE_OK(context, TfLiteTensorCopy(src_tensor, dst_tensor));
   }
   return kTfLiteOk;
 }
@@ -499,12 +498,12 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
   // |           |------------------------------->|            |
   // |           |         |            | <----   |            |
   // +-----------+         +------------+      \  +------------+
-  //                             |              \       |     ^
-  //                             | (2)       (5) \      | (4) | (3-2)
-  //                             v                \     v     |
+  //      |                      |              \       |     ^
+  //      | (6-1)                | (2)       (5) \      | (4) | (3-2)
+  //      v                      v                \     v     |
   // +-----------+         +------------+         +------------+
   // |   WHILE   |         |  SUBGRAPH  |         |  SUBGRAPH  |
-  // |   OUTPUT  |    (6)  |   OUTPUT   |         |   OUTPUT   |
+  // |   OUTPUT  |  (6-2)  |   OUTPUT   |         |   OUTPUT   |
   // |           |<-------------------------------|            |
   // +-----------+         +------------+         +------------+
   //
@@ -517,7 +516,9 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
   // (4) Invoke body subgraph.
   // (5) Copy the outputs of body subgraph to the inputs condition subgraph.
   //     Jump back to step 2!
-  // (6) Copy the outputs of body subgraph to the outputs of WHILE op.
+  // (6) If body is never invoked, run the step 6-1, else run the step 6-2.
+  // (6-1) Copy the inputs of WHILE op to the outputs of WHILE op.
+  // (6-2) Copy the outputs of body subgraph to the outputs of WHILE op.
   //
   // The body subgraph shouldn't have dynamic sized outputs.
 
@@ -540,7 +541,7 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
     }
 
     if (body_invoked) {
-      // Step 3-2. body->output -> body->inputs
+      // Step 3-2. body->outputs -> body->inputs
       TF_LITE_ENSURE_OK(
           context,
           CopyTensorsData(context, body_subgraph, body_subgraph->outputs(),
@@ -560,7 +561,7 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
       body_subgraph->EnsureTensorDataIsReadable(tensor_index);
     }
 
-    // Step 5. body->output -> cond->inputs (fast)
+    // Step 5. body->outputs -> cond->inputs (fast)
     TF_LITE_ENSURE_OK(
         context,
         CopyTensorsData(context, body_subgraph, body_subgraph->outputs(),
@@ -568,7 +569,7 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (body_invoked) {
-    // Step 6. Copy body->output -> node->outputs
+    // Step 6. Copy body->outputs -> node->outputs
     TF_LITE_ENSURE_OK(
         context,
         CopyTensorsData(context, body_subgraph, body_subgraph->outputs(),

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -70,7 +71,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 
 void HasError(const Status& s, const error::Code code, StringPiece substr) {
   EXPECT_EQ(s.code(), code) << s;
-  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
+  EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -250,8 +251,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -308,8 +309,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -2016,6 +2017,43 @@ TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
     Tensor result;
     TF_ASSERT_OK(Run(flr0_, handle, opts, {}, {&result}));
     EXPECT_EQ(result.scalar<bool>()(), inline_option);
+  }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, FullTypeForInt32) {
+  auto T = DT_INT32;
+  FunctionDef int32_func = FDH::Define(
+      // Name
+      "DoubleInt32",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"z: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// z = Add<T>(x, x)
+       {{"z"}, "Add", {"x", "x"}, {{"T", T}}}});
+  Init({int32_func});
+
+  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  auto y = test::AsTensor<float>({1.0, 2.0, 3.0, 4.0});
+  Tensor z;
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "DoubleInt32", {}, &handle));
+
+  const FunctionBody* fb = flr0_->GetFunctionBody(handle);
+  for (const Node* node : fb->arg_nodes) {
+    if (node->name() == "x") {
+      ASSERT_TRUE(node->def().has_experimental_type());
+      FullTypeDef ft = node->def().experimental_type();
+      EXPECT_EQ(ft.type_id(), TFT_PRODUCT);
+      ASSERT_EQ(ft.args_size(), 1);
+      EXPECT_EQ(ft.args(0).type_id(), TFT_SHAPE_TENSOR);
+      ASSERT_EQ(ft.args(0).args_size(), 1);
+      EXPECT_EQ(ft.args(0).args(0).type_id(), TFT_INT32);
+    }
   }
 }
 

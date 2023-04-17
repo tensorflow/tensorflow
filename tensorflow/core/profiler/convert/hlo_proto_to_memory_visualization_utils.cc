@@ -751,8 +751,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
                                PreprocessResult* result) {
   // The color constants from https://graphviz.org/doc/info/colors.html.
   const char* lb_colors[] = {
-      "aliceblue",
-      "antiquewhite",
+      "antiquewhite3",
       "aqua",
       "aquamarine",
       "bisque",
@@ -804,7 +803,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
       "hotpink",
       "indianred",
       "indigo",
-      "ivory",
+      "ivory3",
       "khaki",
       "lavender",
       "lavenderblush",
@@ -1039,7 +1038,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
       ProcessHeapSimulatorTrace(wrapper, memory_color, &simulator_stats);
   if (!status.ok()) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Failed to process heap simulator trace: ", status.error_message()));
+        "Failed to process heap simulator trace: ", status.message()));
   }
 
   // Process buffers with indefinite lifetime.

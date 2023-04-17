@@ -109,7 +109,7 @@ void SortAndPruneChildren(int k, int level, Node* root) {
     } else {
       *root->mutable_children() =
           TopKChildren(root, k, [](const Node* a, const Node* b) {
-            return a->metrics().time() > b->metrics().time();
+            return a->metrics().raw_time() > b->metrics().raw_time();
           }).children();
     }
   }
@@ -189,10 +189,6 @@ void PopulateOpMetricsNode(
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.flops());
-  metrics->add_raw_bytes_accessed_array(op_metrics.bytes_accessed());
-
-  // "time" is the op or category fraction of total time.
-  metrics->set_time(SafeDivide(op_metrics.time_ps(), total_time_ps));
 
   // Hack to approximate utilization for INT8/4 convolution HLOs:
   // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
@@ -204,19 +200,13 @@ void PopulateOpMetricsNode(
   }
   double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
                                         peak_gigaflops_per_second_per_core);
-  // The UI expects flops_utilization = flops / time. See:
+  // The UI expects flops_utilization = flop_util / time_fraction. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
-  metrics->set_flops(flops_utilization * metrics->time());
+  const double time_fraction = SafeDivide(op_metrics.time_ps(), total_time_ps);
+  metrics->set_flops(flops_utilization * time_fraction);
 
-  // TODO(b/219984562): Use hierarchical roofline.
-  // For now, capture both overall and off-chip memory utilization.
-  const double mem_bw_utilization = SafeDivide(
-      GibiBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ALL,
-                                OpMetrics::MemoryAccessed::UNKNOWN),
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_ALL]);
-  metrics->add_bandwidth_utils(mem_bw_utilization);
-
-  const double hbm_bw_gibibytes_per_second =
+  // Capture both on-chip and off-chip memory utilization.
+  const double hbm_gibibytes_per_second =
       GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
                                            MemorySpace::MEMORY_SPACE_HBM,
                                            OpMetrics::MemoryAccessed::READ)) +
@@ -224,12 +214,11 @@ void PopulateOpMetricsNode(
                                            MemorySpace::MEMORY_SPACE_HBM,
                                            OpMetrics::MemoryAccessed::WRITE));
   const double hbm_bw_utilization = SafeDivide(
-      hbm_bw_gibibytes_per_second,
+      hbm_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
   metrics->add_bandwidth_utils(hbm_bw_utilization);
-  metrics->add_raw_bytes_accessed_array(
-      GibiToGiga(hbm_bw_gibibytes_per_second) *
-      PicoToNano(op_metrics.time_ps()));
+  double hbm_bytes =
+      GibiToGiga(hbm_gibibytes_per_second) * PicoToNano(op_metrics.time_ps());
 
   const double sram_rd_gibibytes_per_second = GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
@@ -238,9 +227,8 @@ void PopulateOpMetricsNode(
       sram_rd_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
   metrics->add_bandwidth_utils(sram_rd_bw_utilization);
-  metrics->add_raw_bytes_accessed_array(
-      GibiToGiga(sram_rd_gibibytes_per_second) *
-      PicoToNano(op_metrics.time_ps()));
+  double sram_rd_bytes = GibiToGiga(sram_rd_gibibytes_per_second) *
+                         PicoToNano(op_metrics.time_ps());
 
   const double sram_wr_gibibytes_per_second = GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
@@ -249,16 +237,26 @@ void PopulateOpMetricsNode(
       sram_wr_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
   metrics->add_bandwidth_utils(sram_wr_bw_utilization);
-  metrics->add_raw_bytes_accessed_array(
-      GibiToGiga(sram_wr_gibibytes_per_second) *
-      PicoToNano(op_metrics.time_ps()));
+  double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
+                         PicoToNano(op_metrics.time_ps());
+
+  // Check if number of bytes is consistent.
+  const auto total_bytes = op_metrics.bytes_accessed();
+  if ((hbm_bytes + sram_rd_bytes + sram_wr_bytes) < (0.99 * total_bytes)) {
+    // If inconsistent, assume total_bytes are all off-chip.
+    hbm_bytes = total_bytes;
+    sram_rd_bytes = 0;
+    sram_wr_bytes = 0;
+  }
+  metrics->add_raw_bytes_accessed_array(hbm_bytes);
+  metrics->add_raw_bytes_accessed_array(sram_rd_bytes);
+  metrics->add_raw_bytes_accessed_array(sram_wr_bytes);
 }
 
 // Sets the total time on the root node metrics.
 void SetTotalTime(uint64_t total_time_ps, Node* root) {
   Metrics* metrics = root->mutable_metrics();
   metrics->set_raw_time(total_time_ps);
-  metrics->set_time(1.0);
 }
 
 // Recursively insert "fused instruction" nodes (with raw flops).

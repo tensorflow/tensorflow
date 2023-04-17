@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #define EIGEN_USE_THREADS
 #define EIGEN_DONT_PARALLELIZE
 
@@ -111,6 +111,7 @@ struct MklEinsumHelper {
                                          out_shape, trans_x, trans_y);
 
     // Create or retrieve matmul primitive from cache.
+    MklDnnThreadPool eigen_tp(ctx);
     MklMatMulPrimitive<T, T, T>* matmul_prim =
         MklMatMulPrimitiveFactory<T, T, T, T>::Get(
             *params, false /* value for do_not_cache */);
@@ -162,7 +163,7 @@ struct MklEinsumHelper {
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
+
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
     matmul_prim->Execute(cpu_stream, lhs.flat<T>().data(), weight_data,
@@ -328,4 +329,4 @@ class MklEinsum : public OpKernel {
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
 }  // namespace tensorflow
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

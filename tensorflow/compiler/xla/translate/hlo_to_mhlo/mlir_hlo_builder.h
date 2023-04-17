@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -47,7 +47,7 @@ namespace xla {
 // method or constructed using MakeXlaOp method in this builder.
 //
 // TODO(hinsu): Support more ops and utility functions to set special attributes
-// like OpMetadata and Sharding.
+// like OpMetadata.
 class MlirHloBuilder : public XlaBuilder {
  public:
   // Constructs builder for the given function. New operations are added to the

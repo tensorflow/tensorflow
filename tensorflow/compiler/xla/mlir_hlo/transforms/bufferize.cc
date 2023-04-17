@@ -75,7 +75,8 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     if (allSameElems)
       value = makeConstant(elementsAttr.getSplatValue<mlir::Attribute>(),
                            elementType);
-    for (auto &en : llvm::enumerate(elementsAttr.getValues<Attribute>())) {
+    for (const auto &en :
+         llvm::enumerate(elementsAttr.getValues<Attribute>())) {
       if (!allSameElems) value = makeConstant(en.value(), elementType);
       Value index = rewriter.create<arith::ConstantIndexOp>(loc, en.index());
       rewriter.create<memref::StoreOp>(loc, value, buffer, index);
@@ -196,7 +197,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
             resultDimensions.push_back(dimension);
             Value currentSize =
                 b.create<scf::IfOp>(
-                     l, TypeRange{b.getIndexType()}, isOutOfBounds,
+                     l, isOutOfBounds,
                      [&](OpBuilder &b, Location l) {
                        b.create<scf::YieldOp>(l, one);
                      },
@@ -260,8 +261,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
           Value stopCombiningDimensions = b.create<arith::OrIOp>(
               l, isLastIteration, differentBroadcastingSet);
           auto ifStopCombiningDimensions = b.create<scf::IfOp>(
-              l, TypeRange{b.getIndexType(), b.getIndexType()},
-              stopCombiningDimensions,
+              l, stopCombiningDimensions,
               [&](OpBuilder &b, Location l) {
                 // If the running product is not 1, add one dimension of size
                 // 'running_product' to each shape that didn't need
@@ -271,7 +271,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                     l, arith::CmpIPredicate::ne, runningProduct, one);
                 Value newDimensionOffset =
                     b.create<scf::IfOp>(
-                         l, TypeRange{b.getIndexType()}, runningProductNotOne,
+                         l, runningProductNotOne,
                          [&](OpBuilder &b, Location l) {
                            Value newDimensionOffset = b.create<arith::AddIOp>(
                                l, currentDimensionOffset, one);

@@ -977,6 +977,11 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
+    for (int i = 0; i < ksize_.size(); ++i) {
+      OP_REQUIRES(context, ksize_[i] > 0,
+                  errors::InvalidArgument(
+                      "ksize must be a postive int32 value, got:", ksize_[i]));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "
@@ -1602,13 +1607,11 @@ namespace functor {
   extern template struct SpatialMaxPooling<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 #define REGISTER_GPU_MAX_POOL_KERNELS(T) REGISTER_MAX_POOL_KERNELS(GPU, T)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_MAX_POOL_KERNELS);
 #undef REGISTER_GPU_MAX_POOL_KERNELS
 
 // Below kernels currently implemented only for GPU device.
@@ -1644,7 +1647,6 @@ TF_CALL_bfloat16(REGISTER_GPU_MAX_POOL_KERNELS);
                               .TypeConstraint<int64_t>("Targmax"), \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_ONLY_POOL_KERNELS);
 
 // TODO(b/65847473): Re-enable once the underlying build error is fixed.
 #if !defined(PLATFORM_WINDOWS)

@@ -166,7 +166,7 @@ Status UpdatePlaceholderShape(
       for (const auto& dim : output_shapes.dim()) {
         auto size = dim.size();
         if (size == -1) size = cfg.placeholder_unknown_output_shape_dim;
-        shape.AddDim(size);
+        TF_RETURN_IF_ERROR(shape.AddDimWithStatus(size));
         shape_proto.add_dim()->set_size(size);
       }
     }
@@ -621,7 +621,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       0, true);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "
-               << attr_status.error_message();
+               << attr_status.message();
     return nullptr;
   }
 
@@ -641,7 +641,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     VLOG(1) << "Pruning graph...";
     auto status = PruneGraph(new_item.get());
     if (!status.ok()) {
-      LOG(ERROR) << "Pruning failed: " << status.error_message();
+      LOG(ERROR) << "Pruning failed: " << status.message();
       return nullptr;
     }
     VLOG(1) << "Number of nodes in graph after pruning: "

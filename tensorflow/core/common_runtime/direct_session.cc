@@ -353,7 +353,7 @@ DirectSession::DirectSession(const SessionOptions& options,
   const Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   session_handle_ =
       strings::StrCat("direct", strings::FpToString(random::New64()));
@@ -896,7 +896,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
   const Status s = call_frame.SetArgs(feed_args);
   if (errors::IsInternal(s)) {
-    return errors::InvalidArgument(s.error_message());
+    return errors::InvalidArgument(s.message());
   } else if (!s.ok()) {
     return s;
   }
@@ -917,7 +917,7 @@ Status DirectSession::Run(const RunOptions& run_options,
     const Status s = call_frame.ConsumeRetvals(
         &sorted_outputs, /* allow_dead_tensors = */ false);
     if (errors::IsInternal(s)) {
-      return errors::InvalidArgument(s.error_message());
+      return errors::InvalidArgument(s.message());
     } else if (!s.ok()) {
       return s;
     }
@@ -1847,7 +1847,7 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
     const bool notified =
         WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
-      return Status(error::DEADLINE_EXCEEDED,
+      return Status(absl::StatusCode::kDeadlineExceeded,
                     "Timed out waiting for notification");
     }
   } else {

@@ -52,7 +52,7 @@ class SourceLocationImpl {
 namespace internal {
 
 inline absl::Status MakeAbslStatus(
-    ::tensorflow::error::Code code, absl::string_view message,
+    absl::StatusCode code, absl::string_view message,
     absl::Span<const SourceLocationImpl>,
     SourceLocationImpl loc = SourceLocationImpl::current()) {
   return absl::Status(static_cast<absl::StatusCode>(code), message);

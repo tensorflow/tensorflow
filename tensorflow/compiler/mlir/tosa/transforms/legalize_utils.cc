@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include <optional>
+
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -64,11 +66,11 @@ LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
   return success();
 }
 
-llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
-                                                  Operation* op,
-                                                  Value input_value,
-                                                  ShapedType output_type,
-                                                  llvm::ArrayRef<Value> dims) {
+std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                 Operation* op,
+                                                 Value input_value,
+                                                 ShapedType output_type,
+                                                 llvm::ArrayRef<Value> dims) {
   auto e_ty = input_value.getType().cast<ShapedType>().getElementType();
   llvm::SmallVector<int64_t> static_dims;
 
@@ -87,7 +89,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
       if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
         (void)rewriter.notifyMatchFailure(
             op, "dim for building tosa::ReshapeOp should be rank-0");
-        return llvm::None;
+        return std::nullopt;
       }
       int64_t size = dim_attr.getSplatValue<APInt>().getSExtValue();
 
@@ -97,7 +99,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
           size != static_dims[i]) {
         (void)rewriter.notifyMatchFailure(
             op, "mismatch reshape static dim when creating tosa::ReshapeOp");
-        return llvm::None;
+        return std::nullopt;
       }
 
       static_dims[i] =
@@ -110,7 +112,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   if (dyn_count > 1) {
     (void)rewriter.notifyMatchFailure(
         op, "multiple dynamic shapes when creating tosa::ReshapeOp");
-    return llvm::None;
+    return std::nullopt;
   }
 
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
@@ -143,6 +145,12 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
   return rescale_op.getResult();
 }
 
+// Removes the zero point and cast to int32, no need to handle roundings modes
+Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
+                                    Value input_val, int64_t input_zp) {
+  return buildRescaleToInt32(rewriter, op, input_val, 1.0f, input_zp);
+}
+
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
                           Value input_val, double input_scale,
@@ -152,8 +160,14 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
+#if TFLITE_SINGLE_ROUNDING
+  bool double_round = false;
+#else   // TFLITE_DOUBLE_ROUNDING
+  bool double_round = true;
+#endif  // TFLITE_SINGLE_ROUNDING
+
   return buildRescale(rewriter, op, output_type, input_val, input_scale,
-                      input_zp, 0, false, true);
+                      input_zp, 0, double_round, true);
 }
 
 // Creates TOSA rescale op with int32 input
@@ -166,9 +180,15 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
 
+#if TFLITE_SINGLE_ROUNDING
+  bool double_round = false;
+#else   // TFLITE_DOUBLE_ROUNDING
+  bool double_round = true;
+#endif  // TFLITE_SINGLE_ROUNDING
+
   // Potentially check input_shape == output_shape here
   return buildRescale(rewriter, op, output_type, input_val, output_scale, 0,
-                      output_zp, true, true);
+                      output_zp, double_round, true);
 }
 
 // Creates a TOSA rescale op based on conv2d parameters.
@@ -265,6 +285,13 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   for (int32_t i = -128; i < 128; i++) {
     double dequantized = input_scale * (i - input_zp);
     double transformed = func(dequantized);
+
+    double max = (output_scale > 1.0) ? DBL_MAX : (DBL_MAX * output_scale);
+    if (transformed >= max) {
+      table.push_back(INT8_MAX);
+      continue;
+    }
+
     int32_t rescaled = std::llround(transformed / output_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table.push_back(
@@ -313,13 +340,9 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   table.push_back(
       static_cast<int16_t>(std::min(std::max(max_val, -32768), 32767)));
 
-  auto element_qtype =
-      UniformQuantizedType::get(true, rewriter.getIntegerType(16),
-                                rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
-  auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
-  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {513}, element_qtype.getStorageType());
-  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+  auto const_type =
+      tensorflow::GetTypeFromTFTensorShape({513}, rewriter.getIntegerType(16));
+  auto const_attr = DenseElementsAttr::get(const_type, llvm::ArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -415,6 +438,21 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
+}
+
+// Create an expected bitwidth integer constant operator based on the type
+// parameter.
+Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
+                                  int64_t val) {
+  auto bit_width = type.getIntOrFloatBitWidth();
+  auto const_type = tensorflow::GetTypeFromTFTensorShape(
+      {}, builder.getIntegerType(bit_width));
+  auto const_attr =
+      SplatElementsAttr::get(const_type, builder.getIntegerAttr(type, val));
+
+  auto const_op =
+      builder.create<tosa::ConstOp>(builder.getLoc(), const_type, const_attr);
   return const_op.getResult();
 }
 
@@ -582,8 +620,8 @@ bool getTransposeConv2dPaddingValues(
 // T: storage C type.
 // Default template creates a constant tensor in T.
 template <typename T>
-llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
-                                     ArrayRef<T> vec, ArrayRef<int64_t> shape) {
+std::optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                    ArrayRef<T> vec, ArrayRef<int64_t> shape) {
   int64_t num_total_elements = 1;
   for (int64_t a : shape) {
     num_total_elements *= a;
@@ -591,7 +629,7 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type = tensorflow::GetTypeFromTFTensorShape(
@@ -605,9 +643,9 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
 
 // Template specialization for APInt
 template <>
-llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
-                                            Operation* op, ArrayRef<APInt> vec,
-                                            ArrayRef<int64_t> shape) {
+std::optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
+                                           Operation* op, ArrayRef<APInt> vec,
+                                           ArrayRef<int64_t> shape) {
   int64_t num_total_elements = 1;
   for (int64_t a : shape) {
     num_total_elements *= a;
@@ -615,7 +653,7 @@ llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type = tensorflow::GetTypeFromTFTensorShape(
@@ -629,9 +667,9 @@ llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
 
 // Template specialization for float
 template <>
-llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
-                                            Operation* op, ArrayRef<float> vec,
-                                            ArrayRef<int64_t> shape) {
+std::optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
+                                           Operation* op, ArrayRef<float> vec,
+                                           ArrayRef<int64_t> shape) {
   int64_t num_total_elements = 1;
   for (int64_t a : shape) {
     num_total_elements *= a;
@@ -639,7 +677,7 @@ llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
 
   if (vec.size() != num_total_elements) {
     op->emitOpError("getConstTensor(): number of elements mismatch.");
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto const_type =
@@ -652,10 +690,10 @@ llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
 }
 
 // Template instantiation
-template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
-                                                       Operation*,
-                                                       ArrayRef<int32_t> vec,
-                                                       ArrayRef<int64_t> shape);
+template std::optional<Value> getConstTensor<int32_t>(PatternRewriter&,
+                                                      Operation*,
+                                                      ArrayRef<int32_t> vec,
+                                                      ArrayRef<int64_t> shape);
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
@@ -680,7 +718,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
     auto ety = op.getValue().getType().getElementType();
-    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
+    auto new_ty = op.getType().cast<TensorType>().clone(ety);
     op.getResult().setType(new_ty);
   });
 
@@ -691,6 +729,24 @@ LogicalResult ApplyPatternsWithShapeResolution(
       func.getContext(), func.getFunctionType().getInputs(), result_tys));
 
   return success();
+}
+
+void TrimQuantizedIntegerRangeMin(UniformQuantizedType dtype,
+                                  int64_t& val_min) {
+  val_min =
+      val_min < dtype.getStorageTypeMin() ? dtype.getStorageTypeMin() : val_min;
+}
+
+void TrimQuantizedIntegerRangeMax(UniformQuantizedType dtype,
+                                  int64_t& val_max) {
+  val_max =
+      val_max > dtype.getStorageTypeMax() ? dtype.getStorageTypeMax() : val_max;
+}
+
+void TrimQuantizedIntegerRange(UniformQuantizedType dtype, int64_t& val_min,
+                               int64_t& val_max) {
+  TrimQuantizedIntegerRangeMin(dtype, val_min);
+  TrimQuantizedIntegerRangeMax(dtype, val_max);
 }
 
 }  // namespace tosa

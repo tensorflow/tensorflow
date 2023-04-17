@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -166,34 +166,34 @@ class BlasLt {
                        blas::ProfileResult* profile_result = nullptr) {
     if (AsCudaDataType(blas::ToDataType<Scale>::value) !=
         plan.op_desc.scale_type()) {
-      return port::InvalidArgumentError("mismatched scale types");
+      return tsl::errors::InvalidArgument("mismatched scale types");
     }
 
     bool expect_scale_factor_on_device =
         (plan.op_desc.pointer_mode() == CUBLASLT_POINTER_MODE_DEVICE);
 
     if (alpha.on_device() != expect_scale_factor_on_device) {
-      return port::InvalidArgumentError("wrong location for alpha");
+      return tsl::errors::InvalidArgument("wrong location for alpha");
     }
 
     if (beta.on_device() != expect_scale_factor_on_device) {
-      return port::InvalidArgumentError("wrong location for beta");
+      return tsl::errors::InvalidArgument("wrong location for beta");
     }
 
     if (AsCudaDataType(blas::ToDataType<A>::value) != plan.a_desc.type()) {
-      return port::InvalidArgumentError("mismatched A matrix types");
+      return tsl::errors::InvalidArgument("mismatched A matrix types");
     }
 
     if (AsCudaDataType(blas::ToDataType<B>::value) != plan.b_desc.type()) {
-      return port::InvalidArgumentError("mismatched B matrix types");
+      return tsl::errors::InvalidArgument("mismatched B matrix types");
     }
 
     if (AsCudaDataType(blas::ToDataType<C>::value) != plan.c_desc.type()) {
-      return port::InvalidArgumentError("mismatched C matrix types");
+      return tsl::errors::InvalidArgument("mismatched C matrix types");
     }
 
     if (AsCudaDataType(blas::ToDataType<D>::value) != plan.d_desc.type()) {
-      return port::InvalidArgumentError("mismatched D matrix types");
+      return tsl::errors::InvalidArgument("mismatched D matrix types");
     }
 
     return DoMatmul(stream, plan, alpha.opaque(), a, b, beta.opaque(), c, d,

@@ -26,11 +26,9 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
@@ -42,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -55,20 +54,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/gpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/attr_lowering_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_jitrt_stub.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tfrt/jitrt/opdefs/jitrt_ops.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
@@ -94,7 +90,9 @@ constexpr int64_t kDefaultCheapCost = 1;
 void getDependentConversionDialects(mlir::DialectRegistry &registry) {
   registry.insert<tfrt::corert::CoreRTDialect, mlir::func::FuncDialect,
                   tfrt::fallback_async::FallbackAsyncDialect,
-                  tfrt::compiler::TFRTDialect, tf_jitrt::JitRuntimeDialect>();
+                  tfrt::compiler::TFRTDialect>();
+
+  RegisterJitRtDialects(registry);
 }
 
 mlir::Value GetFunctionInputChain(mlir::Operation *op) {
@@ -237,7 +235,13 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
         // called by a TPUPartitionedCall op and will be compiled in
         // TPUPartitionedCall op via FunctionLibraryRuntime and not be processed
         // by BEFExecutor.
-        is_tpu_op) {
+        //
+        // We also avoid creating tfrt_fallback_async.createop for all GPU ops
+        // except for tf.XlaLaunch. This is correct as long as we only run XLA
+        // clusters on GPU and all other ops on CPU.
+        is_tpu_op ||
+        (parsed_device_name->device_type == DEVICE_GPU &&
+         op->getName().getStringRef().str() != "tf.XlaLaunch")) {
       return ConvertToCoreRTExecuteOp(
           op, operands, parsed_device_name->op_handler_name, op_attrs,
           op_func_attrs, op_name, rewriter);
@@ -331,8 +335,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
     // be relatively cheap for the host.
     cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
   } else {
-    cost = rewriter.getI64IntegerAttr(
-        cost_analysis_.GetCost(op, fallback_key.getInt()));
+    cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
   }
 
   // For now, we only consider GPU XLA clusters in the form of XlaLaunch for
@@ -864,6 +867,12 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
   LogicalResult matchAndRewrite(
       CallOp op, typename CallOp::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    if (auto xla_must_compile =
+            op->template getAttrOfType<mlir::BoolAttr>("_XlaMustCompile");
+        xla_must_compile && xla_must_compile.getValue()) {
+      return mlir::failure();
+    }
+
     auto callee =
         op.getCallableForCallee().template dyn_cast<mlir::SymbolRefAttr>();
     if (!callee) return failure();
@@ -1409,43 +1418,6 @@ mlir::func::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
   return body_fn;
 }
 
-// TODO(ezhulenev): tf_device.cluster operations after auto-fusion should
-// have the correct device assigned based on the fused operations. We should
-// use this device to convert operands and results from/to corert handles.
-// For now it is safe to assume that it is "CPU" because we do not support
-// any other devices and do not support distributed models.
-constexpr char kJitRtDevice[] = "/job:localhost/replica:0/task:0/device:CPU:0";
-
-// Convert jitrt.call operations to the tf_jitrt.fallback.execute operation.
-class JitRtCallToJitRtCompileAndExecuteConversion
-    : public OpConversionPattern<tfrt::jitrt::CallOp> {
- public:
-  explicit JitRtCallToJitRtCompileAndExecuteConversion(MLIRContext *context)
-      : OpConversionPattern<tfrt::jitrt::CallOp>(context) {}
-
-  LogicalResult matchAndRewrite(
-      tfrt::jitrt::CallOp call, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    // Convert operands to fallback tensors.
-    llvm::SmallVector<Value, 4> fallback_operands;
-    if (failed(tfrt_compiler::ConvertFallbackOperands(
-            call, kJitRtDevice, adaptor.getOperands(), &fallback_operands,
-            rewriter)))
-      return rewriter.notifyMatchFailure(call, "failed to convert operand");
-
-    // tf_jitrt.fallback.execute always produces fallback tensors.
-    llvm::SmallVector<Type, 4> result_types(
-        call->getNumResults(),
-        rewriter.getType<tfrt::fallback::TFTensorType>());
-
-    // Replace jitrt.call operation with a tf_jitrt.fallback.execute operation.
-    rewriter.replaceOpWithNewOp<tf_jitrt::FallbackExecuteOp>(
-        call, result_types, call.getCallee(), fallback_operands, kJitRtDevice);
-
-    return success();
-  }
-};
-
 // Helper function for specifying legal dialects for conversion to CoreRT.
 void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
                                      mlir::TypeConverter *func_type_converter,
@@ -1454,10 +1426,8 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addLegalDialect<tfrt::fallback_async::FallbackAsyncDialect>();
   target->addLegalDialect<tfrt::compiler::TFRTDialect>();
   target->addLegalDialect<tfrt::test::TestDialect>();
-  target->addLegalDialect<tf_jitrt::JitRuntimeDialect>();
   target->addIllegalDialect<TF::TensorFlowDialect>();
   target->addIllegalDialect<tf_device::TensorFlowDeviceDialect>();
-  target->addIllegalDialect<tfrt::jitrt::JitRuntimeDialect>();
   target->addDynamicallyLegalOp<mlir::func::FuncOp>([func_type_converter,
                                                      chain_type](
                                                         func::FuncOp op) {
@@ -1470,14 +1440,6 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
     return func_type_converter->isSignatureLegal(op.getFunctionType()) &&
            func_type_converter->isLegal(&op.getBody());
   });
-}
-
-// Helper function for inserting TFRT JitRt dialect conversions.
-void PopulateJitRtConversionPatterns(MLIRContext *context,
-                                     RewritePatternSet *patterns,
-                                     CoreRTConverter *corert_converter) {
-  // Lower jitrt.call to the pair of compile and execute operations.
-  patterns->add<JitRtCallToJitRtCompileAndExecuteConversion>(context);
 }
 
 // Helper function for inserting TF dialect to TFRT dialect op conversion
@@ -1562,6 +1524,7 @@ class TfToTfrtConversionPass
     tpu_transfer_result_to_host_ = options.tpu_transfer_result_to_host;
     use_tpu_host_allocator_for_inputs_ =
         options.use_tpu_host_allocator_for_inputs;
+    tpu_allow_unpadded_batch_ = options.tpu_allow_unpadded_batch;
     cost_threshold_ = options.cost_threshold;
     upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
@@ -1591,7 +1554,8 @@ class TfToTfrtConversionPass
           &target, &patterns, &context, &corert_converter, &fallback_converter,
           TfrtTpuExecuteOpConversionOptions{
               tpu_use_core_selector_, tpu_use_bundled_transfer_,
-              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_},
+              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_,
+              tpu_allow_unpadded_batch_},
           tpu_lower_to_fallback_);
 
     if (target_gpu_) {
@@ -1606,7 +1570,9 @@ class TfToTfrtConversionPass
     }
     SetUpTFToTFRTConversionLegality(&target, func_type_converter,
                                     corert_converter.chain_type());
-    PopulateJitRtConversionPatterns(&context, &patterns, &corert_converter);
+
+    PopulateJitRtConversionPatterns(&target, &context, &patterns,
+                                    &corert_converter);
 
     PopulateTFToTFRTConversionPatterns(
         &context, &patterns, &corert_converter, &fallback_converter,
@@ -1730,31 +1696,8 @@ class TfToTfrtConversionPass
       chain_value = create_op;
     }
 
-    // Pre-compile all JIT compiled kernels found in the module.
-    llvm::SmallVector<Value> compiled;
-
-    // A set SymbolRef attributes referencing compiled kernels.
-    llvm::DenseSet<mlir::Attribute> kernels;
-
-    // Compile all kernels in parallell.
-    module.walk([&](tf_jitrt::FallbackExecuteOp execute) {
-      // Do not compiled the same kernel multiple times.
-      if (kernels.contains(execute.getKernel())) return;
-
-      auto compile = builder.create<tf_jitrt::FallbackCompileOp>(
-          execute.getLoc(), chain_type, execute.getKernel(),
-          execute.getDevice());
-      compiled.push_back(compile.getResult());
-      kernels.insert(compile.getKernel());
-    });
-
-    // Wait for the compilation completion before returning from init function.
-    if (!compiled.empty()) {
-      // Do not forget to wait for the fallback kernels initialization.
-      compiled.insert(compiled.begin(), chain_value);
-      chain_value = builder.create<tfrt::compiler::MergeChainsOp>(
-          func_op.getLoc(), chain_type, compiled);
-    }
+    chain_value =
+        CreateJitRtFallbackCompileKernel(builder, module, chain_value);
 
     builder.create<tfrt::compiler::ReturnOp>(func_op.getLoc(), chain_value);
   }
@@ -1815,6 +1758,18 @@ class TfToTfrtConversionPass
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
+
+  Option<TfrtCompileOptions::TpuAllowUnpaddedBatch> tpu_allow_unpadded_batch_{
+      *this, "tpu-allow-unpadded-batch",
+      llvm::cl::desc("To allow unpadded batch for TPU execution."),
+      llvm::cl::values(
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled,
+                     "disabled", "Disable this feature."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kAuto, "auto",
+                     "Enable this feature when in-graph batching is detected."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kEnforced,
+                     "enforced", "Force to enable this feature.")),
+      llvm::cl::init(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled)};
 
   Option<bool> target_gpu_{
       *this, "target-gpu",
@@ -1885,250 +1840,9 @@ CreateTfToTfrtConversionPass(const TfrtPipelineOptions &options) {
 }
 
 // -------------------------------------------------------------------------- //
-// Outline tf_device.cluster operation regions into functions in the nested
-// modules and replaces all cluster operations with jitrt.call operations.
-// -------------------------------------------------------------------------- //
 
-class OutlineJitRtClustersPass
-    : public PassWrapper<OutlineJitRtClustersPass, OperationPass<ModuleOp>> {
- public:
-  llvm::StringRef getArgument() const final {
-    return "tf-outline-jitrt-cluster";
-  }
-  llvm::StringRef getDescription() const final {
-    return "Outlines `tf_device.cluster` operations into functions and "
-           "replaces them with `jitrt.call` operations.";
-  }
-
-  void runOnOperation() override;
-
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {
-    registry.insert<tfrt::jitrt::JitRuntimeDialect>();
-  }
-
- private:
-  struct CompiledModule {
-    ModuleOp module;
-    func::FuncOp entrypoint;
-    llvm::SetVector<Value> operands;
-  };
-
-  // Creates a nested module with a single function that will be compiled into
-  // the kernel at runtime.
-  CompiledModule CreateCompiledModule(tf_device::ClusterOp cluster,
-                                      int64_t max_arg_size,
-                                      SymbolTable *symbol_table);
-
-  // Update compiled module entrypoint signature with inferred operands
-  // constraints.
-  LogicalResult SetEntrypointConstraints(CompiledModule &compiled);
-
-  // Outlines cluster operation regions into compiled modules, and replaces
-  // cluster operation with a jitrt.call operation.
-  LogicalResult OutlineClusterOp(tf_device::ClusterOp cluster,
-                                 int64_t max_arg_size,
-                                 SymbolTable *symbol_table);
-
-  // Mapping from the outlined module string representation to the module itself
-  // and an entrypoint function. Used to deduplicate identical modules during
-  // the `tf_device.cluster` outlining.
-  llvm::StringMap<std::pair<ModuleOp, func::FuncOp>> outlined_;
-};
-
-OutlineJitRtClustersPass::CompiledModule
-OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
-                                               int64_t max_arg_size,
-                                               SymbolTable *symbol_table) {
-  MLIRContext *ctx = cluster->getContext();
-  Location loc = cluster.getLoc();
-
-  // Create a module that will hold compiled function and async wrappers.
-  // TODO(ezhulenev): Give better names to module and function.
-  auto compiled_module = ModuleOp::create(loc, {"kernel"});
-  compiled_module->setAttr("tfrt.compiled", UnitAttr::get(ctx));
-  compiled_module->setAttr(
-      "tfrt.max-arg-size",
-      IntegerAttr::get(IntegerType::get(ctx, 64), max_arg_size));
-
-  SymbolTable compiled_module_symbol_table(compiled_module);
-
-  // Find out the cluster arguments and their types.
-  llvm::SetVector<Value> live_ins;
-  getUsedValuesDefinedAbove(cluster.getBody(), cluster.getBody(), live_ins);
-
-  llvm::SmallVector<Type, 4> operand_types;
-  operand_types.reserve(live_ins.size());
-  for (Value v : live_ins) operand_types.emplace_back(v.getType());
-
-  // Create a function in the compiled module.
-  auto compiled_func_type =
-      FunctionType::get(ctx, operand_types, cluster->getResultTypes());
-  auto compiled_func = func::FuncOp::create(loc, "compute", compiled_func_type);
-  compiled_module_symbol_table.insert(compiled_func);
-
-  // Replace uses of live-in values within cluster region with block arguments.
-  Block *compiled_func_block = compiled_func.addEntryBlock();
-  for (auto p : llvm::zip(live_ins, compiled_func_block->getArguments()))
-    replaceAllUsesInRegionWith(std::get<0>(p), std::get<1>(p),
-                               cluster.getBody());
-
-  // Move all operations in cluster into compiled_func's entry block.
-  auto &cluster_body = cluster.GetBody().getOperations();
-  compiled_func_block->getOperations().splice(
-      compiled_func_block->end(), cluster_body, cluster_body.begin(),
-      cluster_body.end());
-
-  // Replace `tf_device.return` terminator with `func.return` in the function
-  // body.
-  auto device_return =
-      cast<tf_device::ReturnOp>(compiled_func_block->getTerminator());
-  OpBuilder builder(device_return.getOperation());
-  builder.create<func::ReturnOp>(device_return.getLoc(),
-                                 device_return.getOperands());
-  device_return.erase();
-
-  // TODO(ezhulenev): MLIR doesn't define operation equivalence upstream yet,
-  // replace module printing with a more principled solution when available.
-  // Operations in the cluster can be in different order, however define the
-  // identical Tensorflow programs, with current approach we'll not be able
-  // to detect duplicates like this.
-
-  // Remove location attribute attached to Tensorflow operations to be able to
-  // deduplicate compiled clusters with the same set of operations.
-  //
-  // TODO(ezhulenev): Figure out how to propagate locations for error reporting,
-  // right now JitRt will ignore them anyway.
-  compiled_module.walk([](Operation *op) { op->removeAttr("_class"); });
-
-  // Serialize prepared module to string.
-  std::string serialized;
-  llvm::raw_string_ostream os(serialized);
-  compiled_module.print(os);
-
-  // Try to find if identical module was already outlined.
-  auto it = outlined_.find(serialized);
-
-  // Return identical module that was already outlined earlier.
-  if (it != outlined_.end()) {
-    compiled_module.erase();  // erase identical module
-    return {it->second.first, it->second.second, live_ins};
-  }
-
-  // Insert compiled module into the symbol table and assign it a unique name.
-  symbol_table->insert(compiled_module);
-
-  // Cache unique module.
-  outlined_.insert({std::move(serialized), {compiled_module, compiled_func}});
-
-  return {compiled_module, compiled_func, live_ins};
-}
-
-LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
-    CompiledModule &compiled) {
-  func::FuncOp func = compiled.entrypoint;
-
-  // Functions outlined from jitrt device clusters must have a single block.
-  assert(func.getBody().getBlocks().size() == 1 && "expected single block");
-
-  mlir::TFDevice::ClusteringPolicySet policies;
-  populateTfJitRtConstraintsPolicies(policies);
-
-  // Infer constraints on the values defined in the entrypoint function
-  // (including function entry block arguments).
-  mlir::TFDevice::ValuesConstraintSet constraints;
-  if (failed(mlir::TFDevice::PropagateValuesConstraints(
-          func.getBody(), policies, constraints, /*resolve=*/true)))
-    return failure();
-
-  // Annotate arguments with inferred constraints.
-  for (unsigned i = 0; i < func.getNumArguments(); ++i) {
-    if (auto constraint = constraints.GetConstraint(func.getArgument(i))) {
-      auto constraint_name = mlir::StringAttr::get(
-          &getContext(), llvm::formatv("{0}", *constraint).str());
-      func.setArgAttr(i, "rt.constraint", constraint_name);
-    }
-  }
-
-  return success();
-}
-
-LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
-    tf_device::ClusterOp cluster, int64_t max_arg_size,
-    SymbolTable *symbol_table) {
-  Location loc = cluster->getLoc();
-  OpBuilder builder(cluster);
-
-  CompiledModule compiled_module =
-      CreateCompiledModule(cluster, max_arg_size, symbol_table);
-  func::FuncOp compiled_func = compiled_module.entrypoint;
-
-  // Add constraints to the entrypoint arguments.
-  if (failed(SetEntrypointConstraints(compiled_module))) return failure();
-
-  // Replace device cluster with a jitrt.call operation.
-  auto module_name = *compiled_module.module.getSymName();
-  auto func_name = compiled_func.getSymName();
-  auto func_flat_ref =
-      mlir::SymbolRefAttr::get(builder.getContext(), func_name);
-  auto func_ref = mlir::SymbolRefAttr::get(builder.getContext(), module_name,
-                                           {func_flat_ref});
-
-  auto cluster_func_op = builder.create<tfrt::jitrt::CallOp>(
-      loc, cluster.getResultTypes(), func_ref,
-      compiled_module.operands.getArrayRef());
-
-  cluster.replaceAllUsesWith(cluster_func_op);
-  cluster.erase();
-
-  return success();
-}
-
-void OutlineJitRtClustersPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  SymbolTable symbol_table(module);
-
-  // Keep track of the maximum argument size for each function with tf_device
-  // cluster operations in the function body. We need to pass it to the compiled
-  // module to correctly compute its cost later.
-  llvm::DenseMap<mlir::func::FuncOp, int64_t> max_arg_size_map;
-
-  auto get_max_arg_size = [&](mlir::func::FuncOp func) -> int64_t {
-    auto it = max_arg_size_map.find(func);
-    if (it != max_arg_size_map.end()) return it->second;
-    return max_arg_size_map[func] = tf_jitrt::GetMaxArgSize(func);
-  };
-
-  OpBuilder builder(module.getContext());
-  auto result = module.walk([&](tf_device::ClusterOp cluster) -> WalkResult {
-    // Ensure that cluster was formed for TFRT JIT compilation.
-    auto policy = cluster->getAttr("policy").dyn_cast_or_null<StringAttr>();
-    if (!policy || policy.getValue() != "tfrt.auto-fusion")
-      return WalkResult::advance();
-
-    // Get the maximum argument size of the parent function.
-    mlir::func::FuncOp parent_func =
-        cluster->getParentOfType<mlir::func::FuncOp>();
-    int64_t max_arg_size = get_max_arg_size(parent_func);
-
-    if (failed(OutlineClusterOp(cluster, max_arg_size, &symbol_table)))
-      return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-
-  if (result.wasInterrupted()) {
-    module->emitError("Failed to outline tf_device.cluster operations");
-    signalPassFailure();
-  }
-}
-
-static std::unique_ptr<Pass> CreateOutlineJitRtClustersPass() {
-  return std::make_unique<OutlineJitRtClustersPass>();
-}
-
-// -------------------------------------------------------------------------- //
-
-void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
-                                  const TfrtPipelineOptions &options) {
+static void CreateTFExecutorToTFPipelineHelper(
+    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
   // Due to b/191304670, functionalized while ops might not have the
   // shape_invariant attribute set correctly, which leads to failure in shape
   // inference. As a workaround, we conservatively (e.g., we place less
@@ -2154,6 +1868,8 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
       mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
 
   AddTfDeviceAssignmentPasses(pm, options);
+
+  pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
 
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.
@@ -2244,30 +1960,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateTensorDeviceCopyConversionPass());
 
-  // Outline auto-fusion clusters into tf_device.cluster_operations and then
-  // convert them to functions. We currently support only tfrt fallback tensors
-  // as operands, so we disable these passes if we can have native ops after
-  // lowering.
-  pm.addNestedPass<mlir::func::FuncOp>(CreateTfJitRtClusteringPass(
-      options.auto_fusion_oplist, options.auto_fusion_min_cluster_size));
-
-  // Sink small constants into the outlined clusters to reduce the number of
-  // arguments for each of the execute operations.
-  auto is_compilable_const = [](mlir::tf_device::ClusterOp cluster,
-                                mlir::ElementsAttr value) -> bool {
-    // Ensure that cluster was formed for TFRT JIT compilation.
-    auto policy = cluster->getAttr("policy").dyn_cast_or_null<StringAttr>();
-    if (!policy || policy.getValue() != "tfrt.auto-fusion") return false;
-
-    // Check that TF->JitRt compiler supports constant compilation.
-    return mlir::succeeded(IsCompilableConstant(value));
-  };
-
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFDevice::CreateClusterConstantSinkingPass(is_compilable_const));
-
-  // Outline formed JIT compiled device clusters into function.
-  pm.addPass(CreateOutlineJitRtClustersPass());
+  AddTfrtJitRtPasses(options, pm);
 
   // Rewriter operation sequences to device specific fusions.
   DeviceNameUtils::ParsedName parsed_name;
@@ -2299,13 +1992,12 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
     pm.addPass(CreateSinkInInvariantOpsPass());
   }
 
-  pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
+  pm.addPass(CreateLowerTFSavedModelPass(
+      options.hoist_invariant_ops, options.fuse_get_resource_ops_in_hoisting));
 }
 
-void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
-                                          const TfrtPipelineOptions &options) {
-  CreateTFExecutorToTFPipeline(pm, options);
-
+void CreateTfToTfrtPipeline(mlir::OpPassManager &pm,
+                            const TfrtPipelineOptions &options) {
   pm.addPass(CreateTfToTfrtConversionPass(options));
 
   pm.addPass(CreateRemoveDeviceAttributePass());
@@ -2318,6 +2010,12 @@ void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
     pm.addNestedPass<mlir::func::FuncOp>(
         tfrt_compiler::CreateInsertFallbackTensorCopyPass());
   }
+}
+
+static void CreateTfExecutorToTfrtPipelineHelper(
+    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
+  CreateTFExecutorToTFPipelineHelper(pm, options);
+  CreateTfToTfrtPipeline(pm, options);
 }
 
 Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
@@ -2335,6 +2033,13 @@ Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
 // export TF_DUMP_GRAPH_PREFIX=/tmp/mlir
 Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
                                       const TfrtPipelineOptions &options) {
+  TF_RETURN_IF_ERROR(CreateTFExecutorToTFPipeline(pm, options));
+  CreateTfToTfrtPipeline(pm, options);
+  return OkStatus();
+}
+
+Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
+                                    const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(ValidateTfrtPipelineOptions(options));
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass, which requires disabling
@@ -2343,14 +2048,11 @@ Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
     pm.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
         /*print_module_scope=*/true));
   }
-  CreateTfExecutorToTfrtPipelineHelper(pm, options);
+  CreateTFExecutorToTFPipelineHelper(pm, options);
   return OkStatus();
 }
 
 static mlir::PassRegistration<TfToTfrtConversionPass> tf_to_tfrt_pass;
-
-static mlir::PassRegistration<OutlineJitRtClustersPass>
-    tf_outline_jitrt_cluster_pass(CreateOutlineJitRtClustersPass);
 
 static mlir::PassPipelineRegistration<TfrtPipelineOptions> tf_pipeline(
     "tf-executor-to-tfrt-pipeline",

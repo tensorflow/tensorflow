@@ -243,7 +243,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
       src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, &status);
-    ASSERT_TRUE(status.ok()) << status.error_message();
+    ASSERT_TRUE(status.ok()) << status.message();
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
@@ -329,7 +329,7 @@ TEST(CAPI, StatusEnum) {
   EXPECT_EQ(TF_CANCELLED, static_cast<TF_Code>(tensorflow::error::CANCELLED));
   EXPECT_EQ(TF_UNKNOWN, static_cast<TF_Code>(tensorflow::error::UNKNOWN));
   EXPECT_EQ(TF_INVALID_ARGUMENT,
-            static_cast<TF_Code>(tensorflow::error::INVALID_ARGUMENT));
+            static_cast<TF_Code>(absl::StatusCode::kInvalidArgument));
   EXPECT_EQ(TF_DEADLINE_EXCEEDED,
             static_cast<TF_Code>(tensorflow::error::DEADLINE_EXCEEDED));
   EXPECT_EQ(TF_NOT_FOUND, static_cast<TF_Code>(tensorflow::error::NOT_FOUND));
@@ -1435,7 +1435,7 @@ TEST(CAPI, SavedModel) {
   ASSERT_TRUE(input_op != nullptr);
   Status status;
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, &status)}});
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   const tensorflow::string output_op_name(
       tensorflow::ParseTensorName(output_name).first);

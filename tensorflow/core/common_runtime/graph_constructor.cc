@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -294,9 +295,9 @@ class GraphConstructor {
   // Returns the version information for the graph, or nullptr if none is
   // available.
   virtual const VersionDef* versions() const = 0;
-  // Returns the function information for the graph, or nullptr if none is
-  // available.
-  virtual const FunctionDefLibrary* library() const = 0;
+  // Destructively reads the function information for the graph, or nullopt if
+  // none is available.
+  virtual std::optional<FunctionDefLibrary> consume_library() = 0;
 
   // From constructor
   const Options opts_;
@@ -420,7 +421,13 @@ class NodeDefCopyingGraphConstructor : public GraphConstructor {
   const NodeDef& get_node_def(int i) const override { return *node_defs_[i]; }
   NodeDef consume_node_def(int i) override { return *node_defs_[i]; }
   const VersionDef* versions() const override { return versions_; }
-  const FunctionDefLibrary* library() const override { return library_; }
+  std::optional<FunctionDefLibrary> consume_library() override {
+    if (library_ == nullptr) {
+      return std::nullopt;
+    } else {
+      return *library_;
+    }
+  }
 
   const NodeDefSlice node_defs_;
   const VersionDef* const versions_;
@@ -454,8 +461,8 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
     return std::move(*graph_def_.mutable_node(i));
   }
   const VersionDef* versions() const override { return &graph_def_.versions(); }
-  const FunctionDefLibrary* library() const override {
-    return &graph_def_.library();
+  std::optional<FunctionDefLibrary> consume_library() override {
+    return std::move(*graph_def_.mutable_library());
   }
 
   GraphDef graph_def_;
@@ -475,7 +482,7 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
         import_status.code(),
         absl::StrCat(
             "Converting GraphDef to Graph has failed with an error: '",
-            import_status.error_message(),
+            import_status.message(),
             "' The binary trying to import the GraphDef was built when "
             "GraphDef version was ",
             TF_GRAPH_DEF_VERSION,
@@ -821,14 +828,14 @@ Status GraphConstructor::ValidateShape(Node* node) {
     if (!s.ok()) {
       return errors::InvalidArgument("Node '", node->name(), " has an invalid ",
                                      kAttrName, " attribute (shape #", i,
-                                     " error:'", s.error_message(), "'");
+                                     " error:'", s.message(), "'");
     }
     s = refiner_->SetShape(node, i, h);
     if (!s.ok()) {
       return errors::InvalidArgument(
           "Node '", node->name(), "' has an ", kAttrName,
           " attribute inconsistent with the GraphDef for output #", i, ": ",
-          s.error_message());
+          s.message());
     }
   }
   node->ClearAttr(kAttrName);
@@ -1124,10 +1131,8 @@ void GraphConstructor::PrintCycles() {
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
-  if (library()) {
-    // TODO(b/135705010): Add rvalue overloads into the function library, to
-    // avoid unnecessarily copying `*library()` here.
-    TF_RETURN_IF_ERROR(g_->AddFunctionLibrary(*library()));
+  if (auto library = consume_library(); library.has_value()) {
+    TF_RETURN_IF_ERROR(g_->AddFunctionLibrary(*std::move(library)));
   }
 
   std::vector<InputInfo> inputs;

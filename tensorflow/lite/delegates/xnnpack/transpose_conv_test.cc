@@ -535,79 +535,12 @@ TEST(TransposeConvTest, FP16WeightsNoBias) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .NoBias()
       .FP16Weights()
-      .Test(xnnpack_delegate.get());
-}
-
-TEST(TransposeConvTest, INT8Weights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto batch_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto output_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
-  auto kernel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
-  auto stride_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
-  auto channel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-
-  TransposeConvTester()
-      .BatchSize(batch_rng())
-      .OutputHeight(output_rng())
-      .OutputWidth(output_rng())
-      .InputChannels(channel_rng())
-      .OutputChannels(channel_rng())
-      .KernelHeight(kernel_rng())
-      .KernelWidth(kernel_rng())
-      .StrideHeight(stride_rng())
-      .StrideWidth(stride_rng())
-      .SamePadding()
-      .INT8Weights()
-      .Test(xnnpack_delegate.get());
-}
-
-TEST(TransposeConvTest, INT8WeightsNoBias) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto batch_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto output_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
-  auto kernel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
-  auto stride_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
-  auto channel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-
-  TransposeConvTester()
-      .BatchSize(batch_rng())
-      .OutputHeight(output_rng())
-      .OutputWidth(output_rng())
-      .InputChannels(channel_rng())
-      .OutputChannels(channel_rng())
-      .KernelHeight(kernel_rng())
-      .KernelWidth(kernel_rng())
-      .StrideHeight(stride_rng())
-      .StrideWidth(stride_rng())
-      .SamePadding()
       .NoBias()
-      .INT8Weights()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(TransposeConvTest, INT8ChannelWiseWeights) {
+TEST(TransposeConvTest, TensorWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -636,11 +569,11 @@ TEST(TransposeConvTest, INT8ChannelWiseWeights) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .INT8ChannelWiseWeights()
+      .TensorWiseQuantizedInt8Weights()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(TransposeConvTest, INT8ChannelWiseWeightsNoBias) {
+TEST(TransposeConvTest, TensorWiseQuantizedInt8WeightsNoBias) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -669,8 +602,75 @@ TEST(TransposeConvTest, INT8ChannelWiseWeightsNoBias) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
+      .TensorWiseQuantizedInt8Weights()
       .NoBias()
-      .INT8ChannelWiseWeights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, ChannelWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .ChannelWiseQuantizedInt8Weights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, ChannelWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .ChannelWiseQuantizedInt8Weights()
+      .NoBias()
       .Test(xnnpack_delegate.get());
 }
 
@@ -736,8 +736,215 @@ TEST(TransposeConvTest, SparseWeightsNoBias) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .NoBias()
       .SparseWeights()
+      .NoBias()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, SparseFP16Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .SparseWeights()
+      .FP16Weights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, SparseFP16WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .SparseWeights()
+      .FP16Weights()
+      .NoBias()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, SparseTensorWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .SparseWeights()
+      .TensorWiseQuantizedInt8Weights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, SparseTensorWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .SparseWeights()
+      .TensorWiseQuantizedInt8Weights()
+      .NoBias()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, SparseChannelWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .SparseWeights()
+      .ChannelWiseQuantizedInt8Weights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(TransposeConvTest, SparseChannelWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+
+  TransposeConvTester()
+      .BatchSize(batch_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
+      .InputChannels(channel_rng())
+      .OutputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .SamePadding()
+      .SparseWeights()
+      .ChannelWiseQuantizedInt8Weights()
+      .NoBias()
       .Test(xnnpack_delegate.get());
 }
 
@@ -848,7 +1055,6 @@ TEST(TransposeConvTest, WeightsCache) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .NoBias()
       .WeightsCache(weights_cache.get())
       .Test(xnnpack_delegate.get());
 }

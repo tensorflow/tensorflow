@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -30,9 +32,9 @@ class PjRtCompiler;
 // TODO(b/240299401): Move CompileOptions to this file.
 
 // Abstract interface to represent device topology that is used by the compiler.
-class PjRtDeviceTopology {
+class PjRtTopologyDescription {
  public:
-  virtual ~PjRtDeviceTopology() {}
+  virtual ~PjRtTopologyDescription() = default;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;
@@ -46,6 +48,10 @@ class PjRtDeviceTopology {
 
   // If non-null, overrides the compiler for this topology.
   virtual std::optional<PjRtCompiler*> compiler() const { return std::nullopt; }
+
+  // Returns an unordered list of descriptions for all devices in this topology.
+  virtual std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+  DeviceDescriptions() const = 0;
 };
 
 // Abstract interface that all registered compilers must implement.
@@ -57,12 +63,12 @@ class PjRtCompiler {
   // PjRtExecutable must be loaded by a compatible client before execution.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
-      const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
-      const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 };
 
 // Registers a compiler to compile programs for 'platform_name'.
@@ -76,19 +82,19 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // registered for the platform using PjRtRegisterCompiler. The returned
 // PjRtExecutable must be loaded by a compatible client before execution.
 //
-// The actual compiler used may be overriden by Topology::compiler().
+// The actual compiler used may be overridden by Topology::compiler().
 //
 // Returns error::NotFound if a compiler has not been registered for the
 // platform. Forwards errors returned from the registered compiler in case of a
 // compilation failure.
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
-    const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
+    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Variant of `PjRtCompile` that accepts an MLIR module.
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
-    const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
+    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 }  // namespace xla
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
@@ -52,7 +53,7 @@ std::string Map(llvm::ArrayRef<bool> dynamic_dims,
 
 auto EigenMap() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice>) {
+            std::optional<Eigen::ThreadPoolDevice>) {
     Tensor output(DT_FLOAT, {inputs[0].dim_size(0), inputs[0].dim_size(1)});
 
     auto in0 = inputs[0].tensor<float, 2>();
@@ -91,8 +92,8 @@ BM_DYNAMIC_ALL(81, 1, 61);
 BM_DYNAMIC_ALL(800, 1, 600);
 BM_DYNAMIC_ALL(802, 1, 602);
 
-#define BM_STATIC_ROW(ROWS, COLS, COLS1)                                    \
-  BM_SUITE(FusedMapBcastStaticRow##ROWS##_##COLS1, kStaticDim, kDynamicDim, \
+#define BM_STATIC_ROW(ROWS, COLS, COLS1)                                     \
+  BM_SUITE(FusedMapBcastStaticRow_##ROWS##_##COLS1, kStaticDim, kDynamicDim, \
            ROWS, COLS, COLS1)
 BM_STATIC_ROW(2, 1, 80);
 BM_STATIC_ROW(8, 1, 6);
@@ -103,8 +104,8 @@ BM_STATIC_ROW(800, 1, 600);
 BM_STATIC_ROW(802, 1, 602);
 
 #define BM_STATIC_COL(ROWS, COLS, COLS1)                                     \
-  BM_SUITE(FusedMapBcastCol_##ROWS##_##COLS1, kDynamicDim, kStaticDim, ROWS, \
-           COLS, COLS1)
+  BM_SUITE(FusedMapBcastStaticCol_##ROWS##_##COLS1, kDynamicDim, kStaticDim, \
+           ROWS, COLS, COLS1)
 BM_STATIC_COL(2, 1, 80);
 BM_STATIC_COL(8, 1, 6);
 BM_STATIC_COL(80, 1, 1);
@@ -114,8 +115,8 @@ BM_STATIC_COL(800, 1, 600);
 BM_STATIC_COL(802, 1, 602);
 
 #define BM_STATIC_ALL(ROWS, COLS, COLS1)                                    \
-  BM_SUITE(FusedMapBcastAll_##ROWS##_##COLS1, kStaticDim, kStaticDim, ROWS, \
-           COLS, COLS1)
+  BM_SUITE(FusedMapBcastStaticAll_##ROWS##_##COLS1, kStaticDim, kStaticDim, \
+           ROWS, COLS, COLS1)
 BM_STATIC_ALL(2, 1, 80);
 BM_STATIC_ALL(8, 1, 6);
 BM_STATIC_ALL(80, 1, 1);

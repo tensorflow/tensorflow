@@ -179,12 +179,12 @@ void InfoAboutUnusedCPUFeatures() {
     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
 #endif  // __FMA__
     if (!missing_instructions.empty()) {
-      LOG(INFO) << "This TensorFlow binary is optimized with "
-                << "oneAPI Deep Neural Network Library (oneDNN) "
-                << "to use the following CPU instructions in performance-"
-                << "critical operations: " << missing_instructions << std::endl
-                << "To enable them in other operations, rebuild TensorFlow "
-                << "with the appropriate compiler flags.";
+      LOG(INFO) << "This TensorFlow binary is optimized "
+                << "to use available CPU instructions in performance-"
+                << "critical operations." << std::endl
+                << "To enable the following instructions:"
+                << missing_instructions << ", in other operations, rebuild "
+                << "TensorFlow with the appropriate compiler flags.";
     }
   });
 }

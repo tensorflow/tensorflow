@@ -123,11 +123,15 @@ class TfDecoratorTest(test.TestCase):
                                  'decorator doc').decorator_doc)
 
   def testInitCapturesNonNoneArgspec(self):
-    argspec = tf_inspect.ArgSpec(
+    argspec = tf_inspect.FullArgSpec(
         args=['a', 'b', 'c'],
         varargs=None,
-        keywords=None,
-        defaults=(1, 'hello'))
+        varkw=None,
+        defaults=(1, 'hello'),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations=None,
+    )
     self.assertIs(
         argspec,
         tf_decorator.TFDecorator('', test_function, '',
@@ -238,11 +242,11 @@ class TfMakeDecoratorTest(test.TestCase):
   def testSetsTFDecoratorArgSpec(self):
     argspec = tf_inspect.FullArgSpec(
         args=['a', 'b', 'c'],
-        varargs=None,
+        varargs='args',
         kwonlyargs={},
         defaults=(1, 'hello'),
         kwonlydefaults=None,
-        varkw=None,
+        varkw='kwargs',
         annotations=None)
     decorated = tf_decorator.make_decorator(test_function, test_wrapper, '', '',
                                             argspec)
@@ -253,10 +257,17 @@ class TfMakeDecoratorTest(test.TestCase):
         inspect.Signature([
             inspect.Parameter('a', inspect.Parameter.POSITIONAL_OR_KEYWORD),
             inspect.Parameter(
-                'b', inspect.Parameter.POSITIONAL_OR_KEYWORD, default=1),
+                'b', inspect.Parameter.POSITIONAL_OR_KEYWORD, default=1
+            ),
             inspect.Parameter(
-                'c', inspect.Parameter.POSITIONAL_OR_KEYWORD, default='hello')
-        ]))
+                'c',
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default='hello',
+            ),
+            inspect.Parameter('args', inspect.Parameter.VAR_POSITIONAL),
+            inspect.Parameter('kwargs', inspect.Parameter.VAR_KEYWORD),
+        ]),
+    )
 
   def testSetsDecoratorNameToFunctionThatCallsMakeDecoratorIfAbsent(self):
 
