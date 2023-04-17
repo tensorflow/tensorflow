@@ -501,9 +501,38 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                       CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Broadcast(&bias, m::Op())))) {
-      TF_ASSIGN_OR_RETURN(
-          bool was_fused,
-          FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
+      HloInstruction *optional_bias_f16 = nullptr;
+      if (existing_gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+          bias->shape().element_type() == F32) {
+
+        auto compatible_bias_type = [&](const HloInstruction *instr) -> bool {
+          auto gemm_d_type = existing_gemm->shape().element_type();
+          if (instr->shape().element_type() == BF16) {
+            return gemm_d_type == F8E4M3FN || gemm_d_type == F8E5M2 ||
+                   gemm_d_type == F32 || gemm_d_type == BF16;
+          } else if (instr->shape().element_type() == F16) {
+            return gemm_d_type == F16 || gemm_d_type == F8E4M3FN ||
+                   gemm_d_type == F8E5M2;
+          }
+          return false;
+        };
+
+        HloInstruction *bias_f32;
+        if (!Match(bias->mutable_operand(0),
+                   m::AnyOf<HloInstruction>(
+                       m::Convert(&bias_f32,
+                                  m::Convert(&optional_bias_f16, m::Op())
+                                      .WithPredicate(compatible_bias_type)),
+                       m::Convert(&optional_bias_f16, m::Op())
+                           .WithPredicate(compatible_bias_type)))) {
+          VLOG(1) << "F32 vector bias fusion into F8 cublasLt matmul is not "
+                     "currently supported. Please use pattern F32->BF16->F32.";
+        }
+      }
+
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseVectorBiasAdd(instr, bias, existing_gemm,
+                                            optional_slice, optional_bias_f16));     
 
       if (was_fused) {
         return OkStatus();
@@ -1138,7 +1167,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
                                    HloInstruction *broadcast,
                                    HloInstruction *gemm,
-                                   HloInstruction *slice = nullptr) {
+                                   HloInstruction *slice = nullptr,
+                                   HloInstruction *bias_f16 = nullptr) {
     TF_RET_CHECK(ShapeUtil::Compatible(
         broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
 
@@ -1195,26 +1225,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // epilogue fusion, the bias has to be converted to BF16 first.
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
         bias->shape().element_type() == F32) {
-      HloInstruction *bias_f16_maybe;
-
-      auto is_bias_dtype_compatible = [](const PrimitiveType btype,
-                                         const PrimitiveType dtype) {
-        if (btype == BF16) {
-          return dtype == F8E4M3FN || dtype == F8E5M2 || dtype == F32 ||
-                 dtype == BF16;
-        } else if (btype == F16) {
-          return dtype == F16 || dtype == F8E4M3FN || dtype == F8E5M2;
-        }
-        return false;
-      };
-
-      if (Match(bias,
-                m::Convert(m::Op(&bias_f16_maybe)).WithElementType(F32)) &&
-          is_bias_dtype_compatible(bias_f16_maybe->shape().element_type(),
-                                   gemm->shape().element_type())) {
-        bias = bias_f16_maybe;
+      if (bias_f16 != nullptr) {
+        bias = bias_f16;
       } else {
-        // Skip fusion
+        // Skip fusion.
         return true;
       }
     }
