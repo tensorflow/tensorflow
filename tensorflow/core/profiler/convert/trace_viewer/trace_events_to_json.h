@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_color.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
@@ -128,10 +129,6 @@ inline double PicosToMicros(uint64_t ps) { return ps / 1E6; }
 std::string JsonEscape(absl::string_view raw);
 
 std::string ProtoString(const tsl::protobuf::Message& pb);
-
-inline Timespan EventSpan(const TraceEvent& event) {
-  return Timespan(event.timestamp_ps(), event.duration_ps());
-}
 
 template <typename RawData, typename IOBuffer>
 void WriteTpuData(const RawData& data, JsonSeparator<IOBuffer>* separator,

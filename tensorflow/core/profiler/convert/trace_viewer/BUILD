@@ -59,6 +59,7 @@ cc_library(
     srcs = ["trace_events_to_json.cc"],
     hdrs = ["trace_events_to_json.h"],
     deps = [
+        ":trace_events_util",
         ":trace_viewer_color",
         "//tensorflow/core/profiler/lib:context_types",
         "//tensorflow/core/profiler/protobuf:task_proto_cc",
@@ -80,5 +81,15 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "trace_events_util",
+    srcs = ["trace_events_util.cc"],
+    hdrs = ["trace_events_util.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
+        "//tensorflow/core/profiler/utils:timespan",
     ],
 )
