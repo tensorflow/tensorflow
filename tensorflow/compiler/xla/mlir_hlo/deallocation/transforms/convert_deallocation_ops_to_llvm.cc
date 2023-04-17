@@ -147,7 +147,6 @@ struct RetainOpLowering : public ConvertOpToLLVMPattern<RetainOp> {
       results.push_back(rewriter.create<LLVM::LoadOp>(loc, ptrTy, ptr));
     }
     rewriter.create<memref::AllocaScopeReturnOp>(loc, results);
-    llvm::errs() << "\n\n" << alloca << "\n";
 
     rewriter.replaceOp(op, alloca->getResults());
     return success();
