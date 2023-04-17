@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -63,12 +64,10 @@ struct FunctionArgument {
 };
 
 std::unique_ptr<parallel_device::ParallelTensor>
-BroadcastTensorHandleToParallelTensor(TFE_Context* context,
-                                      TFE_TensorHandle* tensor,
-                                      const MeshWithParallelDevice& mesh,
-                                      TF_Status* status) {
+BroadcastTensorHandleToParallelTensor(
+    TFE_Context* context, TFE_TensorHandle* tensor, const Mesh& target_mesh,
+    const parallel_device::ParallelDevice& parallel_device, TF_Status* status) {
   // Broadcast tensor value to local devices.
-  const Mesh& target_mesh = mesh.mesh_config();
   absl::Span<const std::string> local_devices = target_mesh.local_devices();
   const int num_local_devices = local_devices.size();
 
@@ -91,7 +90,7 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
 
   std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
       parallel_device::ParallelTensor::FromTensorHandles(
-          mesh.parallel_device(), std::move(components), status);
+          parallel_device, std::move(components), status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   return parallel_tensor;
 }
@@ -99,8 +98,8 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
 // Broadcast a single non-parallel resource tensor onto `mesh` with a fully
 // replicated sharding spec. Does not take ownership of `tensor`.
 std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
-    TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, TF_Status* status) {
+    TFE_Context* context, TFE_TensorHandle* tensor, const Mesh& target_mesh,
+    const parallel_device::ParallelDevice& parallel_device, TF_Status* status) {
   // Only broadcast resource tensors that point to scalars since they are
   // always replicated. We also still want to catch honest user errors so
   // error out on non-scalars.
@@ -121,7 +120,6 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
   // associated device of the resource itself.
   ResourceHandle r = t.flat<ResourceHandle>()(0);
 
-  const Mesh& target_mesh = mesh.mesh_config();
   // Only broadcast resource tensors onto a CPU mesh. Copying
   // resource tensors to non CPU device is not supported.
   if (!target_mesh.is_cpu_mesh()) {
@@ -151,7 +149,8 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
   }
 
   std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
-      BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
+      BroadcastTensorHandleToParallelTensor(context, tensor, target_mesh,
+                                            parallel_device, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   int rank = r.dtypes_and_shapes().empty()
@@ -305,14 +304,14 @@ tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
-    TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, TF_Status* status) {
+    TFE_Context* context, TFE_TensorHandle* tensor, const Mesh& target_mesh,
+    const parallel_device::ParallelDevice& parallel_device, TF_Status* status) {
   // Handle resource tensor broadcasting to the mesh.
   if (TFE_TensorHandleDataType(tensor) == TF_RESOURCE) {
-    return BroadcastResourceTensor(context, tensor, mesh, status);
+    return BroadcastResourceTensor(context, tensor, target_mesh,
+                                   parallel_device, status);
   }
 
-  const Mesh& target_mesh = mesh.mesh_config();
   if (target_mesh.is_remote()) {
     TF_DataType dtype = TFE_TensorHandleDataType(tensor);
     std::vector<int64_t> shape(TensorShapeAsVector(tensor, status));
@@ -330,7 +329,8 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
   }
 
   std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
-      BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
+      BroadcastTensorHandleToParallelTensor(context, tensor, target_mesh,
+                                            parallel_device, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   const std::vector<int64_t>* shape;
