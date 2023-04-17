@@ -15,7 +15,7 @@
 """Contains LossScale classes."""
 import abc
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -372,8 +372,8 @@ class DynamicLossScale(LossScale):
   def update(self, grads):
     """Updates loss scale based on if gradients are finite in current step."""
     grads = nest.flatten(grads)
-    if distribution_strategy_context.has_strategy():
-      distribution = distribution_strategy_context.get_cross_replica_context()
+    if distribute_lib.has_strategy():
+      distribution = distribute_lib.get_cross_replica_context()
 
       def get_is_finite(grads):
         is_finite = _is_all_finite(grads)

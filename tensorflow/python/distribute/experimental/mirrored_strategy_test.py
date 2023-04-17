@@ -24,7 +24,6 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import mirrored_strategy
@@ -280,14 +279,14 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
 
     @def_function.function
     def replica_fn(inputs):
-      replica_context = distribution_strategy_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       self.assertIsInstance(replica_context, dtensor_util.DTensorReplicaContext)
       return inputs * replica_context.num_replicas_in_sync
 
     # Default replica context
-    self.assertIsNotNone(distribution_strategy_context.get_replica_context())
+    self.assertIsNotNone(distribute_lib.get_replica_context())
     with strategy.scope():
-      self.assertIsNone(distribution_strategy_context.get_replica_context())
+      self.assertIsNone(distribute_lib.get_replica_context())
 
       result = strategy.run(replica_fn, args=(d_tensor_input,))
 
