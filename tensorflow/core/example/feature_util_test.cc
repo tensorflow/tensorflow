@@ -99,6 +99,15 @@ TEST(GetFeatureValuesInt64Test, CheckUntypedFieldExistence) {
   EXPECT_TRUE(HasFeature("tag", example));
 }
 
+TEST(GetFeatureValuesInt64Test, CheckUntypedFieldExistenceForSequenceExample) {
+  SequenceExample seq_example;
+  ASSERT_FALSE(HasFeature("tag", seq_example));
+
+  GetFeatureValues<protobuf_int64>("tag", &seq_example)->Add(0);
+
+  EXPECT_TRUE(HasFeature("tag", seq_example));
+}
+
 TEST(GetFeatureValuesInt64Test, CheckTypedFieldExistence) {
   Example example;
 
@@ -109,6 +118,20 @@ TEST(GetFeatureValuesInt64Test, CheckTypedFieldExistence) {
 
   EXPECT_TRUE(HasFeature<protobuf_int64>("tag", example));
   auto tag_ro = GetFeatureValues<protobuf_int64>("tag", example);
+  ASSERT_EQ(1, tag_ro.size());
+  EXPECT_EQ(42, tag_ro.Get(0));
+}
+
+TEST(GetFeatureValuesInt64Test, CheckTypedFieldExistenceForSequenceExample) {
+  SequenceExample sequence_example;
+
+  GetFeatureValues<float>("tag", &sequence_example)->Add(3.14);
+  ASSERT_FALSE(HasFeature<protobuf_int64>("tag", sequence_example));
+
+  GetFeatureValues<protobuf_int64>("tag", &sequence_example)->Add(42);
+
+  EXPECT_TRUE(HasFeature<protobuf_int64>("tag", sequence_example));
+  auto tag_ro = GetFeatureValues<protobuf_int64>("tag", sequence_example);
   ASSERT_EQ(1, tag_ro.size());
   EXPECT_EQ(42, tag_ro.Get(0));
 }

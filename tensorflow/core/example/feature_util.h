@@ -568,6 +568,16 @@ bool HasFeature(absl::string_view key, const Example& example) {
   return HasFeature<FeatureType...>(key, GetFeatures(example));
 }
 
+// Returns true if a feature with the specified key belongs to the
+// SequenceExample. Doesn't check feature type if used without FeatureType,
+// otherwise the specialized versions return false if the feature has a wrong
+// type.
+template <typename... FeatureType>
+bool HasFeature(absl::string_view key,
+                const SequenceExample& sequence_example) {
+  return HasFeature<FeatureType...>(key, GetFeatures(sequence_example));
+}
+
 // TODO(gorban): update all clients in a followup CL.
 template <typename... FeatureType>
 ABSL_DEPRECATED("Use HasFeature instead.")
