@@ -868,6 +868,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   //   |+-a-+  +-------b-------+  +---c---+
   //   ----------------------------------------> time
 
+  // TODO(b/275905276): when slicing, build free_chunks for each consecutive
+  // slice time, where slice time is logical time.
+
   // Map free chunk offsets -> ends.
   // We use `greater` for the comparison so that we can use `lower_bound` to
   // find the largest key less than or equal to the lookup value.
@@ -930,6 +933,10 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
         interval_tree_.ChunksOverlappingInTime(interval.start, interval.end));
   }
 
+  // TODO(b/275905276): when slicing, merge the free_chunks for each slice time.
+  // The end result should be a list of free chunks in which buffer_interval
+  // not only fits in each free chunk, but the slices of buffer interval can
+  // be allocated according to their requirements.
   // Try to find a large enough free chunk containing the preferred offset.
   Chunk chunk{preferred_offset, max_colocation_size};
   auto it = (preferred_offset < 0) ? free_chunks.end()
