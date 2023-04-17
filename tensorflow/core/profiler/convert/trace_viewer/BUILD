@@ -91,5 +91,6 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/utils:timespan",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )

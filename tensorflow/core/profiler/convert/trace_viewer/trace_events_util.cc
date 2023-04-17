@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/algorithm/container.h"
+
 namespace tensorflow {
 namespace profiler {
 
