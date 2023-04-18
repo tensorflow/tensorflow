@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -510,9 +509,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                       .WithOneUser(),
                   m::Broadcast(&bias,
                                OptionalConvert(&optional_convert, m::Op()))))) {
-      TF_ASSIGN_OR_RETURN(bool was_fused,
-                          FuseVectorBiasAdd(instr, bias, existing_gemm,
-                                            optional_slice, optional_convert));
+      TF_ASSIGN_OR_RETURN(
+          bool was_fused,
+          FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice,
+                            optional_convert));
 
       if (was_fused) {
         return OkStatus();
@@ -525,12 +525,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
     //
-    if (Match(
-            instr,
-            m::AddAnyOrder(
-                m::Bitcast(CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
-                    .WithOneUser(),
-                m::Broadcast(&bias, m::Op()).WithOneUser()))) {
+    if (Match(instr,
+              m::AddAnyOrder(
+                  m::Bitcast(CublasLtMatmul(&existing_gemm).WithOneUser())
+                      .WithOneUser(),
+                  m::Broadcast(&bias, m::Op()).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * new_add,
           MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
@@ -561,8 +560,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // transformation, but it doesn't hurt anything.
     if (Match(instr,
               m::AddAnyOrder(
-                  m::Bitcast(
-                      GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
+                  m::Bitcast(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       HloInstruction *new_bitcast =
@@ -578,9 +576,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     if (Match(instr,
-              m::AddAnyOrder(
-                  GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
-                  m::Op(&bias).WithPredicate(is_not_broadcast)))) {
+              m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                             m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
@@ -1122,12 +1119,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    HloInstruction* broadcast_bias = MaybeConstantFoldBias(bias);
-    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
-      operands.at(2) = broadcast_bias;
-    } else {
-      operands.insert(operands.begin() + 2, broadcast_bias);
-    }
+    operands.insert(operands.begin() + 2, MaybeConstantFoldBias(bias));
 
     std::unique_ptr<HloInstruction> fused_op =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
