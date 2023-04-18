@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
@@ -804,6 +806,35 @@ std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
 }
 
 template <typename BufferType>
+std::string
+GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval::ToString() const {
+  return absl::StrCat("{ ",                                           //
+                      "buffer: ", buffer->ToString(), ", ",           //
+                      "size: ", size, ", ",                           //
+                      "start: ", start, ", ",                         //
+                      "end: ", end, ", ",                             //
+                      "num_colocations: ", colocations.size(), ", ",  //
+                      "need_allocation: ", need_allocation,           //
+                      " }");
+}
+
+template <typename BufferType>
+std::string GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedBufferInterval::ToString() const {
+  return absl::StrCat(
+      "{ full_buffer_interval: ", full_buffer_interval.ToString(),
+      ", sorted_slices: [ ",
+      absl::StrJoin(sorted_slices, ", ",
+                    [](std::string* out,
+                       const SlicedBufferInterval::IntervalSlice& slice) {
+                      absl::StrAppend(out, "{ size: ", slice.size,
+                                      ", allocation_start_time: ",
+                                      slice.allocation_start_time, " }");
+                    }),
+      " ] }");
+}
+
+template <typename BufferType>
 HeapSimulator::Result<BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
@@ -863,10 +894,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
   CHECK(sliced_buffer_interval.sorted_slices.empty())
       << "Chunk slicing is not yet supported.";
 
-  VLOG(1) << "Finding chunks for buffer: "
-          << buffer_interval.buffer->ToString();
-  VLOG(1) << "Size " << buffer_interval.size << ", start "
-          << buffer_interval.start << ", end " << buffer_interval.end;
+  VLOG(1) << "Finding chunks for sliced buffer interval: "
+          << sliced_buffer_interval.ToString();
+
   // Get all colocated buffers and gather all interferenced chunks.
   //
   // Imagine that we've already allocated three chunks : a, b and c.  And now

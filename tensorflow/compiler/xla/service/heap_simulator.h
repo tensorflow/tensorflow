@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -376,6 +377,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
+    // Convenience method for use with debugging and logging.
+    std::string ToString() const;
+
     const BufferType* buffer;
     int64_t size;
     // Alloc time of the buffer.
@@ -437,6 +441,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     explicit SlicedBufferInterval(const BufferInterval& buffer_interval)
         : full_buffer_interval(buffer_interval) {}
     SlicedBufferInterval() = delete;
+
+    // Convenience method for use with debugging and logging.
+    std::string ToString() const;
 
     const BufferInterval& full_buffer_interval;
 
