@@ -246,41 +246,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_BF16() {
-    const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,256,16,64]{3,2,1,0}}
-
-    ENTRY main.15 {
-      Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
-      Arg_0.1 = bf16[16,16,256,64]{3,2,1,0} parameter(0)
-      Arg_1.2 = bf16[16,16,256,64]{3,2,1,0} parameter(1)
-      dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
-      dot.1 = bf16[16,16,64,256]{3,2,1,0} dot(Arg_2.3, dot.0), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
-      ROOT transpose.0 = bf16[16,256,16,64]{1,3,2,0} transpose(dot.1), dimensions={0,3,1,2}, metadata={}
-    }
-  )";
-    return hlo_text;
-  }
-
-  const std::string
-  GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_F16() {
-    const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,256,16,64]{3,2,1,0}}
-
-    ENTRY main.15 {
-      Arg_2.3 = f16[16,16,256,64]{3,2,1,0} parameter(2)
-      Arg_0.1 = f16[16,16,256,64]{3,2,1,0} parameter(0)
-      Arg_1.2 = f16[16,16,256,64]{3,2,1,0} parameter(1)
-      dot.0 = f16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
-      dot.1 = f16[16,16,64,256]{3,2,1,0} dot(Arg_2.3, dot.0), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
-      ROOT transpose.0 = f16[16,256,16,64]{1,3,2,0} transpose(dot.1), dimensions={0,3,1,2}, metadata={}
-    }
-  )";
-    return hlo_text;
-  }
-
-  const std::string
-  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_BF16() {
+  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_BF16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
@@ -296,7 +262,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_F16() {
+  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
 
@@ -312,7 +278,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_BF16() {
+  GetModuleFMHABMM_BMM_all_canonicalization_HloString_BF16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0})->bf16[16,256,16,64]{3,2,1,0}}
 
@@ -329,7 +295,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_F16() {
+  GetModuleFMHABMM_BMM_all_canonicalization_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0})->f16[16,256,16,64]{3,2,1,0}}
 
@@ -429,35 +395,8 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   template <typename T>
-  void TestImpl_FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_BF16();
-    }
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
   void
-  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion() {
+  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_fusion() {
     stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
     if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
       GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
@@ -474,17 +413,17 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     std::string hlo_string = "";
     if (std::is_same<T, Eigen::half>::value) {
       hlo_string =
-          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_F16();
+          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_F16();
     } else if (std::is_same<T, bfloat16>::value) {
       hlo_string =
-          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_BF16();
+          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_BF16();
     }
     ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
                       rhs_bmm2_literal);
   }
 
   template <typename T>
-  void TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion() {
+  void TestImpl_FMHABMM_BMM_all_canonicalization() {
     stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
     if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
       GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
@@ -501,10 +440,10 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     std::string hlo_string = "";
     if (std::is_same<T, Eigen::half>::value) {
       hlo_string =
-          GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_F16();
+          GetModuleFMHABMM_BMM_all_canonicalization_HloString_F16();
     } else if (std::is_same<T, bfloat16>::value) {
       hlo_string =
-          GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_BF16();
+          GetModuleFMHABMM_BMM_all_canonicalization_HloString_BF16();
     }
     ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
                       rhs_bmm2_literal);
@@ -1530,38 +1469,28 @@ XLA_TEST_F(MultiHeadedAttentionBMMBMM, FMHABMM_BMM_arg_reversal_BF16) {
   TestImpl_FMHABMM_BMM_arg_reversal<bfloat16>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
-           FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_F16) {
-  TestImpl_FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion<Eigen::half>();
-}
-
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
-           FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_BF16) {
-  TestImpl_FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion<bfloat16>();
-}
-
 XLA_TEST_F(
     MultiHeadedAttentionBMMBMM,
-    FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_F16) {
-  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion<
+    FMHABMM_BMM_arg_layout_manipulation_arg_reversal_F16) {
+  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_fusion<
       Eigen::half>();
 }
 
 XLA_TEST_F(
     MultiHeadedAttentionBMMBMM,
-    FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_BF16) {
-  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion<
+    FMHABMM_BMM_arg_layout_manipulation_arg_reversal_fusion_BF16) {
+  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_fusion<
       bfloat16>();
 }
 
 XLA_TEST_F(MultiHeadedAttentionBMMBMM,
-           FMHABMM_BMM_all_canonicalization_transpose_fusion_F16) {
-  TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion<Eigen::half>();
+           FMHABMM_BMM_all_canonicalization_F16) {
+  TestImpl_FMHABMM_BMM_all_canonicalization<Eigen::half>();
 }
 
 XLA_TEST_F(MultiHeadedAttentionBMMBMM,
-           FMHABMM_BMM_all_canonicalization_transpose_fusion_BF16) {
-  TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion<bfloat16>();
+           FMHABMM_BMM_all_canonicalization_BF16) {
+  TestImpl_FMHABMM_BMM_all_canonicalization<bfloat16>();
 }
 
 XLA_TEST_F(MultiHeadedAttentionBMMBMM,
