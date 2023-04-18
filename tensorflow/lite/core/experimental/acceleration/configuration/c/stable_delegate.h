@@ -35,9 +35,12 @@ typedef struct TfLiteStableDelegate {
   const char* delegate_abi_version;
 
   // Uniquely identifies a delegate.
+  // Format: {vendor}_{delegate}. Prefer using snake_case.
+  // e.g. "mycompany_gpu_delegate"
   const char* delegate_name;
 
   // Release version of this delegate.
+  // Prefer using semver 2 format.
   const char* delegate_version;
 
   // Provides the implementation of the delegate plugin.
