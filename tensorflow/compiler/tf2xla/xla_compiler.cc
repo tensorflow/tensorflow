@@ -1667,7 +1667,7 @@ Status XlaCompiler::GetHostComputeControlDependency(
 }
 
 Status XlaCompiler::SetHostComputeControlDependency(
-    const string& host_compute_name, const xla::XlaOp& handle) {
+    const string& host_compute_name, const xla::XlaOp handle) {
   if (host_compute_control_output_.find(host_compute_name) !=
       host_compute_control_output_.end()) {
     return errors::InvalidArgument(
@@ -1692,8 +1692,7 @@ Status XlaCompiler::PopNodeTokenMapping() {
   return OkStatus();
 }
 
-Status XlaCompiler::SetNodeToken(const string& node_name,
-                                 const xla::XlaOp& op) {
+Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
   if (node_token_mapping_stack_.empty()) {
     return errors::FailedPrecondition(
         "Calling SetNodeToken() when node_token_mapping_stack_ is "
