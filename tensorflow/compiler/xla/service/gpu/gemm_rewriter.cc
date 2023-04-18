@@ -1216,7 +1216,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
         bias->shape().element_type() == F32 && convert != nullptr) {
-      HloInstruction *bias_f16_maybe = convert->mutable_operand(0);
+      HloInstruction *bias_f16_or_bf16 = convert->mutable_operand(0);
       auto compatible_bias_type = [](const PrimitiveType btype,
                                      const PrimitiveType dtype) {
         if (btype == BF16) {
@@ -1234,9 +1234,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // precision. Instead, we only fuse the bias if the bias itself is a
       // convert from F16 or BF16, fusing the input of the convert instruction
       // to the matmul.
-      if (compatible_bias_type(bias_f16_maybe->shape().element_type(),
+      if (compatible_bias_type(bias_f16_or_bf16->shape().element_type(),
                                gemm->shape().element_type())) {
-        bias = bias_f16_maybe;
+        bias = bias_f16_or_bf16;
       } else {
         VLOG(1) << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
                    "currently not supported. See the cublasLT support matrix.";
