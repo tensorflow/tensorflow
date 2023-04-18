@@ -30,6 +30,25 @@ bool IsBuiltWithXLA();
 // Returns true if TENSORFLOW_USE_NVCC is defined. (i.e. TF is built with nvcc)
 bool IsBuiltWithNvcc();
 
+// Returns true if TF_LLVM_AARCH32_AVAILABLE is defined. (i.e. TF is built for
+// AArch32)
+bool IsAArch32Available();
+
+// Returns true if TF_LLVM_AARCH64_AVAILABLE is defined. (i.e. TF is built for
+// AArch64)
+bool IsAArch64Available();
+
+// Returns true if TF_LLVM_POWERPC_AVAILABLE is defined. (i.e. TF is built for
+// PowerPC)
+bool IsPowerPCAvailable();
+
+// Returns true if TF_LLVM_S390X_AVAILABLE is defined. (i.e. TF is built for
+// System z)
+bool IsSystemZAvailable();
+
+// Returns true if TF_LLVM_X86_AVAILABLE is defined. (i.e. TF is built for X86)
+bool IsX86Available();
+
 // Returns true if either
 //
 //   GOOGLE_CUDA is defined, and the given CUDA version supports

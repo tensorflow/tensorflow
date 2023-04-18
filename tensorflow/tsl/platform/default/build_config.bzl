@@ -859,15 +859,15 @@ def tf_google_mobile_srcs_no_runtime():
 def tf_google_mobile_srcs_only_runtime():
     return []
 
-def if_llvm_aarch64_available(then, otherwise = []):
-    return select({
-        clean_dep("//tensorflow/tsl:linux_aarch64"): then,
-        "//conditions:default": otherwise,
-    })
-
 def if_llvm_aarch32_available(then, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:linux_armhf"): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_aarch64_available(then, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:linux_aarch64"): then,
         "//conditions:default": otherwise,
     })
 

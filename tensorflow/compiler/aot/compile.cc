@@ -181,18 +181,18 @@ static absl::once_flag targets_init;
 
 static void InitializeTargets() {
   // Initialize all LLVM targets so we can cross compile.
-#if TF_LLVM_AARCH64_AVAILABLE
-  LLVMInitializeAArch64Target();
-  LLVMInitializeAArch64TargetInfo();
-  LLVMInitializeAArch64TargetMC();
-  LLVMInitializeAArch64AsmParser();
-  LLVMInitializeAArch64AsmPrinter();
-#elif TF_LLVM_AARCH32_AVAILABLE
+#if TF_LLVM_AARCH32_AVAILABLE
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
   LLVMInitializeARMAsmParser();
   LLVMInitializeARMAsmPrinter();
+#elif TF_LLVM_AARCH64_AVAILABLE
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
+  LLVMInitializeAArch64AsmPrinter();
 #elif TF_LLVM_POWERPC_AVAILABLE
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();

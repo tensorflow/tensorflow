@@ -1027,20 +1027,22 @@ Concrete Functions:
       return {'res': self.write_var}
 
   @parameterized.named_parameters(
-      ('VariablesToFeedNone', '', 'func2', None),
+      ('VariablesToFeedNone', '', 'func2', 'x86_64-pc-linux'),
       ('VariablesToFeedNoneTargetAarch64Linux', '', 'func2',
        'aarch64-none-linux-gnu'),
       ('VariablesToFeedNoneTargetAarch64Android', '', 'func2',
        'aarch64-none-android'),
-      ('VariablesToFeedAll', 'all', 'func2', None),
-      ('VariablesToFeedMyVar', 'my_var', 'func2', None),
-      ('VariablesToFeedNoneLargeConstant', '', 'func3', None),
-      ('WriteToWriteVar', 'all', 'func_write', None),
+      ('VariablesToFeedAll', 'all', 'func2', 'x86_64-pc-linux'),
+      ('VariablesToFeedMyVar', 'my_var', 'func2', 'x86_64-pc-linux'),
+      ('VariablesToFeedNoneLargeConstant', '', 'func3', 'x86_64-pc-linux'),
+      ('WriteToWriteVar', 'all', 'func_write', 'x86_64-pc-linux'),
   )
   def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed, func,
                                           target_triple):
     if not test.is_built_with_xla():
       self.skipTest('Skipping test because XLA is not compiled in.')
+    if not test.is_cpu_target_available(target_triple.partition('-')[0]):
+      self.skipTest('Skipping test because target support is not compiled in.')
 
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = self.AOTCompileDummyModel()

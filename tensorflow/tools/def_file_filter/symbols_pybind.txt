@@ -29,6 +29,11 @@ tensorflow::FlattenDictItems
 tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm
 tensorflow::IsBuiltWithNvcc
+tensorflow::IsAArch32Available
+tensorflow::IsAArch64Available
+tensorflow::IsPowerPCAvailable
+tensorflow::IsSystemZAvailable
+tensorflow::IsX86Available
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 

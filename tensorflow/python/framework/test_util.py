@@ -353,6 +353,20 @@ def IsBuiltWithNvcc():
   return _pywrap_util_port.IsBuiltWithNvcc()
 
 
+def IsCPUTargetAvailable(target):
+  if target.startswith("arm"):
+    return _pywrap_util_port.IsAArch32Available()
+  elif target.startswith("aarch64"):
+    return _pywrap_util_port.IsAArch64Available()
+  elif target.startswith("ppc") or target.startswith("powerpc"):
+    return _pywrap_util_port.IsPowerPCAvailable()
+  elif target.startswith("x86"):
+    return _pywrap_util_port.IsX86Available()
+  elif target.startswith("s390x"):
+    return _pywrap_util_port.IsSystemZAvailable()
+  assert False, "Unknown CPU target: " + target
+
+
 def GpuSupportsHalfMatMulAndConv():
   return _pywrap_util_port.GpuSupportsHalfMatMulAndConv()
 

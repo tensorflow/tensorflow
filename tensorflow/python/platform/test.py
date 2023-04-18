@@ -192,3 +192,25 @@ def is_built_with_xla():
   TensorFlow official binary is built with XLA.
   """
   return _test_util.IsBuiltWithXLA()
+
+
+@tf_export('test.is_cpu_target_available')
+def is_cpu_target_available(target):
+  """Returns whether TensorFlow was built for the given CPU target.
+
+  This method should only be used in tests written with `tf.test.TestCase`. A
+  typical usage is to skip tests that should only run with a given target.
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_aarch64(self):
+  ...     if not tf.test.is_cpu_target_available('aarch64'):
+  ...       self.skipTest("test is only applicable on AArch64")
+
+  ...     @tf.function(jit_compile=True)
+  ...     def add(x, y):
+  ...       return tf.math.add(x, y)
+  ...
+  ...     self.assertEqual(add(tf.ones(()), tf.ones(())), 2.0)
+  """
+  return _test_util.IsCPUTargetAvailable(target)
