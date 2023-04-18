@@ -1032,7 +1032,7 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   std::vector<tensorflow::StackFrame> stack_trace =
       tensorflow::errors::GetStackTrace(status);
 
-  if (stack_trace.empty()) return status.error_message();
+  if (stack_trace.empty()) return std::string(status.message());
 
   PyObject* linecache = PyImport_ImportModule("linecache");
   PyObject* getline =
@@ -1059,7 +1059,7 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   Py_DecRef(getline);
   Py_DecRef(linecache);
 
-  result << '\n' << status.error_message();
+  result << '\n' << status.message();
   return result.str();
 }
 
