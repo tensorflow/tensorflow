@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -639,9 +640,12 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
       ctx->set_output(i, *inputs[input_index]);
     } else {
       Tensor* output_tensor;
-      TensorShape shape = TensorShape(
-          executable_outputs[output_num]->on_device_shape().dimensions());
-      TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
+      TF_ASSIGN_OR_RETURN(
+          xla::Shape device_shape,
+          executable_outputs[output_num]->logical_on_device_shape());
+      TensorShape tensor_shape;
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(device_shape, &tensor_shape));
+      TF_RETURN_IF_ERROR(ctx->allocate_output(i, tensor_shape, &output_tensor));
       auto output_avt = AsyncValueTensor::FromTensor(output_tensor);
       output_avt->SetBuffer(std::move(executable_outputs[output_num]));
       ++output_num;
