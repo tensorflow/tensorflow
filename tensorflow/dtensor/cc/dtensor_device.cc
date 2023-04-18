@@ -2624,7 +2624,8 @@ void ExperimentalSetDefaultMesh(const std::string& serialized_mesh,
                                 void* device_info, TF_Status* status) {
   StatusOr<Mesh> mesh = Mesh::FromString(serialized_mesh);
   if (!mesh.ok()) {
-    RETURN_STATUS(status, TF_INTERNAL, NullTerminatedMessage(mesh.status()));
+    RETURN_STATUS(status, TF_INTERNAL,
+                  tsl::NullTerminatedMessage(mesh.status()));
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->SetDefaultMesh(mesh.value());
