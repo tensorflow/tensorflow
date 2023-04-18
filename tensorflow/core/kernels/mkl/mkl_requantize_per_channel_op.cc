@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #define EIGEN_USE_THREADS
 
 #include <math.h>
@@ -101,12 +101,24 @@ class MklRequantizePerChannelOp : public OpKernel {
       for (int i = 0; i < depth; ++i) {
         float min_max_from_vec = std::max(std::abs(input_min_vec_data[i]),
                                           std::abs(input_max_vec_data[i]));
+#ifndef ENABLE_ONEDNN_V3
         scales[i] = factor * (min_max_from_vec / requested_min_max /
                               static_cast<float>(1L << 31));
+#else
+        scales[i] = 1.0 / (factor * (min_max_from_vec / requested_min_max /
+                                     static_cast<float>(1L << 31)));
+#endif  // !ENABLE_ONEDNN_V3
       }
 
       dnnl::primitive_attr reorder_attr;
+#ifndef ENABLE_ONEDNN_V3
       reorder_attr.set_output_scales(2, scales);
+#else
+      reorder_attr.set_scales_mask(DNNL_ARG_DST, 2);
+      auto scale_mem =
+          memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
+                 cpu_engine_, scales.data());
+#endif  // !ENABLE_ONEDNN_V3
 
       MklDnnThreadPool eigen_tp(ctx);
       memory::dims dims_mkl_order =
@@ -144,6 +156,9 @@ class MklRequantizePerChannelOp : public OpKernel {
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine_));
       std::unordered_map<int, dnnl::memory> reorder_args = {
           {DNNL_ARG_FROM, *input_mem_prim}, {DNNL_ARG_TO, *output_mem_prim}};
+#ifdef ENABLE_ONEDNN_V3
+      reorder_args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, scale_mem});
+#endif  // ENABLE_ONEDNN_V3
       std::unique_ptr<dnnl::primitive> reorder_prim(
           new dnnl::reorder(reorder_pd));
       reorder_prim->execute(*reorder_stream, reorder_args);
@@ -193,4 +208,4 @@ REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
                         MklRequantizePerChannelOp<CPUDevice, quint8>);
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
