@@ -5442,7 +5442,7 @@ tf_kernel_library(
     name = "tensor_to_hash_bucket_op",
     prefix = "tensor_to_hash_bucket_op",
     deps = STRING_DEPS + if_oss(
-        if_cuda(["@farmhash_gpu_archive//:farmhash_gpu"]),
+        if_cuda_or_rocm(["@farmhash_gpu_archive//:farmhash_gpu"]),
         tf_fingerprint_deps(),
     ),
 )

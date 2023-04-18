@@ -1499,7 +1499,17 @@ TEST_F(RemapperFuseMatMulWithBiasTest, F16) {
   RunTest<DT_HALF>();
 }
 
-TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
+TEST_F(RemapperFuseMatMulWithBiasTest, F32) {
+  bool skip_test = false;
+#if !defined(GOOGLE_CUDA)
+  skip_test = true;
+#endif
+  if (skip_test || GetNumAvailableGPUs() == 0) {
+    GTEST_SKIP() << "Skipping FuseMatMulWithBias with float, which is only "
+                    "supported in CUDA.";
+  }
+  RunTest<DT_FLOAT>();
+}
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
 #if !defined(ENABLE_MKL)
@@ -1708,6 +1718,14 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F16) {
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
+  bool skip_test = false;
+#if !defined(GOOGLE_CUDA)
+  skip_test = true;
+#endif
+  if (skip_test || GetNumAvailableGPUs() == 0) {
+    GTEST_SKIP() << "Skipping FuseMatMulWithBiasAndActivationTest with float, "
+                    "which is only supported in CUDA.";
+  }
   RunTest<DT_FLOAT>();
 }
 

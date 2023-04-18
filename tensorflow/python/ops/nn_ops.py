@@ -5805,7 +5805,8 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
        (x.dtype == dtypes.float64 or x.dtype == dtypes.float32 \
         or x.dtype == dtypes.float16) and def_dropout != "1" \
         and not is_in_XLA_context and null_noise_shape:
-      seed = uniform_sampler.keywords['seed']
+      seed = uniform_sampler.keywords['seed'] \
+        if type(uniform_sampler) is functools.partial else None
       if seed is None:
         seed1 = 0
         seed2 = 0

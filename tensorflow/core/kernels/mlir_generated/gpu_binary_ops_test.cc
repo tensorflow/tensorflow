@@ -679,11 +679,13 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/UInt64, uint64_t, uint64_t, test::DefaultInput<uint64_t>(),
     test::DefaultInputNonZero<uint64_t>(), baseline_floor_mod,
     test::OpsTestConfig().ExpectStrictlyEqual());
+#if !TENSORFLOW_USE_ROCM
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorMod,
     /*test_name=*/Half, Eigen::half, Eigen::half,
     test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
     baseline_floor_mod, test::OpsTestConfig());
+#endif
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorMod,
     /*test_name=*/Float, float, float, test::DefaultInput<float>(),

@@ -225,6 +225,8 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     """Test Conv2D+BiasAdd+Relu fusion."""
     if not test_util.is_gpu_available():
       self.skipTest('No GPU available')
+    if test.is_built_with_rocm():
+      self.skipTest('ROCm does not support conv biasadd fusion')
 
     N, H, W, C = (5, 3, 3, 8)  # pylint: disable=invalid-name
     # The runtime fusion requires the output dims to be 32-bit aligned.
