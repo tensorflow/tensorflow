@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
-#include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
