@@ -240,16 +240,16 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
 }
 
 tensorflow::Status RunBytecodeInitializers(
+    const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
-    const SessionMetadata& model_metadata,
-    const mlrt::LoadedExecutable& loaded_executable, const Runtime& runtime,
+    const mlrt::LoadedExecutable& loaded_executable,
     tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
     const FallbackState& fallback_state) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(/*run_options=*/{}, model_metadata, runtime,
-                        runtime.work_queue(), resource_context,
+      CreateRequestInfo(options, /*run_options=*/{},
+                        options.runtime->work_queue(), resource_context,
                         /*client_graph_resource_context=*/nullptr, runner_table,
                         resource_array, fallback_state));
 
@@ -263,14 +263,12 @@ tensorflow::Status RunBytecodeInitializers(
   for (const auto& p : initializers_and_signatures.initializers) {
     const auto& initializer_name = p.name;
     const auto& initializer_inputs = p.inputs;
-    GraphExecutionOptions options(&runtime);
-    options.model_metadata = model_metadata;
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
         options, /*run_options=*/{}, initializer_name, nullptr,
         &loaded_executable, initializer_inputs, &outputs, resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
-        runtime, fallback_state,
+        *options.runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
     DCHECK(outputs.empty());
   }
@@ -285,16 +283,17 @@ tensorflow::Status RunBytecodeInitializers(
 }
 
 tensorflow::Status RunBefInitializers(
+    const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
-    const SessionMetadata& model_metadata, tfrt::BEFFile* bef_file,
-    const Runtime& runtime, tfrt::ResourceContext* resource_context,
+    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
     const FallbackState& fallback_state) {
+  DCHECK(options.runtime);
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(/*run_options=*/{}, model_metadata, runtime,
-                        runtime.work_queue(), resource_context,
+      CreateRequestInfo(options, /*run_options=*/{},
+                        options.runtime->work_queue(), resource_context,
                         /*client_graph_resource_context=*/nullptr, runner_table,
                         resource_array, fallback_state));
 
@@ -309,8 +308,6 @@ tensorflow::Status RunBefInitializers(
   for (const auto& p : initializers_and_signatures.initializers) {
     const auto& initializer_name = p.name;
     const auto& initializer_inputs = p.inputs;
-    GraphExecutionOptions options(&runtime);
-    options.model_metadata = model_metadata;
     auto* func = bef_file->GetFunction(initializer_name);
     DCHECK(func);
     std::vector<tensorflow::Tensor> outputs;
@@ -319,7 +316,7 @@ tensorflow::Status RunBefInitializers(
         /*loaded_executable=*/nullptr, initializer_inputs, &outputs,
         resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
-        runtime, fallback_state,
+        *options.runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
     DCHECK(outputs.empty());
   }
@@ -746,17 +743,13 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   if (loaded_executable) {
     RETURN_IF_ERROR_IN_INIT(RunBytecodeInitializers(
-        initializers_and_signatures,
-        options.graph_execution_options.model_metadata, *loaded_executable,
-        *options.graph_execution_options.runtime,
-        &graph_executor->resource_context(), runner_table.get(),
-        resource_array.get(), *fallback_state));
+        graph_executor->options(), initializers_and_signatures,
+        *loaded_executable, &graph_executor->resource_context(),
+        runner_table.get(), resource_array.get(), *fallback_state));
   } else {
     DCHECK(bef_file);
     RETURN_IF_ERROR_IN_INIT(RunBefInitializers(
-        initializers_and_signatures,
-        options.graph_execution_options.model_metadata, bef_file.get(),
-        *options.graph_execution_options.runtime,
+        graph_executor->options(), initializers_and_signatures, bef_file.get(),
         &graph_executor->resource_context(), runner_table.get(),
         resource_array.get(), *fallback_state));
   }
@@ -1117,9 +1110,8 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       tfrt::CreateBefFileFromBefBuffer(
           *options_.graph_execution_options.runtime, loading_result->bef));
   RETURN_IF_ERROR_IN_INIT(RunBefInitializers(
-      /*initializers_and_signatures=*/{},
-      options_.graph_execution_options.model_metadata,
-      loading_result->bef_file.get(), *options_.graph_execution_options.runtime,
+      graph_executor_->options(),
+      /*initializers_and_signatures=*/{}, loading_result->bef_file.get(),
       &graph_executor_->resource_context(), loading_result->runner_table.get(),
       loading_result->resource_array.get(), *fallback_state_));
 
