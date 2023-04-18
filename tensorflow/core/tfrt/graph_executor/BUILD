@@ -175,7 +175,6 @@ tf_cc_test(
 tf_proto_library(
     name = "config_proto",
     srcs = ["config.proto"],
-    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = ["//google/protobuf:any"],
 )
