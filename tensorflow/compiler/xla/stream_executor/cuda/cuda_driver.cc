@@ -485,8 +485,9 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                               const char* cubin_bytes,
                                               CUmodule* module) {
   ScopedActivateContext activation(context);
-  RETURN_IF_CUDA_RES_ERROR(cuModuleLoadFatBinary(module, cubin_bytes),
-                           "Failed to load in-memory CUBIN");
+  RETURN_IF_CUDA_RES_ERROR(
+      cuModuleLoadFatBinary(module, cubin_bytes),
+      "Failed to load in-memory CUBIN (compiled for a different GPU?).");
   return ::tsl::OkStatus();
 }
 
