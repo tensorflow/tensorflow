@@ -701,7 +701,7 @@ XLA_TEST_F(ConditionalOpTest, ShapeMismatch) {
 
   auto result = builder.Build();
   EXPECT_FALSE(result.ok());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr("operand 0 must match the shape of the "
                                    "only parameter of branch computation 0"));
 }

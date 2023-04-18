@@ -355,7 +355,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                 << status.error_message();
+                 << status.message();
     }
     runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
 

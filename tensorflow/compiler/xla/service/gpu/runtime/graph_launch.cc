@@ -123,7 +123,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   if (!capture_stream.ok())
     return absl::InternalError(
         absl::StrFormat("Failed to borrow a stream for graph capture: %s",
-                        capture_stream.status().error_message()));
+                        capture_stream.status().message()));
 
   // TODO(ezhulenev): Pass graph capture context explicitly to the custom calls
   // via UserData to be able to detect when executing custom call in graph
