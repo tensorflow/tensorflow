@@ -520,10 +520,8 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
@@ -1737,6 +1735,7 @@ py_library(
     deps = [
         ":array_ops",
         ":ctc_ops_gen",
+        ":functional_ops",
         ":nn_grad",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",

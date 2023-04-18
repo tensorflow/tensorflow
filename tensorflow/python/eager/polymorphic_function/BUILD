@@ -20,7 +20,6 @@ py_library(
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:functional_ops",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:cancellation",
