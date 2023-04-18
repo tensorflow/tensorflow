@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -323,6 +324,12 @@ auto OptionalSlice(HloInstruction **optional_slice, Pattern pattern) {
                                   std::move(pattern));
 }
 
+template <typename Pattern>
+auto OptionalConvert(HloInstruction **optional_convert, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Convert(optional_convert, pattern),
+                                  std::move(pattern));
+}
+
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -492,6 +499,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
     HloInstruction *optional_slice = nullptr;
+    HloInstruction *optional_convert = nullptr;
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM,
     // including when slicing is applied to the result.
     if (Match(instr,
@@ -500,51 +508,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                       &optional_slice,
                       CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
-                  m::Broadcast(&bias, m::Op())))) {
-      HloInstruction *optional_bias_f16 = nullptr;
-      if (existing_gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
-          bias->shape().element_type() == F32) {
-        auto compatible_bias_type = [&](const HloInstruction *instr) -> bool {
-          auto gemm_d_type = existing_gemm->shape().element_type();
-          if (instr->shape().element_type() == BF16) {
-            return gemm_d_type == F8E4M3FN || gemm_d_type == F8E5M2 ||
-                   gemm_d_type == F32 || gemm_d_type == BF16;
-          } else if (instr->shape().element_type() == F16) {
-            return gemm_d_type == F16 || gemm_d_type == F8E4M3FN ||
-                   gemm_d_type == F8E5M2;
-          }
-          return false;
-        };
-
-        // cuBLAS LT does not support FP32 biases on matmuls with FP8 inputs,
-        // even if the matmul output is FP32. We do not unconditionally convert
-        // the bias to a supported precision (F16 or BF16) because this lowers
-        // precision. Instead, we only fuse the bias if the bias itself is a
-        // convert from F16 or BF16, fusing the input of the convert instruction
-        // to the matmul.
-        if (!Match(bias->mutable_operand(0),
-                   m::Convert(m::Convert(&optional_bias_f16, m::Op())
-                                  .WithPredicate(compatible_bias_type)))) {
-          VLOG(1)
-              << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
-                 "currently not supported. See the cublasLT support matrix.";
-          // Skip fusion.
-          return OkStatus();
-        }
-      }
-
+                  m::Broadcast(&bias,
+                               OptionalConvert(&optional_convert, m::Op()))))) {
       TF_ASSIGN_OR_RETURN(bool was_fused,
                           FuseVectorBiasAdd(instr, bias, existing_gemm,
-                                            optional_slice, optional_bias_f16));
-
-      if (was_fused) {
-        return OkStatus();
-      }
-    }
-
-      TF_ASSIGN_OR_RETURN(bool was_fused,
-                          FuseVectorBiasAdd(instr, bias, existing_gemm,
-                                            optional_slice, optional_bias_f16));     
+                                            optional_slice, optional_convert));
 
       if (was_fused) {
         return OkStatus();
@@ -557,11 +525,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
     //
-    if (Match(instr,
-              m::AddAnyOrder(
-                  m::Bitcast(CublasLtMatmul(&existing_gemm).WithOneUser())
-                      .WithOneUser(),
-                  m::Broadcast(&bias, m::Op()).WithOneUser()))) {
+    if (Match(
+            instr,
+            m::AddAnyOrder(
+                m::Bitcast(CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
+                    .WithOneUser(),
+                m::Broadcast(&bias, m::Op()).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * new_add,
           MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
@@ -592,7 +561,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // transformation, but it doesn't hurt anything.
     if (Match(instr,
               m::AddAnyOrder(
-                  m::Bitcast(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
+                  m::Bitcast(
+                      GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       HloInstruction *new_bitcast =
@@ -608,8 +578,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     if (Match(instr,
-              m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
-                             m::Op(&bias).WithPredicate(is_not_broadcast)))) {
+              m::AddAnyOrder(
+                  GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
+                  m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
@@ -759,11 +730,24 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
 #if CUDA_VERSION > 12000
+    auto compatible_c_type = [&](const PrimitiveType ctype) {
+      PrimitiveType dtype = instr->shape().element_type();
+      if (ctype == BF16) {
+        return dtype == F8E4M3FN || dtype == F8E5M2 || dtype == BF16;
+      } else if (ctype == F16) {
+        return dtype == F8E4M3FN || dtype == F8E5M2 || dtype == F16;
+      } else if (ctype == F32) {
+        return dtype == F32;
+      }
+      return false;
+    };
+
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
       HloInstruction *bias = add->mutable_operand(!add->operand_index(instr));
-      if (bias->opcode() != HloOpcode::kBroadcast) {
+      if (bias->opcode() != HloOpcode::kBroadcast &&
+          compatible_c_type(bias->shape().element_type())) {
         c = bias;
         gemm_backend_config.set_beta(1.0);
         TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
@@ -1138,7 +1122,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    operands.insert(operands.begin() + 2, MaybeConstantFoldBias(bias));
+    HloInstruction* broadcast_bias = MaybeConstantFoldBias(bias);
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+      operands.at(2) = broadcast_bias;
+    } else {
+      operands.insert(operands.begin() + 2, broadcast_bias);
+    }
 
     std::unique_ptr<HloInstruction> fused_op =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
@@ -1180,7 +1169,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                    HloInstruction *broadcast,
                                    HloInstruction *gemm,
                                    HloInstruction *slice = nullptr,
-                                   HloInstruction *bias_f16 = nullptr) {
+                                   HloInstruction *convert = nullptr) {
     TF_RET_CHECK(ShapeUtil::Compatible(
         broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
 
@@ -1233,8 +1222,34 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-    if (bias_f16 != nullptr) {
-      bias = bias_f16;
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+        bias->shape().element_type() == F32 && convert != nullptr) {
+      HloInstruction *bias_f16_maybe = convert->mutable_operand(0);
+      auto compatible_bias_type = [](const PrimitiveType btype,
+                                     const PrimitiveType dtype) {
+        if (btype == BF16) {
+          return dtype == F8E4M3FN || dtype == F8E5M2 || dtype == F32 ||
+                 dtype == BF16;
+        } else if (btype == F16) {
+          return dtype == F16 || dtype == F8E4M3FN || dtype == F8E5M2;
+        }
+        return false;
+      };
+
+      // cuBLAS LT does not support FP32 biases on matmuls with FP8 inputs,
+      // even if the matmul output is FP32. We do not unconditionally convert
+      // the bias to a supported precision (F16 or BF16) because this lowers
+      // precision. Instead, we only fuse the bias if the bias itself is a
+      // convert from F16 or BF16, fusing the input of the convert instruction
+      // to the matmul.
+      if (compatible_bias_type(bias_f16_maybe->shape().element_type(),
+                               gemm->shape().element_type())) {
+        bias = bias_f16_maybe;
+      } else {
+        VLOG(1) << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
+                   "currently not supported. See the cublasLT support matrix.";
+        return true;
+      }
     }
 
     // Replace add(gemm, broadcast) with fused new_gemm.
