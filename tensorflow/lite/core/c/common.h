@@ -157,6 +157,10 @@ int TfLiteFloatArrayGetSizeInBytes(int size);
 // This returns a pointer, that you must free using TfLiteFloatArrayFree().
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
 
+// Create a copy of an array passed as `src`.
+// You are expected to free memory with TfLiteFloatArrayFree.
+TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src);
+
 // Free memory of array `a`.
 void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 #endif  // TF_LITE_STATIC_MEMORY
