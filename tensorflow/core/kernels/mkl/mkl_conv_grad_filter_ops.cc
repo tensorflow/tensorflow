@@ -402,6 +402,10 @@ class MklConvCustomBackpropFilterOp
       const Tensor& filter_tensor = MklGetInput(context, kFilterIdx);
       const Tensor& diff_dst_tensor = MklGetInput(context, kDiffDstIdx);
 
+      if (std::is_same<T, float>::value) {
+        (void)SetFPMathMode();
+      }
+
       MklDnnShape src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape;
       GetMklShape(context, kInputIdx, &src_mkl_shape, native_format);
       GetMklShape(context, kFilterIdx, &filter_mkl_shape, native_format);

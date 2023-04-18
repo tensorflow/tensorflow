@@ -59,6 +59,10 @@ class BatchMatMulMkl : public OpKernel {
     const Tensor& lhs = ctx->input(0);
     const Tensor& rhs = ctx->input(1);
 
+    if (std::is_same<Tlhs, float>::value) {
+      (void)SetFPMathMode();
+    }
+
     if (!v2_bcast) {
       // Using V1, so check to make sure lhs and rhs dimensions are correct and
       // no broadcasting is needed.
