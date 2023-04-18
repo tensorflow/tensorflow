@@ -3308,6 +3308,7 @@ tf_cc_test(
         ":device_factory",
         ":device_set",
         ":optimize_function_graph_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/tsl/lib/core:status_test_util",
