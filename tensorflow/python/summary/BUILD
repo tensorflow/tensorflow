@@ -6,42 +6,6 @@ package(
     licenses = ["notice"],
 )
 
-# TODO(b/275626437): Delete this target after all references have migrated.
-py_library(
-    name = "summary",
-    srcs = glob(
-        ["*.py"],
-        exclude = [
-            "fake*",
-            "*_test.py",
-        ],
-    ),
-    deprecation = "This target has been split. Depend on the sub-targets in //third_party/tensorflow/python/summary instead.",
-    srcs_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:logging_ops_gen",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:summary_op_util",
-        "//tensorflow/python:summary_ops_gen",
-        "//tensorflow/python:summary_ops_v2",
-        "//tensorflow/python/distribute:summary_op_util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/summary/writer",
-        "//tensorflow/python/summary/writer:writer_cache",
-        "//tensorflow/python/training:training_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:tf_export",
-    ],
-)
-
 py_strict_library(
     name = "plugin_asset",
     srcs = ["plugin_asset.py"],

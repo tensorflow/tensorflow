@@ -4381,12 +4381,6 @@ py_library(
 )
 
 alias(
-    name = "summary",
-    actual = "//tensorflow/python/summary:summary",
-    visibility = ["//visibility:public"],
-)
-
-alias(
     name = "fake_summary_writer",
     actual = "//tensorflow/python/summary/writer:fake_summary_writer",
     visibility = ["//visibility:public"],
