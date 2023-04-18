@@ -472,10 +472,6 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
   test::ExpectTensorEqual<int32>(*expected, *host_tensor);
 }
 
-TEST_F(PjRtExecutionUtilTest, GetDeviceOrdinal) {
-  EXPECT_EQ(GetDeviceOrdinal(device_), 0);
-}
-
 TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {
   xla::ExecuteOptions options = GetPjRtExecuteOptions();
   EXPECT_FALSE(options.arguments_are_tupled);

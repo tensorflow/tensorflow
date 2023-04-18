@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -78,11 +79,28 @@ Status NextPluggableDeviceFactory::CreateDevices(
   api_->TFNPD_InitPluginInternalDeviceStates(c_status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
 
-  int32_t device_count = api_->TFNPD_GetDeviceCount(c_status);
+  const int32_t visible_device_count = api_->TFNPD_GetDeviceCount(c_status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
   TF_DeleteStatus(c_status);
 
-  for (int i = 0; i < device_count; ++i) {
+  if (visible_device_count <= 0) {
+    return OkStatus();
+  }
+  const absl::flat_hash_map<std::string, int64_t> device_count_map(
+      session_options.config.device_count().begin(),
+      session_options.config.device_count().end());
+  const GPUOptions gpu_options = session_options.config.gpu_options();
+  TF_ASSIGN_OR_RETURN(
+      const size_t num_tf_devices,
+      tsl::GetNumberTfDevicesAndConfigurePlatformDeviceId(
+          device_count_map, device_type_, gpu_options.visible_device_list(),
+          visible_device_count));
+
+  if (!gpu_options.experimental().virtual_devices().empty()) {
+    VLOG(2) << "NextPluggableDevice does not support virtual device setting.";
+  }
+
+  for (int i = 0; i < num_tf_devices; ++i) {
     NextPluggableDevice::Options options;
     options.device_name_prefix = name_prefix;
     options.device_name = device_type_;
@@ -102,7 +120,7 @@ Status NextPluggableDeviceFactory::CreateDevices(
   RegisterPjRtCompileOnDemand(device_type_.c_str(),
                               compilation_device_name_.c_str());
 
-  LOG(INFO) << "Created " << device_count
+  LOG(INFO) << "Created " << num_tf_devices
             << " TensorFlow NextPluggableDevices. "
             << "Physical device type: " << device_type_;
   return OkStatus();

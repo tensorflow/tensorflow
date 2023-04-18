@@ -86,6 +86,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
+        "//tensorflow/tsl/framework:device_id_utils",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/strings",
     ],

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/framework/device_id_manager.h"
@@ -84,6 +85,51 @@ Status ParseVisibleDeviceList(
         visible_device_list);
   }
   return tsl::OkStatus();
+}
+
+StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
+    const absl::flat_hash_map<std::string, int64_t>&
+        session_option_device_counts,
+    absl::string_view device_type, absl::string_view visible_device_list,
+    const int visible_device_count) {
+  size_t num_tf_devices = INT_MAX;
+  const auto iter = session_option_device_counts.find(device_type);
+  if (iter != session_option_device_counts.end()) {
+    num_tf_devices = iter->second;
+  }
+  if (num_tf_devices == 0) {
+    return 0;
+  }
+  std::vector<PlatformDeviceId> visible_device_order;
+  TF_RETURN_IF_ERROR(ParseVisibleDeviceList(std::string(visible_device_list),
+                                            visible_device_count,
+                                            &visible_device_order));
+  if (num_tf_devices > visible_device_order.size()) {
+    num_tf_devices = visible_device_order.size();
+  }
+  for (int i = 0; i < num_tf_devices; ++i) {
+    const PlatformDeviceId platform_device_id = visible_device_order[i];
+    const TfDeviceId tf_device_id(i);
+    TF_RETURN_IF_ERROR(tsl::DeviceIdManager::InsertTfPlatformDeviceIdPair(
+        DeviceType(device_type), tf_device_id, platform_device_id));
+  }
+  return num_tf_devices;
+}
+
+StatusOr<int> GetDeviceIdFromDeviceParsedName(
+    const DeviceNameUtils::ParsedName& device_name,
+    const DeviceType& device_type) {
+  const TfDeviceId tf_device_id(device_name.id);
+  PlatformDeviceId platform_device_id;
+  Status platform_id_status = DeviceIdManager::TfToPlatformDeviceId(
+      device_type, tf_device_id, &platform_device_id);
+  if (platform_id_status.ok()) {
+    return platform_device_id.value();
+  }
+  if (tsl::errors::IsNotFound(platform_id_status)) {
+    return tf_device_id.value();
+  }
+  return platform_id_status;
 }
 
 }  // namespace tsl

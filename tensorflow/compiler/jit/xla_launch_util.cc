@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -705,19 +706,17 @@ DeviceType GetDeviceType(OpKernelContext* ctx) {
   return DeviceType(device->device_type());
 }
 
-int GetDeviceOrdinal(const DeviceBase* device) {
-  return device->parsed_name().id;
-}
-
 Status RunPjRtExecutable(
     const xla::PjRtClient& pjrt_client,
     const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx) {
-  TF_ASSIGN_OR_RETURN(
-      xla::PjRtDevice * device,
-      pjrt_client.LookupAddressableDevice(GetDeviceOrdinal(ctx->device())));
+  TF_ASSIGN_OR_RETURN(const int pjrt_device_id,
+                      tsl::GetDeviceIdFromDeviceParsedName(
+                          ctx->device()->parsed_name(), GetDeviceType(ctx)));
+  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
+                      pjrt_client.LookupAddressableDevice(pjrt_device_id));
 
   const std::vector<xla::PjRtBuffer*> executable_args =
       PreparePjRtExecutableArguments(compilation_result.input_mapping, inputs,
