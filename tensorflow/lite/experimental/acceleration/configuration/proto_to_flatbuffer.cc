@@ -63,6 +63,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_EDGETPU_CORAL;
     case proto::Delegate::CORE_ML:
       return Delegate_CORE_ML;
+    case proto::Delegate::ARMNN:
+      return Delegate_ARMNN;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
