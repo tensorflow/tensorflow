@@ -56,15 +56,134 @@ class MultiHeadedAttentionTest : public HloTestBase {
   }
 
   ErrorSpec error_spec_{2.5E-3, 1e-5};
-};
 
-class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
- protected:
+protected:
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
     return debug_options;
   }
+
+  void IsFMHACalled(const std::string &hlo_string,
+                    HloModuleConfig &config_with_fmha,
+                    const std::string &prefix) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> verified_module,
+        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> optimized_verified_module,
+        GetOptimizedModule(std::move(verified_module)));
+
+    int count = 0;
+    for (auto inst :
+         optimized_verified_module->entry_computation()->instructions()) {
+      if (inst->opcode() == HloOpcode::kCustomCall &&
+          inst->custom_call_target().rfind(prefix, 0) != std::string::npos) {
+        count++;
+      }
+    }
+    EXPECT_EQ(count, 1);
+  }
+
+  void ExecuteAndCompare(const std::string hlo_string,
+                         Literal &lhs_bmm1_literal, Literal &rhs_bmm1_literal,
+                         Literal &rhs_bmm2_literal) {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo_string, config));
+
+    auto expected_result = ExecuteAndTransfer(
+        std::move(module),
+        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal});
+
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
+
+    HloModuleConfig config_with_fmha;
+    config_with_fmha.set_debug_options(debug_options);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> new_module,
+        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
+    auto actual_result = ExecuteAndTransfer(
+        std::move(new_module),
+        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal});
+    EXPECT_TRUE(
+        LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
+
+    std::string prefix = "__cudnn$fhma";
+    IsFMHACalled(hlo_string, config_with_fmha, prefix);
+  }
+
+  void ExecuteAndCompareUsingMask(const std::string hlo_string,
+                                  Literal &lhs_bmm1_literal,
+                                  Literal &rhs_bmm1_literal,
+                                  Literal &rhs_bmm2_literal,
+                                  Literal &mask_literal) {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo_string, config));
+
+    auto expected_result = ExecuteAndTransfer(
+        std::move(module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
+                            &rhs_bmm2_literal, &mask_literal});
+
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
+
+    HloModuleConfig config_with_fmha;
+    config_with_fmha.set_debug_options(debug_options);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> new_module,
+        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
+
+    auto actual_result = ExecuteAndTransfer(
+        std::move(new_module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
+                                &rhs_bmm2_literal, &mask_literal});
+
+    EXPECT_TRUE(
+        LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> verified_module,
+        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> optimized_verified_module,
+        GetOptimizedModule(std::move(verified_module)));
+
+    std::string prefix = "__cudnn$fhma";
+    IsFMHACalled(hlo_string, config_with_fmha, prefix);
+  }
+
+  template <typename T>
+  Literal GetInput4DLiteral(std::vector<int64_t> dimensions,
+                            std::vector<int64_t> minor_to_major) {
+    Array4D<T> input_data(dimensions[0], dimensions[1], dimensions[2],
+                          dimensions[3]);
+    input_data.FillRandom(/*stddev=*/static_cast<T>(0.023), 0.001);
+
+    return LiteralUtil::CreateR4FromArray4DWithLayout(
+        input_data, LayoutUtil::MakeLayout(minor_to_major));
+  }
+
+  Literal GetMask4DLiteral(std::vector<int64_t> dimensions,
+                           std::vector<int64_t> minor_to_major) {
+    Array4D<bool> input_data(dimensions[0], dimensions[1], dimensions[2],
+                             dimensions[3]);
+    input_data.FillRandomBool();
+
+    return LiteralUtil::CreateR4FromArray4DWithLayout(
+        input_data, LayoutUtil::MakeLayout(minor_to_major));
+  }
+};
+
+class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
+ protected:
 
   const std::string GetModuleFMHABMM_BMM_vanilla_HloString_F16() {
     const std::string hlo_text = R"(
@@ -227,23 +346,6 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_F16_small() {
-    const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[2,4,2,64]{3,2,1,0},f16[2,4,2,64]{3,2,1,0},f16[2,4,2,64]{3,2,1,0})->f16[2,4,2,64]{3,2,1,0}}
-
-    ENTRY main.15 {
-      Arg_2.3 = f16[2,4,2,64]{3,2,1,0} parameter(2)
-      Arg_0.1 = f16[2,4,2,64]{3,2,1,0} parameter(0)
-      Arg_1.2 = f16[2,4,2,64]{3,2,1,0} parameter(1)
-      dot.0 = f16[2,2,4,4]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,2}, lhs_contracting_dims={3}, rhs_batch_dims={0,2}, rhs_contracting_dims={3}, metadata={}
-      dot.1 = f16[2,2,64,4]{3,2,1,0} dot(Arg_2.3, dot.0), lhs_batch_dims={0,2}, lhs_contracting_dims={1}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
-      ROOT transpose.0 = f16[2,4,2,64]{1,3,2,0} transpose(dot.1), dimensions={0,3,1,2}, metadata={}
-    }
-  )";
-    return hlo_text;
-  }
-
-  const std::string
   GetModuleFMHABMM_BMM1_contracting_dim_stride_not_1_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,16,256,64]{2,3,1,0},f16[16,16,256,64]{2,3,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
@@ -275,7 +377,195 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
+    template <typename T>
+  void TestImpl_FMHABMM_BMM_vanilla() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string = GetModuleFMHABMM_BMM_vanilla_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string = GetModuleFMHABMM_BMM_vanilla_HloString_BF16();
+    }
+
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+
+  template <typename T>
+  void TestImpl_FMHABMM_BMM_arg_reversal() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string = GetModuleFMHABMM_BMM_arg_reversal_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string = GetModuleFMHABMM_BMM_arg_reversal_HloString_BF16();
+    }
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+
+  template <typename T>
+  void TestImpl_FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_BF16();
+    }
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+
+  template <typename T>
+  void
+  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_BF16();
+    }
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+
+  template <typename T>
+  void TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_BF16();
+    }
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+
+  template <typename T>
+  void TestImpl_BMM_BMM1_contracting_dim_stride_not_1() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {2, 3, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {2, 3, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM1_contracting_dim_stride_not_1_HloString_F16();
+    }
+
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+
+  template <typename T>
+  void TestImpl_BMM_BMM2_non_contracting_dim_stride_not_1() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {2, 3, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM_BMM2_non_contracting_dim_stride_not_1_HloString_F16();
+    }
+
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+};
+
+
+
   // BMM1 - Scale - Bias - Mask - Softmax - BMM2
+  class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM : public MultiHeadedAttentionTest {
+protected:
   const std::string
   GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
@@ -445,6 +735,62 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
+  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16_smaller() {
+    const std::string hlo_text = R"(
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0},pred[2,6,40,40]{3,2,1,0})->f16[2,6,40,64]{3,2,1,0}}
+
+  region_0.17 {
+    Arg_0.18 = f16[] parameter(0)
+    Arg_1.19 = f16[] parameter(1)
+    ROOT maximum.20 = f16[] maximum(Arg_0.18, Arg_1.19)
+  }
+
+  region_1.29 {
+    Arg_0.30 = f32[] parameter(0)
+    Arg_1.31 = f32[] parameter(1)
+    ROOT add.32 = f32[] add(Arg_0.30, Arg_1.31)
+  }
+
+  ENTRY main.41 {
+    constant.12 = pred[2,6,40,40]{3,2,1,0} parameter(3)
+    Arg_0.1 = f16[2,6,40,64]{3,2,1,0} parameter(0)
+    Arg_1.2 = f16[2,6,64,40]{3,2,1,0} parameter(1)
+    dot.13 = f16[2,6,40,40]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    constant.6 = f16[] constant(2)
+    broadcast.7 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.6), dimensions={}
+    multiply.14 = f16[2,6,40,40]{3,2,1,0} multiply(dot.13, broadcast.7)
+    constant.10 = f16[] constant(1)
+    broadcast.11 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.10), dimensions={}
+    add.15 = f16[2,6,40,40]{3,2,1,0} add(multiply.14, broadcast.11)
+    constant.4 = f16[] constant(0)
+    broadcast.5 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.4), dimensions={}
+    select.16 = f16[2,6,40,40]{3,2,1,0} select(constant.12, add.15, broadcast.5)
+    constant.9 = f16[] constant(-inf)
+    reduce.21 = f16[2,6,40]{2,1,0} reduce(select.16, constant.9), dimensions={3}, to_apply=region_0.17
+    reshape.22 = f16[2,6,40,1]{3,2,1,0} reshape(reduce.21)
+    broadcast.23 = f16[2,6,40,1]{3,2,1,0} broadcast(reshape.22), dimensions={0,1,2,3}
+    reshape.24 = f16[2,6,40]{2,1,0} reshape(broadcast.23)
+    broadcast.25 = f16[2,6,40,40]{3,2,1,0} broadcast(reshape.24), dimensions={0,1,2}
+    subtract.26 = f16[2,6,40,40]{3,2,1,0} subtract(select.16, broadcast.25)
+    exponential.27 = f16[2,6,40,40]{3,2,1,0} exponential(subtract.26)
+    convert.28 = f32[2,6,40,40]{3,2,1,0} convert(exponential.27)
+    constant.8 = f32[] constant(0)
+    reduce.33 = f32[2,6,40]{2,1,0} reduce(convert.28, constant.8), dimensions={3}, to_apply=region_1.29
+    reshape.34 = f32[2,6,40,1]{3,2,1,0} reshape(reduce.33)
+    convert.35 = f16[2,6,40,1]{3,2,1,0} convert(reshape.34)
+    broadcast.36 = f16[2,6,40,1]{3,2,1,0} broadcast(convert.35), dimensions={0,1,2,3}
+    reshape.37 = f16[2,6,40]{2,1,0} reshape(broadcast.36)
+    broadcast.38 = f16[2,6,40,40]{3,2,1,0} broadcast(reshape.37), dimensions={0,1,2}
+    divide.39 = f16[2,6,40,40]{3,2,1,0} divide(exponential.27, broadcast.38)
+    Arg_2.3 = f16[2,6,40,64]{3,2,1,0} parameter(2)
+    ROOT dot.40 = f16[2,6,40,64]{3,2,1,0} dot(divide.39, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  }
+)";
+
+    return hlo_text;
+  }
+
+  const std::string
   GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
@@ -501,63 +847,150 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_epilogue_transpose_fusion_HloString_F16() {
+  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {
     const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,256,16,64]{3,2,1,0}}
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
-    region_0.17 {
-      Arg_0.18 = f16[] parameter(0)
-      Arg_1.19 = f16[] parameter(1)
-      ROOT maximum.20 = f16[] maximum(Arg_0.18, Arg_1.19)
-    }
+  region_0.17 {
+    Arg_0.18 = bf16[] parameter(0)
+    Arg_1.19 = bf16[] parameter(1)
+    ROOT maximum.20 = bf16[] maximum(Arg_0.18, Arg_1.19)
+  }
 
-    region_1.29 {
-      Arg_0.30 = f32[] parameter(0)
-      Arg_1.31 = f32[] parameter(1)
-      ROOT add.32 = f32[] add(Arg_0.30, Arg_1.31)
-    }
+  region_1.29 {
+    Arg_0.30 = f32[] parameter(0)
+    Arg_1.31 = f32[] parameter(1)
+    ROOT add.32 = f32[] add(Arg_0.30, Arg_1.31)
+  }
 
-    ENTRY main.41 {
-      constant.12 = pred[16,16,256,256]{3,2,1,0} parameter(3)
-      Arg_0.1 = f16[16,16,256,64]{3,2,1,0} parameter(0)
-      Arg_1.2 = f16[16,16,256,64]{3,2,1,0} parameter(1)
-      dot.13 = f16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
-      constant.6 = f16[] constant(2)
-      broadcast.7 = f16[16,16,256,256]{3,2,1,0} broadcast(constant.6), dimensions={}
-      multiply.14 = f16[16,16,256,256]{3,2,1,0} multiply(dot.13, broadcast.7)
-      constant.10 = f16[] constant(1)
-      broadcast.11 = f16[16,16,256,256]{3,2,1,0} broadcast(constant.10), dimensions={}
-      add.15 = f16[16,16,256,256]{3,2,1,0} add(multiply.14, broadcast.11)
-      constant.4 = f16[] constant(0)
-      broadcast.5 = f16[16,16,256,256]{3,2,1,0} broadcast(constant.4), dimensions={}
-      select.16 = f16[16,16,256,256]{3,2,1,0} select(constant.12, add.15, broadcast.5)
-      constant.9 = f16[] constant(-inf)
-      reduce.21 = f16[16,16,256]{2,1,0} reduce(select.16, constant.9), dimensions={3}, to_apply=region_0.17
-      reshape.22 = f16[16,16,256,1]{3,2,1,0} reshape(reduce.21)
-      broadcast.23 = f16[16,16,256,1]{3,2,1,0} broadcast(reshape.22), dimensions={0,1,2,3}
-      reshape.24 = f16[16,16,256]{2,1,0} reshape(broadcast.23)
-      broadcast.25 = f16[16,16,256,256]{3,2,1,0} broadcast(reshape.24), dimensions={0,1,2}
-      subtract.26 = f16[16,16,256,256]{3,2,1,0} subtract(select.16, broadcast.25)
-      exponential.27 = f16[16,16,256,256]{3,2,1,0} exponential(subtract.26)
-      convert.28 = f32[16,16,256,256]{3,2,1,0} convert(exponential.27)
-      constant.8 = f32[] constant(0)
-      reduce.33 = f32[16,16,256]{2,1,0} reduce(convert.28, constant.8), dimensions={3}, to_apply=region_1.29
-      reshape.34 = f32[16,16,256,1]{3,2,1,0} reshape(reduce.33)
-      convert.35 = f16[16,16,256,1]{3,2,1,0} convert(reshape.34)
-      broadcast.36 = f16[16,16,256,1]{3,2,1,0} broadcast(convert.35), dimensions={0,1,2,3}
-      reshape.37 = f16[16,16,256]{2,1,0} reshape(broadcast.36)
-      broadcast.38 = f16[16,16,256,256]{3,2,1,0} broadcast(reshape.37), dimensions={0,1,2}
-      divide.39 = f16[16,16,256,256]{3,2,1,0} divide(exponential.27, broadcast.38)
-      Arg_2.3 = f16[16,16,256,64]{3,2,1,0} parameter(2)
-      dot.40 = f16[16,16,64,256]{3,2,1,0} dot(Arg_2.3, divide.39), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
-      ROOT transpose.0 = f16[16,256,16,64]{1,3,2,0} transpose(dot.40), dimensions={0,3,1,2}, metadata={}
-    }
-  )";
+  ENTRY main.41 {
+    constant.12 = pred[16,16,256,256]{3,2,1,0} parameter(3)
+    Arg_0.1 = bf16[16,16,256,64]{3,2,1,0} parameter(0)
+    Arg_1.2 = bf16[16,16,256,64]{3,2,1,0} parameter(1)
+    dot.13 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+    constant.6 = bf16[] constant(2)
+    broadcast.7 = bf16[16,16,256,256]{3,2,1,0} broadcast(constant.6), dimensions={}
+    multiply.14 = bf16[16,16,256,256]{3,2,1,0} multiply(dot.13, broadcast.7)
+    constant.10 = bf16[] constant(1)
+    broadcast.11 = bf16[16,16,256,256]{3,2,1,0} broadcast(constant.10), dimensions={}
+    add.15 = bf16[16,16,256,256]{3,2,1,0} add(multiply.14, broadcast.11)
+    constant.4 = bf16[] constant(0)
+    broadcast.5 = bf16[16,16,256,256]{3,2,1,0} broadcast(constant.4), dimensions={}
+    select.16 = bf16[16,16,256,256]{3,2,1,0} select(constant.12, add.15, broadcast.5)
+    constant.9 = bf16[] constant(-inf)
+    reduce.21 = bf16[16,16,256]{2,1,0} reduce(select.16, constant.9), dimensions={3}, to_apply=region_0.17
+    reshape.22 = bf16[16,16,256,1]{3,2,1,0} reshape(reduce.21)
+    broadcast.23 = bf16[16,16,256,1]{3,2,1,0} broadcast(reshape.22), dimensions={0,1,2,3}
+    reshape.24 = bf16[16,16,256]{2,1,0} reshape(broadcast.23)
+    broadcast.25 = bf16[16,16,256,256]{3,2,1,0} broadcast(reshape.24), dimensions={0,1,2}
+    subtract.26 = bf16[16,16,256,256]{3,2,1,0} subtract(select.16, broadcast.25)
+    exponential.27 = bf16[16,16,256,256]{3,2,1,0} exponential(subtract.26)
+    convert.28 = f32[16,16,256,256]{3,2,1,0} convert(exponential.27)
+    constant.8 = f32[] constant(0)
+    reduce.33 = f32[16,16,256]{2,1,0} reduce(convert.28, constant.8), dimensions={3}, to_apply=region_1.29
+    reshape.34 = f32[16,16,256,1]{3,2,1,0} reshape(reduce.33)
+    convert.35 = bf16[16,16,256,1]{3,2,1,0} convert(reshape.34)
+    broadcast.36 = bf16[16,16,256,1]{3,2,1,0} broadcast(convert.35), dimensions={0,1,2,3}
+    reshape.37 = bf16[16,16,256]{2,1,0} reshape(broadcast.36)
+    broadcast.38 = bf16[16,16,256,256]{3,2,1,0} broadcast(reshape.37), dimensions={0,1,2}
+    divide.39 = bf16[16,16,256,256]{3,2,1,0} divide(exponential.27, broadcast.38)
+    Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
+    ROOT dot.40 = bf16[16,16,64,256]{3,2,1,0} dot(Arg_2.3, divide.39), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  }
+)";
 
     return hlo_text;
   }
 
+    // BMM1 - Scale - Bias - Mask - Softmax - BMM2
+  template <typename T>
+  void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16();
+    }
+
+    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                               rhs_bmm2_literal, mask_literal);
+  }
+
+  template <typename T>
+  void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla_smaller() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 40, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 64, 40}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal = GetInput4DLiteral<T>({2, 6, 40, 64}, {3, 2, 1, 0});
+    auto mask_literal = GetMask4DLiteral({2, 6, 40, 40}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16_smaller();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16_smaller();
+    }
+
+    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                               rhs_bmm2_literal, mask_literal);
+  }
+
+  template <typename T>
+  void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_BF16();
+    }
+
+    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                               rhs_bmm2_literal, mask_literal);
+  }
+  };
+
   // BMM1 - Scale - Mask - Softmax - BMM2
+  class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM : public MultiHeadedAttentionTest {
+protected:
   const std::string GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
@@ -715,204 +1148,120 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
-  // BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
   const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_HloString_F16() {
+  GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {
     const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0},pred[2,6,40,40])->f16[2,6,40,64]{3,2,1,0}}
+    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
-    region_0.34 {
-      Arg_0.35 = f16[] parameter(0)
-      Arg_1.36 = f16[] parameter(1)
-      ROOT maximum.37 = f16[] maximum(Arg_0.35, Arg_1.36)
+    region_0.14 {
+      Arg_0.15 = bf16[] parameter(0)
+      Arg_1.16 = bf16[] parameter(1)
+      ROOT maximum.17 = bf16[] maximum(Arg_0.15, Arg_1.16)
     }
 
-    region_1.46 {
-      Arg_0.47 = f32[] parameter(0)
-      Arg_1.48 = f32[] parameter(1)
-      ROOT add.49 = f32[] add(Arg_0.47, Arg_1.48)
+    region_1.26 {
+      Arg_0.27 = f32[] parameter(0)
+      Arg_1.28 = f32[] parameter(1)
+      ROOT add.29 = f32[] add(Arg_0.27, Arg_1.28)
     }
 
-    ENTRY main.83 {
-      constant.19 = u32[1]{0} constant({2718843009})
-      constant.18 = u32[1]{0} constant({1272950319})
-      constant.24 = u32[] constant(2711844646)
-      constant.23 = u32[] constant(32)
-      shift-right-logical.57 = u32[] shift-right-logical(constant.24, constant.23)
-      reshape.58 = u32[1]{0} reshape(shift-right-logical.57)
-      constant.20 = u32[1]{0} constant({2711844646})
-      custom-call.59 = (u32[1]{0}, u32[1]{0}) custom-call(constant.19, constant.18, reshape.58, constant.20), custom_call_target="cu_threefry2x32", operand_layout_constraints={u32[1]{0}, u32[1]{0}, u32[1]{0}, u32[1]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config="\001\000\000\000\000\000\000\000"
-      get-tuple-element.60 = u32[1]{0} get-tuple-element(custom-call.59), index=0
-      reshape.63 = u32[] reshape(get-tuple-element.60)
-      broadcast.67 = u32[9600]{0} broadcast(reshape.63), dimensions={}
-      get-tuple-element.61 = u32[1]{0} get-tuple-element(custom-call.59), index=1
-      reshape.64 = u32[] reshape(get-tuple-element.61)
-      broadcast.68 = u32[9600]{0} broadcast(reshape.64), dimensions={}
-      iota.62 = u32[19200]{0} iota(), iota_dimension=0
-      slice.65 = u32[9600]{0} slice(iota.62), slice={[0:9600]}
-      slice.66 = u32[9600]{0} slice(iota.62), slice={[9600:19200]}
-      custom-call.69 = (u32[9600]{0}, u32[9600]{0}) custom-call(broadcast.67, broadcast.68, slice.65, slice.66), custom_call_target="cu_threefry2x32", operand_layout_constraints={u32[9600]{0}, u32[9600]{0}, u32[9600]{0}, u32[9600]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config="\200%\000\000\000\000\000\000"
-      get-tuple-element.70 = u32[9600]{0} get-tuple-element(custom-call.69), index=0
-      get-tuple-element.71 = u32[9600]{0} get-tuple-element(custom-call.69), index=1
-      concatenate.72 = u32[19200]{0} concatenate(get-tuple-element.70, get-tuple-element.71), dimensions={0}
-      reshape.73 = u32[2,6,40,40]{3,2,1,0} reshape(concatenate.72)
-      constant.16 = u32[] constant(9)
-      broadcast.17 = u32[2,6,40,40]{3,2,1,0} broadcast(constant.16), dimensions={}
-      shift-right-logical.74 = u32[2,6,40,40]{3,2,1,0} shift-right-logical(reshape.73, broadcast.17)
-      constant.14 = u32[] constant(1065353216)
-      broadcast.15 = u32[2,6,40,40]{3,2,1,0} broadcast(constant.14), dimensions={}
-      or.75 = u32[2,6,40,40]{3,2,1,0} or(shift-right-logical.74, broadcast.15)
-      bitcast-convert.76 = f32[2,6,40,40]{3,2,1,0} bitcast-convert(or.75)
-      constant.12 = f32[] constant(1)
-      broadcast.13 = f32[2,6,40,40]{3,2,1,0} broadcast(constant.12), dimensions={}
-      subtract.77 = f32[2,6,40,40]{3,2,1,0} subtract(bitcast-convert.76, broadcast.13)
-      constant.10 = f32[] constant(0)
-      broadcast.11 = f32[2,6,40,40]{3,2,1,0} broadcast(constant.10), dimensions={}
-      maximum.78 = f32[2,6,40,40]{3,2,1,0} maximum(subtract.77, broadcast.11)
-      constant.8 = f32[] constant(0.8)
-      broadcast.9 = f32[2,6,40,40]{3,2,1,0} broadcast(constant.8), dimensions={}
-      compare.79 = pred[2,6,40,40]{3,2,1,0} compare(maximum.78, broadcast.9), direction=LT
-      constant.29 = pred[2,6,40,40]{3,2,1,0} parameter(3)
-      Arg_0.1 = f16[2,6,40,64]{3,2,1,0} parameter(0)
-      Arg_1.2 = f16[2,6,64,40]{3,2,1,0} parameter(1)
-      dot.30 = f16[2,6,40,40]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-      constant.21 = f16[] constant(2)
-      broadcast.22 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.21), dimensions={}
-      multiply.31 = f16[2,6,40,40]{3,2,1,0} multiply(dot.30, broadcast.22)
-      constant.27 = f16[] constant(1)
-      broadcast.28 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.27), dimensions={}
-      add.32 = f16[2,6,40,40]{3,2,1,0} add(multiply.31, broadcast.28)
-      constant.4 = f16[] constant(0)
-      broadcast.5 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.4), dimensions={}
-      select.33 = f16[2,6,40,40]{3,2,1,0} select(constant.29, add.32, broadcast.5)
-      constant.26 = f16[] constant(-inf)
-      reduce.38 = f16[2,6,40]{2,1,0} reduce(select.33, constant.26), dimensions={3}, to_apply=region_0.34
-      reshape.39 = f16[2,6,40,1]{3,2,1,0} reshape(reduce.38)
-      broadcast.40 = f16[2,6,40,1]{3,2,1,0} broadcast(reshape.39), dimensions={0,1,2,3}
-      reshape.41 = f16[2,6,40]{2,1,0} reshape(broadcast.40)
-      broadcast.42 = f16[2,6,40,40]{3,2,1,0} broadcast(reshape.41), dimensions={0,1,2}
-      subtract.43 = f16[2,6,40,40]{3,2,1,0} subtract(select.33, broadcast.42)
-      exponential.44 = f16[2,6,40,40]{3,2,1,0} exponential(subtract.43)
-      convert.45 = f32[2,6,40,40]{3,2,1,0} convert(exponential.44)
-      constant.25 = f32[] constant(0)
-      reduce.50 = f32[2,6,40]{2,1,0} reduce(convert.45, constant.25), dimensions={3}, to_apply=region_1.46
-      reshape.51 = f32[2,6,40,1]{3,2,1,0} reshape(reduce.50)
-      convert.52 = f16[2,6,40,1]{3,2,1,0} convert(reshape.51)
-      broadcast.53 = f16[2,6,40,1]{3,2,1,0} broadcast(convert.52), dimensions={0,1,2,3}
-      reshape.54 = f16[2,6,40]{2,1,0} reshape(broadcast.53)
-      broadcast.55 = f16[2,6,40,40]{3,2,1,0} broadcast(reshape.54), dimensions={0,1,2}
-      divide.56 = f16[2,6,40,40]{3,2,1,0} divide(exponential.44, broadcast.55)
-      constant.6 = f16[] constant(0.8008)
-      broadcast.7 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.6), dimensions={}
-      divide.80 = f16[2,6,40,40]{3,2,1,0} divide(divide.56, broadcast.7)
-      select.81 = f16[2,6,40,40]{3,2,1,0} select(compare.79, divide.80, broadcast.5)
-      Arg_2.3 = f16[2,6,40,64]{3,2,1,0} parameter(2)
-      ROOT dot.82 = f16[2,6,40,64]{3,2,1,0} dot(select.81, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-    }
-  )";
-
-    return hlo_text;
-  }
-
-  const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_HloString_BF16() {
-    const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,40,64]{3,2,1,0},bf16[2,6,64,40]{3,2,1,0},bf16[2,6,40,64]{3,2,1,0},pred[2,6,40,40])->bf16[2,6,40,64]{3,2,1,0}}
-
-    region_0.34 {
-      Arg_0.35 = bf16[] parameter(0)
-      Arg_1.36 = bf16[] parameter(1)
-      ROOT maximum.37 = bf16[] maximum(Arg_0.35, Arg_1.36)
-    }
-
-    region_1.46 {
-      Arg_0.47 = f32[] parameter(0)
-      Arg_1.48 = f32[] parameter(1)
-      ROOT add.49 = f32[] add(Arg_0.47, Arg_1.48)
-    }
-
-    ENTRY main.83 {
-      constant.19 = u32[1]{0} constant({2718843009})
-      constant.18 = u32[1]{0} constant({1272950319})
-      constant.24 = u32[] constant(2711844646)
-      constant.23 = u32[] constant(32)
-      shift-right-logical.57 = u32[] shift-right-logical(constant.24, constant.23)
-      reshape.58 = u32[1]{0} reshape(shift-right-logical.57)
-      constant.20 = u32[1]{0} constant({2711844646})
-      custom-call.59 = (u32[1]{0}, u32[1]{0}) custom-call(constant.19, constant.18, reshape.58, constant.20), custom_call_target="cu_threefry2x32", operand_layout_constraints={u32[1]{0}, u32[1]{0}, u32[1]{0}, u32[1]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config="\001\000\000\000\000\000\000\000"
-      get-tuple-element.60 = u32[1]{0} get-tuple-element(custom-call.59), index=0
-      reshape.63 = u32[] reshape(get-tuple-element.60)
-      broadcast.67 = u32[9600]{0} broadcast(reshape.63), dimensions={}
-      get-tuple-element.61 = u32[1]{0} get-tuple-element(custom-call.59), index=1
-      reshape.64 = u32[] reshape(get-tuple-element.61)
-      broadcast.68 = u32[9600]{0} broadcast(reshape.64), dimensions={}
-      iota.62 = u32[19200]{0} iota(), iota_dimension=0
-      slice.65 = u32[9600]{0} slice(iota.62), slice={[0:9600]}
-      slice.66 = u32[9600]{0} slice(iota.62), slice={[9600:19200]}
-      custom-call.69 = (u32[9600]{0}, u32[9600]{0}) custom-call(broadcast.67, broadcast.68, slice.65, slice.66), custom_call_target="cu_threefry2x32", operand_layout_constraints={u32[9600]{0}, u32[9600]{0}, u32[9600]{0}, u32[9600]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config="\200%\000\000\000\000\000\000"
-      get-tuple-element.70 = u32[9600]{0} get-tuple-element(custom-call.69), index=0
-      get-tuple-element.71 = u32[9600]{0} get-tuple-element(custom-call.69), index=1
-      concatenate.72 = u32[19200]{0} concatenate(get-tuple-element.70, get-tuple-element.71), dimensions={0}
-      reshape.73 = u32[2,6,40,40]{3,2,1,0} reshape(concatenate.72)
-      constant.16 = u32[] constant(9)
-      broadcast.17 = u32[2,6,40,40]{3,2,1,0} broadcast(constant.16), dimensions={}
-      shift-right-logical.74 = u32[2,6,40,40]{3,2,1,0} shift-right-logical(reshape.73, broadcast.17)
-      constant.14 = u32[] constant(1065353216)
-      broadcast.15 = u32[2,6,40,40]{3,2,1,0} broadcast(constant.14), dimensions={}
-      or.75 = u32[2,6,40,40]{3,2,1,0} or(shift-right-logical.74, broadcast.15)
-      bitcast-convert.76 = f32[2,6,40,40]{3,2,1,0} bitcast-convert(or.75)
-      constant.12 = f32[] constant(1)
-      broadcast.13 = f32[2,6,40,40]{3,2,1,0} broadcast(constant.12), dimensions={}
-      subtract.77 = f32[2,6,40,40]{3,2,1,0} subtract(bitcast-convert.76, broadcast.13)
-      constant.10 = f32[] constant(0)
-      broadcast.11 = f32[2,6,40,40]{3,2,1,0} broadcast(constant.10), dimensions={}
-      maximum.78 = f32[2,6,40,40]{3,2,1,0} maximum(subtract.77, broadcast.11)
-      constant.8 = f32[] constant(0.8)
-      broadcast.9 = f32[2,6,40,40]{3,2,1,0} broadcast(constant.8), dimensions={}
-      compare.79 = pred[2,6,40,40]{3,2,1,0} compare(maximum.78, broadcast.9), direction=LT
-      constant.29 = pred[2,6,40,40]{3,2,1,0} parameter(3)
-      Arg_0.1 = bf16[2,6,40,64]{3,2,1,0} parameter(0)
-      Arg_1.2 = bf16[2,6,64,40]{3,2,1,0} parameter(1)
-      dot.30 = bf16[2,6,40,40]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-      constant.21 = bf16[] constant(2)
-      broadcast.22 = bf16[2,6,40,40]{3,2,1,0} broadcast(constant.21), dimensions={}
-      multiply.31 = bf16[2,6,40,40]{3,2,1,0} multiply(dot.30, broadcast.22)
-      constant.27 = bf16[] constant(1)
-      broadcast.28 = bf16[2,6,40,40]{3,2,1,0} broadcast(constant.27), dimensions={}
-      add.32 = bf16[2,6,40,40]{3,2,1,0} add(multiply.31, broadcast.28)
+    ENTRY main.38 {
+      constant.10 = pred[16,16,256,256]{3,2,1,0} parameter(3)
+      Arg_0.1 = bf16[16,16,256,64]{3,2,1,0} parameter(0)
+      Arg_1.2 = bf16[16,16,256,64]{3,2,1,0} parameter(1)
+      dot.11 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+      constant.6 = bf16[] constant(2)
+      broadcast.7 = bf16[16,16,256,256]{3,2,1,0} broadcast(constant.6), dimensions={}
+      multiply.12 = bf16[16,16,256,256]{3,2,1,0} multiply(dot.11, broadcast.7)
       constant.4 = bf16[] constant(0)
-      broadcast.5 = bf16[2,6,40,40]{3,2,1,0} broadcast(constant.4), dimensions={}
-      select.33 = bf16[2,6,40,40]{3,2,1,0} select(constant.29, add.32, broadcast.5)
-      constant.26 = bf16[] constant(-inf)
-      reduce.38 = bf16[2,6,40]{2,1,0} reduce(select.33, constant.26), dimensions={3}, to_apply=region_0.34
-      reshape.39 = bf16[2,6,40,1]{3,2,1,0} reshape(reduce.38)
-      broadcast.40 = bf16[2,6,40,1]{3,2,1,0} broadcast(reshape.39), dimensions={0,1,2,3}
-      reshape.41 = bf16[2,6,40]{2,1,0} reshape(broadcast.40)
-      broadcast.42 = bf16[2,6,40,40]{3,2,1,0} broadcast(reshape.41), dimensions={0,1,2}
-      subtract.43 = bf16[2,6,40,40]{3,2,1,0} subtract(select.33, broadcast.42)
-      exponential.44 = bf16[2,6,40,40]{3,2,1,0} exponential(subtract.43)
-      convert.45 = f32[2,6,40,40]{3,2,1,0} convert(exponential.44)
-      constant.25 = f32[] constant(0)
-      reduce.50 = f32[2,6,40]{2,1,0} reduce(convert.45, constant.25), dimensions={3}, to_apply=region_1.46
-      reshape.51 = f32[2,6,40,1]{3,2,1,0} reshape(reduce.50)
-      convert.52 = bf16[2,6,40,1]{3,2,1,0} convert(reshape.51)
-      broadcast.53 = bf16[2,6,40,1]{3,2,1,0} broadcast(convert.52), dimensions={0,1,2,3}
-      reshape.54 = bf16[2,6,40]{2,1,0} reshape(broadcast.53)
-      broadcast.55 = bf16[2,6,40,40]{3,2,1,0} broadcast(reshape.54), dimensions={0,1,2}
-      divide.56 = bf16[2,6,40,40]{3,2,1,0} divide(exponential.44, broadcast.55)
-      constant.6 = bf16[] constant(0.8008)
-      broadcast.7 = bf16[2,6,40,40]{3,2,1,0} broadcast(constant.6), dimensions={}
-      divide.80 = bf16[2,6,40,40]{3,2,1,0} divide(divide.56, broadcast.7)
-      select.81 = bf16[2,6,40,40]{3,2,1,0} select(compare.79, divide.80, broadcast.5)
-      Arg_2.3 = bf16[2,6,40,64]{3,2,1,0} parameter(2)
-      ROOT dot.82 = bf16[2,6,40,64]{3,2,1,0} dot(select.81, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      broadcast.5 = bf16[16,16,256,256]{3,2,1,0} broadcast(constant.4), dimensions={}
+      select.13 = bf16[16,16,256,256]{3,2,1,0} select(constant.10, multiply.12, broadcast.5)
+      constant.9 = bf16[] constant(-inf)
+      reduce.18 = bf16[16,16,256]{2,1,0} reduce(select.13, constant.9), dimensions={3}, to_apply=region_0.14
+      reshape.19 = bf16[16,16,256,1]{3,2,1,0} reshape(reduce.18)
+      broadcast.20 = bf16[16,16,256,1]{3,2,1,0} broadcast(reshape.19), dimensions={0,1,2,3}
+      reshape.21 = bf16[16,16,256]{2,1,0} reshape(broadcast.20)
+      broadcast.22 = bf16[16,16,256,256]{3,2,1,0} broadcast(reshape.21), dimensions={0,1,2}
+      subtract.23 = bf16[16,16,256,256]{3,2,1,0} subtract(select.13, broadcast.22)
+      exponential.24 = bf16[16,16,256,256]{3,2,1,0} exponential(subtract.23)
+      convert.25 = f32[16,16,256,256]{3,2,1,0} convert(exponential.24)
+      constant.8 = f32[] constant(0)
+      reduce.30 = f32[16,16,256]{2,1,0} reduce(convert.25, constant.8), dimensions={3}, to_apply=region_1.26
+      reshape.31 = f32[16,16,256,1]{3,2,1,0} reshape(reduce.30)
+      convert.32 = bf16[16,16,256,1]{3,2,1,0} convert(reshape.31)
+      broadcast.33 = bf16[16,16,256,1]{3,2,1,0} broadcast(convert.32), dimensions={0,1,2,3}
+      reshape.34 = bf16[16,16,256]{2,1,0} reshape(broadcast.33)
+      broadcast.35 = bf16[16,16,256,256]{3,2,1,0} broadcast(reshape.34), dimensions={0,1,2}
+      divide.36 = bf16[16,16,256,256]{3,2,1,0} divide(exponential.24, broadcast.35)
+      Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
+      ROOT dot.37 = bf16[16,16,64,256]{3,2,1,0} dot(Arg_2.3, divide.36), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
     }
   )";
 
     return hlo_text;
   }
 
+  // BMM1 - Scale - Mask - Softmax - BMM2
+  template <typename T>
+  void TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_vanilla() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string = GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string = GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_HloString_BF16();
+    }
+
+    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                               rhs_bmm2_literal, mask_literal);
+  }
+
+  template <typename T>
+  void TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 64, 256}, {3, 2, 1, 0});
+    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string =
+          GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16();
+    }
+
+    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                               rhs_bmm2_literal, mask_literal);
+  }
+  };
+
+  class MultiHeadedAttentionBMMSoftmaxBMM : public MultiHeadedAttentionTest {
   // Bmm1 - Softmax - Bmm2
+  protected:
   const std::string GetModuleFMHABMM1_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
@@ -1003,6 +1352,36 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
+    // BMM1 - Softmax - BMM2
+  template <typename T>
+  void TestImpl_FMHABMM1_Softmax_BMM2_vanilla() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+    }
+    XlaBuilder builder(TestName());
+
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+
+    std::string hlo_string = "";
+    if (std::is_same<T, Eigen::half>::value) {
+      hlo_string = GetModuleFMHABMM1_Softmax_BMM2_HloString_F16();
+    } else if (std::is_same<T, bfloat16>::value) {
+      hlo_string = GetModuleFMHABMM1_Softmax_BMM2_HloString_BF16();
+    }
+
+    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                      rhs_bmm2_literal);
+  }
+  };
+
+  class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
+  protected:
   // Bmm1 - Scale - Bias - Softmax - Bmm2
   const std::string GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
@@ -1106,553 +1485,6 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
-  void IsFMHACalled(const std::string &hlo_string,
-                    HloModuleConfig &config_with_fmha,
-                    const std::string &prefix) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> verified_module,
-        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> optimized_verified_module,
-        GetOptimizedModule(std::move(verified_module)));
-
-    int count = 0;
-    for (auto inst :
-         optimized_verified_module->entry_computation()->instructions()) {
-      if (inst->opcode() == HloOpcode::kCustomCall &&
-          inst->custom_call_target().rfind(prefix, 0) != std::string::npos) {
-        count++;
-      }
-    }
-    EXPECT_EQ(count, 1);
-  }
-
-  void ExecuteAndCompare(const std::string hlo_string,
-                         Literal &lhs_bmm1_literal, Literal &rhs_bmm1_literal,
-                         Literal &rhs_bmm2_literal) {
-    HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string, config));
-
-    auto expected_result = ExecuteAndTransfer(
-        std::move(module),
-        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal});
-
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
-
-    HloModuleConfig config_with_fmha;
-    config_with_fmha.set_debug_options(debug_options);
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> new_module,
-        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
-    auto actual_result = ExecuteAndTransfer(
-        std::move(new_module),
-        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal});
-    EXPECT_TRUE(
-        LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
-
-    std::string prefix = "__cudnn$fhma";
-    IsFMHACalled(hlo_string, config_with_fmha, prefix);
-  }
-
-  void ExecuteAndCompareUsingMask(const std::string hlo_string,
-                                  Literal &lhs_bmm1_literal,
-                                  Literal &rhs_bmm1_literal,
-                                  Literal &rhs_bmm2_literal,
-                                  Literal &mask_literal) {
-    HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string, config));
-
-    auto expected_result = ExecuteAndTransfer(
-        std::move(module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
-                            &rhs_bmm2_literal, &mask_literal});
-
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
-
-    HloModuleConfig config_with_fmha;
-    config_with_fmha.set_debug_options(debug_options);
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> new_module,
-        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
-
-    auto actual_result = ExecuteAndTransfer(
-        std::move(new_module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
-                                &rhs_bmm2_literal, &mask_literal});
-
-    EXPECT_TRUE(
-        LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> verified_module,
-        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> optimized_verified_module,
-        GetOptimizedModule(std::move(verified_module)));
-
-    std::string prefix = "__cudnn$fhma";
-    IsFMHACalled(hlo_string, config_with_fmha, prefix);
-  }
-
-  template <typename T>
-  Literal GetInput4DLiteral(std::vector<int64_t> dimensions,
-                            std::vector<int64_t> minor_to_major) {
-    Array4D<T> input_data(dimensions[0], dimensions[1], dimensions[2],
-                          dimensions[3]);
-    input_data.FillRandom(/*stddev=*/static_cast<T>(0.023), 0.001);
-
-    return LiteralUtil::CreateR4FromArray4DWithLayout(
-        input_data, LayoutUtil::MakeLayout(minor_to_major));
-  }
-
-  Literal GetMask4DLiteral(std::vector<int64_t> dimensions,
-                           std::vector<int64_t> minor_to_major) {
-    Array4D<bool> input_data(dimensions[0], dimensions[1], dimensions[2],
-                             dimensions[3]);
-    input_data.FillRandomBool();
-
-    return LiteralUtil::CreateR4FromArray4DWithLayout(
-        input_data, LayoutUtil::MakeLayout(minor_to_major));
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM_BMM_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string = GetModuleFMHABMM_BMM_vanilla_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string = GetModuleFMHABMM_BMM_vanilla_HloString_BF16();
-    }
-
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM_BMM_arg_reversal() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string = GetModuleFMHABMM_BMM_arg_reversal_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string = GetModuleFMHABMM_BMM_arg_reversal_HloString_BF16();
-    }
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_arg_reversal_epilogue_transpose_fusion_HloString_BF16();
-    }
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
-  void
-  TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion_HloString_BF16();
-    }
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_BF16();
-    }
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion_small() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal = GetInput4DLiteral<T>({2, 4, 2, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal = GetInput4DLiteral<T>({2, 4, 2, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal = GetInput4DLiteral<T>({2, 4, 2, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM_all_canonicalization_transpose_fusion_HloString_F16_small();
-    }
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
-  void TestImpl_BMM_BMM1_contracting_dim_stride_not_1() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {2, 3, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {2, 3, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM1_contracting_dim_stride_not_1_HloString_F16();
-    }
-
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  template <typename T>
-  void TestImpl_BMM_BMM2_non_contracting_dim_stride_not_1() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {2, 3, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM_BMM2_non_contracting_dim_stride_not_1_HloString_F16();
-    }
-
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
-  // BMM1 - Scale - Bias - Mask - Softmax - BMM2
-  template <typename T>
-  void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16();
-    }
-
-    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                               rhs_bmm2_literal, mask_literal);
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla_smaller() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 40, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 64, 40}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal = GetInput4DLiteral<T>({2, 6, 40, 64}, {3, 2, 1, 0});
-    auto mask_literal = GetMask4DLiteral({2, 6, 40, 40}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16_smaller();
-    }
-
-    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                               rhs_bmm2_literal, mask_literal);
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16();
-    }
-
-    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                               rhs_bmm2_literal, mask_literal);
-  }
-
-  template <typename T>
-  void
-  TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_epilogue_transpose_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 256, 16, 64}, {3, 2, 1, 0});
-    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_epilogue_transpose_fusion_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16();
-    }
-
-    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                               rhs_bmm2_literal, mask_literal);
-  }
-
-  // BMM1 - Scale - Mask - Softmax - BMM2
-  template <typename T>
-  void TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string = GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string = GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_HloString_BF16();
-    }
-
-    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                               rhs_bmm2_literal, mask_literal);
-  }
-
-  template <typename T>
-  void TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 64, 256}, {3, 2, 1, 0});
-    auto mask_literal = GetMask4DLiteral({16, 16, 256, 256}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      // hlo_string =
-      //     GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16();
-    }
-
-    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                               rhs_bmm2_literal, mask_literal);
-  }
-
-  // BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
-  template <typename T>
-  void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 40, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 64, 40}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal = GetInput4DLiteral<T>({2, 6, 40, 64}, {3, 2, 1, 0});
-    auto mask_literal = GetMask4DLiteral({2, 6, 40, 40}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_HloString_BF16();
-    }
-
-    ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                               rhs_bmm2_literal, mask_literal);
-  }
-
-  // BMM1 - Softmax - BMM2
-  template <typename T>
-  void TestImpl_FMHABMM1_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string = GetModuleFMHABMM1_Softmax_BMM2_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string = GetModuleFMHABMM1_Softmax_BMM2_HloString_BF16();
-    }
-
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-
   // BMM1 - Scale - bias - Softmax - BMM2
   template <typename T>
   void TestImpl_FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla() {
@@ -1742,81 +1574,64 @@ XLA_TEST_F(MultiHeadedAttentionBMMBMM,
   TestImpl_BMM_BMM2_non_contracting_dim_stride_not_1<Eigen::half>();
 }
 
-// XLA_TEST_F(MultiHeadedAttentionBMMBMM,
-//            FMHABMM_BMM_all_canonicalization_transpose_fusion_small_F16) {
-//   TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion_small<Eigen::half>();
-// }
-
 // BMM1 - Scale - Bias - Mask - Softmax - BMM2
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM,
            FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla_F16) {
   TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla<Eigen::half>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM,
            FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla_BF16) {
   TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla<bfloat16>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM,
            FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla_BF16_smaller) {
   TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla_smaller<bfloat16>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM,
            FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_F16) {
   TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal<Eigen::half>();
 }
 
-XLA_TEST_F(
-    MultiHeadedAttentionBMMBMM,
-    FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_epilogue_transpose_fusion_F16) {
-  TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_epilogue_transpose_fusion<
-      Eigen::half>();
-}
-
 // BMM1 - Scale - Mask - Softmax - BMM2
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleMaskSoftmaxBMM,
            FMHABMM1_Scale_Mask_Softmax_BMM2_vanilla_F16) {
   TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_vanilla<Eigen::half>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleMaskSoftmaxBMM,
            FMHABMM1_Scale_Mask_Softmax_BMM2_vanilla_BF16) {
   TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_vanilla<bfloat16>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleMaskSoftmaxBMM,
            FMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_F16) {
   TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal<Eigen::half>();
 }
 
-// BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
-// XLA_TEST_F(MultiHeadedAttentionBMMBMM,
-//            FMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_vanilla_F16) {
-//   TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_vanilla<Eigen::half>();
-// }
-
-// XLA_TEST_F(MultiHeadedAttentionBMMBMM,
-//            FMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_vanilla_BF16) {
-//   TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_Dropout_BMM2_vanilla<bfloat16>();
-// }
+XLA_TEST_F(MultiHeadedAttentionBMMScaleMaskSoftmaxBMM,
+           FMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_BF16) {
+  TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal<bfloat16>();
+}
 
 // BMM1 - Softmax - BMM2
-XLA_TEST_F(MultiHeadedAttentionBMMBMM, FMHABMM1_Softmax_BMM2_vanilla_F16) {
+XLA_TEST_F(MultiHeadedAttentionBMMSoftmaxBMM, FMHABMM1_Softmax_BMM2_vanilla_F16) {
   TestImpl_FMHABMM1_Softmax_BMM2_vanilla<Eigen::half>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM, FMHABMM1_Softmax_BMM2_vanilla_BF16) {
+XLA_TEST_F(MultiHeadedAttentionBMMSoftmaxBMM, FMHABMM1_Softmax_BMM2_vanilla_BF16) {
   TestImpl_FMHABMM1_Softmax_BMM2_vanilla<Eigen::half>();
 }
+
 // BMM1 - Scale - bias - Softmax - BMM2
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleBiasSoftmaxBMM,
            FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla_F16) {
   TestImpl_FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla<Eigen::half>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMBMM,
+XLA_TEST_F(MultiHeadedAttentionBMMScaleBiasSoftmaxBMM,
            FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla_BF16) {
   TestImpl_FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla<bfloat16>();
 }
