@@ -517,13 +517,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           return false;
         };
 
-        HloInstruction *bias_f32;
         if (!Match(bias->mutable_operand(0),
-                   m::Convert(&bias_f32,
-                              m::Convert(&optional_bias_f16, m::Op())
+                   m::Convert(m::Convert(&optional_bias_f16, m::Op())
                                   .WithPredicate(compatible_bias_type)))) {
-          VLOG(1) << "F32 vector bias fusion into F8 cublasLt matmul is not "
-                     "currently supported. Please use pattern F32->BF16->F32.";
+          VLOG(1)
+              << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
+                 "currently not supported. See the cublasLT support matrix.";
         }
       }
 
