@@ -4224,9 +4224,9 @@ class Graph(pywrap_tf_session.PyGraph):
       # offset refers to the stack frame used for storing code location.
       # We use 4, the sum of 1 to use our caller's stack frame and 3
       # to jump over layers of context managers above us.
+      self._colocation_stack.push_obj(op, offset=4)
       if device_only_candidate is not None:
         self._colocation_stack.push_obj(device_only_candidate, offset=4)
-      self._colocation_stack.push_obj(op, offset=4)
     elif not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
