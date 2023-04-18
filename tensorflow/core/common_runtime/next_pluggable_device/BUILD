@@ -248,7 +248,10 @@ cc_library(
     name = "plugin_coordination_service_agent",
     hdrs = ["plugin_coordination_service_agent.h"],
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform:statusor"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+    ],
 )
 
 cc_library(
