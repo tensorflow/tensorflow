@@ -727,24 +727,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
 #if CUDA_VERSION > 12000
-    auto compatible_c_type = [&](const PrimitiveType ctype) {
-      PrimitiveType dtype = instr->shape().element_type();
-      if (ctype == BF16) {
-        return dtype == F8E4M3FN || dtype == F8E5M2 || dtype == BF16;
-      } else if (ctype == F16) {
-        return dtype == F8E4M3FN || dtype == F8E5M2 || dtype == F16;
-      } else if (ctype == F32) {
-        return dtype == F32;
-      }
-      return false;
-    };
-
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
       HloInstruction *bias = add->mutable_operand(!add->operand_index(instr));
-      if (bias->opcode() != HloOpcode::kBroadcast &&
-          compatible_c_type(bias->shape().element_type())) {
+      if (bias->opcode() != HloOpcode::kBroadcast) {
         c = bias;
         gemm_backend_config.set_beta(1.0);
         TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
@@ -1215,15 +1202,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
-        bias->shape().element_type() == F32 && convert != nullptr) {
+        bias->shape().element_type() == F32) {
+      if (convert == nullptr) {
+        return true;
+      }
+
       HloInstruction *bias_f16_or_bf16 = convert->mutable_operand(0);
-      auto compatible_bias_type = [](const PrimitiveType btype,
-                                     const PrimitiveType dtype) {
-        if (btype == BF16) {
-          return dtype == F8E4M3FN || dtype == F8E5M2 || dtype == F32 ||
-                 dtype == BF16;
-        } else if (btype == F16) {
-          return dtype == F16 || dtype == F8E4M3FN || dtype == F8E5M2;
+      auto compatible_bias_type = [](const PrimitiveType bias_type,
+                                     const PrimitiveType output_type) {
+        if (bias_type == BF16) {
+          return output_type == F8E4M3FN || output_type == F8E5M2 ||
+                 output_type == F32 || output_type == BF16;
+        } else if (bias_type == F16) {
+          return output_type == F16 || output_type == F8E4M3FN ||
+                 output_type == F8E5M2;
         }
         return false;
       };
