@@ -32,16 +32,6 @@ limitations under the License.
 #define TFLITE_EXPECT_TRUE(cond) (cond)
 #endif
 
-#ifdef __has_attribute
-#define TFLITE_NOINLINE __attribute__((noinline))
-#else
-#ifdef _WIN32
-#define TFLITE_NOINLINE __declspec(noinline)
-#else
-#define TFLITE_NOINLINE
-#endif  // _WIN32
-#endif  // __has_attribute
-
 // Normally we'd use ABSL_HAVE_ATTRIBUTE_WEAK and ABSL_ATTRIBUTE_WEAK, but
 // we avoid the absl dependency for binary size reasons.
 #ifdef __has_attribute

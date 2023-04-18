@@ -26,9 +26,7 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 #include <type_traits>
-#include <utility>
 
-#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
@@ -139,41 +137,41 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
-static inline void swap_data(ArithmeticParams& arithmetic_params) {
-  std::swap(arithmetic_params.input1_offset, arithmetic_params.input2_offset);
-  std::swap(arithmetic_params.input1_shift, arithmetic_params.input2_shift);
-  std::swap(arithmetic_params.input1_multiplier,
-            arithmetic_params.input2_multiplier);
-}
-
 template <typename ElementwiseF, typename ScalarBroadcastF, typename T>
-TFLITE_NOINLINE void BinaryBroadcastFiveFold(
-    const ArithmeticParams& unswitched_params,
-    const RuntimeShape& unswitched_input1_shape,
-    const T* unswitched_input1_data,
-    const RuntimeShape& unswitched_input2_shape,
-    const T* unswitched_input2_data, const RuntimeShape& output_shape,
-    T* output_data, ElementwiseF elementwise_f,
-    ScalarBroadcastF scalar_broadcast_f) {
-  ArithmeticParams& params = const_cast<ArithmeticParams&>(unswitched_params);
-  const T* input1_data_ptr = unswitched_input1_data;
-  const T* input2_data_reset = unswitched_input2_data;
+inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
+                                    const RuntimeShape& unswitched_input1_shape,
+                                    const T* unswitched_input1_data,
+                                    const RuntimeShape& unswitched_input2_shape,
+                                    const T* unswitched_input2_data,
+                                    const RuntimeShape& output_shape,
+                                    T* output_data, ElementwiseF elementwise_f,
+                                    ScalarBroadcastF scalar_broadcast_f) {
+  ArithmeticParams switched_params = unswitched_params;
+  switched_params.input1_offset = unswitched_params.input2_offset;
+  switched_params.input1_multiplier = unswitched_params.input2_multiplier;
+  switched_params.input1_shift = unswitched_params.input2_shift;
+  switched_params.input2_offset = unswitched_params.input1_offset;
+  switched_params.input2_multiplier = unswitched_params.input1_multiplier;
+  switched_params.input2_shift = unswitched_params.input1_shift;
 
   const bool use_unswitched =
       unswitched_params.broadcast_category ==
       tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
-  if (!use_unswitched) {
-    swap_data(params);  // Swap in-place temporarily; will revert before return.
-    input1_data_ptr = unswitched_input2_data;
-    input2_data_reset = unswitched_input1_data;
-  }
+
+  const ArithmeticParams& params =
+      use_unswitched ? unswitched_params : switched_params;
+  const T* input1_data =
+      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
+  const T* input2_data =
+      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
 
   // Fivefold nested loops. The second input resets its position for each
   // iteration of the second loop. The first input resets its position at the
   // beginning of the fourth loop. The innermost loop is an elementwise add of
   // sections of the arrays.
   T* output_data_ptr = output_data;
-
+  const T* input1_data_ptr = input1_data;
+  const T* input2_data_reset = input2_data;
   // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
   // between input shapes. y3 for input 1 is always broadcast, and so the
   // dimension there is 1, whereas optionally y1 might be broadcast for
@@ -230,10 +228,6 @@ TFLITE_NOINLINE void BinaryBroadcastFiveFold(
       }
       input2_data_reset = input2_data_ptr;
     }
-  }
-
-  if (!use_unswitched) {
-    swap_data(params);  // Revert the referenced params to the original state.
   }
 }
 
@@ -4281,7 +4275,7 @@ inline void BatchToSpaceND(
 }
 
 template <typename T>
-TFLITE_NOINLINE void TypedMemset(void* ptr, T value, size_t num) {
+void TypedMemset(void* ptr, T value, size_t num) {
   // Optimization for common cases where memset() will suffice.
   if (value == 0 || std::is_same<T, uint8_t>::value) {
     memset(ptr, value, num * sizeof(T));
