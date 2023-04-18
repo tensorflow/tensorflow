@@ -46,6 +46,47 @@ class MklTestingUtil {
   }
 };
 
+#ifdef ENABLE_ONEDNN_V3
+// Since oneDNN v3.x exposes only an opaque memory descriptor, it is no longer
+// possible to cache the entire filter memory descriptor as is. So we store
+// all relevant information about it in the following class.
+class FilterMemoryDesc {
+ public:
+  FilterMemoryDesc() {}
+
+  explicit FilterMemoryDesc(int ndims, int inner_nblks,
+                            memory::data_type data_type,
+                            const memory::dims& dims,
+                            const memory::dims& inner_blks,
+                            const memory::dims& inner_idxs,
+                            const memory::dims& strides)
+      : ndims_(ndims),
+        inner_nblks_(inner_nblks),
+        data_type_(data_type),
+        dims_(dims),
+        inner_blks_(inner_blks),
+        inner_idxs_(inner_idxs),
+        strides_(strides) {}
+
+  ~FilterMemoryDesc() {}
+
+  bool operator==(const FilterMemoryDesc& other) const {
+    return (ndims_ == other.ndims_ && inner_nblks_ == other.inner_nblks_ &&
+            data_type_ == other.data_type_ && dims_ == other.dims_ &&
+            inner_blks_ == other.inner_blks_ &&
+            inner_idxs_ == other.inner_idxs_ && strides_ == other.strides_);
+  }
+
+ private:
+  int ndims_;
+  int inner_nblks_;
+  memory::data_type data_type_;
+  memory::dims dims_;
+  memory::dims inner_blks_;
+  memory::dims inner_idxs_;
+  memory::dims strides_;
+};
+#endif  // ENABLE_ONEDNN_V3
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

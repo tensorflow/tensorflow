@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/kernels/mkl/mkl_kernel_util.h"
 #include "tensorflow/core/kernels/mkl/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #ifdef DNNL_AARCH64_USE_ACL
@@ -913,8 +914,10 @@ class MklConvOp : public OpKernel {
         // Tensorflow format to MKL format by caching the filter when it is
         // converted for the first time. This cached filter can then be reused
         // in subsequent iterations.
-#ifndef ENABLE_ONEDNN_V3
-        // TODO(intel-tf): Enable weight caching for oneDNN v3.x
+        // TODO(intel-tf): When oneDNN major version changes to v4.x, weight
+        // caching may not work as expected if the underlying memory descriptor
+        // has changed (i.e. compared to v3.x). We have to return a status here
+        // to catch oneDNN major version change to avoid unexpected results.
         if (is_filter_const_) {
           if (IsFilterCacheEmpty(context)) {
             // Cache filter if it is not already cached.
@@ -924,7 +927,6 @@ class MklConvOp : public OpKernel {
           filter_data = GetCachedFilter(context, conv_fwd_pd->weights_desc());
           is_filter_cached = (filter_data != nullptr);
         }
-#endif  // !ENABLE_ONEDNN_V3
         if (!is_filter_cached) {
           filter.SetUsrMem(filter_md, &filter_tensor);
           if (filter_out_tensor == nullptr) {
@@ -1264,7 +1266,11 @@ class MklConvOp : public OpKernel {
   string data_format_str_;
   TensorFormat data_format_;
   Tensor cached_filter_data_ TF_GUARDED_BY(mu_);
+#ifndef ENABLE_ONEDNN_V3
   Tensor cached_filter_md_ TF_GUARDED_BY(mu_);
+#else
+  FilterMemoryDesc cached_filter_md_ TF_GUARDED_BY(mu_);
+#endif  // !ENABLE_ONEDNN_V3
 
   // Initialize to values the template is instantiated with
   bool fuse_biasadd_ = bias_enabled;
@@ -1313,10 +1319,11 @@ class MklConvOp : public OpKernel {
 
     *filter_tensor = &cached_filter_data_;
 
+    memory::desc weights_desc = conv_prim_desc.weights_desc();
+#ifndef ENABLE_ONEDNN_V3
     // There is no tensor format in DNNL 1.x. So we cache the complete filter
     // descriptor as flat byte array.
     TensorShape cached_filter_md_shape;
-    memory::desc weights_desc = conv_prim_desc.weights_desc();
     // We don't use .get_size() method of memory::desc since it returns size
     // required to store primitive's input memory. It is much more than size of
     // memory::desc itself.
@@ -1326,6 +1333,13 @@ class MklConvOp : public OpKernel {
                                           &cached_filter_md_));
     *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
         weights_desc;
+#else
+    cached_filter_md_ = FilterMemoryDesc(
+        weights_desc.get_ndims(), weights_desc.get_inner_nblks(),
+        weights_desc.get_data_type(), weights_desc.get_dims(),
+        weights_desc.get_inner_blks(), weights_desc.get_inner_idxs(),
+        weights_desc.get_strides());
+#endif  // !ENABLE_ONEDNN_V3
   }
 
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
@@ -1386,7 +1400,14 @@ class MklConvOp : public OpKernel {
       return;
     }
 
-    // Otherwise, cache filter
+#ifdef ENABLE_ONEDNN_V3
+    // For now, cache filter only for blocked format
+    if (filter_md.get_format_kind() != memory::format_kind::blocked) {
+      return;
+    }
+#endif  // ENABLE_ONEDNN_V3
+
+    // Otherwise, cache reordered filter
     filter.SetUsrMem(filter_md, &filter_tensor);
     filter.CheckReorderToOpMem(conv_fwd_pd.get()->weights_desc(),
                                this->cpu_engine_, context);
@@ -1425,6 +1446,7 @@ class MklConvOp : public OpKernel {
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
     const Tensor& cached_filter_data = cached_filter_data_;
+#ifndef ENABLE_ONEDNN_V3
     const Tensor& cached_filter_md = cached_filter_md_;
 
     // Check if the memory descriptor of the cached weights is the same as
@@ -1435,6 +1457,24 @@ class MklConvOp : public OpKernel {
           const_cast<Tfilter*>(cached_filter_data.flat<Tfilter>().data()));
     }
     return nullptr;
+#else
+    // Return the cached weights only if the dimensions of the cached filter
+    // and the current filter match. Otherwise, return nullptr
+    //
+    // TODO(intel-tf): The following check assumes that all dimensions are known
+    // before checking for equality. We may have to modify it in the future once
+    // we support runtime dimensions (especially if the dimensions are still
+    // unknown at this point).
+    if (cached_filter_md_ ==
+        FilterMemoryDesc(filter_md.get_ndims(), filter_md.get_inner_nblks(),
+                         filter_md.get_data_type(), filter_md.get_dims(),
+                         filter_md.get_inner_blks(), filter_md.get_inner_idxs(),
+                         filter_md.get_strides())) {
+      return static_cast<Tfilter*>(
+          const_cast<Tfilter*>(cached_filter_data.flat<Tfilter>().data()));
+    }
+    return nullptr;
+#endif  // !ENABLE_ONEDNN_V3
   }
 };
 

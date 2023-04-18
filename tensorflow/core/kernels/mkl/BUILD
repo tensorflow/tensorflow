@@ -219,6 +219,7 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_conv_op",
     hdrs = [
+        "mkl_kernel_util.h",
         "mkl_quantized_conv_ops.h",
     ],
     prefix = "mkl_conv",
