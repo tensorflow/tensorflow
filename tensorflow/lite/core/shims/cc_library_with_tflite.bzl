@@ -190,7 +190,7 @@ def cc_library_with_tflite_with_c_headers_test(name, hdrs, **kwargs):
         cc_library_with_tflite(
             name = "%s_lib" % basename,
             srcs = ["%s.c" % basename],
-            deps = [":" + name],
+            tflite_deps = [":" + name],
             copts = kwargs.get("copts", []),
             visibility = ["//visibility:private"],
             testonly = True,
