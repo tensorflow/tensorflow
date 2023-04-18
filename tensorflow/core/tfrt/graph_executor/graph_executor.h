@@ -70,8 +70,8 @@ struct RequestInfo {
 // `client_graph_resource_context` is per-loaded-client-graph. See the comment
 // above `GraphExecutor::resource_context_` about the todo to merge these two.
 StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
-    const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
+    const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
     tfrt::ResourceContext* client_graph_resource_context,
@@ -258,8 +258,6 @@ class GraphExecutor {
   }
 
   tfrt::ResourceContext& resource_context() { return resource_context_; }
-
-  const Options& options() const { return options_; }
 
  private:
   // A set of methods to load a client graph.

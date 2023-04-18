@@ -22,13 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/tfrt/graph_executor/config.h"
-#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
-
-class Runtime;
 
 // General options for graph execution.
 struct GraphExecutionOptions {
@@ -54,9 +51,6 @@ struct GraphExecutionOptions {
 
   // Model metadata used for monitoring and tracing.
   tensorflow::SessionMetadata model_metadata;
-
-  // The model-specific configurations.
-  tensorflow::tfrt_stub::ModelConfig model_config;
 
   // If true, for each client graph, the op costs of the first request will be
   // recorded and used to re-compile the client graph.

@@ -30,7 +30,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
-        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",

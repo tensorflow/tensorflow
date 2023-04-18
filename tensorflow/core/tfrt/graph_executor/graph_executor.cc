@@ -168,8 +168,8 @@ tensorflow::Status RunMlrtFunction(
 }
 
 StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
-    const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
+    const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
     tfrt::ResourceContext* client_graph_resource_context,
@@ -178,9 +178,6 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const tensorflow::tfrt_stub::FallbackState& fallback_state,
     CostRecorder* cost_recorder) {
   auto request_info = std::make_unique<RequestInfo>();
-
-  DCHECK(options.runtime);
-  const Runtime& runtime = *options.runtime;
 
   // Set the request queue.
   // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
@@ -220,13 +217,12 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
           .emplace<tfd::KernelFallbackCompatRequestState>(
               &request_info->runner, &fallback_state.device_manager(),
               request_context_builder.id(), runner_table, resource_array,
-              request_queue->GetIntraOpThreadPool(), options.model_metadata,
+              request_queue->GetIntraOpThreadPool(), model_metadata,
               &fallback_state.process_function_library_runtime());
 
   fallback_request_state.set_cost_recorder(cost_recorder);
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
-  fallback_request_state.set_model_config(&options.model_config);
 
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
@@ -261,10 +257,10 @@ tensorflow::Status GraphExecutionRunOnFunction(
     CostRecorder* cost_recorder) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(options, run_options, run_options.work_queue,
-                        resource_context, client_graph_resource_context,
-                        runner_table, resource_array, fallback_state,
-                        cost_recorder));
+      CreateRequestInfo(run_options, options.model_metadata, runtime,
+                        run_options.work_queue, resource_context,
+                        client_graph_resource_context, runner_table,
+                        resource_array, fallback_state, cost_recorder));
 
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
@@ -406,7 +402,7 @@ GraphExecutor::GraphExecutor(
   SetSessionCreatedMetric();
   // Creates a ResourceContext and populate it with per model resource from
   // Runtime.
-  options_.runtime->CreateRuntimeResources(options_, &resource_context_);
+  options_.runtime->CreateRuntimeResources(&resource_context_);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
@@ -715,8 +711,8 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(
-          options_, /*run_options=*/{}, work_queue, &resource_context_,
-          /*client_graph_resource_context=*/nullptr,
+          /*run_options=*/{}, /*model_metadata=*/{}, runtime(), work_queue,
+          &resource_context_, /*client_graph_resource_context=*/nullptr,
           &loaded_client_graph->runner_table(),
           &loaded_client_graph->resource_array(), fallback_state_));
 
@@ -741,8 +737,9 @@ tensorflow::Status GraphExecutor::InitBytecode(
     LoadedClientGraph* loaded_graph) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(options_, /*run_options=*/{},
-                        options_.runtime->work_queue(), &resource_context_,
+      CreateRequestInfo(/*run_options=*/{}, /*model_metadata=*/{},
+                        *options_.runtime, options_.runtime->work_queue(),
+                        &resource_context_,
                         /*client_graph_resource_context=*/nullptr,
                         &loaded_graph->runner_table(),
                         &loaded_graph->resource_array(), fallback_state_));
@@ -845,12 +842,12 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
 
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(options_, /*run_options=*/{},
-                        options_.runtime->work_queue(), &resource_context_,
-                        /*client_graph_resource_context=*/nullptr,
-                        &loaded_client_graph.runner_table(),
-                        &loaded_client_graph.resource_array(),
-                        fallback_state_));
+      CreateRequestInfo(
+          /*run_options=*/{}, /*model_metadata=*/{}, *options_.runtime,
+          options_.runtime->work_queue(), &resource_context_,
+          /*client_graph_resource_context=*/nullptr,
+          &loaded_client_graph.runner_table(),
+          &loaded_client_graph.resource_array(), fallback_state_));
   tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
 
   // Get a shared_ptr of the executable so that during the current request the

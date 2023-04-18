@@ -12,7 +12,8 @@ package_group(
     name = "friends",
     packages = [
         "//smartass/brain/inference/...",
-        "//tensorflow/core/tfrt/...",
+        "//tensorflow/core/tfrt/saved_model/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
     ],
 )
 
@@ -20,13 +21,12 @@ cc_library(
     name = "graph_execution_options",
     srcs = ["graph_execution_options.cc"],
     hdrs = ["graph_execution_options.h"],
-    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":config",
+        ":config_cc_proto",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
         "@com_google_absl//absl/types:optional",
     ],
@@ -147,8 +147,6 @@ cc_library(
     name = "config",
     srcs = ["config.cc"],
     hdrs = ["config.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":config_cc_proto",
         "//google/protobuf:any_cc_proto",
