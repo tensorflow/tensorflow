@@ -413,7 +413,7 @@ cc_library(
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//visibility:private",
+        "//tensorflow/lite:__subpackages__",
     ],
 )
 

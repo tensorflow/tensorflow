@@ -259,7 +259,7 @@ selects.config_setting_group(
 
 cc_library(
     name = "common",
-    srcs = [],
+    srcs = ["common.cc"],
     hdrs = ["common.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
@@ -267,6 +267,7 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":types",
+        "//tensorflow/lite/core:macros",
         "@gemmlowp//:fixedpoint",
     ],
 )
@@ -319,6 +320,7 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -357,6 +359,7 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -508,6 +511,19 @@ cc_library(
 )
 
 cc_library(
+    name = "reference_comparisons",
+    srcs = ["reference/comparisons.cc"],
+    hdrs = ["reference/comparisons.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":common",
+        ":types",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
@@ -612,6 +628,7 @@ cc_library(
         ":constants",
         ":cppmath",
         ":quantization_util",
+        ":reference_comparisons",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
@@ -707,6 +724,7 @@ cc_library(
         ":legacy_types",
         ":quantization_util",
         ":reference_base",
+        ":reference_comparisons",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
@@ -718,6 +736,19 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
+    ],
+)
+
+cc_library(
+    name = "tensor_ctypes",
+    srcs = ["tensor_ctypes.cc"],
+    hdrs = ["tensor_ctypes.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":types",
+        "//tensorflow/lite/core:macros",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -735,7 +766,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":tensor_ctypes",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
     ],
@@ -755,7 +788,9 @@ cc_library(
     }),
     copts = tflite_copts(),
     deps = [
+        ":tensor_ctypes",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
     ],
