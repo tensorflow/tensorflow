@@ -5144,6 +5144,7 @@ alias(
 alias(
     name = "dtypes",
     actual = "//tensorflow/python/framework:dtypes",
+    visibility = visibility + ["//smartass:__subpackages__"],
 )
 
 alias(
@@ -5159,6 +5160,7 @@ alias(
 alias(
     name = "function",
     actual = "//tensorflow/python/framework:function",
+    visibility = visibility + ["//smartass/brain:__subpackages__"],
 )
 
 alias(
@@ -5269,6 +5271,7 @@ alias(
 alias(
     name = "tensor_shape",
     actual = "//tensorflow/python/framework:tensor_shape",
+    visibility = visibility + ["//smartass/brain/configure/python:__pkg__"],
 )
 
 alias(
