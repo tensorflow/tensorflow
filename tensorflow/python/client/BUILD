@@ -424,6 +424,7 @@ tf_py_strict_test(
     tags = [
         "no_gpu",
         "no_windows",
+        "no_rocm",
     ],
     deps = [
         ":session",
