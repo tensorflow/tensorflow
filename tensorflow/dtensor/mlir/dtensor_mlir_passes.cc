@@ -93,6 +93,10 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm->addPass(mlir::createInlinerPass());
 
+  // An additional shape inference to catch any newly created constants
+  // from canonicalizer.
+  pm->addPass(mlir::TF::CreateTFShapeInferencePass());
+
   // Ensure that all functions have `device_id` as 0th argument.
   pm->addPass(CreateDTensorPropagateDeviceIdToFunctionArgs());
 
