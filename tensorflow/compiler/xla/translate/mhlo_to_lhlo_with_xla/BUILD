@@ -1,6 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
@@ -116,5 +117,7 @@ xla_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@stablehlo//:register",
-    ] + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]),
+    ] + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]) + if_rocm([
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
+    ]),
 )

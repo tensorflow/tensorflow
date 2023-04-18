@@ -811,7 +811,10 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]) + if_rocm_is_configured([
+        "//tensorflow/tsl/platform:rocm_rocdl_path",
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_helpers",
     ]),
 )
 
