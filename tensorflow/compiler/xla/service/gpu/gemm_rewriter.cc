@@ -504,7 +504,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       HloInstruction *optional_bias_f16 = nullptr;
       if (existing_gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
           bias->shape().element_type() == F32) {
-
         auto compatible_bias_type = [&](const HloInstruction *instr) -> bool {
           auto gemm_d_type = existing_gemm->shape().element_type();
           if (instr->shape().element_type() == BF16) {
@@ -523,8 +522,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           VLOG(1)
               << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
                  "currently not supported. See the cublasLT support matrix.";
+          // Skip fusion.
+          return OkStatus();
         }
       }
+
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseVectorBiasAdd(instr, bias, existing_gemm,
+                                            optional_slice, optional_bias_f16));
+
+      if (was_fused) {
+        return OkStatus();
+      }
+    }
 
       TF_ASSIGN_OR_RETURN(bool was_fused,
                           FuseVectorBiasAdd(instr, bias, existing_gemm,
@@ -1217,16 +1227,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-    // cuBLASLt does not support F32 vector biases on F8 matmuls. To enable
-    // epilogue fusion, the bias has to be converted to BF16 first.
-    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
-        bias->shape().element_type() == F32) {
-      if (bias_f16 != nullptr) {
-        bias = bias_f16;
-      } else {
-        // Skip fusion.
-        return true;
-      }
+    if (bias_f16 != nullptr) {
+      bias = bias_f16;
     }
 
     // Replace add(gemm, broadcast) with fused new_gemm.
