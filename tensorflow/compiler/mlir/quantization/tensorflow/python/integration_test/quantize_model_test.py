@@ -2105,6 +2105,79 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, got_outputs, atol=0.13)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'with_biasadd',
+          'input_shape': (32, 16),
+          'filter_shape': (16, 8),
+          'bias_size': 4,
+          'use_biasadd': True,
+          'activation_fn': nn_ops.relu,
+      },
+      {
+          'testcase_name': 'with_addv2',
+          'input_shape': (32, 16),
+          'filter_shape': (16, 8),
+          'bias_size': 4,
+          'use_biasadd': False,
+          'activation_fn': nn_ops.relu,
+      },
+  )
+  def test_matmul_with_reshape_and_bias_ptq_model(
+      self, input_shape, filter_shape, bias_size, activation_fn, use_biasadd
+  ):
+
+    model = self._create_matmul_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+        True,
+        activation_fn,
+        bias_size,
+        use_biasadd,
+    )
+
+    rng = np.random.default_rng(seed=1234)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(5):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=input_shape
+            ).astype(np.float32)
+        }
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.OpSet.XLA,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+
+    input_data = ops.convert_to_tensor(
+        rng.uniform(low=0.0, high=1.0, size=input_shape).astype(
+            np.float32
+        )
+    )
+    expected_outputs = model.matmul(input_data)
+
+    got_outputs = converted_model.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data)
+    )
+
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.05)
+
   @parameterized.parameters(
       ('abc,cde->abde', (2, 2, 64), (64, 3, 3), (3, 3), quant_opts_pb2.XLA),
       ('abc,dce->abde', (2, 2, 64), (3, 64, 3), (3, 3), quant_opts_pb2.XLA),

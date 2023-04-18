@@ -136,6 +136,19 @@ def ConvertAddToBiasAdd : Pat<
   [(HasRankOf<1> $add_rhs_value),
    (HasEqualElementSize<[-1], [0]> $conv_out, $add_rhs)]>;
 
+// TODO(b/278493977): Create generic implementation of lifting any fused op
+// with any reshaping op
+def ConvertAddWithReshapeToBiasAddWithReshape : Pat<
+  (TF_AddV2Op
+    (TF_ReshapeOp:$reshape_out
+      (SupportedAffineOpMatcher $_, $_, $_),
+      $_
+    ),
+    (TF_ConstOp:$add_rhs IsFloatElementsAttr:$add_rhs_value)),
+  (TF_BiasAddOp $reshape_out, $add_rhs, (CreateStringAttr<"NHWC">)),
+  [(HasRankOf<1> $add_rhs_value),
+   (HasEqualElementSize<[-1], [0]> $reshape_out, $add_rhs)]>;
+
 // Fuse consecutive BiasAddOp and an AddV2Op.
 def FuseBiasAndAddV2 : Pat<
   (TF_AddV2Op
