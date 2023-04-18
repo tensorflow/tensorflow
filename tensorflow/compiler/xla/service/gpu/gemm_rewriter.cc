@@ -516,6 +516,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           return false;
         };
 
+        // cuBLAS LT does not support FP32 biases on matmuls with FP8 inputs,
+        // even if the matmul output is FP32. We do not unconditionally convert
+        // the bias to a supported precision (F16 or BF16) because this lowers
+        // precision. Instead, we only fuse the bias if the bias itself is a
+        // convert from F16 or BF16, fusing the input of the convert instruction
+        // to the matmul.
         if (!Match(bias->mutable_operand(0),
                    m::Convert(m::Convert(&optional_bias_f16, m::Op())
                                   .WithPredicate(compatible_bias_type)))) {
