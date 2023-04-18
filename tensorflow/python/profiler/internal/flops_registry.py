@@ -28,7 +28,7 @@ IMPLEMENTED_OPS = set([
     # Binary ops
     "Add", "Sub", "Mul", "RealDiv", "Maximum", "Minimum", "Pow", "RsqrtGrad",
     "GreaterEqual", "Greater", "LessEqual", "Less", "Equal", "NotEqual",
-    "SquaredDifference", "AddV2",
+    "SquaredDifference",
     # Reduction ops
     "Mean", "Sum", "ArgMax", "ArgMin", "BiasAddGrad",
     # Convolution and pooling
@@ -143,7 +143,6 @@ def _binary_per_element_op_flops(graph, node, ops_per_element=1):
 
 
 @ops.RegisterStatistics("Add", "flops")
-@ops.RegisterStatistics("AddV2", "flops")
 def _add_flops(graph, node):
   """Compute flops for Add operation."""
   return _binary_per_element_op_flops(graph, node)
