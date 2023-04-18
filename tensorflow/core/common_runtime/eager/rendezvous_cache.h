@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_RENDEZVOUS_CACHE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_RENDEZVOUS_CACHE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -127,6 +128,11 @@ class RendezvousCache : public tsl::core::WeakRefCounted {
       list.push_back(iter.first);
     }
     return list;
+  }
+
+  size_t Size() const {
+    tsl::mutex_lock l(table_lock_);
+    return table_.size();
   }
 
  private:

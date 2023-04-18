@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -101,7 +102,8 @@ SessionMetadata GenerateSessionMetadata() {
 // device is set up.
 class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
  public:
-  ProcessFunctionLibraryRuntimeTest() {
+  ProcessFunctionLibraryRuntimeTest()
+      : rendezvous_cache_(new RendezvousCache<IntraProcessRendezvous>()) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
@@ -143,24 +145,19 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
         /*thread_pool=*/nullptr, cluster_flr_.get(), session_metadata,
-        Rendezvous::Factory{
-            [this](const int64_t step_id, const DeviceMgr* device_mgr,
-                   Rendezvous** r) {
-              *r = new IntraProcessRendezvous(device_mgr);
-              if (rendezvous_ref_counts_.find(step_id) !=
-                  rendezvous_ref_counts_.end()) {
-                rendezvous_ref_counts_[step_id]++;
-              } else {
-                rendezvous_ref_counts_[step_id] = 1;
-              }
-              return OkStatus();
-            },
-            [this](const int64_t step_id) {
-              CHECK(rendezvous_ref_counts_.find(step_id) !=
-                    rendezvous_ref_counts_.end());
-              rendezvous_ref_counts_[step_id]--;
-              return OkStatus();
-            }}));
+        Rendezvous::Factory{[this](const int64_t step_id,
+                                   const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+          *r = this->rendezvous_cache_
+                   ->FindOrCreate(
+                       step_id,
+                       [device_mgr]() {
+                         return tsl::core::RefCountPtr<IntraProcessRendezvous>(
+                             new IntraProcessRendezvous(device_mgr));
+                       })
+                   .release();
+          return OkStatus();
+        }}));
   }
 
   void AddCompositeDevice(CompositeDevice* d) {
@@ -323,7 +320,8 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
 
   // To ensure that we are cleaning up the rendezvous properly.
-  std::unordered_map<int64_t, int> rendezvous_ref_counts_;
+  tsl::core::RefCountPtr<RendezvousCache<IntraProcessRendezvous>>
+      rendezvous_cache_;
 };
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
@@ -426,9 +424,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   test::ExpectTensorEqual<tstring>(
       y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:0"},
                                  TensorShape({})));
-  EXPECT_EQ(1, rendezvous_ref_counts_.size());
-  EXPECT_EQ(opts.step_id, rendezvous_ref_counts_.begin()->first);
-  EXPECT_EQ(0, rendezvous_ref_counts_.begin()->second);
+  EXPECT_EQ(0, rendezvous_cache_->Size());
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {

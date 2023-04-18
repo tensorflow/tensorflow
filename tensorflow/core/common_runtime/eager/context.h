@@ -598,8 +598,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
     void Remove(int64_t step_id) { cache_->Remove(step_id); }
 
-    void RemoveAndAbort(int64_t step_id) { cache_->RemoveAndAbort(step_id); }
-
    private:
     tsl::core::RefCountPtr<RendezvousCache<IntraProcessRendezvous>> cache_;
   };
@@ -627,12 +625,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
             remote_r->Initialize(worker_session_.get()).IgnoreError();
             *r = remote_r.release();
             return OkStatus();
-          },
-          [this](const int64_t step_id) {
-            VLOG(6) << "Cleaning up rendezvous from the rendezvous_mgr. "
-                    << "Step id: " << step_id;
-            worker_env_->rendezvous_mgr->Cleanup(step_id);
-            return OkStatus();
           }};
     }
 #endif
@@ -645,11 +637,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
             *r = local_rendezvous_cache_
                      .FindOrCreate(step_id, local_device_mgr())
                      .release();
-            return OkStatus();
-          },
-          [this](const int64_t step_id) {
-            VLOG(6) << "Cleaning up rendezvous from local_device_mgr.";
-            local_rendezvous_cache_.RemoveAndAbort(step_id);
             return OkStatus();
           }};
     }
