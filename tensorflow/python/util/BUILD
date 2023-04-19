@@ -307,6 +307,7 @@ py_strict_library(
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow_estimator:__subpackages__",
     ],
@@ -355,6 +356,7 @@ py_strict_library(
         "//third_party/py/tf_slim:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//learning/brain/analytics:__subpackages__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         "@six_archive//:six",

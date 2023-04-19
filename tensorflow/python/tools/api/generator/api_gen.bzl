@@ -126,7 +126,9 @@ def gen_api_init_files(
         srcs_version = "PY3",
         visibility = ["//visibility:public"],
         deps = package_deps + [
-            "//tensorflow/python:util",
+            "//tensorflow/python/util:tf_decorator",
+            "//tensorflow/python/util:tf_export",
+            "//tensorflow/python/util:module_wrapper",
             "//tensorflow/python/tools/api/generator:doc_srcs",
         ],
     )
