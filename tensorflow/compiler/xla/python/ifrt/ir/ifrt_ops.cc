@@ -80,6 +80,46 @@ mlir::LogicalResult VerifySameGlobalShape(mlir::Operation* op,
   return mlir::success();
 }
 
+// Verifies that
+// 1. Elements in `devices` are unique.
+// 2. Each of `inputs` and `outputs` is placed on a subset of `devices`.
+mlir::LogicalResult VerifyDevicePlacement(
+    mlir::Operation* op, llvm::ArrayRef<int64_t> devices,
+    llvm::ArrayRef<IfrtArrayType> inputs,
+    llvm::ArrayRef<IfrtArrayType> outputs) {
+  llvm::SmallSet<int64_t, 4> attr_devices;
+  for (const int64_t device : devices) {
+    if (!attr_devices.insert(device).second) {
+      return op->emitOpError()
+             << "has duplicate device id " << device << " in `devices` attr";
+    }
+  }
+
+  for (const IfrtArrayType input : inputs) {
+    for (const int64_t input_device : input.getDevices()) {
+      if (!attr_devices.count(input_device)) {
+        return op->emitOpError()
+               << "requires all inputs placed on `devices` attr. The following "
+                  "input is placed on device "
+               << input_device << " not found in `devices` attr. " << input;
+      }
+    }
+  }
+
+  for (const IfrtArrayType output : outputs) {
+    for (const int64_t output_device : output.getDevices()) {
+      if (!attr_devices.count(output_device)) {
+        return op->emitOpError()
+               << "requires all outputs placed on `devices` attr. The "
+                  "following output is placed on device "
+               << output_device << " not found in `devices` attr. " << output;
+      }
+    }
+  }
+
+  return mlir::success();
+}
+
 }  // namespace
 
 mlir::LogicalResult ReshardOp::verify() {
@@ -182,41 +222,90 @@ mlir::LogicalResult CallOp::verifySymbolUses(
 }
 
 mlir::LogicalResult CallOp::verify() {
-  llvm::SmallSet<int64_t, 4> attr_devices;
-  for (const int64_t device : getDevices()) {
-    if (!attr_devices.insert(device).second) {
-      return emitOpError() << "has duplicated device id " << device
-                           << " in `devices` attr";
-    }
-  }
-
+  llvm::SmallVector<IfrtArrayType, 4> input_arrays;
+  input_arrays.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
-    for (const int64_t input_device :
-         input.getType().cast<IfrtArrayType>().getDevices()) {
-      if (!attr_devices.count(input_device)) {
-        return emitOpError()
-               << "requires all inputs placed on `devices` attr. The following "
-                  "input is placed on device "
-               << input_device << " not found in `devices` attr. "
-               << input.getType();
-      }
-    }
+    input_arrays.push_back(input.getType().cast<IfrtArrayType>());
   }
 
+  llvm::SmallVector<IfrtArrayType, 4> output_arrays;
+  output_arrays.reserve(getOutputs().size());
   for (const mlir::Value output : getOutputs()) {
-    for (const int64_t output_device :
-         output.getType().cast<IfrtArrayType>().getDevices()) {
-      if (!attr_devices.count(output_device)) {
-        return emitOpError()
-               << "requires all outputs placed on `devices` attr. The "
-                  "following output is placed on device "
-               << output_device << " not found in `devices` attr. "
-               << output.getType();
-      }
+    output_arrays.push_back(output.getType().cast<IfrtArrayType>());
+  }
+
+  return VerifyDevicePlacement(*this, getDevices(), input_arrays,
+                               output_arrays);
+}
+
+mlir::CallInterfaceCallable CallLoadedExecutableOp::getCallableForCallee() {
+  return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+}
+
+mlir::Operation::operand_range CallLoadedExecutableOp::getArgOperands() {
+  return getInputs();
+}
+
+mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
+    mlir::SymbolTableCollection& symbolTable) {
+  const auto callee_attr =
+      (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+  if (!callee_attr) {
+    return emitOpError() << "requires `callee` SymbolRefAttr";
+  }
+  auto callee = symbolTable.lookupNearestSymbolFrom<LoadedExecutableOp>(
+      *this, callee_attr);
+  if (!callee) {
+    return emitOpError() << "requires '" << callee_attr
+                         << "' to reference a valid LoadedExecutable";
+  }
+
+  llvm::SmallVector<mlir::Type, 4> input_types;
+  input_types.reserve(getInputs().size());
+  for (const mlir::Value input : getInputs()) {
+    input_types.push_back(input.getType());
+  }
+  llvm::SmallVector<mlir::Type, 4> output_types;
+  output_types.reserve(getOutputs().size());
+  for (const mlir::Value output : getOutputs()) {
+    output_types.push_back(output.getType());
+  }
+  auto func_type =
+      mlir::FunctionType::get(getContext(), input_types, output_types);
+  if (callee.getFunctionType() != func_type) {
+    return emitOpError() << "requires callee signature matching " << func_type
+                         << ". Actual " << callee.getFunctionType();
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult LoadedExecutableOp::verify() {
+  mlir::FunctionType func_type = getFunctionType();
+
+  llvm::SmallVector<IfrtArrayType, 4> input_arrays;
+  input_arrays.reserve(func_type.getInputs().size());
+  for (const mlir::Type input : func_type.getInputs()) {
+    if (auto input_array = llvm::dyn_cast<IfrtArrayType>(input)) {
+      input_arrays.push_back(input_array);
+    } else {
+      return emitOpError() << "requires all inputs to be IfrtArrayType. Found "
+                           << input;
     }
   }
 
-  return mlir::success();
+  llvm::SmallVector<IfrtArrayType, 4> output_arrays;
+  output_arrays.reserve(func_type.getResults().size());
+  for (const mlir::Type output : func_type.getResults()) {
+    if (auto output_array = llvm::dyn_cast<IfrtArrayType>(output)) {
+      output_arrays.push_back(output_array);
+    } else {
+      return emitOpError() << "requires all outputs to be IfrtArrayType. Found "
+                           << output;
+    }
+  }
+
+  return VerifyDevicePlacement(*this, getDevices(), input_arrays,
+                               output_arrays);
 }
 
 }  // namespace ifrt

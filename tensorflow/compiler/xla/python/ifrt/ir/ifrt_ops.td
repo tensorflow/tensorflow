@@ -124,6 +124,52 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
   let hasVerifier = 1;
 }
 
+def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
+    [AttrSizedOperandSegments,
+     DeclareOpInterfaceMethods<CallOpInterface>,
+     DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "Call some loaded executable";
+  let description = [{
+    The callee is a LoadedExecutableOp that declares the signature of the
+    LoadedExecutable. The actual LoadedExecutable instance is bound through
+    CompileOptions.
+
+    The callee is placed on devices because it's loaded. Every input/output must
+    be placed on a subset of these devices.
+  }];
+
+  let arguments = (ins
+    Variadic<Ifrt_ArrayType>:$inputs,
+    Variadic<Ifrt_ControlType>:$controlInputs,
+
+    SymbolRefAttr:$callee);
+  let results = (outs
+    Variadic<Ifrt_ArrayType>:$outputs,
+    Ifrt_ControlType:$controlOutput);
+
+  let assemblyFormat = [{
+    $callee `(` $inputs `)` oilist(`after` $controlInputs) attr-dict `:` functional-type($inputs, $outputs)
+  }];
+}
+
+def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
+    [DeclareOpInterfaceMethods<Symbol>]> {
+  let summary = "Declare a loaded executable";
+  let description = [{
+    The inputs/outputs of `function_type` should be IFRT arrays. They should be
+    placed on a subset of the `devices`.
+  }];
+
+  let arguments = (ins
+    SymbolNameAttr: $sym_name,
+    TypeAttrOf<FunctionType>: $function_type,
+    DenseI64ArrayAttr:$devices
+  );
+
+  let assemblyFormat = "$sym_name attr-dict `:` $function_type";
+  let hasVerifier = 1;
+}
+
 def Ifrt_AfterOp : Ifrt_Op<"After"> {
   let summary = "Get a control handle for array materialization.";
   let description = [{

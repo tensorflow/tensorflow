@@ -115,7 +115,7 @@ func.func @call_requires_same_output_shape_callee(%arg0: tensor<2x2xi32>)
 
 func.func @call_requires_unique_devices_attr(
     %arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>) {
-  // expected-error@+1 {{'ifrt.Call' op has duplicated device id 0 in `devices` attr}}
+  // expected-error@+1 {{'ifrt.Call' op has duplicate device id 0 in `devices` attr}}
   %0, %ctrl_0 = ifrt.Call @call_requires_unique_devices_attr_callee(%arg0)
     {devices=array<i64: 0, 0>}
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
