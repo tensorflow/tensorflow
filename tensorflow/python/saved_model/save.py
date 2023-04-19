@@ -412,7 +412,8 @@ class _SaveableView(object):
     tensor_map = object_identity.ObjectIdentityDictionary()
     asset_info = _AssetInfo(
         asset_defs=[],
-        asset_initializers_by_resource=object_identity.ObjectIdentityDictionary(),
+        asset_initializers_by_resource=
+        object_identity.ObjectIdentityDictionary(),
         asset_filename_map={},
         asset_index={})
 
