@@ -16,7 +16,7 @@ animation.
 
 The end-to-end workflow involves the following steps:
 
-1.  [Train a model](#train_a_model) (in Python): A jupyter notebook to train,
+1.  [Train a model](#train_a_model) (in Python): A python file to train,
     convert and optimize a model for on-device use.
 2.  [Run inference](#run_inference) (in C++ 17): An end-to-end unit test that
     runs inference on the model using the [C++ library](library.md).
@@ -50,12 +50,13 @@ Learn more about supported platforms in
 Note: You can skip this section and use the trained model included in the
 example code.
 
-Use Google Colaboratory to
-[train your own model](https://colab.research.google.com/github/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb).
-For more details, refer to the `README.md`:
+Use [train.py](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train.py) for hello world model training for sinwave recognition
 
-<a class="button button-primary" href="https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/train/README.md">Hello
-World Training README.md</a>
+Run:
+`bazel build tensorflow/lite/micro/examples/hello_world:train`
+`bazel-bin/tensorflow/lite/micro/examples/hello_world/train --save_tf_model --save_dir=/tmp/model_created/`
+
+
 
 ## Run inference
 
