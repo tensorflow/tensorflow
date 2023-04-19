@@ -136,15 +136,16 @@ bool HloInputOutputAliasConfig::ParameterMustAlias(
 
 std::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(
     int64_t param_number, const ShapeIndex& param_index) const {
-  std::optional<ShapeIndex> output;
-  alias_.ForEachElement(
-      [&](const xla::ShapeIndex& output_index, std::optional<Alias> alias) {
-        if (alias && alias->parameter_number == param_number &&
-            alias->parameter_index == param_index) {
-          output = output_index;
-        }
-      });
-  return output;
+  // We use reverse iterator to preserve the semantics of
+  // alias_.ForEachElement() which was used before.
+  for (auto it = alias_.rbegin(); it != alias_.rend(); ++it) {
+    if (it->second.has_value() &&
+        it->second->parameter_number == param_number &&
+        it->second->parameter_index == param_index) {
+      return it->first;
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<HloInputOutputAliasConfig::Alias>
