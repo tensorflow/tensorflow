@@ -1322,11 +1322,22 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
 inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
                                     const memory& src_mem,
                                     const memory& dst_mem, const engine& engine,
-                                    OpKernelContext* ctx = nullptr) {
+                                    OpKernelContext* ctx = nullptr,
+                                    memory* scale_mem = nullptr) {
   std::vector<primitive> net;
   net.push_back(dnnl::reorder(reorder_desc));
   std::vector<MemoryArgsMap> net_args;
+#ifndef ENABLE_ONEDNN_V3
   net_args.push_back({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+#else
+  if (scale_mem != nullptr) {
+    net_args.push_back({{DNNL_ARG_FROM, src_mem},
+                        {DNNL_ARG_TO, dst_mem},
+                        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, *scale_mem}});
+  } else {
+    net_args.push_back({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+  }
+#endif  // !ENABLE_ONEDNN_V3
   ExecutePrimitive(net, &net_args, engine, ctx);
 }
 
