@@ -22,11 +22,11 @@ import "tensorflow/lite/toco/types.proto";
 enum FileFormat {
   FILE_FORMAT_UNKNOWN = 0;
 
-  // GraphDef, third_party/tensorflow/core/framework/graph.proto
+  // GraphDef, tensorflow/core/framework/graph.proto
   TENSORFLOW_GRAPHDEF = 1;
 
   // Tensorflow's mobile inference model.
-  // third_party/tensorflow/lite/schema/schema.fbs
+  // tensorflow/lite/schema/schema.fbs
   TFLITE = 2;
 
   // GraphViz
