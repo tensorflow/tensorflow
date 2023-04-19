@@ -122,6 +122,7 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
                   .Attr("_input_shapes", attr_input_shape)
                   .Finalize(graph, &conv2d));
 
+#ifdef INTEL_MKL
   int conv2d_node_id = conv2d->id();
   if (IsMKLEnabled()) {
     std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(graph);
@@ -133,6 +134,7 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
       conv2d = graph->FindNodeId(conv2d_node_id + 1);
     }
   }
+#endif  // INTEL_MKL
 
   return {graph, conv2d};
 }
@@ -304,10 +306,12 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
                   .Attr("fused_ops", fused_ops)
                   .Finalize(graph, &conv));
 
+#ifdef INTEL_MKL
   if (IsMKLEnabled()) {
     std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(graph);
     RunMklLayoutRewritePass(ug);
   }
+#endif  // INTEL_MKL
 
   return graph;
 }
@@ -366,7 +370,8 @@ static Graph* FusedConv2DWithBatchNorm(
                      .Input(filter)
                      .Attr("num_args", 4)
                      .Attr("_input_shapes", attr_input_shape)
-                     .Input(args) >.Input(host_args);
+                     .Input(args)
+                     .Input(host_args);
 
   TF_CHECK_OK(builder.Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
@@ -374,10 +379,12 @@ static Graph* FusedConv2DWithBatchNorm(
                   .Attr("fused_ops", fused_ops)
                   .Finalize(graph, &conv));
 
+#ifdef INTEL_MKL
   if (IsMKLEnabled()) {
     std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(graph);
     RunMklLayoutRewritePass(ug);
   }
+#endif  // INTEL_MKL
 
   return graph;
 }
