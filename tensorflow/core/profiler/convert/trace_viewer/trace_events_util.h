@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
@@ -100,15 +101,56 @@ void push_down_root(RandIt first, RandIt last, Compare comp) {
   first[hole] = std::move(value);
 }
 
+template <typename T>
+struct can_dereference_helper {
+  template <typename U, typename = decltype(*std::declval<U>())>
+  static std::true_type test(U);
+  template <typename... U>
+  static std::false_type test(U...);
+  using type = decltype(test(std::declval<T>()));
+};
+
+template <typename T>
+struct can_dereference
+    : can_dereference_helper<typename std::decay<T>::type>::type {};
+
+template <typename T>
+auto recursive_dereference(T&& t, std::false_type)
+    -> decltype(std::forward<T>(t)) {
+  return std::forward<T>(t);
+}
+
+template <typename T>
+auto recursive_dereference(T&& t)
+    -> decltype(recursive_dereference(std::forward<T>(t),
+                                      can_dereference<T>{}));
+
+template <typename T>
+auto recursive_dereference(T&& t, std::true_type)
+    -> decltype(recursive_dereference(*std::forward<T>(t))) {
+  return recursive_dereference(*std::forward<T>(t));
+}
+
+template <typename T>
+auto recursive_dereference(T&& t)
+    -> decltype(recursive_dereference(std::forward<T>(t),
+                                      can_dereference<T>{})) {
+  return recursive_dereference(std::forward<T>(t), can_dereference<T>{});
+}
+
+// ContainerContainer could be a container of a container or a container of
+// pointer of a container.
 template <typename ContainerContainer, typename Out, typename Cmp>
 Out nway_merge(const ContainerContainer& containers, Out out, Cmp cmp) {
   using std::begin;
   using std::end;
-  using In = decltype(begin(*begin(containers)));  // The input iterator type.
+  using In = decltype(begin(
+      recursive_dereference(*begin(containers))));  // The input iterator type.
   using Range = std::pair<In, In>;
   std::vector<Range> sources;
   for (const auto& container : containers) {
-    Range r(begin(container), end(container));
+    Range r(begin(recursive_dereference(container)),
+            end(recursive_dereference(container)));
     if (r.first != r.second) {
       sources.push_back(r);
     }
