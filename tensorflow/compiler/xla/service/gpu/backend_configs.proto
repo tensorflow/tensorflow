@@ -39,6 +39,10 @@ message CudnnConvBackendConfig {
   // is provided, this field must be 0.
   double side_input_scale = 5;
 
+  // The negative slope coefficient alpha for leaky_relu activation. 
+  // If not provided, this field is 0.0.
+  double leakyrelu_alpha = 8;
+
   // If the filter (and bias, if present) have been reordered, set this flag.
   // It's placed into a `oneof` block to skip the serialization when not set.
   oneof filter_and_bias_reordering_oneof {
