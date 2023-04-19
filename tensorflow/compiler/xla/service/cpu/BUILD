@@ -323,7 +323,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
