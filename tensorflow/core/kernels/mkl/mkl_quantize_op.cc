@@ -120,17 +120,17 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 #else
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
 #ifdef ENABLE_ONEDNN_V3
     context_.scale_mem->set_data_handle(scale_data);
 #endif  // ENABLE_ONEDNN_V3
-#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
     context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
 #ifdef ENABLE_ONEDNN_V3
     context_.scale_mem->set_data_handle(DummyData);
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V3
   }
 
  private:
