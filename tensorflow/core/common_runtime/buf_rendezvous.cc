@@ -76,11 +76,12 @@ void BufRendezvous::PurgeTable(const Status& s, HookTable* table) {
 }
 
 string BufRendezvous::Hook::DebugString() const {
-  return absl::StrCat("[dev:", (prod_dev ? prod_dev->name() : "none"),
-                      ", ctx:", reinterpret_cast<uint64>(prod_ctx),
-                      ", val:", reinterpret_cast<uint64>(prod_value),
-                      ", pcb:", reinterpret_cast<uint64>(&prod_cb),
-                      ", ccb:", reinterpret_cast<uint64>(&cons_cb), "]");
+  return absl::StrCat(
+      "[dev:", (prod_dev ? prod_dev->name() : "none"),
+      ", ctx:", reinterpret_cast<uint64>(prod_ctx),
+      ", val:", reinterpret_cast<uint64>(prod_value),
+      ", pcb:", prod_cb ? reinterpret_cast<uint64>(&prod_cb) : 0,
+      ", ccb:", cons_cb ? reinterpret_cast<uint64>(&cons_cb) : 0, "]");
 }
 
 void BufRendezvous::ProvideBuf(const string& key, Device* dev,
