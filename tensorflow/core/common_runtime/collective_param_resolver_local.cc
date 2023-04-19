@@ -557,22 +557,8 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
   // Sort gp->member to avoid indeterminism.
   std::sort(gp->members.begin(), gp->members.end(),
             [](const CollGroupMember& lhs, const CollGroupMember& rhs) {
-              DeviceNameUtils::ParsedName lhs_device_name, rhs_device_name;
-              if (DeviceNameUtils::ParseFullName(lhs.device.name(),
-                                                 &lhs_device_name) &&
-                  DeviceNameUtils::ParseFullName(rhs.device.name(),
-                                                 &rhs_device_name)) {
-                if (lhs_device_name.job == rhs_device_name.job) {
-                  if (lhs_device_name.task == rhs_device_name.task) {
-                    return lhs_device_name.id < rhs_device_name.id;
-                  } else {
-                    return lhs_device_name.task < rhs_device_name.task;
-                  }
-                } else {
-                  return lhs_device_name.job < rhs_device_name.job;
-                }
-              }
-              return lhs.device.name() < rhs.device.name();
+              return DeviceNameUtils::CompareFullNames(lhs.device.name(),
+                                                       rhs.device.name());
             });
   // Establish an instance-specific default rank order for devices
   // based on localities.  This rank order should be a good ring
