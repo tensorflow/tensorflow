@@ -30,7 +30,8 @@ namespace tensorflow {
 DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
 
 DynamicDeviceMgr::DynamicDeviceMgr(
-    std::vector<std::unique_ptr<Device>> devices) {
+    std::vector<std::unique_ptr<Device>>&& devices)
+    : cpu_device_(nullptr) {
   Status status = AddDevices(std::move(devices));
   CHECK(status.ok());  // Crash OK
   mutex_lock l(devices_mu_);
@@ -43,6 +44,13 @@ DynamicDeviceMgr::DynamicDeviceMgr(
     }
   }
 }
+
+DynamicDeviceMgr::DynamicDeviceMgr(std::unique_ptr<Device>&& device)
+    : DynamicDeviceMgr([&device] {
+        std::vector<std::unique_ptr<Device>> vector;
+        vector.push_back(std::move(device));
+        return vector;
+      }()) {}
 
 DynamicDeviceMgr::~DynamicDeviceMgr() {
   // Release resources ahead of destroying the device manager as the resource
