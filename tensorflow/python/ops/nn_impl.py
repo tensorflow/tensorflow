@@ -1478,9 +1478,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     sum_of_weights = math_ops.reduce_sum(
         broadcasted_weights, axes, name="sum_of_weights", keepdims=True)
 
-    divisor = math_ops.reciprocal(sum_of_weights, name="inv_weight_sum")
-
-    weighted_mean = math_ops.multiply(weighted_input_sum, divisor)
+    weighted_mean = math_ops.div_no_nan(weighted_input_sum, sum_of_weights)
 
     # Have the weighted mean; now on to variance:
     weighted_distsq = math_ops.reduce_sum(
@@ -1489,7 +1487,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
         name="weighted_distsq",
         keepdims=True)
 
-    weighted_variance = math_ops.multiply(weighted_distsq, divisor)
+    weighted_variance = math_ops.div_no_nan(weighted_distsq, sum_of_weights)
 
     if not keep_dims:
       weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)

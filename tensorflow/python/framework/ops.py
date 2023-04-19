@@ -6803,3 +6803,22 @@ def _copy_handle_data_to_arg_def(tensor, arg_def):
     proto = arg_def.handle_data.add()
     proto.dtype = shape_and_type.dtype
     proto.shape.CopyFrom(handle_data.shape_and_type[0].shape)
+
+
+# This will be replaced by a concrete implementation in a future CL.
+@tf_export("__internal__.SymbolicTensor")
+class SymbolicTensor(object):
+  """Stub class for symbolic tensors."""
+
+
+@tf_export("is_symbolic_tensor", v1=["is_symbolic_tensor"])
+def is_symbolic_tensor(tensor):
+  """Test if `tensor` is a symbolic Tensor.
+
+  Args:
+    tensor: a tensor-like object
+
+  Returns:
+    True if `tensor` is a symbolic tensor (not an eager tensor).
+  """
+  return type(tensor) == Tensor  # pylint: disable=unidiomatic-typecheck
