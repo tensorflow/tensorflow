@@ -10,9 +10,9 @@ microcontrollers. It also outlines the supported operations and gives some
 guidance on designing and training a model to fit in limited memory.
 
 For an end-to-end, runnable example of building and converting a model, see the
-following Colab which is part of the *Hello World* example:
+ `[train.py](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train.py)` which is part of the *Hello World* example
+ for sine wave recognition
 
-<a class="button button-primary" href="https://colab.research.google.com/github/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb">train_hello_world_model.ipynb</a>
 
 ## Model conversion
 
