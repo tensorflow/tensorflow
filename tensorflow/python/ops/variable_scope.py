@@ -32,6 +32,9 @@ from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import ref_variable
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
@@ -40,16 +43,7 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# References needed while refactor is in progress in order to
-#  not break tensorflow estimator.
-resource_variable_ops = LazyLoader(
-    "resource_variable_ops",
-    globals(),
-    "tensorflow.python.ops.resource_variable_ops")
 
 
 __all__ = [
@@ -73,7 +67,7 @@ def _from_proto_fn(v, import_scope=None):
   if v.is_resource:
     return resource_variable_ops.ResourceVariable.from_proto(
         v, import_scope=import_scope)
-  return variables.Variable.from_proto(v, import_scope=import_scope)
+  return variable_v1.VariableV1.from_proto(v, import_scope=import_scope)
 
 
 ops.register_proto_function(
@@ -1014,7 +1008,7 @@ class _VariableStore:
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = _DEFAULT_USE_RESOURCE
-    v = variables.VariableV1(
+    v = variable_v1.VariableV1(
         initial_value=init_val,
         name=name,
         trainable=trainable,
@@ -2780,7 +2774,7 @@ def default_variable_creator(next_creator=None, **kwargs):
         aggregation=aggregation,
         shape=shape)
   else:
-    return variables.RefVariable(
+    return ref_variable.RefVariable(
         initial_value=initial_value,
         trainable=trainable,
         collections=collections,
@@ -2844,7 +2838,7 @@ def _make_getter(captured_getter, captured_previous):
 
 
 # TODO(apassos) remove forwarding symbol
-variable = variables.VariableV1
+variable = variable_v1.VariableV1
 
 
 @tf_export(v1=["variable_creator_scope"])

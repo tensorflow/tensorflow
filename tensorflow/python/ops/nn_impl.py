@@ -16,7 +16,7 @@
 
 import math
 
-from tensorflow.python.distribute import distribution_strategy_context as ds
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -450,12 +450,13 @@ def compute_average_loss(per_example_loss,
     per_example_loss = math_ops.cast(per_example_loss, input_dtype)
 
     if global_batch_size is None:
-      if ds.has_strategy() and ds.in_cross_replica_context():
+      if (distribute_lib.has_strategy()
+          and distribute_lib.in_cross_replica_context()):
         raise RuntimeError(
             "You are calling `compute_average_loss` in cross replica context, "
             "while it was expected to be called in replica context.")
 
-      num_replicas = ds.get_strategy().num_replicas_in_sync
+      num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
 
@@ -501,12 +502,13 @@ def scale_regularization_loss(regularization_loss):
   Returns:
     Scalar loss value.
   """  # pylint: disable=g-doc-exception
-  if ds.has_strategy() and ds.in_cross_replica_context():
+  if (distribute_lib.has_strategy()
+      and distribute_lib.in_cross_replica_context()):
     raise RuntimeError(
         "You are calling `scale_regularization_loss` in cross replica context, "
         "while it was expected to be called in replica context.")
 
-  num_replicas = ds.get_strategy().num_replicas_in_sync
+  num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
   return math_ops.reduce_sum(regularization_loss) / num_replicas
 
 

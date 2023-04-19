@@ -149,9 +149,9 @@ tf_mkl_kernel_library(
     name = "mkl_quantize_op",
     srcs = ["mkl_quantize_op.cc"],
     deps = [
-        "@gemmlowp",
         "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/kernels:quantized_ops",
+        "@gemmlowp",
     ] + MKL_DEPS,
 )
 
@@ -174,8 +174,8 @@ tf_cc_test_mkl(
     srcs = ["mkl_quantized_pooling_ops_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
-        ":mkl_pooling_ops",
         ":mkl_kernel_util",
+        ":mkl_pooling_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
@@ -223,10 +223,10 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_conv",
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:no_op",
+        "@com_google_absl//absl/strings",
     ] + MKL_DEPS,
 )
 
@@ -254,10 +254,10 @@ tf_cc_test_mkl(
     deps = [
         ":mkl_eltwise_activation_base_op",
         ":mkl_swish_op",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:math_ops",
         "//tensorflow/core:direct_session",
         "//tensorflow/core/kernels:cwise_op",
+        "@com_google_absl//absl/strings",
     ] + MKL_TEST_DEPS,
 )
 
@@ -282,7 +282,6 @@ tf_mkl_kernel_library(
     name = "mkl_dequantize_op",
     srcs = ["mkl_dequantize_op.cc"],
     deps = [
-        "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -300,6 +299,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util:onednn_env_vars",
+        "@gemmlowp",
     ] + mkl_deps(),
 )
 
@@ -348,8 +348,8 @@ tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core/graph:mkl_graph_util",
+        "//third_party/eigen3",
     ] + MKL_SHORT_DEPS,
 )
 
@@ -416,7 +416,6 @@ tf_mkl_kernel_library(
         "mkl_requantize_per_channel_op.cc",
     ],
     deps = [
-        "@gemmlowp",
         "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:eigen_helpers",
@@ -425,6 +424,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/util:image_resizer_state",
+        "@gemmlowp",
     ] + MKL_DEPS,
 )
 

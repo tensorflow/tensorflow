@@ -257,7 +257,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
 
-  auto* r = env_->rendezvous_mgr->Find(request->context_id());
+  tsl::core::RefCountPtr<RemoteRendezvous> r =
+      env_->rendezvous_mgr->Find(request->context_id());
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
   if (VLOG_IS_ON(2)) {
@@ -276,7 +277,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     auto s = env_->session_mgr->DeleteSession(session_name);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to destroy worker session '" << session_name
-                   << "' due to " << s.error_message();
+                   << "' due to " << s.message();
     }
   };
 
@@ -293,9 +294,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   std::function<Rendezvous*(const int64_t)> rendezvous_creator =
       [worker_session, this](const int64_t step_id) {
-        auto* r = env_->rendezvous_mgr->Find(step_id);
+        tsl::core::RefCountPtr<RemoteRendezvous> r =
+            env_->rendezvous_mgr->Find(step_id);
         r->Initialize(worker_session.get()).IgnoreError();
-        return r;
+        return r.release();
       };
 
   LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
@@ -305,8 +307,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, worker_session->cluster_flr(),
-      env_->collective_executor_mgr.get());
+      request->async(), device_mgr, false, r.release(),
+      worker_session->cluster_flr(), env_->collective_executor_mgr.get());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -356,7 +358,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     preemption_notifier->WillBePreemptedAtAsync(
         [coord_agent](StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
-            const auto& coord_task = coord_agent->GetOwnTask().value();
+            const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
                 "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
                 absl::StrCat("/job:", coord_task.job_name(),
@@ -547,7 +549,7 @@ void EagerServiceImpl::RunComponentFunction(
     delete num_retvals;
     delete op;
     done(errors::Internal("Error setting is_component_function attribute: ",
-                          s.error_message()));
+                          s.message()));
     return;
   }
 

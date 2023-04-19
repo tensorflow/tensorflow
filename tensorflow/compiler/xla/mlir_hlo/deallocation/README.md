@@ -18,9 +18,9 @@ This is the recommended and supported pass pipeline to use these passes:
 1.  `hlo-split-alloc-tensors`
 1.  `one-shot-bufferize` with `create-deallocs=0`
 1.  `hlo-deallocate`
-1.  `canonicalize`
+1.  `hlo-deallocation-simplification`
 1.  `hlo-buffer-reuse`
-1.  `canonicalize`
+1.  `hlo-deallocation-simplification`
 1.  `hlo-deallocation-to-scf`
 1.  (...)
 1.  `convert-deallocation-ops-to-llvm`
@@ -56,8 +56,6 @@ The deallocation pass assumes that:
 1.  The input IR was fully bufferized (i.e., no tensors are left in the
     program).
 1.  No `dealloc`s, `alloca`s or `realloc`s exist yet.
-1.  No unranked memrefs exist. This limitation exists for ease of implementation
-    and could be lifted if necessary.
 1.  No `memrefs` with distinct element types alias (strict aliasing; in
     particular, no `xla_cpu.memref_element_cast` ops should exist at this point)
 
@@ -73,11 +71,11 @@ alias all compatible outputs.
 
 When transforming a block, it is not possible to know in general whether
 `memref` arguments are owned by it or by some ancestor. Therefore, we introduce
-ownership indicator arguments (unranked `memrefs`) for each `memref` argument.
-Inside the block, `allocs` and alias sets are tracked as described above. At the
-end of the block, we must reconcile these memrefs and potentially owned allocs.
-We can do this separately for those that are yielded from the block and those
-that aren't.
+ownership indicator arguments (`!deallocation.ownership`) for each `memref`
+argument. Inside the block, `allocs` and alias sets are tracked as described
+above. At the end of the block, we must reconcile these memrefs and potentially
+owned allocs. We can do this separately for those that are yielded from the
+block and those that aren't.
 
 For `memrefs` (or rather sets of `memrefs` that potentially alias) that aren't
 yielded, we must free the corresponding `alloc` if we own it. In general, we
@@ -90,7 +88,7 @@ from the alias set.
 ```
   // Free %alloc_0 and %alloc_1 iff they are non-null.
   deallocation.retain() of(%alloc_0, %alloc_1)
-      : (memref<*xi32>, memref<*xi32>) -> ()
+      : (!deallocation.ownership, !deallocation.ownership) -> ()
 ```
 
 For `memrefs` that are yielded, we also insert retain ops, but this time, we
@@ -100,7 +98,8 @@ must retain allocs if we own them. The `retain` ops look like this:
   // Check if %yielded_memref aliases with any of %a, %b or %c. If it does,
   // return the corresponding memref. Free the others if they are non-null.
   %maybe_owned = deallocation.retain(%yielded_memref) of(%a, %b, %c)
-      : (memref<*xi32>, memref<*xi32>, memref<*xi32>) -> (memref<*xi32>)
+      : (!deallocation.ownership, !deallocation.ownership, !deallocation.ownership)
+      -> (!deallocation.ownership)
 ```
 
 To understand where such ops come from, consider the following code:
@@ -120,24 +119,24 @@ like this:
 
 ```
   %result, %result_ownership = scf.if %cond -> memref<2xi32> {
-    %null = memref.null : memref<*xi32>
-    scf.yield %some_alloc, %null : memref<2xi32>, memref<*xi32>
+    %null = deallocation.null
+    scf.yield %some_alloc, %null : memref<2xi32>, !deallocation.ownership
   } else {
     %new_alloc = memref.alloc() : memref<2xi32>
-    %cast = memref.cast %new_alloc : memref<2xi32> to memref<*xi32>
-    scf.yield %new_alloc, %cast : memref<2xi32>, %memref<*xi32>
+    %new_alloc_owned = deallocation.own %new_alloc : memref<2x32>
+    scf.yield %new_alloc, %new_alloc_owned : memref<2xi32>, !deallocation.ownership
   }
 ```
 
 `%result_ownership` is nonnull iff `%result` is owned by the parent block. If
-`%result` is yielded, the corresponding retain op will be:
+`%result` is yielded, the corresponding retain op would be:
 
 ```
   %yielded_result_ownership = deallocation.retain(%result) of(%result_ownership)
 ```
 
-Which might later be canonicalized to nothing. For details on canonicalization,
-see the section on the `retain` op.
+However, here we can statically determine that this always results in
+`%result_ownership`, so the `retain` op will not be emitted.
 
 ### Loops and if: `RegionBranchOpInterface`
 
@@ -158,26 +157,122 @@ after the loop, we can transfer the ownership indicator for the operand to the
 loop. Note that this does not necessarily mean ownership is actually
 transferred - the ownership indicator may be null.
 
+#### Implicit capture / implicit transfer of ownership
+
+Consider the following program, which conditionally reallocates a memref:
+
+```
+%alloc = memref.alloc(%size) : memref<?xi32>
+scf.for %i = %lb to %ub step %step iter_args(%arg0 = %alloc) {
+  %should_grow, %new_size = "dummy.check_capacity"(%arg0)
+    : (memref<?xi32>) -> (i1, index)
+  %mem = scf.if %should_grow {
+    %0 = memref.realloc %arg0(%new_size) : memref<?xi32> -> memref<?xi32>
+    scf.yield %0 : memref<?xi32>
+  } else {
+    scf.yield %arg0 : memref<?xi32>
+  }
+  "dummy.use"(%mem) : (memref<?xi32>) -> ()
+  scf.yield %mem : memref<?xi32>
+}
+```
+
+`%arg0` is owned by the loop, but it must not be deallocated at the end of the
+loop body - otherwise, we'd run into a double free when it is reallocated.
+
+We solve this by defining implicit captures, or implicit transfer of ownership.
+`memref.realloc` ops are considered to implicitly capture and release their
+operand. There are a couple of restrictions to this:
+
+1.  Only ops owned by the parent block can be implicitly captured.
+1.  Implicit capture is only allowed in `scf.if` ops. This rule may be applied
+    recursively.
+1.  The implicit capture must be the last use of the captured value across all
+    execution paths.
+1.  Implied by the previous rule: Implicit capture is not allowed in `scf.if`
+    ops that do not have an else branch.
+
+To illustrate these restrictions, we can look at some IR that violates them:
+
+```
+%alloc = memref.alloc()
+scf.if %cond {
+  %0 = memref.realloc %alloc  // invalid
+}
+```
+
+This IR contains an implicit capture inside an `scf.if` without an `else`
+branch. Since `%alloc` is only freed if `%cond` is true, there must be some
+further use of `%alloc`, which is invalid. To make this valid, the following IR
+should be emitted instead:
+
+```
+%alloc = memref.alloc()
+%0 = scf.if %cond {
+  %1 = memref.realloc %alloc
+  scf.yield %1
+} else {
+  scf.yield %alloc
+}
+```
+
+Note that `scf.yield %alloc` is executed no execution path that also executes
+the `realloc`, so condition 3 is not violated.
+
+An example that violates condition 1:
+
+```
+%alloc = memref.alloc()
+scf.for %i = %lb to %ub step %step {
+  scf.if ... {
+    %0 = memref.realloc %alloc  // invalid
+  } else {
+    ...
+  }
+}
+```
+
+`%alloc` cannot be implicitly captured here, since there is no chain of ancestor
+`scf.if` ops to its definition. To make this valid, turn `%alloc` into an
+`iter_arg`:
+
+```
+%alloc = memref.alloc()
+%0 = scf.for %i = %lb to %ub step %step iter_args(%arg0 = %alloc) {
+  %1 = scf.if ... {
+    %2 = memref.realloc %alloc
+  } else {
+    ...
+  }
+  scf.yield %1
+}
+```
+
 ## Ops in the deallocation dialect
 
 ### The `null` op
 
-Creates a null pointer. The only valid uses of the resulting value are as
-operands of `get_buffer` and `retain` ops. All other uses are undefined.
+Creates a null pointer.
+
+### The `own` op
+
+Declares ownership of an alloc and returns an ownership indicator. This is
+lowered to an extraction of the alloc's base pointer.
 
 ### The `retain` op
 
-Takes a list of memrefs and a list of allocs. For each memref, returns the alloc
-that it was derived from (if present). Each alloc is returned at most once.
-Allocs that are not returned are freed.
+Takes a list of memrefs and a list of ownership indicator. For each memref,
+returns the ownership (alloc) that it was derived from (if present). Each alloc
+is returned at most once. Alloc that are not returned are freed.
 
-Some retain ops can be canonicalized to a no op (e.g. if there's only one alloc
+Some retain ops can be simplified to a no op (e.g. if there's only one alloc
 and one memref, and they're the same). Others can be rewritten to memref.dealloc
-(if we know that the alloc is non-null and there is no memref). In general, we
-lower retain to a sequence of `scf.if` ops. This lowering has a code size of
-`O(|allocs| * |memrefs|)`. In practice, we haven't yet observed any large retain
-ops where this becomes a problem, but we expect that a better lowering will be
-necessary eventually, for example by emitting a library call. For details, see
+(if we know that the alloc is non-null and there is no memref). This is done by
+the `deallocation-simplification` pass.
+
+There are two lowerings of `retain`: retains with a single memref or a single
+ownership indicator are lowered to a sequence of `scf.if` ops. Lowerings with
+more than one of either are instead lowered to a library call. For details, see
 the section on the deallocation-to-scf pass.
 
 ### The `get_buffer` op
@@ -191,53 +286,28 @@ assumes that the code has the structure that the pass guarantees (in particular,
 unranked memref == ownership indicator). For best results, the IR should be
 canonicalized first.
 
-### Omission of ownership indicators in loops
-
-The deallocation pass always creates ownership indicators for iteration args in
-loops, but they are not always necessary. Consider the following IR:
-
-```
-%alloc1 = memref.alloc() : memref<2xf32>
-%cast1 = memref.cast %alloc1 : memref<2xf32> to memref<*xf32>
-%result, %result_owned = scf.while(%arg0 = %alloc1, %arg1 = %cast1) {
-  ...
-  %alloc2 = memref.alloc() : memref<2xf32>
-  %cast2 = memref.cast %alloc2 : memref<2xf32> to memref<*xf32>
-  scf.condition (...) %alloc2, %cast2
-} else {
-  scf.yield %foo, %null
-}
-```
-
-It is easy to see that the result of the loop is always owned by the parent, so
-`%result_owned` can be removed. However, in the before region, `%arg0` is not
-always owned (only in the first iteration), so the ownership indicator cannot be
-omitted.
-
 ### Loop simplification
 
 As a preprocessing step, this pass transforms `retain` ops that operate on the
 result of loops. Consider the following IR:
 
 ```
-%alloc1 = memref.alloc() : memref<2xi32>
+%alloc1 = memref.alloc() : memref<4xi32>
 %alloc2 = memref.alloc() : memref<4xi32>
-%cast1 = memref.cast %alloc1 : memref<2xi32> to memref<*xi32>
-%cast2 = memref.cast %alloc2 : memref<4xi32> to memref<*xi32>
-%0:4 = scf.while(%arg0 = %alloc1, $arg1 = %alloc2,
-                 %arg0_owned = %cast1, %arg1_owned = %cast2) {
-  scf.condition(%cond) %arg1, %arg0, %arg1_owned, %arg0_owned
+%0:4 = scf.while(%arg0 = %alloc1, $arg1 = %alloc2) {
+  scf.condition(%cond) %arg1, %arg0
 do {
   (...)
-  scf.yield %arg0, %arg1, %arg0_owned, %arg1_owned
+  scf.yield %arg0, %arg1
 }
-dealloaction.retain() of(%0#2) : (memref<*xi32>) -> ()
-dealloaction.retain() of(%0#3) : (memref<*xi32>) -> ()
+memref.dealloc %0#0 : memref<4xi32>
+memref.dealloc %0#1 : memref<4xi32>
 ```
 
-`%0#2` and `%0#3` are `%alloc1` and `%alloc2`, in some order. Since there is no
+`%0#0` and `%0#1` are `%alloc1` and `%alloc2`, in some order. Since there is no
 further use of these allocs and they are all deallocated, we can rewrite the
-`retain` to `deallocs`, even though we don't know which one is which.
+operands to `%alloc1` and `%alloc2`, even though we don't know which one is
+which.
 
 The purpose of this preprocessing step is to allow more buffer reuse, which
 requires `dealloc`/`alloc` pairs to work.
@@ -347,47 +417,6 @@ further uses of `%alloc` after the loop. So, similarly to the case described in
 the section on loop simplification, it doesn't matter which alloc is in `%0` and
 which one is in `%1`.
 
-To further illustrate this transformation, we can consider what happens when
-there is no transfer of ownership:
-
-```
-%_, %0_owned = scf.for %i = %c0 to %ub step %c1
-    iter_args(%arg = %alloc, %arg_owned = %null)
-    -> memref<100xi32>, memref<*xi32> {
-  %tmp = memref.alloc() : memref<100xi32>
-  "some.op"(%tmp, %alloc) : (memref<100xi32>, memref<100xi32>) -> ()
-  deallocation.retain() of(%arg_owned) : (memref<*xi32>) -> ()
-  %cast = memref.cast %tmp : memref<100xi32> to memref<*xi32>
-  scf.yield %tmp, %cast : memref<100xi32>
-}
-deallocation.retain() of(%0_owned) : (memref<*xi32>) -> ()
-```
-
-Here, the logic is the same as before, except that we need to swap both buffers
-and ownership indicators:
-
-```
-%tmp = memref.alloc() : memref<100xi32>
-%cast = memref.cast %tmp : memref<100xi32> to memref<*xi32>
-%_, %__, %0_owned, %1_owned = scf.for %i = %c0 to %ub step %c1
-     iter_args(%arg = %alloc, %tmp_ = %tmp,
-               %arg_owned = %null, %tmp_owned = %cast)
-     -> memref<100xi32>, memref<100xi32>, memref<*xi32>, memref<*xi32> {
-  "some.op"(%tmp, %alloc) : (memref<100xi32>, memref<100xi32>) -> ()
-  deallocation.retain() of(%arg_owned) : (memref<*xi32>) -> ()
-  scf.yield %tmp, %arg, %tmp_owned, %arg_owned : memref<100xi32>
-}
-deallocation.retain() of(%0_owned) : (memref<*xi32>) -> ()
-deallocation.retain() of(%1_owned) : (memref<*xi32>) -> ()
-```
-
-This could be further optimized to convert the two `retains` to a single
-`dealloc` of `%tmp`, since it could be known that exactly one of them is `null`,
-and the other one is `%tmp`.
-
-Note: as of March 2023, this variant of the transformation is not yet
-implemented.
-
 Double buffering works analogously for `while` loops, with the exception that
 buffers have to be plumbed through the before region.
 
@@ -408,9 +437,8 @@ As described previously, most `deallocation.retain` ops are eliminated either by
 canonicalization or by `buffer-reuse`. `deallocation-to-scf` lowers the ones
 that remain to sequences of `scf.if` ops.
 
-Note: the size of the emitted code is in `O(|allocs| * |memrefs|)`. In pratice,
-there may be pathological cases where the code gets too large. While we haven't
-observed this yet, an alternative lowering may therefore be desirable.
+Because the size of the emitted code is in `O(|allocs| * |memrefs|)`, we only
+use this lowering when at least one of `|allocs|` or `|memrefs|` is 1.
 
 [^1]: `memref.dealloc` happens to tolerate null inputs as well, but at this
     point of the pipeline, we assume that the argument is always non-null,

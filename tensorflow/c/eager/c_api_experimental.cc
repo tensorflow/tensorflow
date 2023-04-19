@@ -80,7 +80,7 @@ TFE_MonitoringCounter0* TFE_MonitoringNewCounter0(const char* name,
                                                   TF_Status* status,
                                                   const char* description) {
   auto* result = new TFE_MonitoringCounter0({name, description});
-  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->counter->GetStatus());
   if (!result->counter->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -103,7 +103,7 @@ TFE_MonitoringCounter1* TFE_MonitoringNewCounter1(const char* name,
                                                   const char* description,
                                                   const char* label1) {
   auto* result = new TFE_MonitoringCounter1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->counter->GetStatus());
   if (!result->counter->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -128,7 +128,7 @@ TFE_MonitoringCounter2* TFE_MonitoringNewCounter2(const char* name,
                                                   const char* label2) {
   auto* result =
       new TFE_MonitoringCounter2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->counter->GetStatus());
   if (!result->counter->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -159,7 +159,7 @@ TFE_MonitoringIntGauge0* TFE_MonitoringNewIntGauge0(const char* name,
                                                     TF_Status* status,
                                                     const char* description) {
   auto* result = new TFE_MonitoringIntGauge0({name, description});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -182,7 +182,7 @@ TFE_MonitoringIntGauge1* TFE_MonitoringNewIntGauge1(const char* name,
                                                     const char* description,
                                                     const char* label1) {
   auto* result = new TFE_MonitoringIntGauge1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -207,7 +207,7 @@ TFE_MonitoringIntGauge2* TFE_MonitoringNewIntGauge2(const char* name,
                                                     const char* label2) {
   auto* result =
       new TFE_MonitoringIntGauge2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -245,7 +245,7 @@ const void TFE_MonitoringStringGaugeCellValue(
 TFE_MonitoringStringGauge0* TFE_MonitoringNewStringGauge0(
     const char* name, TF_Status* status, const char* description) {
   auto* result = new TFE_MonitoringStringGauge0({name, description});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -267,7 +267,7 @@ TFE_MonitoringStringGauge1* TFE_MonitoringNewStringGauge1(
     const char* name, TF_Status* status, const char* description,
     const char* label1) {
   auto* result = new TFE_MonitoringStringGauge1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -290,7 +290,7 @@ TFE_MonitoringStringGauge2* TFE_MonitoringNewStringGauge2(
     const char* label1, const char* label2) {
   auto* result =
       new TFE_MonitoringStringGauge2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -313,7 +313,7 @@ TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
     const char* label1, const char* label2, const char* label3) {
   auto* result = new TFE_MonitoringStringGauge3(
       {name, description, label1, label2, label3});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -338,7 +338,7 @@ TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
     const char* label4) {
   auto* result = new TFE_MonitoringStringGauge4(
       {name, description, label1, label2, label3, label4});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -370,7 +370,7 @@ TFE_MonitoringBoolGauge0* TFE_MonitoringNewBoolGauge0(const char* name,
                                                       TF_Status* status,
                                                       const char* description) {
   auto* result = new TFE_MonitoringBoolGauge0({name, description});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -393,7 +393,7 @@ TFE_MonitoringBoolGauge1* TFE_MonitoringNewBoolGauge1(const char* name,
                                                       const char* description,
                                                       const char* label1) {
   auto* result = new TFE_MonitoringBoolGauge1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -418,7 +418,7 @@ TFE_MonitoringBoolGauge2* TFE_MonitoringNewBoolGauge2(const char* name,
                                                       const char* label2) {
   auto* result =
       new TFE_MonitoringBoolGauge2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -472,7 +472,7 @@ TFE_MonitoringSampler0* TFE_MonitoringNewSampler0(
     const char* description) {
   auto* result = new TFE_MonitoringSampler0(
       {name, buckets->create_buckets(), description});
-  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->sampler->GetStatus());
   if (!result->sampler->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -495,7 +495,7 @@ TFE_MonitoringSampler1* TFE_MonitoringNewSampler1(
     const char* description, const char* label1) {
   auto* result = new TFE_MonitoringSampler1(
       {name, buckets->create_buckets(), description, label1});
-  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->sampler->GetStatus());
   if (!result->sampler->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -518,7 +518,7 @@ TFE_MonitoringSampler2* TFE_MonitoringNewSampler2(
     const char* description, const char* label1, const char* label2) {
   auto* result = new TFE_MonitoringSampler2(
       {name, buckets->create_buckets(), description, label1, label2});
-  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->sampler->GetStatus());
   if (!result->sampler->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -884,7 +884,7 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
     const auto& result = (*results)[i];
     TF_Status s;
     TF_SetStatus(&s, static_cast<TF_Code>(result.error_code()),
-                 result.error_message().data());
+                 std::string(result.error_message()).data());
     if (TF_GetCode(&s) != TF_Code::TF_OK) {
       tensorflow::CoordinationServiceError error;
       *error.mutable_source_task() = result.error_payload().source_task();

@@ -98,7 +98,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // Transform TF operation to HLO.
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
+  pm.addPass(mlir::mhlo::createLegalizeTFPass());
 
   if (options.legalize_i1_tensors) {
     // Convert 'i1' tensors into 'i8' tensors.
@@ -170,6 +170,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
         mlir::gml_st::getDefaultCPUPipelineOptions(llvm::sys::getHostCPUName());
     gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
     gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
+    gml_st_opts.reductionEnableHeuristic = true;
     mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
   } else {
     pm.addNestedPass<FuncOp>(CreateFusionPass());

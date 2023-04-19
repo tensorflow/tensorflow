@@ -548,9 +548,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
                               static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(absl::StrCat(prefix(), "::", index),
-                                ErrorMessageKey(), status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            absl::StrCat(prefix(), "::", index), ErrorMessageKey(),
+            std::string(status.message())));
       }
       return OkStatus();
     }

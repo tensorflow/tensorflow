@@ -19,19 +19,46 @@ This feature is still under active development and is protected behind the
 """
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import errors
+from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
+from tensorflow.python.ops import variables
 
 
 class PjrtCompileTest(test.TestCase):
 
+  def test_compile_on_demand(self):
+    if not test.is_gpu_available() or not test.is_built_with_gpu_support():
+      test.skipTest("Test only applicable on GPU")
+
+    with ops.device("/device:XLA_GPU:0"):
+      a = constant_op.constant([1.0, 2.0])
+      b = constant_op.constant([2.0, 3.0])
+      c = a + b
+      self.assertAllClose([3.0, 5.0], c, atol=1e-05)
+
+      v = variables.Variable([0.0, 1.0])
+      v.assign([1.0, 2.0])
+      self.assertAllClose([1.0, 2.0], v.value(), atol=1e-05)
+      v.assign_add([1.0, 2.0])
+      self.assertAllClose([2.0, 4.0], v.value(), atol=1e-05)
+
+      d = c + v
+      self.assertAllClose([5.0, 9.0], d, atol=1e-05)
+
   # Tests compilation and execution of a jit_compiled function using PjRt.
   def test_xla_local_launch(self):
+    if not test.is_gpu_available() or not test.is_built_with_gpu_support():
+      test.skipTest("Test only applicable on GPU")
+
     @def_function.function(jit_compile=True)
-    def foo(x):
-      a = x + 1
-      return a
+    def foo(x, y):
+      return x + y + 1
+
+    @def_function.function(jit_compile=True)
+    def bar(x, y):
+      x.assign(y)
+      y.assign_add([1.0, 1.0])
 
     # Currently PjRt only supports compilation and execution for the XLA_GPU
     # device to unblock development. Support for non-XLA devices (CPU/GPU/single
@@ -40,8 +67,26 @@ class PjrtCompileTest(test.TestCase):
     # TODO(b/255826209): Modify the test as we progress towards supporting
     # non-XLA devices.
     with ops.device("/device:XLA_GPU:0"):
-      with self.assertRaises(errors.UnimplementedError):
-        _ = self.evaluate(foo(1))
+      # Function call with scalars
+      self.assertEqual(self.evaluate(foo(1, 2)), 4)
+
+      # Function call with tensors
+      a = constant_op.constant([1.0, 2.0])
+      b = constant_op.constant([2.0, 3.0])
+      self.assertAllClose([4.0, 6.0], foo(a, b), atol=1e-05)
+
+      # Function call with variables
+      x = variables.Variable([0.0, 1.0])
+      y = variables.Variable([1.0, 2.0])
+      self.assertAllClose([2.0, 4.0], foo(x, y), atol=1e-05)
+
+      # Function call with constant and variable
+      self.assertAllClose([2.0, 4.0], foo(a, x), atol=1e-05)
+
+      # Function call that updates variables
+      bar(x, y)
+      self.assertAllClose([1.0, 2.0], x.value(), atol=1e-05)
+      self.assertAllClose([2.0, 3.0], y.value(), atol=1e-05)
 
 
 if __name__ == "__main__":

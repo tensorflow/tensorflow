@@ -48,7 +48,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import path_helpers
@@ -494,7 +494,7 @@ def _default_getter(name,
                                           shape_list,
                                           dtype=dtype)
 
-    return variables.VariableV1(
+    return variable_v1.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
@@ -2372,6 +2372,11 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     self._maybe_create_save_counter()
     return self._save_counter
+
+  def sync(self):
+    """Wait for any outstanding save or restore operations."""
+    if self._async_checkpointer_impl is not None:
+      self._async_checkpointer_impl.sync()
 
   def save(self, file_prefix, options=None):
     # pylint:disable=line-too-long

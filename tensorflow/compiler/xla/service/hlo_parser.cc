@@ -909,7 +909,7 @@ bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects custom-call schedule but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -926,7 +926,7 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects custom-call API version but sees: %s, error: %s",
-                  val, status_or_result.status().error_message()));
+                  val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -1013,7 +1013,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
           alias_config.SetUpAlias(p.first, p.second.parameter_number,
                                   p.second.parameter_index, p.second.kind);
       if (!st.ok()) {
-        return TokenError(st.error_message());
+        return TokenError(st.message());
       }
     }
     module->input_output_alias_config() = alias_config;
@@ -1305,9 +1305,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         auto inferred = infer();
         if (!inferred.ok()) {
-          return TokenError(StrFormat(
-              "failed to infer shape for opcode: %s, error: %s",
-              HloOpcodeString(opcode), inferred.status().error_message()));
+          return TokenError(
+              StrFormat("failed to infer shape for opcode: %s, error: %s",
+                        HloOpcodeString(opcode), inferred.status().message()));
         }
         shape = std::move(inferred).value();
         return true;
@@ -3374,6 +3374,8 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
+    case S4:
+      return SetValueInLiteralHelper<s4>(loc, value, index, literal);
     case S8:
       return SetValueInLiteralHelper<int8_t>(loc, value, index, literal);
     case S16:
@@ -3382,6 +3384,8 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
       return SetValueInLiteralHelper<int32_t>(loc, value, index, literal);
     case S64:
       return SetValueInLiteralHelper<int64_t>(loc, value, index, literal);
+    case U4:
+      return SetValueInLiteralHelper<u4>(loc, value, index, literal);
     case U8:
       return SetValueInLiteralHelper<uint8_t>(loc, value, index, literal);
     case U16:
@@ -3945,14 +3949,20 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
                                PrimitiveType_Name(literal_ty), " namely [0, ",
                                upper_bound, "]."));
     }
-  } else if (value > MinMaxFiniteValue<LiteralNativeT>::max() ||
-             value < MinMaxFiniteValue<LiteralNativeT>::min()) {
+  } else if (value > static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::max()) ||
+             value < static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::min())) {
     // Value is out of range for LiteralNativeT.
-    return Error(loc, StrCat("value ", value,
-                             " is out of range for literal's primitive type ",
-                             PrimitiveType_Name(literal_ty), " namely [",
-                             MinMaxFiniteValue<LiteralNativeT>::min(), ", ",
-                             MinMaxFiniteValue<LiteralNativeT>::max(), "]."));
+    return Error(
+        loc,
+        StrCat(
+            "value ", value, " is out of range for literal's primitive type ",
+            PrimitiveType_Name(literal_ty), " namely [",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::min()),
+            ", ",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::max()),
+            "]."));
   }
   return true;
 }
@@ -5623,12 +5633,15 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<std::string> source_file;
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
+  optional<std::string> deduplicated_name;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
   attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
   attrs["profile_type"] = {/*required=*/false, AttrTy::kBracedInt64List,
                            &profile_type};
+  attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
+                                &deduplicated_name};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -5651,6 +5664,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
       }
       metadata->add_profile_type(static_cast<ProfileType>(type));
     }
+  }
+  if (deduplicated_name) {
+    metadata->set_deduplicated_name(*deduplicated_name);
   }
   return true;
 }
@@ -5744,12 +5760,12 @@ bool HloParserImpl::ParseOpcode(
       if (!status_or_result.ok()) {
         return TokenError(
             StrFormat("expects async wrapped opcode but sees: %s, error: %s",
-                      val, status_or_result.status().error_message()));
+                      val, status_or_result.status().message()));
       }
       *async_wrapped_opcode = status_or_result.value();
     } else {
       return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
-                                  status_or_result.status().error_message()));
+                                  status_or_result.status().message()));
     }
   } else {
     *opcode = status_or_result.value();
@@ -5824,8 +5840,7 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
   auto status_or_result = StringToFusionKind(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects fusion kind but sees: %s, error: %s",
-                                val,
-                                status_or_result.status().error_message()));
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5842,7 +5857,7 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects random distribution but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5859,7 +5874,7 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects random algorithm but sees: %s, error: %s", val,
-                  status_or_result.status().error_message()));
+                  status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -5875,8 +5890,7 @@ bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
   auto status_or_result = StringToPrecision(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects precision but sees: %s, error: %s",
-                                val,
-                                status_or_result.status().error_message()));
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();

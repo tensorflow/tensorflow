@@ -60,6 +60,8 @@ void ConfigCoordinationService(tensorflow::ServerDef* server_def,
   coord_config->set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
   coord_config->set_enable_health_check(enable_health_check);
+  // Allow restarted clients to reconnect.
+  coord_config->set_allow_new_incarnation_to_reconnect(true);
 }
 
 class SingleClientRecoverableJobsTest

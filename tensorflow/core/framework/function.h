@@ -388,6 +388,8 @@ class FunctionRecord : public core::RefCounted {
  public:
   FunctionRecord(const FunctionDef& fdef, const StackTracesMap& stack_traces,
                  bool finalized);
+  FunctionRecord(FunctionDef&& fdef, const StackTracesMap& stack_traces,
+                 bool finalized);
 
   // Mark FunctionRecord as finalized (disable mutation).
   void finalize();
@@ -438,9 +440,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
       delete;
+  FunctionLibraryDefinition& operator=(FunctionLibraryDefinition&& other);
 
   // Returns True if the library contains `func`, False otherwise.
-  bool Contains(const std::string& func) const;
+  bool Contains(const std::string& func) const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
@@ -502,11 +505,21 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // This operation is atomic.
   Status AddLibrary(const FunctionLibraryDefinition& other)
       TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionLibraryDefinition&& other) TF_LOCKS_EXCLUDED(mu_);
+
+  // Adds the functions and gradients in 'lib_def' to this function library.
+  // Duplicate functions and gradients are ignored. This overload adds the
+  // functions with no stack traces. This operation is atomic.
+  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def) TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(const FunctionDefLibrary& lib_def,
+                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def,
+                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
@@ -547,7 +560,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const TF_LOCKS_EXCLUDED(mu_);
 
-  size_t num_functions() const {
+  size_t num_functions() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return records_.size();
   }
@@ -575,14 +588,12 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // implementation as in `other`. If the implementations conflict, an invalid
   // argument error is returned.
   Status CopyFunctionDefFrom(const std::string& name,
-                             const FunctionLibraryDefinition& other)
-      TF_LOCKS_EXCLUDED(mu_);
+                             const FunctionLibraryDefinition& other);
 
   // Returns graph with debug stack traces for the given function, or `nullptr`
   // if none found.
   const StackTracesMap* GetStackTraces(const std::string& func_name) const {
-    tf_shared_lock l(mu_);
-    core::RefCountPtr<FunctionRecord> entry = FindHelper(func_name);
+    core::RefCountPtr<FunctionRecord> entry = FindRecord(func_name);
     if (entry.get() != nullptr) {
       return &entry->stack_traces();
     }
@@ -591,7 +602,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Adds or updates an OptimizedFunctionGraph. Key is `function_name`.
   void AddOptimizedFunctionGraph(const std::string& function_name,
-                                 const OptimizedFunctionGraph& graph) {
+                                 const OptimizedFunctionGraph& graph)
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     optimized_function_graph_map_.emplace(function_name, graph);
   }
@@ -599,7 +611,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Look up for OptimizedFunctionGraph given `function_name`. Returns nullptr
   // if not found.
   OptimizedFunctionGraph* FindOptimizedFunctionGraph(
-      const std::string& function_name) const {
+      const std::string& function_name) const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (auto it = optimized_function_graph_map_.find(function_name);
         it != optimized_function_graph_map_.end()) {
@@ -619,7 +631,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef,
+  Status AddFunctionDefHelper(FunctionDef&& fdef,
                               const StackTracesMap& stack_traces, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)

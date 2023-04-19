@@ -70,7 +70,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS.sh
 
 # Export optional variables for running pip_new.sh
-export TF_BUILD_FLAGS="--config=ambe --config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
+export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium \

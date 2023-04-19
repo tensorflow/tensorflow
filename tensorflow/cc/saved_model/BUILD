@@ -60,9 +60,9 @@ cc_library(
     hdrs = ["reader.h"],
     deps = [
         ":constants",
-        "//tensorflow/core:protos_all_cc",
         ":metrics",
         ":util",
+        "//tensorflow/core:protos_all_cc",
     ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
@@ -340,10 +340,10 @@ cc_library(
         "//tensorflow/security/fuzzing/cc/ops:__pkg__",  # TODO(b/261455394): Remove.
     ],
     deps = [
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@jsoncpp_git//:jsoncpp",
-        "//tensorflow/core:protos_all_cc",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
 )
@@ -355,9 +355,9 @@ cc_library(
     deps = if_static([
         ":metrics_impl",
     ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]) + [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )
 
@@ -410,14 +410,14 @@ cc_library(
     ],
     deps = [
         ":constants",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
         "//tensorflow/tsl/platform:types",
-        "@com_google_protobuf//:protobuf_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_headers",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
 )

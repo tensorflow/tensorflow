@@ -84,14 +84,11 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.1.20',
+    'flatbuffers >= 23.1.21',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
-    # TODO(b/239052279): replace with external dependency on JAX repo once JAX
-    # no longer relies on TF.
-    'jax >= 0.3.15',
     'libclang >= 13.0.0',
     # TODO(b/263178356): numpy 1.24 breaks TF's tests
     'numpy >= 1.22, <1.24',

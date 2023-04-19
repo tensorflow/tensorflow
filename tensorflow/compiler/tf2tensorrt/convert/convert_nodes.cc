@@ -1010,11 +1010,11 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
                                              &tensor_or_weights);
     if (!status.ok()) {
       VLOG(2) << "Failed to convert input `" << src_def.name() << "` to a "
-              << "TRT_TensorOrWeights: " << status.error_message();
+              << "TRT_TensorOrWeights: " << status.message();
 
       return errors::Internal(
           "Failed to convert at least one input to a TRT_TensorOrWeights: ",
-          status.error_message());
+          status.message());
     }
     inputs.push_back(tensor_or_weights);
   }
@@ -1131,11 +1131,10 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
             << output.DebugString();
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
-      return errors::Create(
-          static_cast<absl::StatusCode>(status.code()),
-          StrCat("Failed to add output for node: ", node_def.name(), ": ",
-                 status.error_message()),
-          errors::GetPayloads(status));
+      return errors::Create(static_cast<absl::StatusCode>(status.code()),
+                            StrCat("Failed to add output for node: ",
+                                   node_def.name(), ": ", status.message()),
+                            errors::GetPayloads(status));
     }
   }
   return OkStatus();
@@ -1151,7 +1150,7 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
     status = MaybeUpdateBatchSize(batch_size);
     if (!status.ok()) {
       return errors::CreateWithUpdatedMessage(
-          status, batch_size_error(name, status.error_message()));
+          status, batch_size_error(name, status.message()));
     }
   }
   ITensorProxyPtr tensor = network()->addInput(name.c_str(), dtype, dims);
@@ -1162,8 +1161,8 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   status = AddTensorOrWeights(name, TRT_TensorOrWeights(tensor));
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, StrCat("Failed to add input tensor ", name, ": ",
-                       status.error_message()));
+        status,
+        StrCat("Failed to add input tensor ", name, ": ", status.message()));
   }
   return OkStatus();
 }
@@ -1173,8 +1172,8 @@ Status Converter::AddInputResource(const string& name,
   Status status = AddTensorOrWeights(name, TRT_TensorOrWeights(resource));
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, StrCat("Failed to add input resource ", name, ": ",
-                       status.error_message()));
+        status,
+        StrCat("Failed to add input resource ", name, ": ", status.message()));
   }
   return OkStatus();
 }
@@ -1376,7 +1375,7 @@ Status Converter::BuildCudaEngine(
     auto cache = registry->LookUp("default_cache", builder_config.get());
     if (!cache.ok()) {
       LOG(WARNING) << "failed to create a timing cache: "
-                   << cache.status().error_message();
+                   << cache.status().message();
     } else {
       timing_cache = std::move(*cache);
       builder_config->setTimingCache(*timing_cache, /*ignoreMismatch*/ false);
@@ -5945,7 +5944,7 @@ Status ConvertGraphDefToEngine(
         if (!status.ok()) {
           const string error_message =
               StrCat("Validation failed for ", node_name, " and input slot ",
-                     slot_number, ": ", status.error_message());
+                     slot_number, ": ", status.message());
           LOG_WARNING_WITH_PREFIX << error_message;
           return errors::CreateWithUpdatedMessage(status, error_message);
         }
@@ -6238,7 +6237,7 @@ std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
          DebugString(type_being_checked) + ".";
 }
 
-string batch_size_error(const string& name, const string& comment) {
+string batch_size_error(absl::string_view name, absl::string_view comment) {
   return StrCat("Batch size doesn't match for tensor '", name, "' : ", comment);
 }
 

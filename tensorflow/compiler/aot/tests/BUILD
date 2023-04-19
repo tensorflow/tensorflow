@@ -81,6 +81,7 @@ py_binary(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "@absl_py//absl:app",
         "@six_archive//:six",
@@ -327,29 +328,10 @@ tfcompile_test_dep_configs = [
 ]
 
 tfcompile_bench_tfmatmul_mkn = [
-    (x, x, x)
-    for x in (16, 32, 64, 128, 256, 512, 1024)
-] + [
-    (1, 2, 256),
-    (1, 8, 256),
-    (1, 18, 300),
-    (1, 37, 256),
-    (1, 91, 256),
-    (1, 111, 256),
-    (1, 192, 192),
-    (1, 226, 256),
-    (1, 256, 192),
-    (1, 256, 256),
-    (1, 512, 512),
-    (1, 300, 18),
-    (21, 24, 1),
-    (21, 120, 1),
-    (10, 10, 10),
-    (100, 100, 100),
-    (18, 1, 300),
-    (18, 300, 1),
-    (300, 1, 18),
-    (300, 18, 1),
+    # Intentionally empty to avoid running unnecessary tests.
+    # Add here your desired (M, K, N) parameters, e.g.
+    #    (1, 1, 256),
+    #    (1, 2, 256),
 ]
 
 tfcompile_bench_tfmatmul = [
@@ -405,6 +387,51 @@ test_suite(
         ],
     ),
 ] for (bench_name, config_file, template_file, sed_replace) in tfcompile_bench_tfmatmul]
+
+tfcompile_bench_tfmatmul_tile_mkn = [
+    # Intentionally empty to avoid running unnecessary tests.
+    # Add here your desired (M, K, N) parameters, e.g.
+    #    (1, 2, 8),
+    #    (1, 4, 4),
+]
+
+tfcompile_bench_tfmatmul_custom_tiling = [
+    (
+        "bench_graph_tfmatmul_%sx%sx%s_tiled_%sx%sx%s_mlir" % (m, k, n, tm, tk, tn),
+        "bench_graph_tfmatmul_%sx%sx%s_tiled_%sx%sx%s_mlir.config.pbtxt" % (m, k, n, tm, tk, tn),
+        "bench_graph_tfmatmul.template.pbtxt",
+        "-e \"s|<M>|%s|g\" -e \"s|<K>|%s|g\" -e \"s|<N>|%s|g\"" % (m, k, n),
+        "--xla_cpu_enable_custom_matmul_tiling --xla_cpu_matmul_tiling_m_dim=%s --xla_cpu_matmul_tiling_k_dim=%s --xla_cpu_matmul_tiling_n_dim=%s" % (tm, tk, tn),
+    )
+    for (m, k, n) in tfcompile_bench_tfmatmul_mkn
+    for (tm, tk, tn) in tfcompile_bench_tfmatmul_tile_mkn
+]
+
+[[
+    genrule(
+        name = "gen_" + config_file,
+        testonly = 1,
+        srcs = [template_file],
+        outs = [config_file],
+        cmd = ("sed " + sed_replace + " " +
+               "$(location " + template_file + ") " +
+               "> $(OUTS)"),
+        tags = ["manual"],
+    ),
+    tf_library(
+        name = bench_name,
+        testonly = 1,
+        config = config_file,
+        cpp_class = "foo::bar::MatMulComp",
+        graph = "test_graph_tfmatmul.pb",
+        mlir_components = "HloLowering",  # XLA:CPU-Next only.
+        tags = [
+            "manual",
+            "no_mac",  # TODO(b/228273415)
+        ],
+        xla_flags = xla_flags,
+    ),
+] for (bench_name, config_file, template_file, sed_replace, xla_flags) in tfcompile_bench_tfmatmul_custom_tiling]
 
 tf_cc_test(
     name = "tfcompile_test",

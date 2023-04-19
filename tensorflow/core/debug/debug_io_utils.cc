@@ -273,7 +273,7 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
       return errors::FailedPrecondition(
           "Failed to send chunk ", i, " of ", num_chunks,
           " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes, ",
-          "due to: ", s.error_message());
+          "due to: ", s.message());
     }
   }
   return OkStatus();
@@ -473,7 +473,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
         " debug target URLs failed, due to the following errors:");
     for (Status& status : fail_statuses) {
       error_message =
-          strings::StrCat(error_message, " ", status.error_message(), ";");
+          strings::StrCat(error_message, " ", status.message(), ";");
     }
 
     return Status(absl::StatusCode::kInternal, error_message);
@@ -626,7 +626,7 @@ Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
   if (!s.ok()) {
     return Status(absl::StatusCode::kFailedPrecondition,
                   strings::StrCat("Failed to create directory  ", dir_name,
-                                  ", due to: ", s.error_message()));
+                                  ", due to: ", s.message()));
   }
 
   const string file_path = io::JoinPath(dir_name, file_name);

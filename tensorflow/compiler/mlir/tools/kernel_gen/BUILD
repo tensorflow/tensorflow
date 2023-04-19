@@ -48,7 +48,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
-        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf_no_fallback",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_no_fallback",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:bufferize",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
@@ -101,7 +101,6 @@ tf_cc_binary(
     ],
     deps = [
         ":kernel_creator",
-        "@llvm-project//llvm:TargetParser",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
@@ -112,9 +111,10 @@ tf_cc_binary(
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
     ] + if_llvm_aarch32_available([
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
@@ -196,14 +196,14 @@ cc_library(
         "-DTENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
-        "@llvm-project//mlir:mlir_runner_utils",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:hash",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:mlir_runner_utils",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",

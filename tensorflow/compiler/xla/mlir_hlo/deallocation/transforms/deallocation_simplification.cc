@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -21,6 +22,7 @@ limitations under the License.
 #include "deallocation/utils/util.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
@@ -151,6 +153,34 @@ bool allocIsNull(Value v) {
   return getAllocNullabilityImpl(v, pendingChecks).nullability == ALWAYS_NULL;
 }
 
+// Returns true if the value is just passed around, but never really used.
+bool valueIsUnused(Value value) {
+  llvm::DenseSet<Value> pendingChecks;
+  std::function<bool(Value)> checkValue;
+  std::function<bool(OpOperand&)> checkUser;
+
+  checkUser = [&](OpOperand& user) -> bool {
+    std::optional<unsigned> regionIndex = std::nullopt;
+    auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(user.getOwner());
+    if (user.getOwner()->mightHaveTrait<OpTrait::IsTerminator>()) {
+      rbi = llvm::dyn_cast<RegionBranchOpInterface>(
+          user.getOwner()->getParentOp());
+      regionIndex = user.getOwner()->getParentRegion()->getRegionNumber();
+    }
+    return rbi && llvm::all_of(getSuccessorRegions(rbi, regionIndex),
+                               [&](const RegionEdge& edge) {
+                                 return checkValue(edge.getSuccessorValue(
+                                     user.getOperandNumber()));
+                               });
+  };
+  checkValue = [&](Value value) {
+    if (!pendingChecks.insert(value).second) return true;
+    return llvm::all_of(value.getUses(), checkUser);
+  };
+
+  return checkValue(value);
+}
+
 #define GEN_PASS_DEF_DEALLOCATIONSIMPLIFICATIONPASS
 #include "deallocation/transforms/passes.h.inc"
 
@@ -181,6 +211,15 @@ struct DeallocationSimplificationPass
 
         b.setInsertionPoint(op);
         b.create<memref::DeallocOp>(op.getLoc(), nullability.nonNullValue);
+        op.erase();
+      }
+    });
+    getOperation()->walk([](OwnOp op) {
+      if (op.use_empty()) {
+        op.erase();
+      } else if (valueIsUnused(op.getResult())) {
+        OpBuilder b(op);
+        op.replaceAllUsesWith(b.create<NullOp>(op.getLoc()).getResult());
         op.erase();
       }
     });

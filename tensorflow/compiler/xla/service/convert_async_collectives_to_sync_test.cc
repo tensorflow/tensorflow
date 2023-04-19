@@ -43,11 +43,15 @@ class ConvertAsyncCollectivesToSyncTest : public HloTestBase {
     return OkStatus();
   }
 
-  HloPredicate is_nop_simple_ = [](const HloInstruction *inst) {
-    return inst->opcode() == HloOpcode::kBitcast ||
-           inst->opcode() == HloOpcode::kGetTupleElement ||
-           inst->opcode() == HloOpcode::kParameter;
-  };
+  absl::string_view GetAsyncName(const HloInstruction *inst) {
+    const auto &map = inst->frontend_attributes().map();
+    return map.at(
+        ConvertAsyncCollectivesToSync::kAsyncCollectiveNameAttributeName);
+  }
+
+  HloPredicate is_nop_simple_ =
+      HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kGetTupleElement,
+                       HloOpcode::kParameter>;
 };
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduce) {
@@ -74,6 +78,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduce) {
   const auto *ar = Cast<HloAllReduceInstruction>(root);
   EXPECT_TRUE(ar->channel_id().has_value());
   EXPECT_EQ(ar->channel_id().value(), 3);
+  EXPECT_EQ(GetAsyncName(ar), "start");
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
@@ -102,6 +107,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
   EXPECT_TRUE(ar->channel_id().has_value());
   EXPECT_EQ(ar->channel_id().value(), 3);
   EXPECT_THAT(ar, m::ReplicaGroups({{0, 1}, {2, 3}}));
+  EXPECT_EQ(GetAsyncName(ar), "start");
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNonNop) {
@@ -143,6 +149,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
   EXPECT_TRUE(ag->channel_id().has_value());
   EXPECT_EQ(ag->channel_id().value(), 3);
   EXPECT_EQ(ag->all_gather_dimension(), 0);
+  EXPECT_EQ(GetAsyncName(ag), "ags");
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
@@ -161,6 +168,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
   EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0)));
   const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
   EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
+  EXPECT_EQ(GetAsyncName(cp), "start");
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleReduceScatter) {
@@ -193,6 +201,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleReduceScatter) {
   const auto *rs = Cast<HloReduceScatterInstruction>(root);
   EXPECT_THAT(rs, m::ReplicaGroups({{0, 3}, {1, 2}}));
   EXPECT_EQ(rs->scatter_dimension(), 0);
+  EXPECT_EQ(GetAsyncName(rs), "rs-start");
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllToAll) {
@@ -220,6 +229,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllToAll) {
   EXPECT_THAT(a2a, m::ReplicaGroups({{0, 1}, {2, 3}}));
   EXPECT_TRUE(a2a->split_dimension().has_value());
   EXPECT_EQ(a2a->split_dimension().value(), 0);
+  EXPECT_EQ(GetAsyncName(a2a), "a2a-start");
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, ControlDeps) {

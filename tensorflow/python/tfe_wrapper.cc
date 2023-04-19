@@ -515,7 +515,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
 
   if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
-                                    hlo_str.status().error_message())
+                                    hlo_str.status().message())
                         .c_str());
   }
   return py::bytes(*hlo_str);

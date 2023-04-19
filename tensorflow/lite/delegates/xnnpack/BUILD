@@ -95,6 +95,74 @@ cc_library(
     }),
 )
 
+# Enable offloading of Fully Connected operator with dynamic weights to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_dynamic_fully_connected_explicit_true",
+    define_values = {"tflite_with_xnnpack_dynamic_fully_connected": "true"},
+)
+
+# Disable offloading of Fully Connected operator with dynamic weights to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_dynamic_fully_connected_explicit_false",
+    define_values = {"tflite_with_xnnpack_dynamic_fully_connected": "false"},
+)
+
+# Default setting for offloading of Fully Connected operator with dynamic weights to XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_dynamic_fully_connected_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = [],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_dynamic_fully_connected",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_true": ["XNNPACK_DELEGATE_ENABLE_DYNAMIC_FULLY_CONNECTED=1"],
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_true": [],
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_dynamic_fully_connected_default"],
+    }),
+)
+
+# Enable logging of delegation errors in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_logging_explicit_true",
+    define_values = {"tflite_with_xnnpack_logging": "true"},
+)
+
+# Disable logging of delegation errors in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_logging_explicit_false",
+    define_values = {"tflite_with_xnnpack_logging": "false"},
+)
+
+# Default setting for logging of delegation errors in XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_logging_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = [],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_logging",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_logging_explicit_true": ["XNNPACK_DELEGATE_ENABLE_LOGGING=1"],
+        ":tflite_with_xnnpack_logging_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_logging_explicit_true": [],
+        ":tflite_with_xnnpack_logging_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_logging_default"],
+    }),
+)
+
 cc_library(
     name = "xnnpack_delegate_test",
     testonly = True,
@@ -116,6 +184,8 @@ cc_library(
     linkstatic = True,
     deps = [
         ":quantization_util",
+        ":tflite_with_xnnpack_dynamic_fully_connected",
+        ":tflite_with_xnnpack_logging",
         ":tflite_with_xnnpack_qs8",
         ":tflite_with_xnnpack_qu8",
         "//tensorflow/lite:kernel_api",
@@ -128,6 +198,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK//:xnnpack_for_tflite",
     ],
@@ -161,6 +232,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK//:XNNPACK_test_mode",
     ],
@@ -2355,14 +2427,13 @@ cc_test(
 cc_test(
     name = "weights_cache_test",
     srcs = ["weights_cache_test.cc"],
-    tags = ["no_oss"],  # TODO(b/275078251): enable when fixed.
     deps = [
         ":conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )

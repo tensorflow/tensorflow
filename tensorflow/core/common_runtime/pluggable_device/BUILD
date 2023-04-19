@@ -57,6 +57,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = 1,
@@ -75,7 +76,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pluggable_device_runtime_impl",
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c/experimental/grappler",
         "//tensorflow/c/experimental/pluggable_profiler",
         "//tensorflow/c/experimental/pluggable_profiler:pluggable_profiler_internal",
@@ -98,6 +98,7 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_factory",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
     ]),
@@ -108,7 +109,6 @@ cc_library(
     hdrs = [":pluggable_device_runtime_headers"],
     linkstatic = 1,
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",
@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([
         # Temporary workaround for duplicated symbols issues.
         ":pluggable_device_runtime_impl",

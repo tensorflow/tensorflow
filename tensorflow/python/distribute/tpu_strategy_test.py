@@ -20,7 +20,6 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -224,13 +223,14 @@ class TPUTest(test.TestCase):
     def foo():
       return 1 + 1
 
-    func1 = function.defun_with_attributes(
-        foo, attributes={"_XlaMustCompile": False})
+    func1 = function.defun_with_attributes(foo, jit_compile=False)
     func2 = function.defun_with_attributes(
-        foo, attributes={
+        foo,
+        jit_compile=False,
+        attributes={
             "_OutputsOnOpDevice": True,
-            "_XlaMustCompile": False
-        })
+        },
+    )
 
     with ops.device("/device:TPU:0"):
       ret1 = func1()
@@ -766,6 +766,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           synchronization=variables.VariableSynchronization.ON_READ,
           aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
 
+    self.assertFalse(w._is_mirrored())
+
     @def_function.function
     def run(iterator):
 
@@ -774,7 +776,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         return w
 
       def all_reduce(x):
-        ctx = distribution_strategy_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         return ctx.all_reduce("SUM", w) + x
 
       outputs = strategy.run(computation, args=(next(iterator),))

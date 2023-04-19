@@ -62,50 +62,17 @@ StatusOr<mlir::Operation*> ExpandVarHandleOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(std::optional<Layout> resource_layout,
                       ExtractSingleLayoutFromOp(op));
 
-  TF_ASSIGN_OR_RETURN(
-      llvm::ArrayRef<int64_t> global_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(op->getOpResult(0)));
-
   if (!resource_layout) {
     // If resource does not have a layout, perform local SPMD expansion.
     return InferSPMDExpandedLocalShape(op);
   }
 
   // If resource has a layout, create VarHandleOps with local shape.
-  auto var_op = llvm::cast<mlir::TF::VarHandleOp>(op);
-  const std::vector<int64_t>& local_shape =
-      resource_layout->LocalShapeFromGlobalShape(global_shape);
-
-  // Replace var handle op with a VarHandleOp with local shape
-  auto resource_type = op->getOpResult(0)
-                           .getType()
-                           .cast<mlir::TensorType>()
-                           .getElementType()
-                           .dyn_cast<mlir::TF::ResourceType>();
-
-  auto sub_types = resource_type.getSubtypes();
-  auto resource_arg_sub_type = sub_types.front();
-
-  // The local shape that is to be assigned to this resource output.
-  llvm::SmallVector<int64_t, 4> local_arg_shape(local_shape.begin(),
-                                                local_shape.end());
-
-  auto local_variable_subtype = mlir::RankedTensorType::get(
-      local_arg_shape, resource_arg_sub_type.getElementType());
-  auto new_var_type = mlir::RankedTensorType::get(
-      {}, mlir::TF::ResourceType::get(
-              mlir::ArrayRef<mlir::TensorType>{local_variable_subtype},
-              builder.getContext()));
-
-  auto var_handle_op = builder.create<mlir::TF::VarHandleOp>(
-      var_op->getLoc(), new_var_type, var_op.getContainer(),
-      var_op.getSharedName());
-
-  auto result_op = InferSPMDExpandedLocalShape(var_handle_op);
-  op->getOpResult(0).replaceAllUsesWith(result_op->getOpResult(0));
-  op->erase();
-
-  return result_op;
+  // auto var_op = llvm::cast<mlir::TF::VarHandleOp>(op);
+  auto op_result = op->getOpResult(0);
+  TF_RETURN_IF_ERROR(InferSPMDExpandedLocalShapeForResourceOutput(
+      &op_result, resource_layout.value(), builder.getContext()));
+  return InferSPMDExpandedLocalShape(op);
 }
 
 Status ValidateAndAssignResourceInputLayout(mlir::tf_device::ClusterOp op,

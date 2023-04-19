@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"      // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"

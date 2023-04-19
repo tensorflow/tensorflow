@@ -51,13 +51,13 @@ class CppGradients
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     status_ = StatusFromTF_Status(status.get());
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
     {
       AbstractContext* ctx_raw = nullptr;
       status_ =
           BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-      ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+      ASSERT_EQ(errors::OK, status_.code()) << status_.message();
       immediate_execution_ctx_.reset(ctx_raw);
     }
 
@@ -86,7 +86,7 @@ TEST_P(CppGradients, TestIdentityNGrad) {
     AbstractTensorHandle* x1_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 1.0f, &x1_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x1.reset(x1_raw);
   }
 
@@ -95,19 +95,19 @@ TEST_P(CppGradients, TestIdentityNGrad) {
     AbstractTensorHandle* x2_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 1.0f, &x2_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x2.reset(x2_raw);
   }
 
   status_ = registry_.Register("IdentityN", IdentityNRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
   auto IdentityNGradModel = BuildGradModel(IdentityNModel, registry_);
 
   std::vector<AbstractTensorHandle*> outputs(2);
   status_ =
       RunModel(IdentityNGradModel, immediate_execution_ctx_.get(),
                {x1.get(), x2.get()}, absl::MakeSpan(outputs), UseFunction());
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
   EXPECT_EQ(outputs[0], nullptr);
   ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[1], {1.0f}, /*dims*/ {},
                                            /*abs_error*/ 0));

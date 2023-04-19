@@ -88,7 +88,8 @@ CreateSinkInInvariantOpsPass();
 // Create a pass that rewrites tf_saved_model dialect's ops according to TFRT's
 // requirements.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateLowerTFSavedModelPass(bool hoist_invariant_ops);
+CreateLowerTFSavedModelPass(bool hoist_invariant_ops,
+                            bool fuse_get_resource_ops);
 
 // Create a pass that converts ref variables to resource variables in a limited
 // number of cases.

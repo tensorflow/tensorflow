@@ -91,8 +91,8 @@ tf_cc_test(
     srcs = ["tf_tensor_view_test.cc"],
     deps = [
         ":tf_tensor_view",
-        "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([

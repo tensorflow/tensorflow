@@ -23,6 +23,8 @@ limitations under the License.
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/tensor_utils.h"
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SetOperations.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
@@ -229,21 +232,35 @@ LogicalResult fuseTensorReshape(PatternRewriter& rewriter,
   return success();
 }
 
-// Iterates over tensor::ExtractSliceOp inside the block, finds a suitable
-// candidate for fusion and fuses it. The fusion candidate should satisfy the
-// filter function and not have uses outside of the block. Fails if nothing
-// can be fused.
-LogicalResult fuseGreedilyOneOpIntoBlock(
-    PatternRewriter& rewriter, Block& block,
-    llvm::function_ref<bool(Operation*)> filterFn) {
-  // Ad-hoc CSE to eliminate duplicate MatrializeOp that could have been added
-  // after previous fusions. Running the whole CSE pass would be to expensive
-  // here and unnecessary. Without removing those duplicate, some ops will be
-  // fused multiple times resulting in exponential code growth.
-  eliminateEqualOps<tensor::ExtractSliceOp>(rewriter, block);
+// Checks that there is at most one user in each given block.
+bool atMostOneUserPerBlock(ArrayRef<Operation*> users,
+                           ArrayRef<Block*> blocks) {
+  if (users.size() == 1) return true;
+  if (users.size() > blocks.size()) return false;
 
-  SetVector<Operation*> fusionCandidates;
-  visitUsedValuesDefinedAbove(*block.getParent(), [&](OpOperand* operand) {
+  llvm::SmallSetVector<Block*, 2> blocksWithUsers;
+
+  Block* funcBlock = &users.front()
+                          ->getParentWithTrait<OpTrait::IsIsolatedFromAbove>()
+                          ->getRegion(0)
+                          .front();
+  // Return false if there two users in a block.
+  for (Operation* user : users) {
+    Block* block = user->getBlock();
+    while (block != funcBlock) {
+      if (llvm::is_contained(blocks, block)) {
+        if (!blocksWithUsers.insert(block)) return false;
+      }
+      block = block->getParentOp()->getBlock();
+    }
+  }
+  return true;
+}
+
+DenseSet<Operation*> getFusionCandidates(
+    Region& region, llvm::function_ref<bool(Operation*)> filterFn) {
+  DenseSet<Operation*> fusionCandidates;
+  visitUsedValuesDefinedAbove(region, [&](OpOperand* operand) {
     auto* fusionCandidate = operand->get().getDefiningOp();
     // Do not fuse if there is no defining op. Of example, if it's an
     // extract_slice from a function argument.
@@ -252,12 +269,6 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     // Filter candidates that we don't want to fuse.
     if (filterFn && !filterFn(fusionCandidate)) return;
 
-    // `linalg.fill` after tiling mostly becomes a scalar or a vector constant.
-    // It is beneficial to fuse it.
-    if (isa<linalg::FillOp>(fusionCandidate)) {
-      fusionCandidates.insert(fusionCandidate);
-      return;
-    }
     // Check that the candidate doesn't have users that will block fusion.
     if (!llvm::all_of(fusionCandidate->getUsers(), [](Operation* op) {
           // Fusion candidates can only be fused into tensor.extract_slice or
@@ -272,6 +283,82 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     }
     fusionCandidates.insert(fusionCandidate);
   });
+  return fusionCandidates;
+}
+
+LogicalResult fuseIntoUser(PatternRewriter& rewriter,
+                           Operation* fusionCandidate,
+                           Operation* candidateUser) {
+  // If the user of the fusion candidate is `tensor.extract_slice`, we use
+  // TilingInterface to rewrite `tensor.extract_slice(fusionOp)` into
+  // `tiledFusionOp(tensor.extract_slice)`.
+  if (auto extractSliceOp = dyn_cast<tensor::ExtractSliceOp>(candidateUser)) {
+    if (auto castOp = dyn_cast<tensor::CastOp>(fusionCandidate)) {
+      return fuseTensorCast(rewriter, castOp, extractSliceOp);
+    }
+    if (auto collapseShapeOp =
+            dyn_cast<tensor::CollapseShapeOp>(fusionCandidate)) {
+      return fuseTensorReshape(rewriter, collapseShapeOp, extractSliceOp);
+    }
+    if (auto expandShapeOp = dyn_cast<tensor::ExpandShapeOp>(fusionCandidate)) {
+      return fuseTensorReshape(rewriter, expandShapeOp, extractSliceOp);
+    }
+    auto fusedOp = fuse(rewriter, extractSliceOp);
+    if (succeeded(fusedOp)) {
+      setLabel(*fusedOp, kTransformedLabel);
+      return success();
+    }
+    return failure();
+  }
+
+  // TODO(shyshkov): Implement fusion into `tensor.extract` using
+  // TilingInterface.
+  if (auto extractOp = dyn_cast<tensor::ExtractOp>(candidateUser)) {
+    return failure();
+  }
+
+  // Otherwise, the fusion candidate op is moved inside of the region.
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(candidateUser);
+  Operation* clonedCandidate = rewriter.clone(*fusionCandidate);
+  rewriter.replaceOp(fusionCandidate, clonedCandidate->getResults());
+  return success();
+}
+
+LogicalResult fuseIntoUsers(PatternRewriter& rewriter,
+                            Operation* fusionCandidate,
+                            ArrayRef<Operation*> fusionCandidateUsers) {
+  for (Operation* candidateUser : fusionCandidateUsers) {
+    if (failed(fuseIntoUser(rewriter, fusionCandidate, candidateUser)))
+      return failure();
+  }
+  return success();
+}
+
+// Iterates over tensor::ExtractSliceOp inside the block, finds a suitable
+// candidate for fusion and fuses it. The fusion candidate should satisfy the
+// filter function and not have uses outside of the block. Fails if nothing
+// can be fused.
+LogicalResult fuseGreedilyOneOpIntoBlock(
+    PatternRewriter& rewriter, ArrayRef<Block*> blocks,
+    llvm::function_ref<bool(Operation*)> filterFn) {
+  if (blocks.empty()) return failure();
+
+  // Ad-hoc CSE to eliminate duplicate MatrializeOp that could have been added
+  // after previous fusions. Running the whole CSE pass would be to expensive
+  // here and unnecessary. Without removing those duplicate, some ops will be
+  // fused multiple times resulting in exponential code growth.
+  DenseSet<Operation*> fusionCandidates;
+  for (auto [index, block] : llvm::enumerate(blocks)) {
+    eliminateEqualOps<tensor::ExtractSliceOp>(rewriter, *block);
+
+    if (index == 0) {
+      fusionCandidates = getFusionCandidates(*block->getParent(), filterFn);
+      continue;
+    }
+    llvm::set_intersect(fusionCandidates,
+                        getFusionCandidates(*block->getParent(), filterFn));
+  }
 
   for (Operation* fusionCandidate : fusionCandidates) {
     // Ad-hoc DCE to trim the fusion candidate from dead users that could have
@@ -285,63 +372,17 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     // pipeline here is too expensive.
     reifyDimOpsUsers(rewriter, fusionCandidate);
 
-    // After the previous steps, extractSliceOp should be only one user of the
-    // fusion candidate. Otherwise this candidate should not be fused. We always
-    // want to fuse linalg.fill.
+    // After the previous steps, there should be at most one user of the
+    // fusion candidate per block. Otherwise this candidate should not be fused.
+    // We always want to fuse linalg.fill.
     auto fusionCandidateUsers = llvm::to_vector(fusionCandidate->getUsers());
-    if (fusionCandidateUsers.size() != 1 &&
-        !isa<linalg::FillOp>(fusionCandidate)) {
+    if (!atMostOneUserPerBlock(fusionCandidateUsers, blocks)) {
       continue;
     }
-
-    Operation* candidateUser = fusionCandidateUsers.front();
-
-    // If the user of the fusion candidate is `tensor.extract_slice`, we use
-    // TilingInterface to rewrite `tensor.extract_slice(fusionOp)` into
-    // `tiledFusionOp(tensor.extract_slice)`.
-    if (auto extractSliceOp = dyn_cast<tensor::ExtractSliceOp>(candidateUser)) {
-      if (auto castOp = dyn_cast<tensor::CastOp>(fusionCandidate)) {
-        if (succeeded(fuseTensorCast(rewriter, castOp, extractSliceOp))) {
-          return success();
-        }
-        continue;
-      }
-      if (auto collapseShapeOp =
-              dyn_cast<tensor::CollapseShapeOp>(fusionCandidate)) {
-        if (succeeded(
-                fuseTensorReshape(rewriter, collapseShapeOp, extractSliceOp))) {
-          return success();
-        }
-        continue;
-      }
-      if (auto expandShapeOp =
-              dyn_cast<tensor::ExpandShapeOp>(fusionCandidate)) {
-        if (succeeded(
-                fuseTensorReshape(rewriter, expandShapeOp, extractSliceOp))) {
-          return success();
-        }
-        continue;
-      }
-      auto fusedOp = fuse(rewriter, extractSliceOp);
-      if (succeeded(fusedOp)) {
-        setLabel(*fusedOp, kTransformedLabel);
-        return success();
-      }
-      continue;
+    if (succeeded(
+            fuseIntoUsers(rewriter, fusionCandidate, fusionCandidateUsers))) {
+      return success();
     }
-
-    // TODO(shyshkov): Implement fusion into `tensor.extract` using
-    // TilingInterface.
-    if (auto extractOp = dyn_cast<tensor::ExtractOp>(candidateUser)) {
-      continue;
-    }
-
-    // Otherwise, the fusion candidate op is moved inside of the region.
-    OpBuilder::InsertionGuard g(rewriter);
-    rewriter.setInsertionPoint(candidateUser);
-    Operation* clonedCandidate = rewriter.clone(*fusionCandidate);
-    rewriter.replaceOp(fusionCandidate, clonedCandidate->getResults());
-    return success();
   }
   return failure();
 }
@@ -481,9 +522,9 @@ FailureOr<Operation*> fuse(PatternRewriter& rewriter,
   return fused.getDefiningOp();
 }
 
-void fuseGreedily(PatternRewriter& rewriter, Block& block,
+void fuseGreedily(PatternRewriter& rewriter, ArrayRef<Block*> blocks,
                   llvm::function_ref<bool(Operation*)> filterFn) {
-  while (succeeded(fuseGreedilyOneOpIntoBlock(rewriter, block, filterFn)))
+  while (succeeded(fuseGreedilyOneOpIntoBlock(rewriter, blocks, filterFn)))
     ;
 }
 
@@ -537,7 +578,7 @@ FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
   if (tilingResult->loop != nullptr) {
     rewriter.replaceOp(op, tilingResult->loop->getResults());
     // Fuse ops into the loop.
-    fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
+    fuseGreedily(rewriter, tilingResult->tiledOps.front()->getBlock(),
                  fuseFilterFn);
     fuseFillOpsIntoForallOp(rewriter, tilingResult->loop);
   }
@@ -557,7 +598,7 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
   // If tiling created an `scf.for` loop nest, we fuse.
   if (!tilingResult->loops.empty()) {
     scf::ForOp innerLoop = tilingResult->loops.back();
-    fuseGreedily(rewriter, *innerLoop.getBody(), fuseFilterFn);
+    fuseGreedily(rewriter, innerLoop.getBody(), fuseFilterFn);
   }
   return tilingResult;
 }
@@ -594,11 +635,16 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   // 1. Find operands and results of the cluster op.
   SetVector<Value> clusterOperands;
   SmallVector<Value> clusterResults;
+  SmallVector<Value> constantOps;
   auto visitOpOperand = [&](OpOperand* operand) {
     auto* definingOp = operand->get().getDefiningOp();
 
+    if (auto constantOp = dyn_cast_or_null<arith::ConstantOp>(definingOp)) {
+      constantOps.push_back(constantOp);
+      return;
+    }
+
     if (fusionCluster.operations.contains(definingOp)) return;
-    if (isa_and_nonnull<arith::ConstantOp>(definingOp)) return;
     if (llvm::is_contained(initOperands, operand->get())) return;
 
     clusterOperands.insert(operand->get());
@@ -638,8 +684,15 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   IRMapping mapper;
   mapper.map(clusterOperands, block->getArguments());
 
-  // 4. Copy ops into the cluster region in topoligical order to avoid swapping
-  // depending ops.
+  // 4. Copy ops into the cluster region.
+  // 4.1. Copy arith.constant ops.
+  for (auto v : constantOps) {
+    auto newOp = cast<arith::ConstantOp>(rewriter.clone(*v.getDefiningOp()));
+    mapper.map(v, newOp);
+  }
+
+  // 4.2. Copy ops into the cluster region in topoligical order to avoid
+  // swapping depending ops.
   SmallVector<Operation*> clusterOps(fusionCluster.operations.begin(),
                                      fusionCluster.operations.end());
 
@@ -648,6 +701,7 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     rewriter.clone(*op, mapper);
   }
 
+  // 4.3 Create terminator gml_st.yield.
   SmallVector<Value> yieldOpOperands = llvm::to_vector(llvm::map_range(
       clusterResults, [&](Value v) { return mapper.lookupOrDefault(v); }));
   auto yieldOp = rewriter.create<gml_st::YieldOp>(loc, yieldOpOperands);

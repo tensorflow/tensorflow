@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #define EIGEN_USE_THREADS
 
 #include <limits>
@@ -736,7 +736,7 @@ class MklConcatOp : public OpKernel {
       // then since MklDnn order is NCHW, concat_dim needs to be 1.
       if (are_all_mkl_inputs)
         concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
-
+      MklDnnThreadPool eigen_tp(context);
       if (!inputs.empty()) {
         if (are_all_mkl_inputs) {
           auto concat_pd =
@@ -757,7 +757,7 @@ class MklConcatOp : public OpKernel {
           DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
 
           std::shared_ptr<stream> fwd_cpu_stream;
-          MklDnnThreadPool eigen_tp(context);
+
           fwd_cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
           if (dnn_shape_dst.IsMklTensor())
@@ -795,7 +795,7 @@ class MklConcatOp : public OpKernel {
           dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
                                                : dst_md;
           std::shared_ptr<stream> fwd_cpu_stream;
-          MklDnnThreadPool eigen_tp(context);
+
           fwd_cpu_stream.reset(
               CreateStream(&eigen_tp, concat_fwd->GetEngine()));
           dst.SetUsrMem(dst_md, dst_tensor);
@@ -985,4 +985,4 @@ REGISTER_QUANTIZED_CONCATV2(qint8);
 #undef REGISTER_CONCAT_MKL
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

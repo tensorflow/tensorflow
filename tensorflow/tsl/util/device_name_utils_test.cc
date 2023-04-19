@@ -428,7 +428,7 @@ static void MergeDevNamesError(const string& name_a, const string& name_b,
   DeviceNameUtils::ParsedName target_a = Name(name_a);
   Status s = DeviceNameUtils::MergeDevNames(&target_a, Name(name_b));
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(absl::StrContains(s.error_message(), expected_error_substr)) << s;
+  EXPECT_TRUE(absl::StrContains(s.message(), expected_error_substr)) << s;
 }
 
 static void MergeOverrideHelper(const string& target, const string& name,

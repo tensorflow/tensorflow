@@ -233,12 +233,6 @@ static absl::Status RunGraphWithoutCapture(
 // Define the cuda graph launch custom call.
 //===----------------------------------------------------------------------===//
 
-// Only instantiates a CUDA graph after the captured function execution count
-// reaches the threshold. This constant is a heuristic to avoid creating a large
-// number of CUDA graph instances in memory.
-// TODO(b/258036887): Should be configurable by the user.
-constexpr uint64_t kGraphInstantiationThreshold = 2;
-
 static absl::Status LaunchGraph(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, const std::string* ptx,
@@ -281,7 +275,9 @@ static absl::Status LaunchGraph(
           });
   if (!get_count.ok()) return get_count.status();
   uint64_t count = (**get_count)->fetch_add(1);
-  if (count < kGraphInstantiationThreshold) {
+  uint64_t instantiation_threshold =
+      debug_options->xla_gpu_cuda_graph_instantiation_threshold();
+  if (count < instantiation_threshold) {
     // Run captured graph directly.
     absl::Status result = RunGraphWithoutCapture(
         run_options, function_ref, fwd_args, user_data_no_capture());

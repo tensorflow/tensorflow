@@ -2015,7 +2015,7 @@ class HloInstruction {
   HloInstruction* fused_parameter(int64_t parameter_number) const;
 
   // Delegates to HloFusionInstruction::fused_parameters.
-  const std::vector<HloInstruction*>& fused_parameters() const;
+  const InstructionVector& fused_parameters() const;
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
@@ -2489,6 +2489,18 @@ using ConstHloInstructionMap =
 using HloInstructionSet = std::set<HloInstruction*, HloPtrComparator>;
 using ConstHloInstructionSet =
     std::set<const HloInstruction*, HloPtrComparator>;
+
+template <HloOpcode op, HloOpcode... rest>
+bool HloPredicateIsOp(const HloInstruction* instruction) {
+  if (instruction->opcode() == op) {
+    return true;
+  }
+  if constexpr (sizeof...(rest) == 0) {
+    return false;
+  } else {
+    return HloPredicateIsOp<rest...>(instruction);
+  }
+}
 
 }  // namespace xla
 

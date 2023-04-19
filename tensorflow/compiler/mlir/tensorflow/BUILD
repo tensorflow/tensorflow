@@ -407,7 +407,7 @@ cc_library(
         ":tensorflow_passes",
         ":tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/mlir/tf2xla:legalize_tf",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_tf",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -459,8 +459,8 @@ cc_library(
     srcs = [
                "ir/tf_dialect.h",
                "ir/tf_ops.h",
-               "ir/tfrt_ops.h",
                "ir/tf_remaining_ops.h",
+               "ir/tfrt_ops.h",
            ] + ["ir/tf_" + target["name"] + ".cc" for target in tf_ops_category_list] +
            ["ir/tf_" + target["name"] + ".cc.inc" for target in tf_ops_category_list] +
            ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
@@ -475,8 +475,8 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":dynamic_shape_utils",
-        ":tensorflow_attributes",
         ":rewrite_util",
+        ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -484,24 +484,24 @@ cc_library(
         ":tensorflow_structs",
         ":tensorflow_traits",
         ":tensorflow_types",
+        ":tf_arith_ops_folder",
         ":tf_ops_canonicalization_helper",
         ":tf_ops_device_helper",
         ":tf_ops_layout_helper",
         ":tf_ops_tensor_helper",
-        ":tf_arith_ops_folder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SideEffectInterfaces",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Support",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ] + [":tensorflow_" + target["name"] + "_inc_gen" for target in tf_ops_category_list],
 )
 
@@ -510,8 +510,8 @@ cc_library(
     srcs = [
         "ir/tf_dialect.h",
         "ir/tf_ops.h",
-        "ir/tf_remaining_ops.h",
         "ir/tf_remaining_ops.cc",
+        "ir/tf_remaining_ops.h",
         "ir/tfrt_ops.h",
     ] + ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
     hdrs = [
@@ -555,9 +555,9 @@ cc_library(
     srcs = [
         "ir/tf_dialect.h",
         "ir/tf_ops.h",
-        "ir/tfrt_ops.h",
-        "ir/tfrt_ops.cc",
         "ir/tf_remaining_ops.h",
+        "ir/tfrt_ops.cc",
+        "ir/tfrt_ops.h",
     ] + ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
     hdrs = [
     ],
@@ -1355,8 +1355,8 @@ cc_library(
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite:validators",
-        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -1417,10 +1417,10 @@ cc_library(
         ":serialize_mlir_module_utils",
         ":shape_inference_utils",
         ":tensorflow",
-        ":tensorflow_types",
         ":tf_device_pass_inc_gen",
         ":tf_pass_inc_gen",
         ":translate_utils",
+        "//tensorflow/compiler/tf2xla/kernels:xla_call_module_loader",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -2519,8 +2519,14 @@ tf_cc_test(
 
 cc_library(
     name = "bridge_logger",
-    srcs = ["utils/bridge_logger.cc"],
-    hdrs = ["utils/bridge_logger.h"],
+    srcs = [
+        "utils/bridge_logger.cc",
+        "utils/data_dumper_logger_config.cc",
+    ],
+    hdrs = [
+        "utils/bridge_logger.h",
+        "utils/data_dumper_logger_config.h",
+    ],
     deps = [
         ":dump_mlir_util",
         "@com_google_absl//absl/strings",

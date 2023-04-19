@@ -1510,8 +1510,7 @@ AliasMap BuildAliasMap(const HloModule* module) {
       module->input_output_alias_config();
 
   HloComputation* entry = module->entry_computation();
-  const std::vector<HloInstruction*>& parameter_instructions =
-      entry->parameter_instructions();
+  const auto& parameter_instructions = entry->parameter_instructions();
   const HloInstruction* output_tuple = entry->root_instruction();
 
   if (IsCustomCallMarker(output_tuple)) {
@@ -1550,8 +1549,7 @@ AliasSet BuildAliasSet(const HloModule* module,
       module->input_output_alias_config();
 
   HloComputation* entry = module->entry_computation();
-  const std::vector<HloInstruction*>& parameter_instructions =
-      entry->parameter_instructions();
+  const auto& parameter_instructions = entry->parameter_instructions();
   const HloInstruction* output_tuple = entry->root_instruction();
 
   AliasSet alias_set;

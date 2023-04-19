@@ -218,7 +218,7 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
   case DataTypeToEnum<DT>::value:          \
     TF_RETURN_IF_ERROR(IsEqual<DT>(a, b)); \
     break;
-    TF_CALL_NUMBER_TYPES(CASE);
+    TF_CALL_POD_TYPES(CASE);
     TF_CALL_tstring(CASE);
 #undef CASE
     case DT_VARIANT: {

@@ -202,7 +202,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
-  if (!result.ok()) return result.error_message();
+  if (!result.ok()) return std::string(result.message());
 
   if (pass_manager) PrintPassPipeline(*pass_manager, op, *os);
   op->print(*os, mlir::OpPrintingFlags().useLocalScope());
@@ -236,7 +236,7 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
   std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
-  if (!result.ok()) return result.error_message();
+  if (!result.ok()) return std::string(result.message());
 
   (*os) << content;
   LOG(INFO) << "Outputted requested string to '" << filepath << "'";
@@ -276,8 +276,8 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     auto* env = tensorflow::Env::Default();
     auto status = env->RecursivelyCreateDir(path);
     if (!status.ok()) {
-      LOG(WARNING) << "cannot create directory '" + path +
-                          "': " + status.error_message();
+      LOG(WARNING) << "cannot create directory '" << path
+                   << "': " << status.message();
       return;
     }
 
@@ -307,7 +307,7 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
 
     if (!status.ok()) {
       error = absl::StrCat("Failed to create file '", path,
-                           "': ", status.error_message());
+                           "': ", status.message());
       return nullptr;
     }
     return std::make_unique<CrashReproducerStream>(
@@ -318,7 +318,11 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
 
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path) {
-  mlir::applyPassManagerCLOptions(pm);
+  mlir::registerPassManagerCLOptions();
+  if (!mlir::succeeded(mlir::applyPassManagerCLOptions(pm))) {
+    LOG(ERROR) << "cannot apply MLIR pass manager CL options";
+    return;
+  }
   SetCrashReproducer(pm, dir_path);
 }
 

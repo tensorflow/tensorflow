@@ -390,7 +390,7 @@ Status CorruptFileError(const Status& in_status, const string& filename,
       strings::StrCat("Unable to read file (", filename,
                       "). Perhaps the file is corrupt or was produced by a "
                       "newer version of TensorFlow with format changes (",
-                      detail, "): ", in_status.error_message()));
+                      detail, "): ", in_status.message()));
 }
 
 table::Options TableBuilderOptions() {

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/stack_frame.h"
@@ -229,6 +230,24 @@ const std::string& Status::empty_string() {
   return *empty;
 }
 
+absl::string_view Status::message() const {
+  if (ok()) {
+    return absl::string_view();
+  } else {
+    return absl::string_view(state_->msg);
+  }
+}
+
+const absl::string_view kEmptyString = "";
+
+const char* NullTerminatedMessage(const Status& status) {
+  auto message = status.message();
+  if (message.empty()) {
+    return kEmptyString.data();
+  }
+  return message.data();
+}
+
 std::string error_name(absl::StatusCode code) {
   switch (code) {
     case absl::StatusCode::kOk:
@@ -372,7 +391,7 @@ absl::Status ToAbslStatus(const ::tsl::Status& s, SourceLocation loc) {
   }
 
   absl::Status converted = internal::MakeAbslStatus(
-      s.code(), s.error_message(), s.GetSourceLocations(), loc);
+      s.code(), s.message(), s.GetSourceLocations(), loc);
   s.ForEachPayload([&converted](tsl::StringPiece key, const absl::Cord& value) {
     converted.SetPayload(key, value);
   });
@@ -468,7 +487,7 @@ Status MakeStatus(absl::StatusCode code, absl::string_view message,
 }
 
 std::string MakeString(const Status& status) {
-  return absl::StrCat(error_name(status.code()), ": ", status.error_message());
+  return absl::StrCat(error_name(status.code()), ": ", status.message());
 }
 
 // Summarize all the status objects in the StatusGroup. This is used when
@@ -495,10 +514,10 @@ Status StatusGroup::as_summary_status() const {
 
   // If only one root status is found, do not add summary header and footer.
   if (non_derived_.size() == 1) {
-    return MakeStatus(non_derived_.begin()->code(),
-                      strings::StrCat(non_derived_.begin()->error_message(),
-                                      get_recent_logs()),
-                      GetPayloads());
+    return MakeStatus(
+        non_derived_.begin()->code(),
+        strings::StrCat(non_derived_.begin()->message(), get_recent_logs()),
+        GetPayloads());
   }
 
   if (!non_derived_.empty()) {
@@ -532,8 +551,7 @@ Status StatusGroup::as_summary_status() const {
   } else {
     // All statuses are derived. Pick the first available status to return.
     return MakeDerived(MakeStatus(derived_.begin()->code(),
-                                  derived_.begin()->error_message(),
-                                  GetPayloads()));
+                                  derived_.begin()->message(), GetPayloads()));
   }
 }
 
@@ -547,7 +565,7 @@ Status StatusGroup::as_concatenated_status() const {
   // If only one root status is found, return it directly.
   if (non_derived_.size() == 1) {
     return MakeStatus(non_derived_.begin()->code(),
-                      non_derived_.begin()->error_message(), GetPayloads());
+                      non_derived_.begin()->message(), GetPayloads());
   }
 
   if (!non_derived_.empty()) {
@@ -565,8 +583,7 @@ Status StatusGroup::as_concatenated_status() const {
     // All statuses are derived. Pick the first available status to return.
     // This should not happen in normal execution.
     return MakeDerived(MakeStatus(derived_.begin()->code(),
-                                  derived_.begin()->error_message(),
-                                  GetPayloads()));
+                                  derived_.begin()->message(), GetPayloads()));
   }
 }
 

@@ -440,6 +440,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       const TfLiteAddParams* tf_options;
       return RetrieveBuiltinData(op_sig, &tf_options);
     }
+    case kTfLiteBuiltinAddN: {
+      return op_sig.inputs.size() == 2
+                 ? absl::OkStatus()
+                 : absl::UnimplementedError("ADD_N only supports 2 inputs.");
+    }
 
     case kTfLiteBuiltinAveragePool2d:
       return CheckPooling2DGpuDelegateCompatibility(op_sig);
@@ -566,6 +571,28 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       }
       return absl::OkStatus();
     }
+
+    case kTfLiteBuiltinGather:
+      if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/2,
+                                    /*required_const_inputs=*/0,
+                                    /*required_outputs=*/1)
+               .ok() &&
+          !CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/1,
+                                    /*required_const_inputs=*/1,
+                                    /*required_outputs=*/1)
+               .ok()) {
+        return absl::InvalidArgumentError(
+            "Op can only handle 1 or 2 operand(s).");
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt32) {
+        return absl::UnimplementedError("Does not accept INT32 input.\n");
+      }
+      if (op_sig.inputs[1].dims.size() != 1) {
+        return absl::UnimplementedError("Only support 1D indices\n");
+      }
+      return op_sig.inputs.at(1).type == kTfLiteInt32
+                 ? absl::OkStatus()
+                 : absl::UnimplementedError("Only accept INT32 indices\n");
 
     case kTfLiteBuiltinHardSwish:
       return CheckInputsOutputs(op_sig, /*required_runtime_inputs=*/1,

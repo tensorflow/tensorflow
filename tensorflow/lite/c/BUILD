@@ -276,9 +276,9 @@ cc_library_with_tflite_with_c_headers_test(
         ":c_api_types",
     ],
     deps = [
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",

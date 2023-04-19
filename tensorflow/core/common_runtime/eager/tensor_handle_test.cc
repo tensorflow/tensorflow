@@ -277,10 +277,10 @@ TEST_F(PackedTensorHandleTest, PoisonHandle) {
   tensorflow::Status fake_failure_status(absl::StatusCode::kAborted,
                                          "Fake failure.");
   packed_handle->Poison(fake_failure_status, packed_handle->device());
-  EXPECT_THAT(
-      WaitReady(packed_handle),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(WaitReady(packed_handle),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 
   packed_handle->Unref();
 }
@@ -479,11 +479,11 @@ TEST_F(RemoteTensorHandleTest, PoisonRemote) {
   h->PoisonRemote(fake_failure_status, d1, context->GetContextViewId());
 
   Device* d2 = device_mgr.ListDevices().at(2);
-  EXPECT_THAT(
-      h->SetRemoteShapeAndDevice(shape, d1, context->GetContextViewId(),
-                                 d2->name()),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(h->SetRemoteShapeAndDevice(shape, d1, context->GetContextViewId(),
+                                         d2->name()),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 
   h->Unref();
   context->Unref();
@@ -527,11 +527,11 @@ TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
                                          "Fake failure.");
   h->PoisonRemote(fake_failure_status, d2, context->GetContextViewId());
 
-  EXPECT_THAT(
-      h->SetRemoteShapeAndDevice(shape, d2, context->GetContextViewId(),
-                                 d2->name()),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(h->SetRemoteShapeAndDevice(shape, d2, context->GetContextViewId(),
+                                         d2->name()),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 
   h->Unref();
   context->Unref();

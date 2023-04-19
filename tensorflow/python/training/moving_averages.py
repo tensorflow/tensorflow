@@ -14,7 +14,6 @@
 # ==============================================================================
 """Maintain moving averages of parameters."""
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -23,6 +22,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
@@ -96,7 +96,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       else:
         return _update(strategy, v, update_fn, args=(value,))
 
-    replica_context = distribution_strategy_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     if replica_context:
       # In a replica context, we update variable using the mean of value across
       # replicas.
@@ -107,7 +107,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
 
       return replica_context.merge_call(merge_fn, args=(variable, value))
     else:
-      strategy = distribution_strategy_context.get_cross_replica_context()
+      strategy = distribute_lib.get_cross_replica_context()
       return update(strategy, variable, value)
 
 
@@ -177,7 +177,7 @@ def weighted_moving_average(value,
 
 def _update(strategy, var, update_fn, args):
   """Applies updates depending on the context."""
-  assert distribution_strategy_context.in_cross_replica_context(), (
+  assert distribute_lib.in_cross_replica_context(), (
       "_update can only be called in cross-replica context")
   if distribute_lib.get_update_replica_id() is not None:
     # Call update_fn on var to delegate the implementation. We expect `var` will
@@ -551,8 +551,7 @@ class ExponentialMovingAverage:
           if isinstance(var, variables.Variable):
             with ops.device(var.device):
               initialized_value = control_flow_ops.cond(
-                  variables.is_variable_initialized(var),
-                  var.read_value,
+                  variable_v1.is_variable_initialized(var), var.read_value,
                   lambda: var.initial_value)  # pylint: disable=cell-var-from-loop
             avg = slot_creator.create_slot(
                 var,

@@ -124,7 +124,6 @@ using VectorBufferOffset = flatbuffers::Offset<flatbuffers::Vector<T>>;
 
 using CustomOptionsOffset = VectorBufferOffset<uint8_t>;
 
-namespace error = tensorflow::error;
 namespace tfl = mlir::TFL;
 
 ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
@@ -335,7 +334,7 @@ static bool HasValidTFLiteType(Value value, T& error_handler) {
   if (!status.ok()) {
     return error_handler.emitError(
                formatv("Failed to convert element type '{0}': {1}",
-                       element_type, status.status().error_message())),
+                       element_type, status.status().message())),
            false;
   }
   return true;

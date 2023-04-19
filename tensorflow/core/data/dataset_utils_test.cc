@@ -127,7 +127,7 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
   EXPECT_EQ(
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
-      s.error_message());
+      s.message());
 
   FunctionLibraryDefinition flib_1(OpRegistry::Global(), fdef_base);
   FunctionLibraryDefinition flib_to_add(OpRegistry::Global(), fdef_to_add);
@@ -136,7 +136,7 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
   EXPECT_EQ(
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
-      s.error_message());
+      s.message());
 }
 
 TEST(DatasetUtilsTest, StripDevicePlacement) {

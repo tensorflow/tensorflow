@@ -254,6 +254,7 @@ tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ExperimentalWriteBytecode
+tensorflow::ExperimentalTFLiteToTosaBytecode
 tensorflow::ImportGraphDef
 tensorflow::ImportFunction
 

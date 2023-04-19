@@ -15,9 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 
-#include <optional>
-#include <string>
-#include <variant>
+#include <memory>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
@@ -31,12 +29,13 @@ namespace gpu {
 class TritonAutotuner : public HloModulePass {
  public:
   explicit TritonAutotuner(const AutotuningConfig& config,
-                           int num_extra_threads = 0)
-      : config_(config), num_extra_threads_(num_extra_threads) {}
+                           tsl::thread::ThreadPool* thread_pool)
+      : config_(config), thread_pool_(thread_pool) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
   static void ClearAutotuneResults();
+  static void ClearCompilationCache();
   static Status WriteAutotuneResults(AutotuneResults* results);
   static Status LoadAutotuneResults(const AutotuneResults& results);
 
@@ -47,8 +46,13 @@ class TritonAutotuner : public HloModulePass {
 
  private:
   AutotuningConfig config_;
-  int num_extra_threads_;
+  tsl::thread::ThreadPool* thread_pool_;
 };
+
+// Extracts an HLO instruction into a new HLO module replacing its operands
+// with parameter instructions.
+std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
+    const HloInstruction& hlo);
 
 }  // namespace gpu
 }  // namespace xla

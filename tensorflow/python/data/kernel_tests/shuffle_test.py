@@ -18,6 +18,7 @@ import functools
 
 from absl.testing import parameterized
 import numpy as np
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
@@ -25,6 +26,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -34,6 +36,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
@@ -399,19 +402,28 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertNotEqual(shuffle_1, shuffle_2)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testCheckpointLargeShuffleBuffer(self):
-    # Tensor of size 512M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
-    dataset = dataset.repeat()
-    # Set shuffle buffer size to 5 to exceed the 2GB protobuf limit.
-    dataset = dataset.shuffle(5)
+  def testCheckpointLargeBuffer(self):
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled()):
+      self.skipTest("Skip to avoid OOM when using sanitizers.")
+    dataset = dataset_ops.Dataset.range(12).batch(2)
+    dataset = dataset.map(
+        # Create tensors of size 512M.
+        lambda seed: stateless_random_ops.stateless_random_uniform(
+            (128, 1024, 1024), seed, dtype=dtypes.float32
+        )
+    )
+    dataset = dataset.shuffle(buffer_size=6)
     iterator = iter(dataset)
-    next(iterator)  # request an element to fill the shuffle buffer
+    next(iterator)  # Request an element to fill the shuffle buffer
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+    del dataset
+    del iterator
+    manager.restore_or_initialize()
 
   @combinations.generate(test_base.default_test_combinations())
   def testName(self):
@@ -429,32 +441,60 @@ class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       buffer_size=5,
       seed=None,
       reshuffle_each_iteration=None,
+      symbolic_checkpoint=None,
   ):
-    return dataset_ops.Dataset.range(range_limit).shuffle(
-        buffer_size,
-        seed=seed,
-        reshuffle_each_iteration=reshuffle_each_iteration).repeat(num_repeats)
+    dataset = (
+        dataset_ops.Dataset.range(range_limit)
+        .shuffle(
+            buffer_size,
+            seed=seed,
+            reshuffle_each_iteration=reshuffle_each_iteration,
+        )
+        .repeat(num_repeats)
+    )
+
+    if symbolic_checkpoint:
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      dataset = dataset.with_options(options)
+
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
+              symbolic_checkpoint=[True, False],
               reshuffle_each_iteration=[True, False],
-              buffer_size=[1, 3, 5, 8, 10])))
-  def test(self, verify_fn, reshuffle_each_iteration, buffer_size):
+              buffer_size=[1, 3, 5, 8, 10],
+          ),
+      )
+  )
+  def test(
+      self,
+      verify_fn,
+      symbolic_checkpoint,
+      reshuffle_each_iteration,
+      buffer_size,
+  ):
     seed = 55
     range_limit = 5
     num_repeats = 2
     num_outputs = range_limit * num_repeats
     # pylint: disable=g-long-lambda
     verify_fn(
-        self, lambda: self._build_shuffle_dataset(
+        self,
+        lambda: self._build_shuffle_dataset(
             range_limit=range_limit,
             num_repeats=num_repeats,
             buffer_size=buffer_size,
             seed=seed,
-            reshuffle_each_iteration=reshuffle_each_iteration), num_outputs)
+            reshuffle_each_iteration=reshuffle_each_iteration,
+            symbolic_checkpoint=symbolic_checkpoint,
+        ),
+        num_outputs,
+    )
 
   @combinations.generate(
       combinations.combine(

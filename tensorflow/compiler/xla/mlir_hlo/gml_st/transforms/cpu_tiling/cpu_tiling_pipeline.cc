@@ -29,10 +29,14 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
                                                    int64_t statsDetailLevel) {
   GmlStCPUTilingOptions opts;
   opts.vectorSize = 8;
-  opts.reduction1DTileSize = 32;
-  opts.reduction2DTileSizes = {4, 4};
+  opts.reductionEnableHeuristic = false;
+  opts.reduction1DSplitRatio = 8;
+  opts.reduction1DTileSize = 8;
+  opts.reduction2DParallelDimTileSize = 4;
+  opts.reduction2DReductionDimTileSize = 4;
   opts.matmulTileSizes = {};
-  opts.vectorizationSizeThreshold = 128;
+  // TODO(vuson): Re-enable or remove this:
+  opts.vectorizationSizeThreshold = 0;
   opts.vectorizationTiledSizeThreshold = 1024;
   opts.lowerToMmt4d = false;
   opts.enableFusionClusters = false;
@@ -65,13 +69,19 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
 
-  pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(
-      options.vectorSize, options.reduction1DTileSize,
-      options.reduction2DTileSizes));
+
   pm.addNestedPass<FuncOp>(
-      createTransformDotForCpuPass(options.matmulTileSizes));
+      createTransformDotForCpuPass(options.matmulTileSizes, options.cpuName));
+  TransformReduceForCpuPassOptions reductionOpts;
+  reductionOpts.enableHeuristic = options.reductionEnableHeuristic;
+  reductionOpts.tileSize1D = options.reduction1DTileSize;
+  reductionOpts.splitRatio1D = options.reduction1DSplitRatio;
+  reductionOpts.parallelDimTileSize2D = options.reduction2DParallelDimTileSize;
+  reductionOpts.reductionDimTileSize2D =
+      options.reduction2DReductionDimTileSize;
+  pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(reductionOpts));
+
   // Upstream generalization of tensor.pack/unpack (i.e. tensor.pack/unpack ->
   // tensor.pad + linalg.transpose + tensor.insert_slice) does not transfer
   // transformed labels from tensor.pack/unpack to linalg.transpose and thus
@@ -96,6 +106,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   // Tile remaining ops by size one and scalarize what we can.
   pm.addNestedPass<FuncOp>(createTileByOnePass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
+  pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
 
   pm.addPass(createCanonicalizerPass());
 

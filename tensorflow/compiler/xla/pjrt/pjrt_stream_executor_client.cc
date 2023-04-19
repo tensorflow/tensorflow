@@ -691,12 +691,13 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    const Layout* device_layout) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
-  Shape shape = ShapeUtil::MakeShape(type, dims);
+  Shape device_shape = ShapeUtil::MakeShape(type, dims);
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
-          << shape.ToString() << " device: " << device->DebugString();
+          << device_shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
@@ -705,20 +706,24 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
     TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(shape, absl::MakeSpan(tmp_strides)));
+        ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
-  int64_t size = ShapeUtil::ByteSizeOf(shape);
+  int64_t size = ShapeUtil::ByteSizeOf(device_shape);
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(Shape compact_shape,
-                      transfer_manager->ChooseCompactLayoutForShape(shape));
-  absl::InlinedVector<int64_t, 4> compact_shape_strides(
-      compact_shape.dimensions_size());
-  TF_RETURN_IF_ERROR(ShapeUtil::ByteStrides(
-      compact_shape, absl::MakeSpan(compact_shape_strides)));
+  if (device_layout != nullptr) {
+    *(device_shape.mutable_layout()) = *device_layout;
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        device_shape,
+        transfer_manager->ChooseCompactLayoutForShape(device_shape));
+  }
+  absl::InlinedVector<int64_t, 4> shape_strides(device_shape.dimensions_size());
+  TF_RETURN_IF_ERROR(
+      ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
-      (size == 0 || *byte_strides == compact_shape_strides);
+      (size == 0 || *byte_strides == shape_strides);
   // The CPU platform is special because the "host" and the "device" are in the
   // same memory space. If the input shape is in the correct layout and we don't
   // want to defer the copy onto a thread, we can use the following fast
@@ -769,13 +774,13 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
           definition_events, std::move(on_delete_callback));
       return std::unique_ptr<PjRtBuffer>(
           std::make_unique<PjRtStreamExecutorBuffer>(
-              shape, std::move(device_buffer), this, device));
+              device_shape, std::move(device_buffer), this, device));
     }
   }
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
-      AllocateDestinationBuffer(compact_shape, device, local_device,
+      AllocateDestinationBuffer(device_shape, device, local_device,
                                 local_device->host_to_device_stream(),
                                 /*is_uninitialized_create=*/false, this));
 
@@ -800,7 +805,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   std::shared_ptr<TransposePlan> transpose;
   if (!host_and_device_strides_equal) {
     absl::InlinedVector<int64_t, 4> permutation(dims.size());
-    absl::c_reverse_copy(compact_shape.layout().minor_to_major(),
+    absl::c_reverse_copy(device_shape.layout().minor_to_major(),
                          permutation.begin());
     absl::MutexLock lock(&transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose,
@@ -833,7 +838,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d =
       [local_client = client(), transfer_manager, local_device, data, size,
-       movable_device_buffer{device_buffer.ToClosure()}, shape,
+       movable_device_buffer{device_buffer.ToClosure()}, device_shape,
        py_buffer{py_buffer.get()},
        on_device_shape{py_buffer->on_device_shape()},
        staging_buffer{std::move(staging_buffer)},
@@ -901,6 +906,17 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     thread_pool()->Schedule(transfer_h2d);
   }
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+  return BufferFromHostBuffer(data, type, dims, byte_strides,
+                              host_buffer_semantics, on_done_with_host_buffer,
+                              device, /*device_layout=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -2013,7 +2029,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
         done_event.SetError(absl::InternalError(absl::StrFormat(
             "failed to synchronize send operation with a stream: %s",
-            st.error_message())));
+            st.message())));
         return;
       }
 
@@ -2582,7 +2598,7 @@ PjRtStreamExecutorExecutable::Execute(
                "terminated. Aborting process to work around deadlock. "
                "Failure message (there may have been multiple failures, see "
                "the error log for all failures): \n\n"
-            << first_failure_status.error_message();
+            << first_failure_status.message();
       }
     }
   }
@@ -2774,6 +2790,8 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
   tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
   auto input_options = options;
+
+  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
 
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
   std::shared_ptr<DeviceAssignment>& device_assignment =

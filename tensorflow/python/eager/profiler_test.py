@@ -16,7 +16,6 @@
 
 import os
 
-from tensorflow.core.profiler.protobuf import trace_events_pb2
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
@@ -24,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import trace
+from tensorflow.tsl.profiler.protobuf import trace_events_pb2
 
 
 @test_util.with_eager_op_as_function

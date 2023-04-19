@@ -41,9 +41,6 @@ cc_library(
     visibility = ["//tensorflow/compiler/xla/pjrt:friends"],
     deps = [
         ":gpu_helpers",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:client_library",
@@ -60,6 +57,9 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/util:env_var",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ] + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
@@ -97,14 +97,14 @@ cc_library(
     hdrs = ["nccl_id_store.h"],
     defines = if_nccl(["NCCL_ENABLED=1"]),
     deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
@@ -114,14 +114,14 @@ cc_library(
     hdrs = ["nccl_id_store.h"],
     defines = if_nccl(["NCCL_ENABLED=1"]),
     deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 

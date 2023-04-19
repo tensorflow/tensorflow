@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 
+#include <cstddef>
+#include <memory>
+
+#include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
 namespace m = xla::testing::opcode_matchers;
+using ::testing::_;
 
 class AllReduceSimplifierTest : public HloTestBase {
  public:
@@ -40,9 +48,7 @@ class AllReduceSimplifierTest : public HloTestBase {
 
   size_t AllReduceCount(std::unique_ptr<HloModule>& module) {
     return absl::c_count_if(module->entry_computation()->instructions(),
-                            [](const HloInstruction* inst) {
-                              return inst->opcode() == HloOpcode::kAllReduce;
-                            });
+                            HloPredicateIsOp<HloOpcode::kAllReduce>);
   }
 };
 
@@ -330,6 +336,167 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           RunPass(hlo_string, /*expect_change=*/true));
+}
+
+TEST_F(AllReduceSimplifierTest, PaddedUse) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  %constant.1 = f32[] constant(0)
+  pad = f32[12]{0} pad(ar0, constant.1), padding=0_4
+  pad.1 = f32[12]{0} pad(ar1, constant.1), padding=0_4
+  ROOT add = f32[12] add(pad, pad.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              m::AllReduce(m::Add(m::Pad(m::Parameter(0), _),
+                                  m::Pad(m::Parameter(1), _))));
+  EXPECT_EQ(AllReduceCount(module), 1);
+}
+
+TEST_F(AllReduceSimplifierTest, PaddedUseInvalidReduceValue) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  %constant.1 = f32[] constant(-1.0)
+  pad = f32[12]{0} pad(ar0, constant.1), padding=0_4
+  pad.1 = f32[12]{0} pad(ar1, constant.1), padding=0_4
+  ROOT add = f32[12] add(pad, pad.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, PaddedUseNotProfitable) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  %constant.1 = f32[] constant(0)
+  pad = f32[17]{0} pad(ar0, constant.1), padding=0_9
+  pad.1 = f32[17]{0} pad(ar1, constant.1), padding=0_9
+  ROOT add = f32[17] add(pad, pad.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, PaddedUseDoubleUseNotProfitable) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  %constant.1 = f32[] constant(0)
+  pad = f32[9]{0} pad(ar0, constant.1), padding=0_1
+  ROOT add = f32[9] add(pad, pad)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/false));
+  EXPECT_EQ(AllReduceCount(module), 1);
+}
+
+TEST_F(AllReduceSimplifierTest, ReshapeUse) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[1,8] parameter(0)
+  p1 = f32[1,8] parameter(1)
+  ar0 = f32[1,8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[1,8] all-reduce(p1), replica_groups={}, to_apply=sum
+  rshp0 = f32[8]{0} reshape(ar0)
+  rshp1 = f32[8]{0} reshape(ar1)
+  ROOT add = f32[8] add(rshp0, rshp1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              m::AllReduce(m::Add(m::Reshape(m::Parameter(0)),
+                                  m::Reshape(m::Parameter(1)))));
+  EXPECT_EQ(AllReduceCount(module), 1);
+}
+
+TEST_F(AllReduceSimplifierTest, SliceUse) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  rshp0 = f32[4]{0} slice(ar0), slice={[0:4]}
+  rshp1 = f32[4]{0} slice(ar1), slice={[0:4]}
+  ROOT add = f32[4] add(rshp0, rshp1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              m::AllReduce(m::Add(m::Slice(m::Parameter(0)),
+                                  m::Slice(m::Parameter(1)))));
+  EXPECT_EQ(AllReduceCount(module), 1);
 }
 
 }  // namespace

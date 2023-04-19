@@ -22,7 +22,7 @@ from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -719,7 +719,7 @@ class ShardedVariableSaveLoadTest(test.TestCase, parameterized.TestCase):
           variable_partitioner=sharded_variable.FixedShardsPartitioner(
               num_shards))
     else:
-      strategy = ds_context._get_default_strategy()
+      strategy = distribute_lib._get_default_strategy()
     return strategy
 
   @combinations.generate(

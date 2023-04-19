@@ -18,7 +18,9 @@
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.data.util import structure  # pylint: disable=unused-import
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager.polymorphic_function import atomic_function
+from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
@@ -27,7 +29,6 @@ from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util import tf_contextlib
-
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
 _DISABLE_LOWER_USING_SWITCH_MERGE = False
@@ -66,7 +67,7 @@ def create_new_tf_function(func_graph):
   Returns:
     The name of the new TF_Function.
   """
-  func = function._EagerDefinedFunction(  # pylint: disable=protected-access
+  func = atomic_function.from_func_graph(
       func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
 
   func_graph.outer_graph._add_function_recursive(func)  # pylint: disable=protected-access
@@ -163,7 +164,7 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
     tensor_name: the name of the resource tensor to be resolved to an input.
     input_names: a list of the names of all inputs to the function.
     node_defs: a dict mapping op name -> NodeDef for every op in the function.
-    functions: a dict mapping function name -> _EagerDefinedFunction.
+    functions: a dict mapping function name -> AtomicFunction.
 
   Returns:
     The index into input_names corresponding to `tensor_name`.
@@ -331,7 +332,9 @@ def get_func_graph(op, input_shapes, func_name):
     if operation.type in ["PartitionedCall", "StatefulPartitionedCall"]:
       f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
       try:
-        cf = function.ConcreteFunction(f.graph, attrs=f.cached_definition.attr)
+        cf = monomorphic_function.ConcreteFunction(
+            f.graph, attrs=f.cached_definition.attr
+        )
       except AttributeError:
         # f is not found or f is a _DefinedFunction that doesn't have a graph.
         continue
@@ -384,10 +387,10 @@ def run_as_function_for_tape_gradients(make_op, inputs):
       # wrapped once, we stop wrapping to avoid infinite recursion.
       and not (ops.get_default_graph().building_function
                and "cflow_gradient_wrapper" in ops.get_default_graph().name)):
-    results = function.defun_with_attributes(
+    results = tracing_compiler.TracingCompiler(
         make_op,
-        autograph=False,
-        attributes=dict(func_name="cflow_gradient_wrapper"))(inputs)
+        "cflow_gradient_wrapper",
+        autograph=False)(inputs)
     return results
   else:
     return make_op(inputs)

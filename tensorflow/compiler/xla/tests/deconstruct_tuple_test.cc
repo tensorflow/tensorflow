@@ -164,7 +164,7 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().error_message(),
+  EXPECT_THAT(result_status.status().message(),
               ContainsRegex("global data handle .* is not a tuple"));
 }
 
@@ -184,6 +184,10 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
+  }
+
   XlaBuilder builder(TestName());
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
@@ -192,7 +196,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().error_message(),
+  EXPECT_THAT(result_status.status().message(),
               HasSubstr("Deconstructing nested tuples is not implemented"));
 }
 

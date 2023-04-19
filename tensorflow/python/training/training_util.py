@@ -22,6 +22,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
@@ -396,7 +397,7 @@ def _get_or_create_global_step_read(graph=None):
       # under global_step_read_tensor dependency.
       if isinstance(global_step_tensor, variables.Variable):
         global_step_value = control_flow_ops.cond(
-            variables.is_variable_initialized(global_step_tensor),
+            variable_v1.is_variable_initialized(global_step_tensor),
             global_step_tensor.read_value,
             lambda: global_step_tensor.initial_value)
       else:

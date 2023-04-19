@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
@@ -804,6 +806,35 @@ std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
 }
 
 template <typename BufferType>
+std::string
+GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval::ToString() const {
+  return absl::StrCat("{ ",                                           //
+                      "buffer: ", buffer->ToString(), ", ",           //
+                      "size: ", size, ", ",                           //
+                      "start: ", start, ", ",                         //
+                      "end: ", end, ", ",                             //
+                      "num_colocations: ", colocations.size(), ", ",  //
+                      "need_allocation: ", need_allocation,           //
+                      " }");
+}
+
+template <typename BufferType>
+std::string GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedBufferInterval::ToString() const {
+  return absl::StrCat(
+      "{ full_buffer_interval: ", full_buffer_interval.ToString(),
+      ", sorted_slices: [ ",
+      absl::StrJoin(sorted_slices, ", ",
+                    [](std::string* out,
+                       const SlicedBufferInterval::IntervalSlice& slice) {
+                      absl::StrAppend(out, "{ size: ", slice.size,
+                                      ", allocation_start_time: ",
+                                      slice.allocation_start_time, " }");
+                    }),
+      " ] }");
+}
+
+template <typename BufferType>
 HeapSimulator::Result<BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
@@ -844,10 +875,28 @@ typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
     int64_t preferred_offset) const {
-  VLOG(1) << "Finding chunks for buffer: "
-          << buffer_interval.buffer->ToString();
-  VLOG(1) << "Size " << buffer_interval.size << ", start "
-          << buffer_interval.start << ", end " << buffer_interval.end;
+  SlicedBufferInterval sliced_buffer_interval(buffer_interval);
+  std::vector<Chunk> chunks =
+      FindChunkCandidates(sliced_buffer_interval, preferred_offset);
+  CHECK_EQ(chunks.size(), 1);
+  return chunks[0];
+}
+
+template <typename BufferType>
+std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
+GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
+    const SlicedBufferInterval& sliced_buffer_interval,
+    int64_t preferred_offset) const {
+  const BufferInterval& buffer_interval =
+      sliced_buffer_interval.full_buffer_interval;
+  // TODO(b/275905276): changes this method to account for slicing and remove
+  // the following check
+  CHECK(sliced_buffer_interval.sorted_slices.empty())
+      << "Chunk slicing is not yet supported.";
+
+  VLOG(1) << "Finding chunks for sliced buffer interval: "
+          << sliced_buffer_interval.ToString();
+
   // Get all colocated buffers and gather all interferenced chunks.
   //
   // Imagine that we've already allocated three chunks : a, b and c.  And now
@@ -867,6 +916,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   //   ||   |  |               |  |       |
   //   |+-a-+  +-------b-------+  +---c---+
   //   ----------------------------------------> time
+
+  // TODO(b/275905276): when slicing, build free_chunks for each consecutive
+  // slice time, where slice time is logical time.
 
   // Map free chunk offsets -> ends.
   // We use `greater` for the comparison so that we can use `lower_bound` to
@@ -930,6 +982,10 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
         interval_tree_.ChunksOverlappingInTime(interval.start, interval.end));
   }
 
+  // TODO(b/275905276): when slicing, merge the free_chunks for each slice time.
+  // The end result should be a list of free chunks in which buffer_interval
+  // not only fits in each free chunk, but the slices of buffer interval can
+  // be allocated according to their requirements.
   // Try to find a large enough free chunk containing the preferred offset.
   Chunk chunk{preferred_offset, max_colocation_size};
   auto it = (preferred_offset < 0) ? free_chunks.end()
@@ -943,7 +999,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
                             std::forward_as_tuple(b.second - b.first, b.first);
                    })->first;
   }
-  return chunk;
+  return {chunk};
 }
 
 template <typename BufferType>

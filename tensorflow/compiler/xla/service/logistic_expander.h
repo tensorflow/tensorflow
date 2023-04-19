@@ -24,16 +24,10 @@ limitations under the License.
 
 namespace xla {
 
-enum class LogisticExpansionType {
-  kTanh,  // Expands as 0.5 + 0.5*tanh(0.5*x)
-  kExp,   // Expands as 1.0 / (1.0 + exp(-x))
-};
-
 // A pass which performs expansion of the logistic function.
 class LogisticExpander : public OpExpanderPass {
  public:
-  explicit LogisticExpander(LogisticExpansionType expansion_type)
-      : expansion_type_(expansion_type) {}
+  LogisticExpander() = default;
   ~LogisticExpander() override = default;
   absl::string_view name() const override { return "logistic-expander"; }
 
@@ -45,7 +39,6 @@ class LogisticExpander : public OpExpanderPass {
   // modified).
   StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
-  LogisticExpansionType expansion_type_;
 };
 
 }  // namespace xla

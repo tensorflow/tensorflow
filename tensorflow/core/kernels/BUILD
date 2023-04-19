@@ -31,6 +31,10 @@ load(
     "if_mkl",
     "mkl_deps",
 )
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_onednn_v3",
+)
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -188,6 +192,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/activity_watcher",
+        "//tensorflow/core/activity_watcher:activity_watcher_utils",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
         "//tensorflow/core/nccl:collective_communicator",
@@ -282,11 +288,11 @@ tf_kernel_library(
         ":eigen_helpers",
         ":fill_functor",
         ":ops_util",
-        "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
     ] + if_cuda_or_rocm([":gpu_utils"]),
     alwayslink = 1,
 )
@@ -524,10 +530,6 @@ tf_cuda_library(
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
@@ -539,6 +541,10 @@ tf_cuda_library(
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
@@ -1513,6 +1519,7 @@ tf_kernel_library(
     srcs = ["cudnn_rnn_ops.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cast_op",
         ":gpu_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1893,8 +1900,6 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":relu_op",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:core_cpu",
@@ -1906,6 +1911,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
     ]),
@@ -3937,13 +3944,15 @@ tf_kernel_library(
     name = "conv_ops",
     srcs = [
         "conv_grad_filter_ops.cc",
+        "conv_grad_filter_ops_3d.cc",
+        "conv_grad_filter_ops_launcher.cc",
         "conv_grad_input_ops.cc",
+        "conv_grad_input_ops_3d.cc",
         "conv_grad_input_ops_bfloat16.cc",
         "conv_grad_input_ops_double.cc",
         "conv_grad_input_ops_float.cc",
         "conv_grad_input_ops_half.cc",
         "conv_grad_input_ops_int32.cc",
-        "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
     ],
     hdrs = [
@@ -3971,10 +3980,6 @@ tf_kernel_library(
         ":fused_eigen_output_kernels",
         ":loose_headers",
         ":ops_util",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3985,6 +3990,10 @@ tf_kernel_library(
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
@@ -5026,9 +5035,9 @@ tf_kernel_library(
     prefix = "sparse_tensor_dense_matmul_op",
     deps = SPARSE_DEPS + [
         ":fill_functor",
-        "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:determinism_for_kernels",
+        "//third_party/eigen3",
     ],
 )
 
@@ -5049,10 +5058,10 @@ tf_kernel_library(
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
-        "//third_party/eigen3",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:determinism_for_kernels",
+        "//third_party/eigen3",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
@@ -5241,8 +5250,8 @@ tf_kernel_library(
     name = "count_ops",
     prefix = "count_ops",
     deps = STATE_DEPS + [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core/framework:op_requires",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -5678,10 +5687,10 @@ tf_kernel_library(
         ":random_op",
         ":random_ops",
         ":stateless_random_ops",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]),
@@ -6419,14 +6428,16 @@ filegroup(
         "control_flow_ops.cc",
         "conv_2d.h",
         "conv_grad_filter_ops.cc",
+        "conv_grad_filter_ops_3d.cc",
+        "conv_grad_filter_ops_launcher.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_input_ops.h",
+        "conv_grad_input_ops_3d.cc",
         "conv_grad_input_ops_double.cc",
         "conv_grad_input_ops_float.cc",
         "conv_grad_input_ops_half.cc",
         "conv_grad_input_ops_int32.cc",
         "conv_grad_ops.h",
-        "conv_grad_ops_3d.cc",
         "conv_grad_shape_utils.cc",
         "conv_grad_shape_utils.h",
         "conv_ops.cc",
@@ -6473,7 +6484,7 @@ filegroup(
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_isnan.cc",
-        "cwise_op_leakyrelu_bf16.cc",
+        "cwise_op_leakyrelu.cc",
         "cwise_op_left_shift.cc",
         "cwise_op_less.cc",
         "cwise_op_less_equal.cc",
@@ -7116,7 +7127,6 @@ tf_cc_binary(
         ],
         "//conditions:default": [
             ":quantized_ops",
-            "//third_party/eigen3",
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:client_session",
             "//tensorflow/core:core_cpu_internal",
@@ -7124,6 +7134,7 @@ tf_cc_binary(
             "//tensorflow/core:lib",
             "//tensorflow/core:test",
             "//tensorflow/core/framework:tensor_testutil",
+            "//third_party/eigen3",
         ],
     }),
 )
@@ -7796,7 +7807,7 @@ tf_cc_shared_library(
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
         # copybara:comment_end
-    ],
+    ] + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_platform_strings",
@@ -7911,7 +7922,7 @@ exports_files([
     "cwise_op_greater.cc",
     "cwise_op_greater_equal.cc",
     "cwise_op_isinf.cc",
-    "cwise_op_leakyrelu_bf16.cc",
+    "cwise_op_leakyrelu.cc",
     "cwise_op_less.cc",
     "cwise_op_less_equal.cc",
     "cwise_op_log.cc",

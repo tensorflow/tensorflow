@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
 namespace tensorflow {
@@ -160,15 +161,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     return;
   }
 
-  // These ops are cheap regardless of their input sizes.
-  //
-  // TODO(chky): Find a more scalable way to figure out cheap ops.
-  if (llvm::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,
-                mlir::TF::ReshapeOp, mlir::TF::ExpandDimsOp>(op)) {
-    cost_map_[op] = kDefaultCheapCost;
-    return;
-  }
-
   // Try to use its cost function if it is registered.
   const auto& registry = GetCostFunctionRegistry();
   absl::string_view op_name = op->getName().getStringRef();
@@ -177,6 +169,25 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     CostContext context;
     context.default_unranked_tensor_size = max_arg_size_;
     cost_map_[op] = iter->second(context, op);
+    return;
+  }
+
+  // Try to use the recorded cost if any.
+  if (cost_recorder_ != nullptr) {
+    const auto op_key_attr =
+        op->getAttrOfType<mlir::IntegerAttr>(kOpKeyAttrName);
+    if (op_key_attr) {
+      cost_map_[op] = cost_recorder_->GetCost(op_key_attr.getInt());
+      return;
+    }
+  }
+
+  // These ops are cheap regardless of their input sizes.
+  //
+  // TODO(chky): Find a more scalable way to figure out cheap ops.
+  if (llvm::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,
+                mlir::TF::ReshapeOp, mlir::TF::ExpandDimsOp>(op)) {
+    cost_map_[op] = kDefaultCheapCost;
     return;
   }
 

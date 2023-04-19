@@ -350,6 +350,9 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     LOG(ERROR) << "Failed to start client for default data transfer protocol '"
                << default_protocol << "'; falling back to grpc. "
                << "Original error: " << worker.status();
+    metrics::RecordTFDataServiceDataTransferProtocolFallback(
+        default_protocol, static_cast<error::Code>(worker.status().raw_code()),
+        worker.status().error_message());
   }
   return CreateWorkerClient(kGrpcTransferProtocol, task_info);
 }
@@ -587,7 +590,7 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
       status_ = errors::CreateWithUpdatedMessage(
           s, absl::StrCat("Failed to get element from worker ",
                           task_to_process->info.worker_address(), ": ",
-                          s.error_message()));
+                          s.message()));
       get_next_cv_.notify_all();
       return;
     }
@@ -775,7 +778,7 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
                  << "Original error: " << s;
       metrics::RecordTFDataServiceDataTransferProtocolError(
           DefaultDataTransferProtocol(), static_cast<error::Code>(s.raw_code()),
-          s.error_message());
+          std::string(s.message()));
       continue;
     }
     if (!IsCoordinatedRead()) {

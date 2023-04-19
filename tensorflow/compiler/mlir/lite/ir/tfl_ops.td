@@ -4053,6 +4053,45 @@ def TFL_BitcastOp : TFL_Op<"bitcast", [Pure]> {
   let hasVerifier = 1;
 }
 
+def TFL_BitwiseXorOp : TFL_Op<"bitwise_xor", [
+    Commutative,
+    SameOperandsAndResultElementType,
+    Pure]> {
+  let summary = "Bitwise Xor operator";
+
+  let description = [{
+    Elementwise computes the bitwise XOR of `lhs` and `rhs`.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[I8, UI8, I16, UI16, I32, UI32]>:$lhs,
+    TFL_TensorOf<[I8, UI8, I16, UI16, I32, UI32]>:$rhs
+  );
+
+  let results = (outs
+    TFL_TensorOf<[I8, UI8, I16, UI16, I32, UI32]>:$output
+  );
+}
+
+def TFL_RightShiftOp : TFL_Op<"right_shift", [
+    SameOperandsAndResultElementType,
+    Pure]> {
+  let summary = "Right Shift operator";
+
+  let description = [{
+    Elementwise computes the bitwise right-shift of `lhs` by `rhs`.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[I8, UI8, I16, UI16, I32, UI32]>:$lhs,
+    TFL_TensorOf<[I8, UI8, I16, UI16, I32, UI32]>:$rhs
+  );
+
+  let results = (outs
+    TFL_TensorOf<[I8, UI8, I16, UI16, I32, UI32]>:$output
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//

@@ -18,6 +18,7 @@ import functools
 import itertools
 import multiprocessing.pool
 import pickle
+import platform
 import re
 import sys
 import time
@@ -988,8 +989,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(a, math_ops.matmul(t, t).numpy())
     self.assertAllEqual(b['b'].numpy(), 1.0)
 
-  def testGraphFunctionNoneOutput(self):
+  def testZipStrictBuiltin(self):
+    major, minor, _ = platform.python_version_tuple()
+    if not (major == '3' and int(minor) >= 10):
+      self.skipTest('strict zip is only supported in Python 3.10+')
 
+    @polymorphic_function.function
+    def foo(x):
+      return list(zip([x], [x], strict=True))
+
+    self.assertEqual(foo(2)[0][0].numpy(), 2)
+
+  def testGraphFunctionNoneOutput(self):
     @polymorphic_function.function
     def fn(unused_a, unused_b):
       return None
@@ -4623,6 +4634,70 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Constant folded execution is usually 15 - 20 times faster. Here we check
     # for a 5x speedup to account for various machines the test might run on.
     self.assertLess(opt_benchmark * 5, benchmark)
+
+  @test_util.run_v2_only
+  def test_small_constants_optimization_with_grappler(self):
+    def func(inp):
+      x = constant_op.constant(1)
+      for _ in range(1000):
+        if inp:
+          x = x + constant_op.constant(1)
+        else:
+          x = x + constant_op.constant(2)
+      return x
+
+    brancher = polymorphic_function.function(func)
+    brancher_opt = polymorphic_function.function(
+        func, experimental_attributes={'runtime_constant_optimization': True}
+    )
+
+    # Trace each function once.
+    with ops.device_v2('CPU'):
+      x = constant_op.constant(True)
+    self.assertEqual(brancher(x), brancher_opt(x))
+
+    benchmark = min(timeit.repeat(lambda: brancher(x), repeat=5, number=100))
+    opt_benchmark = min(
+        timeit.repeat(lambda: brancher_opt(x), repeat=5, number=100)
+    )
+
+    # Constant folded execution is usually 15 - 20 times faster. Here we check
+    # for a 3x speedup to account for various machines the test might run on.
+    # Specially the kokoro machines seems to run much slower.
+    self.assertLess(opt_benchmark * 3, benchmark)
+
+  @test_util.run_v2_only
+  @test_util.run_gpu_only
+  def test_small_constants_optimization_disabled(self):
+    @polymorphic_function.function(
+        experimental_attributes={'runtime_constant_optimization': True}
+    )
+    def func(inp):
+      return inp
+
+    x = constant_op.constant(True)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        (
+            'Expecting boolean tensor to be on host when'
+            ' small_constants_optimizer is enabled.'
+        ),
+    ):
+      func(x)
+
+  @test_util.run_v2_only
+  def test_small_constants_optimization_invalid_input(self):
+    @polymorphic_function.function(
+        experimental_attributes={'runtime_constant_optimization': True}
+    )
+    def func(inp):
+      return inp
+
+    with ops.device_v2('CPU'):
+      x = constant_op.constant([True, True])
+    # runtime_constant_optimization should not crash when the tf.function
+    # is passed in a boolean tensor having > 1 element.
+    self.assertAllEqual(func(x), x)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

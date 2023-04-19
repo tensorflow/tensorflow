@@ -203,10 +203,10 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
           // some issue with device names.
           if (device_attr.str().find(devices[device_local_name]) ==
               std::string::npos) {
-            LOG(WARNING) << "found two devices with same local name but "
-                            "conflicting fullname: "
-                         << device_attr.str() << " and "
-                         << devices[device_local_name];
+            LOG(WARNING) << "found two devices with same local name "
+                         << device_local_name
+                         << " but conflicting fullname: " << device_attr.str()
+                         << " and " << devices[device_local_name];
           }
           devices[device_local_name] = device_attr.str();
         }

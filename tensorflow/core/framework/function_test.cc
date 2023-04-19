@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -1096,7 +1097,7 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
   fdef.mutable_signature()->set_name("Add");
   Status s = lib_def.AddFunctionDef(fdef);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'Add' because an op with the same name "
             "already exists.");
 
@@ -1122,7 +1123,7 @@ TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
   grad.set_gradient_func(test::function::XTimes16().signature().name());
   Status s = lib_def.AddGradientDef(grad);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'XTimes16' to 'XTimesTwo' because "
             "it already has gradient function 'XTimesFour'");
 }
@@ -1133,8 +1134,7 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
 
   Status s = lib_def.RemoveFunction("XTimes16");
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
-            "Tried to remove non-existent function 'XTimes16'.");
+  EXPECT_EQ(s.message(), "Tried to remove non-existent function 'XTimes16'.");
 
   EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
   TF_EXPECT_OK(lib_def.RemoveFunction("XTimesTwo"));
@@ -1172,7 +1172,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto);
   Status s = lib_def.AddLibrary(lib_def2);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'XTimesTwo' because a different function with "
             "the same name already exists.");
 
@@ -1183,7 +1183,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   FunctionLibraryDefinition lib_def3(OpRegistry::Global(), proto);
   s = lib_def.AddLibrary(lib_def3);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'XTimes16' to 'XTimesTwo' because "
             "it already has gradient function 'XTimesFour'");
 
@@ -1223,7 +1223,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
   EXPECT_EQ(
       "Cannot add function 'XTimesTwo' because a different function with "
       "the same name already exists.",
-      s.error_message());
+      s.message());
 
   // Verify that none of the functions are added
   EXPECT_TRUE(lib_def.Find(x2_name) == nullptr);
@@ -1236,7 +1236,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
   // Try adding the library and check that nothing was added
   s = lib_def.AddLibrary(proto);
   EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'SecondGradName' to 'XTimesTwo' "
             "because it already has gradient function 'XTimesFour'");
   EXPECT_TRUE(lib_def.Find(x2_name) == nullptr);
@@ -1274,7 +1274,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_FuncConflict) {
   EXPECT_EQ(
       "Cannot add function 'XTimesTwo' because a different function "
       "with the same name already exists.",
-      s.error_message());
+      s.message());
   EXPECT_TRUE(lib_def.Find(wx_name) == nullptr);
   EXPECT_EQ(1, lib_def.ToProto().function_size());
   EXPECT_EQ(1, lib_def.ToProto().gradient_size());
@@ -1310,7 +1310,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_GradConflict) {
   EXPECT_EQ(
       "Cannot assign gradient function 'WXPlusB' to 'XTimesTwo'"
       " because it already has gradient function 'XTimesFour'",
-      s.error_message());
+      s.message());
   EXPECT_TRUE(lib_def.Find(wx_name) == nullptr);
   EXPECT_EQ(1, lib_def.ToProto().function_size());
   EXPECT_EQ(1, lib_def.ToProto().gradient_size());
@@ -1505,6 +1505,17 @@ TEST(FunctionLibraryDefinitionTest, AddAndFindOptimizedFunctionGraph) {
   OptimizedFunctionGraph proto;
   lib_def.AddOptimizedFunctionGraph("test", proto);
   EXPECT_NE(lib_def.FindOptimizedFunctionGraph("test"), nullptr);
+}
+
+TEST(FunctionLibraryDefinitionTest, MoveTest) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  const OptimizedFunctionGraph proto;
+  lib_def.AddOptimizedFunctionGraph("test", proto);
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+
+  FunctionLibraryDefinition copy_lib_def = std::move(lib_def);
+  EXPECT_TRUE(copy_lib_def.Contains("XTimesTwo"));
+  EXPECT_NE(copy_lib_def.FindOptimizedFunctionGraph("test"), nullptr);
 }
 
 // TODO(skyewm): this could be more thorough

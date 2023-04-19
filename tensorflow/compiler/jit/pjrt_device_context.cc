@@ -41,20 +41,38 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
                       shape_determination_fns.shape_representation_fn(
                           cpu_tensor->shape(), cpu_tensor->dtype(),
                           /*fast_mem=*/false, layout_preference));
+
+  const xla::Layout* device_layout = &(shape.layout());
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * pjrt_device,
       pjrt_client->LookupAddressableDevice(device->parsed_name().id));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtBuffer> buffer,
-      pjrt_client->BufferFromHostBuffer(
-          cpu_tensor->data(), shape.element_type(), shape.dimensions(),
-          /*byte_strides=*/std::nullopt,
-          xla::PjRtClient::HostBufferSemantics::kZeroCopy,
-          /*on_done_with_host_buffer=*/
-          [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
-  return buffer;
+  auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
+      cpu_tensor->data(), shape.element_type(), shape.dimensions(),
+      /*byte_strides=*/std::nullopt,
+      xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+      /*on_done_with_host_buffer=*/
+      [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
+      device_layout);
+  if (first_try_buffer.ok()) {
+    return std::move(*first_try_buffer);
+  }
+  if (first_try_buffer.status().code() == absl::StatusCode::kUnimplemented) {
+    LOG_FIRST_N(WARNING, 1)
+        << first_try_buffer.status()
+        << "; fallback to BufferFromHostBuffer without device layout.";
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::PjRtBuffer> second_try_buffer,
+        pjrt_client->BufferFromHostBuffer(
+            cpu_tensor->data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+            /*on_done_with_host_buffer=*/
+            [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
+    return second_try_buffer;
+  } else {
+    return first_try_buffer.status();
+  }
 }
-
 }  // namespace
 
 void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
@@ -111,11 +129,10 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     done(buffer_or.status());
     return;
   }
-  std::unique_ptr<xla::PjRtBuffer> device_buffer = std::move(buffer_or.value());
+  result_tensor->SetBuffer(std::move(*buffer_or));
   // TODO(b/244666476): evaluate the performance impact of marking ready when
   // the data in device buffer is computed.
-  device_buffer->GetReadyFuture().OnReady(std::move(done));
-  result_tensor->SetBuffer(std::move(device_buffer));
+  result_tensor->GetBuffer()->GetReadyFuture().OnReady(std::move(done));
 }
 
 void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,

@@ -1,7 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "set_external_visibility", "tsl_copts")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_gpu_cc_test")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
@@ -28,7 +28,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = set_external_visibility([":friends"]),
     features = ["-layering_check"],
     licenses = ["notice"],
 )
@@ -593,13 +593,13 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ]) + [
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:numbers",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = True,
 )

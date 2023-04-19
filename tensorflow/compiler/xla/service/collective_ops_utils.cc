@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -62,6 +64,22 @@ std::optional<ReductionKind> MatchReductionComputation(
     kind = std::nullopt;
   }
   return kind;
+}
+
+std::optional<Literal> GetReductionIdentity(ReductionKind kind,
+                                            PrimitiveType type) {
+  switch (kind) {
+    case ReductionKind::SUM:
+      return LiteralUtil::Zero(type);
+    case ReductionKind::PRODUCT:
+      return LiteralUtil::One(type);
+    case ReductionKind::MIN:
+      return LiteralUtil::MaxValue(type);
+    case ReductionKind::MAX:
+      return LiteralUtil::MinValue(type);
+    default:
+      return std::nullopt;
+  }
 }
 
 StatusOr<std::vector<int>> GetParticipatingIDs(

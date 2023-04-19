@@ -158,6 +158,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->SerializeExecutable();
   }
 
+  StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return wrapped_->GetCompileOptions();
+  }
+
  private:
   TfPjRtClient* client_;
   std::unique_ptr<PjRtLoadedExecutable> wrapped_;
@@ -247,6 +251,16 @@ class TfPjRtClient : public PjRtClient {
     return WrapBuffer(wrapped_->BufferFromHostBuffer(
         data, type, dims, byte_strides, host_buffer_semantics,
         on_done_with_host_buffer, device));
+  }
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) override {
+    return WrapBuffer(wrapped_->BufferFromHostBuffer(
+        data, type, dims, byte_strides, host_buffer_semantics,
+        on_done_with_host_buffer, device, device_layout));
   }
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {

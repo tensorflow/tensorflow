@@ -1457,7 +1457,7 @@ class OpConverterTest : public ::testing::Test {
 
   void RunConversion(const Node* node,
                      absl::StatusCode expected_code = absl::StatusCode::kOk,
-                     const std::string& expected_msg_substr = "") {
+                     absl::string_view expected_msg_substr = "") {
     EXPECT_THAT(converter_->ConvertNode(node->def()),
                 StatusIs(expected_code, HasSubstr(expected_msg_substr)));
     if (expected_code == absl::StatusCode::kOk) {
@@ -1470,7 +1470,7 @@ class OpConverterTest : public ::testing::Test {
   void RunValidationAndConversion(
       const NodeDef& node_def,
       absl::StatusCode expected_code = absl::StatusCode::kOk,
-      const std::string& expected_msg_substr = "",
+      absl::string_view expected_msg_substr = "",
       bool should_run_conversion = true) {
     // Add the node to the graph.
     // TODO(laigd): we should accept a function that adds the node using
@@ -1505,7 +1505,7 @@ class OpConverterTest : public ::testing::Test {
       const std::vector<std::vector<int>>& exp_out_dims) {
     RunValidationAndConversion(node_def,
                                static_cast<absl::StatusCode>(status.code()),
-                               status.error_message(), true);
+                               status.message(), true);
 
     if (status.ok()) {
       // TODO(tfeher): Enable this check in explicit_batch_mode.

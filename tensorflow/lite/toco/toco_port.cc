@@ -75,7 +75,7 @@ namespace file {
 tensorflow::Status ToStatus(const absl::Status& uts) {
   if (!uts.ok()) {
     return tensorflow::Status(absl::StatusCode(::util::RetrieveErrorCode(uts)),
-                              uts.error_message());
+                              uts.message());
   }
   return ::tensorflow::OkStatus();
 }

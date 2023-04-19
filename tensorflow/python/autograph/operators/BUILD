@@ -32,7 +32,6 @@ py_library(
         "//tensorflow/python:list_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/autograph/utils:ag_logging",
@@ -43,6 +42,9 @@ py_library(
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
         "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:variable_utils",
         "//third_party/py/numpy",
     ],
 )
@@ -121,7 +123,6 @@ py_test(
         # TODO(b/145618471): Remove this transitive dependency.
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
-        "//tensorflow/python/ops/signal",
     ],
 )
 

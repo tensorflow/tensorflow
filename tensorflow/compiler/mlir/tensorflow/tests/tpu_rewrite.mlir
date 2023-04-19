@@ -752,7 +752,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK-SAME: ([%[[A_OUTPUT]], %[[ARG_0]]] as %[[RI_0:[a-z0-9]*]]: tensor<?xi32>)
-    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}
+    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST_0 = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}
     // CHECK-SAME: n = 2
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
       // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[RI_0]])
@@ -1402,7 +1402,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK-NOT:"tf._TPUCompileMlirPlaceholderProgramKey"
       // CHECK:    "tf.E"(%[[COMPILE_OUTPUT]]#1
       %3 = "tf_device.parallel_execute"() ({
-         %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+        %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
         "tf.D"(%program) : (tensor<3x!tf_type.string>) -> ()
         tf_device.return
       }, {
@@ -1585,7 +1585,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   // CHECK-LABEL: func @replicated_parallel_execute
   func.func @replicated_parallel_execute(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
     // CHECK: tf_device.replicate
-    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"], TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"], TPU_REPLICATED_HOST = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"]}
+    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"], TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"], TPU_REPLICATED_HOST_0 = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"], TPU_REPLICATED_HOST_1 = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"]}
     %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
       // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
       // CHECK-NEXT:   "tf._TPUCompileMlir"()
@@ -2641,6 +2641,35 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
     "tf._XlaHostComputeMlir"(%0) {host_mlir_module = "", recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args"} : (tensor<?xi32>) -> ()
     %1 = "tf.C"() : () -> tensor<?xi32>
     return %1 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Check that a TPUCompileMlirPlaceholderProgramKey that is above the
+// parallel_execute is replaced.
+
+// CHECK-LABEL: func @compile_placeholder_outside_parallel_execute
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func.func @compile_placeholder_outside_parallel_execute(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
+    // CHECK-NOT:"tf._TPUCompileMlirPlaceholderProgramKey"
+    %0:2 = tf_device.replicate([%arg0, %arg1] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+      %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+      %1 = "tf_device.parallel_execute"() ({
+        "tf.D"(%program) : (tensor<3x!tf_type.string>) -> ()
+        tf_device.return
+      }, {
+        %2 = "tf_device.cluster_func"(%ri_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
+        tf_device.return %2 : tensor<?xi32>
+      }) : () -> (tensor<?xi32>)
+      tf_device.return %1 : tensor<?xi32>
+    }
+    func.return %0#1 : tensor<?xi32>
+  }
+
+  func.func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 

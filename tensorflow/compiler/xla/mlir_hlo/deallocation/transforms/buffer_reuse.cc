@@ -42,6 +42,7 @@ namespace {
 
 SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
                                SmallVector<Value> freeAllocs) {
+  if (region.empty()) return freeAllocs;
   assert(region.hasOneBlock() && "expected the region to have a single block");
   // Hoist local allocs out of the loop.
   // TODO(jreiffers): Add some smarts here so we don't blow up the heap for
@@ -74,19 +75,18 @@ SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
         dealloc->erase();
         op = op->getNextNode();
         alloc->erase();
+        result.push_back(*reusable);
         *reusable = {};
       }
     } else {
       op = op->getNextNode();
     }
   }
+  // Return remaining free allocs.
+  for (auto reusable : freeAllocs) {
+    if (reusable) result.push_back(reusable);
+  }
   return result;
-}
-
-bool hoistAllocs(scf::WhileOp op) {
-  auto beforeAllocs = hoistAllocs(op, op.getBefore(), {});
-  auto afterAllocs = hoistAllocs(op, op.getAfter(), beforeAllocs);
-  return !beforeAllocs.empty() || !afterAllocs.empty();
 }
 
 // Hoists allocs from while and for loops.
@@ -101,12 +101,12 @@ bool hoistAllocs(Block& block) {
       }
     }
 
-    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
-      result |= hoistAllocs(whileOp);
-    }
-
-    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
-      result |= !hoistAllocs(forOp, forOp.getLoopBody(), {}).empty();
+    if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(op)) {
+      SmallVector<Value> hoistedAllocs;
+      for (auto& region : op->getRegions()) {
+        hoistedAllocs = hoistAllocs(rbi, region, std::move(hoistedAllocs));
+      }
+      result |= !hoistedAllocs.empty();
     }
     op = op->getNextNode();
   }
@@ -189,26 +189,26 @@ void doubleBuffer(Operation* op, memref::AllocOp alloc,
 }
 
 RegionBranchOpInterface doubleBuffer(RegionBranchOpInterface op) {
-  // TODO(jreiffers): Implement double buffering for all regions.
-  auto [allocations, deallocations] =
-      findAllocsAndDeallocs(op->getRegion(op->getNumRegions() - 1).front());
-
-  // If we have an argument that's deallocated, and a matching allocation that's
-  // yielded, we can instead stash the deallocated buffer in an arg and use it
-  // the next time.
   SmallVector<memref::DeallocOp> deallocsToFix;
-  for (auto [type, allocs] : allocations) {
-    for (auto [alloc, dealloc] : llvm::zip(allocs, deallocations[type])) {
-      doubleBuffer(op, alloc, dealloc);
-      deallocsToFix.push_back(dealloc);
+  for (unsigned i = 0; i < op->getNumRegions(); ++i) {
+    auto [allocations, deallocations] =
+        findAllocsAndDeallocs(op->getRegion(i).front());
 
-      if (llvm::isa<scf::WhileOp>(op)) {
-        auto& before = op->getRegion(0);
-        // Forward the double buffered alloc from the before to the after
-        // region.
-        Value beforeArg = before.addArgument(alloc.getType(), op.getLoc());
-        before.front().getTerminator()->insertOperands(
-            before.front().getTerminator()->getNumOperands(), beforeArg);
+    // If we have an argument that's deallocated, and a matching allocation
+    // that's yielded, we can instead stash the deallocated buffer in an arg and
+    // use it the next time.
+    for (auto [type, allocs] : allocations) {
+      for (auto [alloc, dealloc] : llvm::zip(allocs, deallocations[type])) {
+        doubleBuffer(op, alloc, dealloc);
+        deallocsToFix.push_back(dealloc);
+
+        if (llvm::isa<scf::WhileOp>(op)) {
+          auto& otherRegion = op->getRegion(1 - i);
+          // Forward the double buffered alloc.
+          Value arg = otherRegion.addArgument(alloc.getType(), op.getLoc());
+          otherRegion.front().getTerminator()->insertOperands(
+              otherRegion.front().getTerminator()->getNumOperands(), arg);
+        }
       }
     }
   }
@@ -238,15 +238,8 @@ bool doubleBuffer(Block& block) {
       }
     }
 
-    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
-      if (auto db = doubleBuffer(whileOp); db != op) {
-        op = db;
-        result = true;
-      }
-    }
-
-    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
-      if (auto db = doubleBuffer(forOp); db != op) {
+    if (llvm::isa<scf::ForOp, scf::WhileOp>(op)) {
+      if (auto db = doubleBuffer(op); db != op) {
         op = db;
         result = true;
       }

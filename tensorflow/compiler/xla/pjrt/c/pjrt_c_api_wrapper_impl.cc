@@ -123,7 +123,7 @@ void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args) {
       "PJRT_Error_Destroy_Args", PJRT_Error_Destroy_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
-    LOG(ERROR) << struct_size_check.error_message();
+    LOG(ERROR) << struct_size_check.message();
   }
   if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Destroy_Args, error)) {
     delete args->error;
@@ -135,12 +135,12 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
       "PJRT_Error_Message_Args", PJRT_Error_Message_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
-    LOG(ERROR) << struct_size_check.error_message();
+    LOG(ERROR) << struct_size_check.message();
   }
   if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Destroy_Args, error)) {
     const xla::Status* status = &args->error->status;
-    args->message = status->error_message().data();
-    args->message_size = status->error_message().size();
+    args->message = status->message().data();
+    args->message_size = status->message().size();
   }
 }
 
@@ -892,8 +892,9 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
     std::optional<xla::PjRtFuture<xla::Status>> returned_future;
     bool fill_future = args->device_complete_events != nullptr;
-    if (args->executable->get()->num_partitions() == 1 &&
-        args->executable->get()->num_replicas() == 1) {
+    PJRT_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+                          args->executable->get()->GetCompileOptions());
+    if (compile_options.compile_portable_executable) {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
           args->executable->get()->ExecutePortable(
@@ -1080,8 +1081,15 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
       "PJRT_Buffer_ToHostBuffer_Args",
       PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE, args->struct_size));
 
-  const xla::Shape& host_shape = xla::ShapeUtil::DeviceShapeToHostShape(
-      args->src->buffer->on_device_shape());
+  xla::Shape device_shape;
+  if (args->src->buffer->on_device_shape().is_dynamic()) {
+    PJRT_ASSIGN_OR_RETURN(device_shape,
+                          args->src->buffer->logical_on_device_shape());
+  } else {
+    device_shape = args->src->buffer->on_device_shape();
+  }
+  const xla::Shape& host_shape =
+      xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
 
   size_t host_buffer_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
 
@@ -1253,31 +1261,33 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
 
 // ------------------------------ Device Topology ------------------------------
 
-PJRT_Error* PJRT_DeviceTopology_Destroy(
-    PJRT_DeviceTopology_Destroy_Args* args) {
+PJRT_Error* PJRT_TopologyDescription_Destroy(
+    PJRT_TopologyDescription_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_DeviceTopology_Destroy_Args",
-      PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE, args->struct_size));
+      "PJRT_TopologyDescription_Destroy_Args",
+      PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE, args->struct_size));
   delete args->topology;
   return nullptr;
 }
 
-PJRT_Error* PJRT_DeviceTopology_PlatformName(
-    PJRT_DeviceTopology_PlatformName_Args* args) {
+PJRT_Error* PJRT_TopologyDescription_PlatformName(
+    PJRT_TopologyDescription_PlatformName_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_DeviceTopology_PlatformName_Args",
-      PJRT_DeviceTopology_PlatformName_Args_STRUCT_SIZE, args->struct_size));
+      "PJRT_TopologyDescription_PlatformName_Args",
+      PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE,
+      args->struct_size));
   absl::string_view platform_name = args->topology->topology->platform_name();
   args->platform_name = platform_name.data();
   args->platform_name_size = platform_name.size();
   return nullptr;
 }
 
-PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
-    PJRT_DeviceTopology_PlatformVersion_Args* args) {
+PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
+    PJRT_TopologyDescription_PlatformVersion_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_DeviceTopology_PlatformVersion_Args",
-      PJRT_DeviceTopology_PlatformVersion_Args_STRUCT_SIZE, args->struct_size));
+      "PJRT_TopologyDescription_PlatformVersion_Args",
+      PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE,
+      args->struct_size));
   absl::string_view platform_version =
       args->topology->topology->platform_version();
   args->platform_version = platform_version.data();
@@ -1383,10 +1393,10 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
   return c_client;
 }
 
-PJRT_DeviceTopology* CreateWrapperDeviceTopology(
-    std::unique_ptr<xla::PjRtDeviceTopology> cpp_topology) {
-  PJRT_DeviceTopology* c_topology =
-      new PJRT_DeviceTopology{std::move(cpp_topology)};
+PJRT_TopologyDescription* CreateWrapperDeviceTopology(
+    std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
+  PJRT_TopologyDescription* c_topology =
+      new PJRT_TopologyDescription{std::move(cpp_topology)};
   return c_topology;
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/local_rendezvous.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 
@@ -120,7 +122,7 @@ LocalRendezvous::~LocalRendezvous() {
   // Before destroying this rendezvous instance, make sure all the done-callback
   // calls have finished and the tensors have been released from the queue.
   bool table_not_empty = false;
-  for (int i = 0; i < table_buckets_.size(); ++i) {
+  for (int i = 0; i < num_buckets_; ++i) {
     auto& bucket = table_buckets_[i];
     {
       mutex_lock l(bucket.mu);
@@ -166,7 +168,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
 
   TF_RETURN_IF_ERROR(status());
 
-  int bucket_index = key_hash % table_buckets_.size();
+  int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
 
@@ -188,6 +190,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
               activity_watcher::Activity::Attributes{
                   {"Rendezvous", absl::StrFormat("%p", this)},
                   {"key", std::string(key.FullKey())},
+                  {"key_hash", absl::StrCat(key_hash)},
               });
         },
         /*level=*/1);
@@ -226,8 +229,8 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
 }
 
 LocalRendezvous::OptionalOwnerPtr LocalRendezvous::GetOwnerRefCountPtr() {
-  if (rc_owner_.has_value()) {
-    tsl::core::RefCountPtr<Rendezvous> rc_keep_alive{(*rc_owner_).GetNewRef()};
+  if (has_rc_owner_) {
+    tsl::core::RefCountPtr<Rendezvous> rc_keep_alive{rc_owner_.GetNewRef()};
     if (rc_keep_alive == nullptr) {
       LOG(ERROR) << "Calling Send on a destroyed Local Rendezvous. "
                     "This may indicate a bug on the caller side. (b/274683676)";
@@ -260,7 +263,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     return;
   }
 
-  int bucket_index = key_hash % table_buckets_.size();
+  int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
 
@@ -339,7 +342,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
               activity_watcher::ActivityCategory::kRendezvous,
               activity_watcher::Activity::Attributes{
                   {"Rendezvous", absl::StrFormat("%p", this)},
-                  {"key", std::string(key.FullKey())}});
+                  {"key", std::string(key.FullKey())},
+                  {"key_hash", absl::StrCat(key_hash)},
+              });
         },
         /*level=*/1);
     auto rc_owner = GetOwnerRefCountPtr();
@@ -411,7 +416,7 @@ void LocalRendezvous::StartAbort(const Status& status) {
   // Already destroyed.
   if (keep_alive.has_value() && (*keep_alive) == nullptr) return;
 
-  for (int i = 0; i < table_buckets_.size(); ++i) {
+  for (int i = 0; i < num_buckets_; ++i) {
     auto& bucket = table_buckets_[i];
     Table table;
     {
@@ -421,9 +426,17 @@ void LocalRendezvous::StartAbort(const Status& status) {
     for (auto& p : table) {
       Item* item = p.second.head;
       while (item != nullptr) {
-        if (item->type == Item::kRecv) {
-          (*item->recv_state.waiter)(status, Rendezvous::Args(),
-                                     Rendezvous::Args(), Tensor(), false);
+        switch (item->type) {
+          case Item::kRecv:
+            (*item->recv_state.waiter)(status, Rendezvous::Args(),
+                                       Rendezvous::Args(), Tensor(), false);
+            LOG(INFO) << "Local rendezvous recv item cancelled. Key hash: "
+                      << p.first;
+            break;
+          case Item::kSend:
+            LOG(INFO) << "Local rendezvous send item cancelled. Key hash: "
+                      << p.first;
+            break;
         }
         Item* to_delete = item;
         item = item->next;

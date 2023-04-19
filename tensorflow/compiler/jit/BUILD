@@ -120,7 +120,6 @@ cc_library(
         ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
-        "@com_google_absl//absl/memory",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -128,6 +127,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
@@ -148,8 +148,6 @@ cc_library(
         ":xla_device",
         ":xla_device_no_jit_rewrite_registration",
         ":xla_kernel_creator",  # buildcleaner: keep
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -158,6 +156,8 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
@@ -175,7 +175,6 @@ cc_library(
     deps = [
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -200,6 +199,7 @@ cc_library(
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/tpu:tpu_node_device_util",
         "//tensorflow/core/tpu:virtual_device",
+        "@com_google_absl//absl/types:optional",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
         ":jit_compilation_passes",
@@ -317,6 +317,7 @@ cc_library(
         ":device_compiler_client",
         ":device_executable_persistor",
         ":flags_headers",
+        ":pjrt_base_device",
         ":pjrt_device_compiler_client",
         ":xla_device_compiler_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -341,6 +342,7 @@ cc_library(
         ":device_compilation_profiler",
         ":jit_compilation_passes",
         ":xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
     ],
 )
 
@@ -479,6 +481,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
@@ -488,8 +491,40 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_launch_util_test",
+    srcs = ["xla_launch_util_test.cc"],
+    deps = [
+        ":device_compiler",
+        ":flags_headers",
+        ":pjrt_device_compiler_client",
+        ":variable_info",
+        ":variable_info_util",
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_device_no_jit_rewrite_registration",
+        ":xla_launch_util",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:fake_input",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/tfrt/common:create_pjrt_client_util",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1395,6 +1430,19 @@ cc_library(
     deps = [
         ":device_compiler_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+    ],
+)
+
+cc_library(
+    name = "pjrt_base_device",
+    srcs = ["pjrt_base_device.cc"],
+    hdrs = ["pjrt_base_device.h"],
+    # Public visibility is needed for external TF/XLA backends.
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:layout_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:local_device",
     ],
 )
 

@@ -3,6 +3,7 @@
 # TensorFlow Lite Java API using the TensorFlow Lite CC library.
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:special_rules.bzl", "jni_utils_visibility_allowlist")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
 
 package(
@@ -18,6 +19,7 @@ cc_library_with_tflite(
     tflite_deps = [
         "//tensorflow/lite/core/shims:jni_utils",
     ],
+    visibility = jni_utils_visibility_allowlist(),
     deps = [
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite/java/jni",

@@ -92,10 +92,9 @@ TEST(ShmemTest, ReverseArray) {
                              /*cubin_data=*/{}, executor,
                              /*shared_mem_bytes=*/n_elements * sizeof(dtype))
                     .value();
-  ExecuteKernelOnStream(
+  TF_CHECK_OK(ExecuteKernelOnStream(
       *kernel, {dev_buf},
-      {/*block_x_count=*/1, /*thread_x_count_per_block=*/n_elements}, &stream)
-      .ok();
+      {/*block_x_count=*/1, /*thread_x_count_per_block=*/n_elements}, &stream));
   TF_CHECK_OK(stream.BlockHostUntilDone());
   stream.ThenMemcpy(host_buf.data(), dev_buf, n_elements * sizeof(dtype));
   for (int i = 0; i < n_elements; ++i) {

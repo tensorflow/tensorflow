@@ -156,7 +156,9 @@ def _tf_ag_dataset_enumerate(ds, start=0):
   return ds.enumerate(start)
 
 
-def _tf_ag_dataset_zip(*iterables):
+def _tf_ag_dataset_zip(*iterables, strict=False):
+  if strict:
+    raise ValueError("strict zip not supported by Dataset")
   return dataset_ops.DatasetV2.zip(iterables)
 
 

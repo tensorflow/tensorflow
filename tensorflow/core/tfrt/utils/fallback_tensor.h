@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_UTILS_FALLBACK_TENSOR_H_
 
 #include "absl/types/variant.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -57,6 +58,29 @@ class FallbackTensor {
 
   explicit FallbackTensor(ImmutableTensor* immutable_tensor)
       : tensor_(immutable_tensor) {}
+
+  FallbackTensor(const FallbackTensor& other) { *this = other; }
+  FallbackTensor& operator=(const FallbackTensor& other) {
+    if (!other.is_immutable()) {
+      // Create a new TensorBuffer which contains a new atomic counter for each
+      // result, to avoid downstream threads contending the original atomic
+      // counter.
+      tensor_ = std::move(
+          tensorflow::tfrt_stub::ImmutableTensor::Create(other.tensor())
+              .tensor());
+    } else {
+      // For immutable tensors, we just need to copy the pointer.
+      tensor_ = other.tensor();
+    }
+    return *this;
+  }
+
+  FallbackTensor(FallbackTensor&&) = default;
+  FallbackTensor& operator=(FallbackTensor&&) = default;
+
+  const TensorBuffer* buffer() const {
+    return tensorflow::DMAHelper::buffer(&tensor());
+  }
 
   bool is_immutable() const {
     return absl::holds_alternative<ImmutableTensor*>(tensor_);

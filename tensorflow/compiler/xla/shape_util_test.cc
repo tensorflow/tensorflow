@@ -625,7 +625,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
       increment_func);
 
   EXPECT_FALSE(error_status.ok());
-  EXPECT_THAT(error_status.error_message(),
+  EXPECT_THAT(error_status.message(),
               ::testing::HasSubstr("Cannot increment beyond 5."));
   EXPECT_EQ(invocations, 5);
 }
@@ -1034,6 +1034,32 @@ TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape b = ShapeUtil::DeleteDimensions({3, 2, 1}, shape);
   EXPECT_EQ(a, b);
   EXPECT_EQ(a, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 9}, {0, 1}));
+}
+
+TEST(ShapeUtilTest, IsEffectivelyMostMajorDimension) {
+  // f32[1,1,16,1,279]{4,0,1,2,3}
+  // Dim 3 in front of 2 has size 1, so 2 is effectively most major dim.
+  Shape shape0 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 279},
+                                                     {4, 0, 1, 2, 3});
+  EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(shape0, 2));
+
+  // f32[1,1,16,1,279]{4,1,2,3,0}
+  // Dims 3 and 0 in from of 2 havs size 1.
+  Shape shape1 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 279},
+                                                     {4, 1, 2, 3, 0});
+  EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(shape1, 2));
+
+  // f32[1,1,16,1,279]{0,1,2,3,4}
+  // Dim 4 in front of 2 has size > 1, so 2 is not most effectively most major.
+  Shape shape2 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 279},
+                                                     {0, 1, 2, 3, 4});
+  EXPECT_FALSE(ShapeUtil::IsEffectivelyMostMajorDimension(shape2, 2));
+
+  // f32[1,1,16,1,1]{0,1,2,3,4}
+  // Dim 4 is of size 1, and can be returned as most major even if size is 1.
+  Shape shape3 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 1},
+                                                     {0, 1, 2, 3, 4});
+  EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(shape2, 4));
 }
 
 TEST(ShapeUtilTest, B_250640044) {

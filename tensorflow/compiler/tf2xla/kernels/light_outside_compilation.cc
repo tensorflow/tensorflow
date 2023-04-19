@@ -521,8 +521,8 @@ void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,
                        int opaque_len, XlaCustomCallStatus* status) {
   Status s = CallTfKernel(stream_handle, buffers, opaque, opaque_len);
   if (!s.ok()) {
-    XlaCustomCallStatusSetFailure(status, s.error_message().c_str(),
-                                  s.error_message().size());
+    auto msg = s.message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.size());
   }
 }
 

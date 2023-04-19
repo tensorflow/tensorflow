@@ -464,6 +464,7 @@ def _run_graph_for_calibration(
     signature_keys: Sequence[str],
     tags: Collection[str],
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    force_graph_mode_calibration: bool,
 ) -> None:
   """Runs the graph for calibration using representative datasets.
 
@@ -478,6 +479,8 @@ def _run_graph_for_calibration(
       `signature_keys` contains more than one signature key,
       `representative_datsaet` should be a mapping that maps each signature keys
       to the corresponding representative dataset.
+    force_graph_mode_calibration: If set to true, it forces calibration in graph
+      model instead of eager mode when the context is in eager mode.
 
   Raises:
     ValueError iff:
@@ -498,11 +501,13 @@ def _run_graph_for_calibration(
     representative_dataset_map = {signature_keys[0]: representative_dataset}
 
   try:
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not force_graph_mode_calibration:
+      logging.info('Calibration step is executed in eager mode.')
       _run_graph_for_calibration_eager_mode(
           float_model_dir, tags, representative_dataset_map
       )
     else:
+      logging.info('Calibration step is executed in graph mode.')
       _run_graph_for_calibration_graph_mode(
           float_model_dir, tags, representative_dataset_map
       )
@@ -733,6 +738,7 @@ def _run_static_range_ptq(
       signature_def_keys,
       tags,
       representative_dataset,
+      quant_opts.force_graph_mode_calibration,
   )
   _add_calibration_statistics(graph_def)
 

@@ -402,7 +402,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   do {                                                \
     const tensorflow::Status _status = (__VA_ARGS__); \
     if (TF_PREDICT_FALSE(!_status.ok())) {            \
-      LOG(ERROR) << _status.error_message();          \
+      LOG(ERROR) << _status.message();                \
       return _status;                                 \
     }                                                 \
   } while (0);
@@ -561,7 +561,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     // see additional errors if ops are subsequently sent to the failed workers.
     if (TF_PREDICT_FALSE(!s.ok())) {
       LOG(ERROR) << "Error when creating contexts on remote targets: "
-                 << s.error_message()
+                 << s.message()
                  << "\nExecuting remote ops or functions on these remote "
                     "targets will fail.";
     }
@@ -600,7 +600,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   auto session_name = strings::StrCat("eager_", context_id);
   auto* session_mgr = server->worker_env()->session_mgr;
   if (reset_context) {
-    RemoteRendezvous* r =
+    tsl::core::RefCountPtr<RemoteRendezvous> r =
         server->worker_env()->rendezvous_mgr->Find(context_id);
     auto* device_mgr = server->worker_env()->device_mgr;
     std::shared_ptr<WorkerSession> worker_session;
@@ -623,8 +623,8 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(context->InitializeRemoteMaster(
         std::move(new_server), server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
-        remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
-        std::move(remote_mgr)));
+        remote_workers, context_id, r.release(), device_mgr, keep_alive_secs,
+        cluster_flr, std::move(remote_mgr)));
 
     // NOTE: We start the server after all other initialization, because the
     // GrpcServer cannot be destroyed after it is started.
@@ -688,7 +688,7 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
   do {                                                \
     const tensorflow::Status _status = (__VA_ARGS__); \
     if (TF_PREDICT_FALSE(!_status.ok())) {            \
-      LOG(ERROR) << _status.error_message();          \
+      LOG(ERROR) << _status.message();                \
       return _status;                                 \
     }                                                 \
   } while (0);
@@ -723,6 +723,25 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       coordination_service_agent_ = session_mgr->GetCoordinationServiceAgent();
       LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
           coordination_service_agent_));
+      // Start preemption notifier that will propagate preemption signals to the
+      // cluster.
+      preemption_notifier_ = tsl::PreemptionNotifier::CreatePreemptionNotifier(
+          "sigterm", Env::Default());
+      preemption_notifier_->WillBePreemptedAtAsync(
+          [coord_agent = coordination_service_agent_](
+              StatusOr<absl::Time> time_or_status) {
+            if (time_or_status.ok()) {
+              const auto coord_task = coord_agent->GetOwnTask().value();
+              Status s = coord_agent->InsertKeyValue(
+                  "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
+                  absl::StrCat("/job:", coord_task.job_name(),
+                               "/task:", coord_task.task_id()));
+              if (!s.ok()) {
+                LOG(INFO) << "Preemption not exported to coordination service: "
+                          << s;
+              }
+            }
+          });
     }
 
     LOG_AND_RETURN_IF_ERROR(server->Start());
@@ -798,7 +817,7 @@ Status EagerContextDistributedManager::CheckRemoteAlive(
     *is_alive = true;
   } else {
     LOG(INFO) << "Remote worker " << remote_task_name
-              << " is not alive: " << remote_status.error_message();
+              << " is not alive: " << remote_status.message();
   }
   return OkStatus();
 }

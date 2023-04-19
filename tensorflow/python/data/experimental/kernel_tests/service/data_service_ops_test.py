@@ -44,6 +44,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -532,6 +533,38 @@ class DataServiceOpsTest(
     del it2
     # Check that only the first job is gced. The second job will not be gced
     # because there is still an outstanding iterator for it.
+    while cluster.workers[0].num_tasks() > 1:
+      time.sleep(0.1)
+    self.assertEqual(cluster.workers[0].num_tasks(), 1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDontGcJobsWithVisitationGuarantees(self):
+    cluster = self.make_test_cluster(
+        num_workers=1,
+        job_gc_check_interval_ms=50,
+        job_gc_timeout_ms=20,
+    )
+    num_elements = 1000
+    it1 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test1",
+        )
+    )
+    it2 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test2",
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        )
+    )
+    self.assertEqual(cluster.workers[0].num_tasks(), 2)
+    del it1
+    del it2
+    # Check that only the first job is gced. The second job will not be gced
+    # because it has a sharding policy with visitation guarantees.
     while cluster.workers[0].num_tasks() > 1:
       time.sleep(0.1)
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
@@ -1190,7 +1223,7 @@ class DataServiceOpsTest(
     cluster = self.make_test_cluster(num_workers=1)
     if not use_resource:
       with variable_scope.variable_scope("foo", use_resource=False):
-        v = variables.VariableV1(10, dtype=dtypes.int64)
+        v = variable_v1.VariableV1(10, dtype=dtypes.int64)
     else:
       v = variables.Variable(10, dtype=dtypes.int64)
 

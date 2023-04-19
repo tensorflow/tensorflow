@@ -17,8 +17,8 @@
 from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
@@ -44,7 +44,7 @@ from tensorflow.python.saved_model import save
 
 
 def _replica_id():
-  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
   return replica_id
@@ -105,7 +105,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
     def model_fn():
       v = variable_scope.variable(2.0, name="bar")
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
     with func_graph.FuncGraph("fg").as_default(), distribution.scope():
@@ -125,7 +125,7 @@ class MirroredVariableCreationTest(test.TestCase):
       if v[0] is None:
         init_val = array_ops.zeros([])
         v[0] = variables.Variable(init_val)
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v[0]
 
     @def_function.function(autograph=False)
@@ -145,7 +145,7 @@ class MirroredVariableCreationTest(test.TestCase):
       if v[0] is None:
         init_val = array_ops.zeros([])
         v[0] = variables.Variable(init_val)
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v[0]
 
     @def_function.function(autograph=False, jit_compile=True)
@@ -166,7 +166,7 @@ class MirroredVariableCreationTest(test.TestCase):
       # special variable_creator functions used by
       # `distribution.extended.call_for_each_replica`.
       v = variable_scope.variable(1.0, name="foo")
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
     with distribution.scope():
@@ -177,7 +177,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
     def model_fn():
       v = variable_scope.variable(1.0)
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
     with distribution.scope():
@@ -190,7 +190,7 @@ class MirroredVariableCreationTest(test.TestCase):
       vs = []
       for i in range(5):
         vs.append(variable_scope.variable(1.0, name="foo" + str(i)))
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return vs
 
     with distribution.scope():
@@ -206,7 +206,7 @@ class MirroredVariableCreationTest(test.TestCase):
       vs.append(variable_scope.variable(1.0, name="foo_1/bar"))
       vs.append(variable_scope.variable(1.0, name="foo_1/bar_1"))
       vs.append(variable_scope.variable(1.0, name="foo/bar_1"))
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return vs
 
     with distribution.scope():
@@ -224,7 +224,7 @@ class MirroredVariableCreationTest(test.TestCase):
     def model_fn():
       replica_id = self.evaluate(_replica_id())
       v = variable_scope.variable(1.0, name="foo_" + str(replica_id))
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
     with distribution.scope():
@@ -240,7 +240,7 @@ class MirroredVariableCreationTest(test.TestCase):
       with variable_scope.variable_scope("common"):
         v1 = variable_scope.variable(1.0, name="var1")
         # This will pause the current thread, and execute the other thread.
-        ds_context.get_replica_context().merge_call(lambda _: _)
+        distribute_lib.get_replica_context().merge_call(lambda _: _)
         v2 = variable_scope.variable(
             1.0,
             name="var2",
@@ -279,7 +279,7 @@ class MirroredVariableCreationTest(test.TestCase):
       with variable_scope.variable_scope("common"):
         v1 = variable_scope.get_variable("var1", [1])
         # This will pause the current thread, and execute the other thread.
-        ds_context.get_replica_context().merge_call(lambda _: _)
+        distribute_lib.get_replica_context().merge_call(lambda _: _)
         v2 = variable_scope.get_variable(
             "var2", [1],
             synchronization=variable_scope.VariableSynchronization.ON_READ,
@@ -453,7 +453,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
     def model_fn(name):
       v = variable_scope.variable(1.0, name=name)
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
     with distribution.scope():

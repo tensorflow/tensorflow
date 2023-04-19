@@ -18,6 +18,7 @@ import collections
 import contextlib
 import copy
 import gc
+import itertools
 import os
 import random
 import threading
@@ -31,12 +32,15 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
 from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.eager import cancellation
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
@@ -191,6 +195,15 @@ class FunctionCallOptions:
       raise ValueError("the rewriter config must be either a "
                        "config_pb2.ConfigProto, or a serialized string of that "
                        "proto or None. got: {}".format(type(config)))
+
+  def as_attrs(self):
+    if self.config_proto_serialized is None:
+      config = function_utils.get_disabled_rewriter_config()
+    else:
+      config = self.config_proto_serialized
+    executor_type = self.executor_type or ""
+
+    return {"executor_type": executor_type, "config_proto": config}
 
 
 # Map from context_id (an int) to _TensorCaches.
@@ -751,7 +764,8 @@ class Context:
                                      cluster_register_timeout_in_ms=0,
                                      heartbeat_timeout_in_ms=0,
                                      shutdown_barrier_timeout_in_ms=0,
-                                     coordinated_jobs=None):
+                                     coordinated_jobs=None,
+                                     allow_new_incarnation_to_reconnect=False):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
@@ -764,6 +778,8 @@ class Context:
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
     config.shutdown_barrier_timeout_in_ms = shutdown_barrier_timeout_in_ms
+    config.allow_new_incarnation_to_reconnect = (
+        allow_new_incarnation_to_reconnect)
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
         config.coordinated_job_list.extend(coordinated_jobs)
@@ -1422,6 +1438,41 @@ class Context:
     """Check if a function `name` is registered."""
     self.ensure_initialized()
     return bool(pywrap_tfe.TFE_ContextHasFunction(self._handle, name))
+
+  @property
+  def function_scope_id(self):
+    """Returns an id that is unique to each scope holding functions."""
+    return id(self._context_handle)
+
+  def call_function(self, name, tensor_inputs, num_outputs):
+    """Calls the function associated with the given name."""
+    attrs = tuple(
+        itertools.chain(
+            *self.function_call_options.as_attrs().items()
+        )
+    )
+
+    if cancellation.context() is None:
+      outputs = execute.execute(
+          name.decode("utf-8"),
+          num_outputs=num_outputs,
+          inputs=tensor_inputs,
+          attrs=attrs,
+          ctx=self,
+      )
+    else:
+      outputs = execute.execute_with_cancellation(
+          name.decode("utf-8"),
+          num_outputs=num_outputs,
+          inputs=tensor_inputs,
+          attrs=attrs,
+          ctx=self,
+          cancellation_manager=cancellation.context(),
+      )
+    # Empty list means no function outputs so return None
+    outputs = outputs or None
+
+    return outputs
 
   def add_op_callback(self, callback):
     """Add a post-op callback to the context.

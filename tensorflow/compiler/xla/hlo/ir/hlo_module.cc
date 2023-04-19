@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -1037,6 +1038,13 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
+  const tsl::Fprint128 fingerprint = tsl::Fingerprint128(ToString(options));
+  absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
+                             sizeof(tsl::Fprint128));
+  return absl::BytesToHexString(fp_bytes);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

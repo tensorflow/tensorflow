@@ -385,8 +385,7 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   return OkStatus();
 }
 
-Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
-    HloInstruction* hlo) const {
+Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
@@ -447,9 +446,11 @@ StatusOr<bool> HloControlFlowFlattening::Run(
         changed = true;
       } else if (remove_comm_ &&
                  (instruction->opcode() == HloOpcode::kPartitionId ||
-                  instruction->opcode() == HloOpcode::kReplicaId)) {
+                  instruction->opcode() == HloOpcode::kReplicaId ||
+                  (instruction->opcode() == HloOpcode::kCustomCall &&
+                   instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemovePartitionOrReplicaId(instruction));
+        TF_RETURN_IF_ERROR(RemoveId(instruction));
       }
     }
   }

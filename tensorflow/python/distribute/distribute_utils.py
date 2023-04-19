@@ -18,7 +18,7 @@ from collections import abc
 import contextlib
 import threading
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.reduce_util import ReduceOp
@@ -47,7 +47,7 @@ def get_loss_reduction():
     `tf.distribute.ReduceOp` corresponding to the last loss reduction for
     estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
   """
-  if not distribution_strategy_context.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
+  if not distribute_lib.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
     # If we are not in Estimator context then return 'SUM'. We do not need to
     # scale loss in the optimizer.
     return ReduceOp.SUM
@@ -393,17 +393,11 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
 # Return True if the Value is Mirrored or the Variable is replicated and kept in
 # sync.
 def is_mirrored(val):
-  if isinstance(val, values_lib.DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return val._policy._is_mirrored()  # pylint: disable=protected-access
-  return isinstance(val, values_lib.Mirrored)
+  return (getattr(val, "_is_mirrored", lambda: False))()
 
 
 def is_sync_on_read(val):
-  if isinstance(val, values_lib.DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return not val._policy._is_mirrored()  # pylint: disable=protected-access
-  return not isinstance(val, values_lib.Mirrored)
+  return not is_mirrored(val)
 
 
 class CachingScopeLocal(threading.local):

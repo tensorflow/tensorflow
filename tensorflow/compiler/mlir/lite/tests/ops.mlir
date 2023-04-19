@@ -413,6 +413,14 @@ func.func @mul_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi3
 
 // -----
 
+func.func @add_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
+^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
+  func.return %0#0 : tensor<1x1x1x1x1xi32>
+}
+
+// -----
+
 func.func @mul_with_quantized_i16_five_dim_broadcasting(tensor<1x1x1x1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x1x1x1x!quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<1x1x1x1x1x!quant.any<i16:f32>>, %arg1: tensor<1x!quant.any<i16:f32>>):
   // expected-error @+1 {{Operands do not have valid shapes}}
@@ -3147,4 +3155,24 @@ func.func @testBitcast(%arg0: tensor<8xui32>) -> tensor<8xi32> {
   %0 = "tfl.bitcast"(%arg0) : (tensor<8xui32>) -> tensor<8xi32>
   func.return %0 : tensor<8xi32>
   // CHECK: return %0 : tensor<8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: testBitwiseXor
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.bitwise_xor"(%arg0, %arg1)
+  %0 = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
+}
+
+// -----
+
+// CHECK-LABEL: testRightShift
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.right_shift"(%arg0, %arg1)
+  %0 = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
 }

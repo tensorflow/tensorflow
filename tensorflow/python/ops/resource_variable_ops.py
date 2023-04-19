@@ -50,7 +50,6 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -334,7 +333,7 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-class BaseResourceVariable(variables.VariableV1, core.Tensor):
+class BaseResourceVariable(variables.Variable, core.Tensor):
   """A python variable from an existing handle."""
 
   # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
@@ -808,8 +807,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
           value._handle_data = (  # pylint: disable=protected-access
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
                   is_set=True, shape_and_type=handle_data.shape_and_type[1:]))
+        return array_ops.identity(value)
 
-    return array_ops.identity(value)
+    return value
 
   def gather_nd(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather_nd`."""
@@ -2441,10 +2441,6 @@ def _GatherGrad(op, grad):
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
   return (indexed_slices.IndexedSlices(values, indices, params_shape), None)
-
-
-_to_proto_fn = variable_scope._to_proto_fn  # pylint: disable=protected-access
-_from_proto_fn = variable_scope._from_proto_fn  # pylint: disable=protected-access
 
 
 @tf_export("__internal__.ops.is_resource_variable", v1=[])

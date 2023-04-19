@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -78,6 +80,17 @@ struct CompileOptions {
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
+
+  // Key-value string pairs, parsed in order to set miscellaneous options,
+  // overriding if appropriate.
+  using OptionOverride = std::variant<std::string, bool>;
+  std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+
+  // Applies env_option_overrides to executable_build_options.debug_options().
+  Status ApplyAllOptionOverrides();
+
+  // Applies a single option to executable_build_options.debug_options().
+  Status ApplyOption(const std::string& key, const OptionOverride& value);
 
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;

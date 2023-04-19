@@ -47,7 +47,7 @@ py_library(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
     ],
 )
 

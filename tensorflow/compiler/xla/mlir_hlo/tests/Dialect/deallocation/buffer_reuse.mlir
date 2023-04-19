@@ -2,9 +2,8 @@
 // RUN:                 -hlo-buffer-reuse | \
 // RUN:   FileCheck %s
 
-func.func @simple_reuse() {
-  %condition = "test.make_condition"() : () -> i1
-  scf.if %condition {
+func.func @simple_reuse(%cond: i1) {
+  scf.if %cond {
     %alloc0 = memref.alloc() : memref<2xf32>
     "test.use"(%alloc0) : (memref<2xf32>) -> ()
     memref.dealloc %alloc0 : memref<2xf32>
@@ -16,11 +15,10 @@ func.func @simple_reuse() {
 }
 
 // CHECK-LABEL: @simple_reuse
-//      CHECK: scf.if
-// CHECK-NEXT:   %[[ALLOC:.*]] = memref.alloc()
-// CHECK-NEXT:   "test.use"(%[[ALLOC]])
-// CHECK-NEXT:   "test.use"(%[[ALLOC]])
-// CHECK-NEXT:   memref.dealloc %[[ALLOC]]
+// CHECK-NEXT: %[[ALLOCA:.*]] = memref.alloca()
+// CHECK-NEXT: scf.if
+// CHECK-NEXT:   "test.use"(%[[ALLOCA]])
+// CHECK-NEXT:   "test.use"(%[[ALLOCA]])
 // CHECK-NEXT: }
 
 // -----
@@ -137,6 +135,73 @@ func.func @double_buffer_while(%lb: index, %ub: index, %step: index) {
 // CHECK-NEXT:  ^bb0
 // CHECK-NEXT:    "test.use"(%[[A]], %[[B]])
 // CHECK-NEXT:    scf.yield %[[B]], %[[A]]
+// CHECK-NEXT:  }
+
+// -----
+
+func.func @double_buffer_while_before(%lb: index, %ub: index, %step: index) {
+  %init = memref.alloc() : memref<f32>
+  %0 = scf.while (%arg0 = %init) : (memref<f32>) -> (memref<f32>) {
+    %0 = "test.make_condition"() : () -> i1
+    %alloc = memref.alloc() : memref<f32>
+    "test.use"(%arg0, %alloc) : (memref<f32>, memref<f32>) -> ()
+    memref.dealloc %arg0 : memref<f32>
+    scf.condition(%0) %alloc : memref<f32>
+  } do {
+  ^bb0(%arg0: memref<f32>):
+    scf.yield %arg0 : memref<f32>
+  }
+  memref.dealloc %0 : memref<f32>
+  return
+}
+
+// CHECK-LABEL: @double_buffer_while_before
+// CHECK-NEXT:  %[[ALLOC0:.*]] = memref.alloca
+// CHECK-NEXT:  %[[ALLOC1:.*]] = memref.alloca
+// CHECK-NEXT:  scf.while (%[[A:.*]] = %[[ALLOC0]], %[[B:.*]] = %[[ALLOC1]])
+// CHECK-NEXT:    make_condition
+// CHECK-NEXT:    "test.use"(%[[A]], %[[B]])
+// CHECK-NEXT:    condition{{.*}} %[[B]], %[[A]]
+// CHECK-NEXT:  } do {
+// CHECK-NEXT:  ^bb0
+// CHECK-NEXT:    scf.yield %[[A]], %[[B]]
+// CHECK-NEXT:  }
+
+
+// -----
+
+func.func @double_buffer_while_both(%lb: index, %ub: index, %step: index) {
+  %init = memref.alloc() : memref<f32>
+  %0 = scf.while (%arg0 = %init) : (memref<f32>) -> (memref<f32>) {
+    %0 = "test.make_condition"() : () -> i1
+    %alloc = memref.alloc() : memref<f32>
+    "test.use"(%arg0, %alloc) : (memref<f32>, memref<f32>) -> ()
+    memref.dealloc %arg0 : memref<f32>
+    scf.condition(%0) %alloc : memref<f32>
+  } do {
+  ^bb0(%arg0: memref<f32>):
+    %alloc = memref.alloc() : memref<f32>
+    "test.use"(%arg0, %alloc) : (memref<f32>, memref<f32>) -> ()
+    memref.dealloc %arg0 : memref<f32>
+    scf.yield %alloc : memref<f32>
+  }
+  memref.dealloc %0 : memref<f32>
+  return
+}
+
+// CHECK-LABEL: @double_buffer_while_both
+// CHECK-NEXT:  %[[ALLOC0:.*]] = memref.alloca
+// CHECK-NEXT:  %[[ALLOC1:.*]] = memref.alloca
+// TODO(jreiffers): eliminate the unnecessary third alloc.
+// CHECK-NEXT:  %[[ALLOC2:.*]] = memref.alloca
+// CHECK-NEXT:  scf.while (%[[A:.*]] = %[[ALLOC0]], %[[B:.*]] = %[[ALLOC1]], %[[C:.*]] = %[[ALLOC2]])
+// CHECK-NEXT:    make_condition
+// CHECK-NEXT:    "test.use"(%[[A]], %[[B]])
+// CHECK-NEXT:    condition{{.*}} %[[B]], %[[A]], %[[C]]
+// CHECK-NEXT:  } do {
+// CHECK-NEXT:  ^bb0
+// CHECK-NEXT:    "test.use"(%[[A]], %[[C]])
+// CHECK-NEXT:    scf.yield %[[C]], %[[B]], %[[A]]
 // CHECK-NEXT:  }
 
 // -----
@@ -414,3 +479,52 @@ func.func @copy_from_param_to_param(
 // CHECK-LABEL: @copy_from_param_to_param(
 // CHECK-NEXT: memref.copy
 // CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_alloc() {
+  %foo = memref.alloc() : memref<i32>
+  %bar = memref.alloc() : memref<i32>
+  "some.op"(%foo) : (memref<i32>) -> ()
+  memref.copy %foo, %bar : memref<i32> to memref<i32>
+  memref.dealloc %foo : memref<i32>
+  "some.op"(%bar) : (memref<i32>) -> ()
+  memref.dealloc %bar : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @copy_to_alloc
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: some.op
+// CHECK-NEXT: some.op
+// CHECK-NEXT: return
+
+// -----
+
+// TODO(jreiffers): Implement subview optimization (allocate memref<3xf32>, take
+// a subview in the then branch).
+func.func @hoist_from_if(%cond: i1) {
+  scf.if %cond {
+    %a = memref.alloc() : memref<i32>
+    %b = memref.alloc() : memref<2xf32>
+    "some.op"(%a, %b) : (memref<i32>, memref<2xf32>) -> ()
+    memref.dealloc %a : memref<i32>
+    memref.dealloc %b : memref<2xf32>
+  } else {
+    %a = memref.alloc() : memref<3xf32>
+    %b = memref.alloc() : memref<i32>
+    "some.op"(%a, %b) : (memref<3xf32>, memref<i32>) -> ()
+    memref.dealloc %a : memref<3xf32>
+    memref.dealloc %b : memref<i32>
+  }
+  return
+}
+
+// CHECK-LABEL: @hoist_from_if
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: scf.if
+// CHECK-NEXT: some.op
+// CHECK-NEXT: else
+// CHECK-NEXT: some.op

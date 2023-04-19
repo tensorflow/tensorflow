@@ -53,6 +53,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "llvm/TargetParser/X86TargetParser.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -337,11 +338,17 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    options.experimental_deallocation =
+        GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
     options.cpu_name = llvm::sys::getHostCPUName();
-
+    if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+      options.matmul_tile_sizes = {
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+    }
     if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
       options.enable_fusion_outlining = true;
-      options.sparse_bufferization = false;
       options.experimental_deallocation = true;
     }
 
@@ -656,8 +663,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*rewrite_training_op=*/true,
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
-  pipeline.AddPass<LogisticExpander>(
-      /*expansion_type=*/LogisticExpansionType::kExp);
+  pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
   auto dynamic_padder_options = DynamicPadderOptions();
@@ -680,10 +686,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   //     accumulation happens in f32.
   if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
     pipeline.AddPass<ChangeOpDataType>(
-        F16, F32, [](const HloInstruction* instr) {
-          return instr->opcode() == HloOpcode::kDot ||
-                 instr->opcode() == HloOpcode::kConvolution;
-        });
+        F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
   // Run the following passes to a fixed point.
@@ -1064,16 +1067,34 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
         /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
   }
 
+  if (DumpingEnabledForHloModule(*module)) {
+    pm.addInstrumentation(
+        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
+            module->config().debug_options().xla_dump_to(), module->unique_id(),
+            module->name()));
+  }
+
   xla::runtime::PassManager xla_pm(&pm);
   HloXlaRuntimePipelineOptions options;
   options.enable_tiling_and_fusion =
       GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+  if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+    options.matmul_tile_sizes = {
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+  }
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   options.experimental_deallocation =
       GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
-  // TODO(b/271126383): The flag should depend on the lowering target.
-  options.enable_avx2 = true;
+  options.enable_avx2 = [&] {
+    // Derive whether this is an x86 CPU with AVX2 enabled.
+    if (!target.getTargetTriple().isX86()) return false;
+    llvm::SmallVector<llvm::StringRef> cpu_features;
+    llvm::X86::getFeaturesForCPU(target.getTargetCPU(), cpu_features);
+    return llvm::is_contained(cpu_features, "avx2");
+  }();
   options.cpu_name = target.getTargetCPU();
   if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
     options.enable_fusion_outlining = true;
@@ -1246,6 +1267,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      options::SlpVectorizerDisabled(module->config()),
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
       OrcJITPostCompilationHook::Create(module.get()));
@@ -1739,6 +1761,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
+        options::SlpVectorizerDisabled(module->config()),
         llvm_ir::GetCpuFastMathFlags(module->config()),
         pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook,
         aot_options.sanitize_dataflow(),

@@ -270,6 +270,13 @@ class LayoutUtil {
   static bool ValidateDimLevel(xla::DimLevelType dim_level_type,
                                bool dim_unique, bool dim_ordered);
 
+  // Returns true if `byte_strides` is major to minor order, i.e. the strides
+  // form a cumulative product of the byte size and dimensions in reverse order
+  // and the smallest stride is the byte size for `element_type`.
+  static bool ByteStridesIsMajorToMinor(absl::Span<const int64_t> byte_strides,
+                                        absl::Span<const int64_t> dims,
+                                        PrimitiveType element_type);
+
  private:
   LayoutUtil(const LayoutUtil&) = delete;
   LayoutUtil& operator=(const LayoutUtil&) = delete;

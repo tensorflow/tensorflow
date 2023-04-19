@@ -15,7 +15,6 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:inspect_utils",
         "//tensorflow/python/autograph/pyct:naming",
@@ -77,10 +76,6 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":capture_container",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

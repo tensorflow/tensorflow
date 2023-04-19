@@ -27,7 +27,6 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_strategy
@@ -852,7 +851,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       # collective ops are to be launched sequentially.
       return super()._replica_ctx_all_reduce(reduce_op, value, options)
 
-    replica_context = ds_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     assert replica_context, (
         "`StrategyExtended._replica_ctx_all_reduce` must be called in a "
         "replica context")

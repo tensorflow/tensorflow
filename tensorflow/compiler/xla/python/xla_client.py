@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 144
+_version = 148
 
 # Version number for MLIR:Python components.
 mlir_api_version = 47
@@ -104,6 +104,13 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
   if options is None:
     options = {}
   return _xla.get_c_api_client('tpu', options)
+
+
+DeviceTopology = _xla.DeviceTopology
+
+
+def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+  return _xla.get_default_c_api_topology('tpu')
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
@@ -454,9 +461,7 @@ XlaComputation = _xla.XlaComputation
 XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
-Buffer = _xla.Buffer
 ArrayImpl = _xla.ArrayImpl
-DeviceArrayBase = _xla.DeviceArrayBase
 LoadedExecutable = _xla.LoadedExecutable
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding

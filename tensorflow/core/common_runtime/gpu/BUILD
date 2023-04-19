@@ -183,6 +183,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+        "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -195,7 +196,6 @@ tf_cuda_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:core_cpu_lib",
@@ -205,6 +205,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
+        "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
 )
 
