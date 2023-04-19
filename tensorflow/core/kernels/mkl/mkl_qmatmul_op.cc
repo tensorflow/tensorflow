@@ -52,6 +52,7 @@ limitations under the License.
 //
 // Bf32 is the original fp32 1D bias tensor matching the innermost dim of
 // Wf32.
+// For oneDNN < v3.0:
 // With SCALE quantization of activation, the scaled bias, Bs32, is calculated
 // as below:
 //      Bs32 = Qa * Qw * Bf32.
@@ -60,6 +61,12 @@ limitations under the License.
 //      B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 * Wf32
 //            = Q'a * Qw * Bf32 + Q'a * Min(Af32) * 1 * Ws8.
 // where, 1 denotes a row vector matching the outermost dim of Wf32.
+// For oneDNN >= v3.0:
+// Bias needs to be passed as f32.
+// With SCALE quantization of activation, just pass Bf32.
+// With MIN_FIRST quantization of activation, bias needs to be compensated
+// as below:
+//      B'f32 = Bf32 + Q'a * Min(Af32) * 1 * Ws8.
 //
 // The QuantizedMatMulWithBias op calculates 32bit integer output as below:
 //  - with SCALE activation quantization:
@@ -89,7 +96,7 @@ limitations under the License.
 //
 // More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -110,9 +117,16 @@ enum {
 
 namespace tensorflow {
 
+#ifndef ENABLE_ONEDNN_V3
+#define TSCALED_BIAS Tbias
+#else
+#define TSCALED_BIAS float
+#endif  // !ENABLE_ONEDNN_V3
+
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,
           typename Toutput, bool native_format = false>
-class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
+class MklDnnQuantizedMatMulOp
+    : public MklDnnMatMulOpBase<Tweight, Tbias, Toutput> {
  public:
   virtual ~MklDnnQuantizedMatMulOp() {
     if (this->input_bias_ != nullptr) {
@@ -137,7 +151,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
   }
 
   explicit MklDnnQuantizedMatMulOp(OpKernelConstruction* context)
-      : MklDnnMatMulOpBase<Tweight, Toutput>(context) {
+      : MklDnnMatMulOpBase<Tweight, Tbias, Toutput>(context) {
     string mode_string;
     OP_REQUIRES_OK(context, context->GetAttr("input_quant_mode", &mode_string));
     if (mode_string == "MIN_FIRST") {
@@ -266,6 +280,9 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
         // TF default format is IO. So in that case convert weight from IO
         // to OI for the first iteration and cache it to reuse in the
         // subsequent iterations, if the weight is constant.
+#ifndef ENABLE_ONEDNN_V3
+        // TODO(intel-tf): enable weights caching once it is enabled in the base
+        // class.
         if (this->is_weight_const_) {
           // Check if the weight is already cached or not
           if (this->IsWeightCacheEmpty(context)) {
@@ -277,7 +294,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
               this->GetCachedWeight(context, matmul_fwd_pd->weights_desc());
           is_weight_cached = (weight_data != nullptr);
         }
-
+#endif  // !ENABLE_ONEDNN_V3
         if (!is_weight_cached) {
           weight.SetUsrMem(weight_md, &weight_tensor);
           weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_desc(),
@@ -297,12 +314,20 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
 
       UserScratchPad<unsigned char> scratch_pad;
       scratch_pad.AllocateSPTensor(matmul_fwd, context);
-
-      // Execute inner-product
+#ifndef ENABLE_ONEDNN_V3
       Tbias* bias_data = this->GetBiasHandle(
           context, matmul_fwd_pd, bias_tensor, weight_tensor, cpu_stream);
+#else
+      void* bias_data = static_cast<void*>(
+          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+      // Temporary tensor for scaled bias when bias needs to be scaled.
+      Tensor temp_scaled_bias_tensor;
+      this->GetBiasHandle(context, matmul_fwd_pd, bias_tensor, weight_tensor,
+                          cpu_stream, &temp_scaled_bias_tensor, &bias_data);
+#endif  // !ENABLE_ONEDNN_V3
+      // Execute inner-product
       matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data,
-                          scratch_pad.Get(), cpu_stream);
+                          matmul_fwd_dims, scratch_pad.Get(), cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
@@ -393,16 +418,25 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
                 errors::InvalidArgument("`max_b` must be rank 0 but is rank ",
                                         max_weight_tensor.dims()));
 
+#ifdef ENABLE_ONEDNN_V3
+    const float min_input = min_input_tensor.scalar<float>()();
+    const float max_input = max_input_tensor.scalar<float>()();
+    const float min_weight = min_weight_tensor.scalar<float>()();
+    const float max_weight = max_weight_tensor.scalar<float>()();
+    // Current implementation only supports quint8 input and qint8 weights.
+    float src_scale =
+        mode_ == QUANTIZE_MODE_MIN_FIRST
+            ? (max_input - min_input) / 255.0
+            : std::max(std::abs(min_input), std::abs(max_input)) / 255.0;
+    float wei_scale =
+        std::max(std::abs(min_weight), std::abs(max_weight)) / 127.0;
+    float dst_scale = 1.0;
+#endif  // ENABLE_ONEDNN_V3
     // When the output type is quint8, the output data is requantized into
     // quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value ||
         std::is_same<Toutput, float>::value) {
-      float min_output_value;
-      float max_output_value;
-      ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
-      float scale_int32 =
-          std::max(std::abs(min_output_value), std::abs(max_output_value));
       const Tensor& min_freezed_tensor = context->input(7);
       const Tensor& max_freezed_tensor = context->input(8);
       // min-max values of freezed output range should be scalar.
@@ -420,6 +454,12 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       const float max_freezed_output = max_freezed_tensor.scalar<float>()();
       float scale_eightbit =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
+#ifndef ENABLE_ONEDNN_V3
+      float min_output_value;
+      float max_output_value;
+      ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
+      float scale_int32 =
+          std::max(std::abs(min_output_value), std::abs(max_output_value));
       float scale = 1.0;
       if (std::is_same<Toutput, quint8>::value) {
         scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 23);
@@ -436,6 +476,28 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       output_scale.push_back(scale);
       params.post_op_params.push_back({"output_scale", output_scale});
     }
+#else
+      if (std::is_same<Toutput, quint8>::value) {
+        // Existing unit tests expect dst_scale to be computed using 256.0
+        // value as opposed to 255.0. This has no impact on model level
+        // accuracy.
+        dst_scale = scale_eightbit / 256.0;
+      } else if (std::is_same<Toutput, qint8>::value) {
+        dst_scale = scale_eightbit / 127.0;
+      } else {
+        // Output type is float.
+        dst_scale = src_scale * wei_scale;
+      }
+    } else {
+      if (!std::is_same<Toutput, qint32>::value)
+        TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
+                           "Output datatype is expected to be qint32."));
+      dst_scale = src_scale * wei_scale;
+    }
+    params.post_op_params.push_back({"src_scale", {src_scale}});
+    params.post_op_params.push_back({"wei_scale", {wei_scale}});
+    params.post_op_params.push_back({"dst_scale", {dst_scale}});
+#endif  // !ENABLE_ONEDNN_V3
   }
 
   // This function handles bias conversion and compensation for MIN_FIRST and
@@ -443,6 +505,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
   //  B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 * Wf32
   // If input is quantized via SCALE,
   //   Bs32 = Qa * Qw * Bf32.
+#ifndef ENABLE_ONEDNN_V3
   Tbias* GetBiasHandle(
       OpKernelContext* context,
       std::shared_ptr<dnnl::inner_product_forward::primitive_desc>&
@@ -549,6 +612,111 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       }
     }
   }
+#else
+  void GetBiasHandle(
+      OpKernelContext* context,
+      std::shared_ptr<dnnl::inner_product_forward::primitive_desc>&
+          mkldnn_matmul_fwd_pd,
+      const Tensor& bias_tensor, const Tensor& weight_tensor,
+      std::shared_ptr<stream> reorder_stream, Tensor* temp_scaled_bias_tensor,
+      void** bias_data) {
+    if (std::is_same<Tbias, float>::value && mode_ == QUANTIZE_MODE_SCALED) {
+      return;
+    } else {
+      // If the bias is qint32 or quant mode is MIN_FIRST, then we need to
+      // calculate the bias.
+      const float min_input = context->input(3).flat<float>()(0);
+      const float max_input = context->input(4).flat<float>()(0);
+      const float min_weight = context->input(5).flat<float>()(0);
+      const float max_weight = context->input(6).flat<float>()(0);
+
+      std::vector<dnnl::primitive> net;
+      float out_scale;
+      auto scaled_bias_md = mkldnn_matmul_fwd_pd->bias_desc();
+      TensorShape scaled_bias_shape;
+      scaled_bias_shape.AddDim(
+          (scaled_bias_md.get_size() / sizeof(TSCALED_BIAS)));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<TSCALED_BIAS>::v(),
+                                  scaled_bias_shape, temp_scaled_bias_tensor));
+      void* scaled_bias_buf = static_cast<void*>(
+          temp_scaled_bias_tensor->flat<TSCALED_BIAS>().data());
+      // If the bias is float and input quantize is MIN_FIRST, bias has to be
+      // compensated with B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 *
+      // Wf32.
+      if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
+        int k = weight_tensor.dim_size(0);
+        int n = weight_tensor.dim_size(1);
+        TSCALED_BIAS* comp_bias = (TSCALED_BIAS*)scaled_bias_buf;
+
+        qint8* wt_buf = static_cast<qint8*>(
+            const_cast<qint8*>(weight_tensor.flat<qint8>().data()));
+
+        const Tbias* bias_buf = static_cast<Tbias*>(
+            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+
+        float qa_amin = 255 * min_input / (max_input - min_input);
+
+        out_scale = (255.0 * 127.0) /
+                    ((max_input - min_input) *
+                     std::max(std::abs(max_weight), std::abs(min_weight)));
+        for (int j = 0; j < n; ++j) {
+          int x = 0;
+          for (int i = 0; i < k; ++i) {
+            x += wt_buf[i * n + j];
+          }
+          if (std::is_same<Tbias, qint32>::value) {
+            // Starting oneDNN v3.0, bias is expected to be dequantized to
+            // float32.
+            comp_bias[j] = static_cast<float>(bias_buf[j]) / out_scale;
+          } else {
+            // Bias is float32 but still needs to be compensated.
+            comp_bias[j] = static_cast<float>(bias_buf[j]) + (x * qa_amin);
+          }
+        }
+      } else if (mode_ == QUANTIZE_MODE_SCALED) {
+        // For oneDNN >= v3.0, if bias is qint32 and input quantization
+        // mode is SCALED, bias needs to be dequantized to float32.
+        out_scale =
+            255.0 * 127.0 /
+            (max_input * std::max(std::abs(max_weight), std::abs(min_weight)));
+
+        std::vector<float> scales;
+        scales.push_back(out_scale);
+        dnnl::primitive_attr bias_attr;
+        void* bias_buf = static_cast<void*>(
+            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+        bias_attr.set_scales_mask(DNNL_ARG_DST, 0);
+        auto input_bias_mem =
+            memory({{static_cast<int>(bias_tensor.NumElements())},
+                    MklDnnType<Tbias>(),
+                    memory::format_tag::x},
+                   this->cpu_engine_, bias_buf);
+        auto scaled_bias_mem = memory(mkldnn_matmul_fwd_pd->bias_desc(),
+                                      this->cpu_engine_, scaled_bias_buf);
+
+        auto reorder_desc = dnnl::reorder::primitive_desc(
+            input_bias_mem, scaled_bias_mem, bias_attr);
+        net.push_back(dnnl::reorder(reorder_desc));
+        std::unordered_map<int, memory> reorder_net_args = {
+            {DNNL_ARG_FROM, input_bias_mem}, {DNNL_ARG_TO, scaled_bias_mem}};
+        auto scale_mem =
+            memory({{1}, MklDnnType<float>(), memory::format_tag::x},
+                   this->cpu_engine_, scales.data());
+        reorder_net_args.insert(
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, scale_mem});
+        std::vector<MemoryArgsMap> net_args{reorder_net_args};
+        ExecutePrimitive(net, &net_args, this->cpu_engine_, context);
+      } else {
+        context->CtxFailure(
+            errors::InvalidArgument("Quantization mode must be"
+                                    "either MIN_FIRST or SCALED."));
+      }
+      *bias_data = static_cast<void*>(
+          temp_scaled_bias_tensor->flat<TSCALED_BIAS>().data());
+    }
+  }
+#endif  // ENABLE_ONEDNN_V3
 
  private:
   memory* input_bias_ = nullptr;
@@ -639,6 +807,8 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndDequantize",
 #undef BIAS_TYPE_CONSTRAINT
 #undef TEMPLATE_ARGS
 #undef LABEL
+
+#undef TSCALED_BIAS
 
 }  // namespace tensorflow
 

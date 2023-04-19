@@ -23,7 +23,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
@@ -382,4 +382,4 @@ TF_CALL_bfloat16(REGISTER_MATMUL_MKL);
 #endif  // DNNL_AARCH64_USE_ACL
 
 }  // end namespace tensorflow
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

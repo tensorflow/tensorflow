@@ -17,7 +17,7 @@ limitations under the License.
 
 // This file uses oneDNN InnerProduct for acceleration of TF Matrix-Matrix
 // Multiplication (MatMul) with bias (BiasAdd) operations.
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -28,10 +28,10 @@ namespace tensorflow {
 
 // Fuse Operation
 template <typename Device, typename T, bool native_format = false>
-class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
+class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
  public:
   explicit MklFusedMatMulOp(OpKernelConstruction* ctx)
-      : MklDnnMatMulOpBase<T, T>(ctx) {
+      : MklDnnMatMulOpBase<T, void, T>(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
@@ -238,6 +238,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       if (weight_md != matmul_pd->weights_desc()) {
         T* cached_weight_data = nullptr;
 
+#ifndef ENABLE_ONEDNN_V3
+        // TODO(intel-tf): Enable weight caching for oneDNN v3.x
         if (this->is_weight_const_) {
           if (this->IsWeightCacheEmpty(ctx)) {
             this->CacheWeight(ctx, matmul_pd, cached_weight_data, weight_tensor,
@@ -246,6 +248,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           cached_weight_data =
               this->GetCachedWeight(ctx, matmul_pd->weights_desc());
         }
+#endif  // !ENABLE_ONEDNN_V3
 
         // Cache weight may fail when it gets different format in different
         // iteration. Fallback to reoder if it happens.
@@ -269,7 +272,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
-                           scratch_pad.Get(), cpu_stream);
+                           matmul_params, scratch_pad.Get(), cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -339,4 +342,4 @@ TF_CALL_bfloat16(REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
