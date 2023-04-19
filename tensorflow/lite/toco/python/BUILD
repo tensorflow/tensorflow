@@ -97,10 +97,11 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:_pywrap_toco_api",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
         "@absl_py//absl:app",
+        "//tensorflow/python:_pywrap_toco_api",
+        "//tensorflow/python:pywrap_tensorflow",
+        # Needed to provide PyArray_API
+        "//third_party/py/numpy",  # buildcleaner: keep
     ],
 )
 
@@ -116,5 +117,7 @@ tf_py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/platform:test",
     ],
 )
