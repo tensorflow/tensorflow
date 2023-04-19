@@ -80,10 +80,12 @@ cc_library(
     srcs = [
         "ifrt_dialect.cc",
         "ifrt_ops.cc",
+        "sharding_param.cc",
     ],
     hdrs = [
         "ifrt_dialect.h",
         "ifrt_ops.h",
+        "sharding_param.h",
     ],
     visibility = ["//tensorflow/compiler/xla/python/ifrt:friends"],
     deps = [

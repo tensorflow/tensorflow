@@ -31,6 +31,7 @@ limitations under the License.
 
 // Generated definitions.
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.cc.inc"
+#include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 #define GET_TYPEDEF_CLASSES
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_types.cc.inc"
 
@@ -49,19 +50,9 @@ void IfrtDialect::initialize() {
 }
 
 // static
-IfrtArrayType IfrtArrayType::get(llvm::ArrayRef<int64_t> shape,
-                                 mlir::Type element_type,
-                                 llvm::StringRef sharding,
-                                 llvm::ArrayRef<int64_t> devices) {
-  auto context = element_type.getContext();
-  auto global = mlir::RankedTensorType::get(shape, element_type);
-  return IfrtArrayType::get(context, global, sharding, devices);
-}
-
-// static
 mlir::LogicalResult IfrtArrayType::verify(
-    llvm::function_ref<::mlir::InFlightDiagnostic()> emit_error,
-    mlir::RankedTensorType global, llvm::StringRef sharding,
+    llvm::function_ref<mlir::InFlightDiagnostic()> emit_error,
+    mlir::RankedTensorType global, ShardingParam sharding,
     llvm::ArrayRef<int64_t> devices) {
   llvm::SmallSet<int64_t, 4> device_set;
   for (auto device : devices) {
@@ -69,6 +60,21 @@ mlir::LogicalResult IfrtArrayType::verify(
       return emit_error() << "`devices` has duplicated id " << device;
     }
   }
+
+  if (mlir::failed(sharding.verify(emit_error))) {
+    return mlir::failure();
+  }
+
+  int64_t devices_in_mesh = 1;
+  for (const int64_t axis_size : sharding.minor_to_major().axis_sizes) {
+    devices_in_mesh *= axis_size;
+  }
+  if (devices_in_mesh != devices.size()) {
+    return emit_error() << "Requires the same amount of `devices` and from "
+                           "`sharding`. Actual: "
+                        << devices.size() << " vs " << devices_in_mesh;
+  }
+
   return mlir::success();
 }
 

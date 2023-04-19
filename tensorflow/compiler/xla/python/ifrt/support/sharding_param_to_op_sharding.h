@@ -13,15 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_
 
-#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
-// Generated definitions.
-#include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.h.inc"  // IWYU pragma: export
-#define GET_TYPEDEF_CLASSES
-#include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_types.h.inc"  // IWYU pragma: export
+namespace xla {
+namespace ifrt {
+namespace support {
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_
+// Converts ShardingParam to OpSharding.
+//
+// This assumes that `sharding_param` is valid.
+OpSharding ToOpSharding(const ShardingParam& sharding_param);
+
+}  // namespace support
+}  // namespace ifrt
+}  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_

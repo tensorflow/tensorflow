@@ -27,22 +27,19 @@ def Ifrt_Dialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
+def Ifrt_ShardingParameter :
+    AttrOrTypeParameter<"::xla::ifrt::ShardingParam", ""> {
+  let parser = "::xla::ifrt::ShardingParam::Parse($_parser)";
+}
+
 def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let mnemonic = "array";
   let summary = "An Ifrt array sharded on a set of devices.";
 
   let parameters = (ins
     Builtin_RankedTensor:$shape,
-    StringRefParameter<"User encoded sharding">:$sharding,
+    Ifrt_ShardingParameter:$sharding,
     ArrayRefParameter<"int64_t">:$devices);
-
-  let builders = [
-    TypeBuilderWithInferredContext<(ins
-      "::llvm::ArrayRef<int64_t>":$shape,
-      "::mlir::Type":$element_type,
-      "::llvm::StringRef":$sharding,
-      "::llvm::ArrayRef<int64_t>":$devices)>
-  ];
 
   let assemblyFormat = "`<` $shape`,` $sharding`,` `[`$devices`]` `>`";
 
