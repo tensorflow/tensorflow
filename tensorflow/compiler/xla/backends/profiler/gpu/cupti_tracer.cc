@@ -90,7 +90,7 @@ Status ToStatus(CUresult result) {
 
 inline void LogIfError(const Status &status) {
   if (status.ok()) return;
-  LOG(ERROR) << status.error_message();
+  LOG(ERROR) << status.message();
 }
 
 // Maps an OverheadKind enum to a const string.

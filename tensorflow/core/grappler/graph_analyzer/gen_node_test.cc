@@ -360,9 +360,10 @@ TEST(GenNodeTest, ParseNodeUndefinedOp) {
   auto gn = map["node1"].get();
   ASSERT_THAT(
       gn->ParseInputs(&map),
-      Eq(Status(absl::StatusCode::kInvalidArgument,
-                "Node 'node1' contains an undefined operation 'Zzzx': " +
-                    nested_error.error_message())));
+      Eq(Status(
+          absl::StatusCode::kInvalidArgument,
+          absl::StrCat("Node 'node1' contains an undefined operation 'Zzzx': ",
+                       nested_error.message()))));
 }
 
 TEST(GenNodeTest, ParseNodeUnexpectedInputs) {

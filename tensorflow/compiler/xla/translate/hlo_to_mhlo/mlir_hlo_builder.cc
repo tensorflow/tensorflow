@@ -95,8 +95,9 @@ void AddFrontendAttributesToOperation(
 void AddShapeAttributeToOperation(mlir::OpBuilder builder, mlir::Operation* op,
                                   std::optional<xla::OpSharding> sharding) {
   if (sharding) {
-    op->setAttr(kShardingAttr,
-                builder.getStringAttr(sharding->SerializeAsString()));
+    op->setAttr(kShardingAttr, builder.getStringAttr(
+                                   HloSharding::FromProto(*sharding)->ToString(
+                                       /*include_metadata=*/true)));
   }
 }
 

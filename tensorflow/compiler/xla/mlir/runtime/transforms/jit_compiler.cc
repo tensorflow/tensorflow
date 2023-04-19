@@ -102,6 +102,12 @@ static void SetupPassDebugging(MLIRContext* context, mlir::PassManager& pm) {
   }
 }
 
+static void PrintPassPipeline(const mlir::PassManager& pm) {
+  llvm::errs() << "MLIR Pass Pipeline:\n";
+  pm.printAsTextualPipeline(llvm::errs());
+  llvm::errs() << "\n";
+}
+
 static LogicalResult RunPipeline(
     ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
   if (!create_pipeline) return success();
@@ -120,6 +126,10 @@ static LogicalResult RunPipeline(
   }
   PassManager passes(&pm);
   create_pipeline(passes);
+
+  if (DebugJitCompiler()) {
+    PrintPassPipeline(pm);
+  }
 
   return pm.run(module);
 }

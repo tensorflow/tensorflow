@@ -528,7 +528,7 @@ Status MaybeRegisterFingerprint(
   auto status =
       tpu::ComputeArgumentShapes(metadata_proto, input_shapes, &arg_shapes);
   if (!status.ok()) {
-    VLOG(2) << status.error_message();
+    VLOG(2) << status.message();
     return OkStatus();
   }
   uint64 tf_fingerprint =

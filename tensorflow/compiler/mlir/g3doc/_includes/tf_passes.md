@@ -178,6 +178,11 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
+
+#### Options
+```
+-globally-unique-func-names : If true, the pass adds extra identifiers to make function names globally unique within a process, not just within a module.
+```
 ### `-tf-device-constant-sinking`: Sinks constants implicitly captured in a tf_device.cluster region.
 This pass sinks implicitly captured constants (`tf.Const` ops) used by and into
 a `tf_device.cluster` region. Performing this prior to outlining will reduce the
@@ -243,6 +248,11 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
   return %identity : tensor<i32>
 }
+```
+
+#### Options
+```
+-globally-unique-func-names : If true, the pass adds extra identifiers to make function names globally unique within a process, not just within a module.
 ```
 ### `-tf-device-mark-input-output-aliases`: Marks device cluster inputs-output pairs that read/write to the same variable as aliases
 This pass analyzes the inputs and outputs to device cluster and marks those
@@ -1165,6 +1175,12 @@ This pass looks for replicate invariant ops in a `tf_device.replicate` op
 region and hoists them out. It also makes `tf.Shape` ops replicate invariant
 if possible. This currently updates or replaces `tf.Shape` ops of replicated
 arguments, either tensors or resources.
+
+The primary benefit of the pass is to hoist `num_replicas` `_TPUCompile`s
+into a single `_TPUCompile`.
+
+This pass assumes that when a `tf.Shape` directly inputs from `replicate`
+params, then it is the same shape across replicas.
 
 For example, the following
 

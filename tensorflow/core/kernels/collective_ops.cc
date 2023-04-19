@@ -59,8 +59,8 @@ static std::unique_ptr<OpKernel> BuildOpKernel(OpKernelConstruction* c,
                      c->device()->GetAllocator(AllocatorAttributes()),
                      *sub_node, c->graph_def_version(), &status);
   if (!status.ok()) {
-    c->CtxFailureWithWarning(errors::Internal(
-        "Failed to build OpKernel for ", name, " : ", status.error_message()));
+    c->CtxFailureWithWarning(errors::Internal("Failed to build OpKernel for ",
+                                              name, " : ", status.message()));
   }
   return k;
 }

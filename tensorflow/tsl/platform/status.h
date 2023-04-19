@@ -260,6 +260,13 @@ Status FromAbslStatus(const absl::Status& s,
 absl::Status ToAbslStatus(const ::tsl::Status& s,
                           SourceLocation loc = SourceLocation::current());
 
+// Given `Status.message()` does not guarantee to be always backed by a
+// null-terminated string, we have this utility function when it's needed for
+// the Tensorflow C-API.
+// A more robust API would be to get both a `char*` of the beginning of the
+// string, plus the size (see e.g. `XlaCustomCallStatusSetFailure`).
+const char* NullTerminatedMessage(const Status& status);
+
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
 

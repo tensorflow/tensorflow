@@ -174,7 +174,7 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
           "%s\n"
           "%s with replica_count: %d, partition_count: %d, group_mode: %s, "
           "operand_count: %d\n%s",
-          status.error_message(), NcclThunkType::GetHloOpName(), replica_count,
+          status.message(), NcclThunkType::GetHloOpName(), replica_count,
           partition_count, CollectiveOpGroupModeToString(group_mode),
           op->getNumOperands() / 2, llvm_ir::DumpToString(op.getOperation())));
 }

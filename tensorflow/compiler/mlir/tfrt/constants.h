@@ -23,6 +23,12 @@ namespace tfrt_compiler {
 inline constexpr char kOpKeyAttrName[] = "__op_key";
 
 }  // namespace tfrt_compiler
+
+namespace mlrt_compiler {
+
+inline constexpr char kArgPassByValue[] = "mlrt.__pass_by_value";
+
+}  // namespace mlrt_compiler
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_CONSTANTS_H_

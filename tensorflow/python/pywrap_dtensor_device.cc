@@ -385,7 +385,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](absl::string_view single_device) {
              auto mesh = Mesh::GetSingleDeviceMesh(single_device);
              if (!mesh.ok()) {
-               throw py::value_error(mesh.status().error_message());
+               throw py::value_error(std::string(mesh.status().message()));
              }
              return *mesh;
            }),
@@ -393,7 +393,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](const tensorflow::dtensor::MeshProto& proto) {
              auto mesh = Mesh::ParseFromProto(proto);
              if (!mesh.ok()) {
-               throw py::value_error(mesh.status().error_message());
+               throw py::value_error(std::string(mesh.status().message()));
              }
              return *mesh;
            }),
@@ -401,7 +401,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](std::string_view mesh_str) {
              auto mesh = Mesh::FromString(mesh_str);
              if (!mesh.ok()) {
-               throw py::value_error(mesh.status().error_message());
+               throw py::value_error(std::string(mesh.status().message()));
              }
              return *mesh;
            }),
@@ -423,7 +423,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           [](const Mesh& mesh, std::string_view name) {
             auto dim_size = mesh.dim_size(name);
             if (!dim_size.ok()) {
-              throw py::value_error(dim_size.status().error_message());
+              throw py::value_error(std::string(dim_size.status().message()));
             }
             return *dim_size;
           },
@@ -455,7 +455,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           [](const Mesh& mesh) {
             auto mesh_proto = mesh.ToProto();
             if (!mesh_proto.ok()) {
-              throw py::value_error(mesh_proto.status().error_message());
+              throw py::value_error(std::string(mesh_proto.status().message()));
             }
             return *mesh_proto;
           },
@@ -463,7 +463,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def("device_location", [](const Mesh& mesh, int device_id) {
         auto location = mesh.device_location(device_id);
         if (!location.ok()) {
-          throw py::value_error(location.status().error_message());
+          throw py::value_error(std::string(location.status().message()));
         }
         return std::vector<int64_t>(location->begin(), location->end());
       });
@@ -472,7 +472,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
                        const Mesh& mesh) {
              auto layout = Layout::GetLayout(sharding_specs, mesh);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
@@ -480,7 +480,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](const tensorflow::dtensor::LayoutProto& proto) {
              auto layout = Layout::FromProto(proto);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
@@ -488,7 +488,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](std::string_view layout_str) {
              auto layout = Layout::FromString(layout_str);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
@@ -501,7 +501,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](const Mesh& mesh) {
              auto layout = Layout::GetSingleDeviceLayout(mesh);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
@@ -512,7 +512,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           [](const Layout& layout) {
             auto layout_proto = layout.ToProto();
             if (!layout_proto.ok()) {
-              throw py::value_error(layout_proto.status().error_message());
+              throw py::value_error(
+                  std::string(layout_proto.status().message()));
             }
             return *layout_proto;
           },

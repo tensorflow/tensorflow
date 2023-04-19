@@ -260,7 +260,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
-    EXPECT_TRUE(absl::StrContains(status.error_message(), "not found."));
+    EXPECT_TRUE(absl::StrContains(status.message(), "not found."));
 
     return OkStatus();
   }
@@ -628,8 +628,8 @@ void TestTwoDeviceMult(
   if (!error.empty()) {
     EXPECT_TRUE(errors::IsInvalidArgument(status))
         << "Actual status: " << status;
-    EXPECT_TRUE(absl::StrContains(status.error_message(), error))
-        << "Actual error message: " << status.error_message();
+    EXPECT_TRUE(absl::StrContains(status.message(), error))
+        << "Actual error message: " << status.message();
     return;
   }
 
@@ -788,9 +788,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListInput) {
       MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "FuncWithListInput has an input named \"x1\" that is a list of tensors"))
-      << "Actual error message: " << status.error_message();
+      << "Actual error message: " << status.message();
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, FullTypeForInt32) {
@@ -811,7 +811,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, FullTypeForInt32) {
   // Check that the error is found by earlier in ProcessFunctionLibraryRuntime
   // and not later in FunctionLibraryRuntime.
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "in 'ProcessFunctionLibraryRuntime::InstantiateMultiDevice' has "
       "TFT_TENSOR output 0 which has 0 args instead of 1"));
 }
@@ -825,9 +825,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {
       MakeOptions("CPU:0", {}, {"CPU:0"}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "FuncWithListOutput has an output named \"y\" that is a list of tensors"))
-      << "Actual error message: " << status.error_message();
+      << "Actual error message: " << status.message();
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest,
@@ -1027,7 +1027,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
   resource->is_initialized = true;
   ResourceMgr* mgr = gpu_device_->resource_manager();
   Status status = mgr->Create(mgr->default_container(), "my_gpu_var", resource);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // Run the function taking a resource and outputting it
   FunctionLibraryRuntime::Options opts;
@@ -1073,7 +1073,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_PlacerError) {
       "ResourceOutput", test::function::Attrs({{"T", DT_FLOAT}}), inst_opts,
       &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  ASSERT_TRUE(absl::StrContains(status.error_message(), "Cannot place"));
+  ASSERT_TRUE(absl::StrContains(status.message(), "Cannot place"));
 }
 
 REGISTER_OP("BrokenOp")
@@ -1157,7 +1157,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_StateHandle) {
   *resource->tensor() = resource_value;
   resource->is_initialized = true;
   Status status = mgr->Create(mgr->default_container(), "my_gpu_var", resource);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   Tensor x = GetResourceHandle("my_gpu_var", mgr->default_container(),
                                "/job:a/replica:0/task:0/device:GPU:0");

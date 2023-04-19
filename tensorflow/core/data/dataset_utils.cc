@@ -709,7 +709,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
-        status.error_message()));
+        std::string(status.message())));
   }
   return OkStatus();
 }
@@ -952,8 +952,7 @@ bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<25>,
-                            IndependentHostTasks);
+                            RandomJobSamplePercentage<50>, AllTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",

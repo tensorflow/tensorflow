@@ -40,7 +40,7 @@ py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:flags",
         "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:flagsaver",
     ],
@@ -61,13 +61,13 @@ pytype_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -82,7 +82,6 @@ tpu_py_test(
         ":tpu_estimator",
         ":tpu_lib",
         "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//third_party/py/numpy",
     ],
@@ -96,7 +95,7 @@ pytype_library(
     ],
     deps = [
         ":topology",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -107,9 +106,9 @@ pytype_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:errors",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session_run_hook",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -140,7 +139,6 @@ py_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
-        "_tpu_estimator_embedding.py",
         "error_handling.py",
         "tpu_config.py",
         "tpu_context.py",
@@ -163,7 +161,6 @@ py_library(
         "//tensorflow/python:function",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary_ops_v2",
@@ -260,7 +257,6 @@ pytype_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:nn",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_analytics",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:string_ops",
@@ -272,6 +268,9 @@ pytype_library(
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:remote_utils",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/summary:summary_iterator",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
         "//tensorflow/python/tpu/ops",
@@ -315,7 +314,6 @@ pytype_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_analytics",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf2",
@@ -328,6 +326,7 @@ pytype_library(
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/tpu/profiler",
         "//tensorflow/python/util:compat",
@@ -418,9 +417,9 @@ pytype_library(
         "//tensorflow/python:config",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -504,6 +503,7 @@ tf_py_test(
         ":tpu",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -514,6 +514,7 @@ tf_py_test(
     deps = [
         ":topology",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -535,6 +536,7 @@ pytype_library(
         "//tensorflow/python:tpu_ops_gen",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -558,6 +560,7 @@ pytype_library(
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
     ],
@@ -772,6 +775,7 @@ tf_py_test(
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
@@ -812,6 +816,7 @@ tf_py_test(
     deps = [
         ":tpu_embedding_v2",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

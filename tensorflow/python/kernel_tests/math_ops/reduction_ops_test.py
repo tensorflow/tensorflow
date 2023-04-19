@@ -162,7 +162,7 @@ class BaseReductionTest(test.TestCase):
     with self.cached_session() as sess:
       tf_ans = self._tf_reduce(x, reduction_axes, keepdims)
       out = sess.run(tf_ans, feed_dict)
-    self.assertAllClose(np_ans, out, rtol=rtol, atol=atol)
+    self.assertAllCloseAccordingToType(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
   def _compareAll(self,
@@ -311,6 +311,44 @@ class SumReductionTest(BaseReductionTest):
             tf_out_sum_xz, tf_out_sum_y = self.evaluate([tf_sum_xz, tf_sum_y])
           self.assertAllClose(sum_y, tf_out_sum_y)
           self.assertAllClose(sum_xz, tf_out_sum_xz)
+
+  @test_util.run_deprecated_v1
+  def testFloat32BFloat16(self):
+    for dtype in [dtypes.float32, dtypes.bfloat16]:
+      dtype_np = np.float32 if dtype == dtypes.float32 else dtype.as_numpy_dtype
+      for rank in range(1, _MAX_RANK + 1):
+        np_arr = self._makeIncremental((2,) * rank, dtype)
+        self._compareAllAxes(np_arr)
+
+      for _ in range(10):
+        size_x = int(2 ** np.random.uniform(0, 7))
+        size_y = int(2 ** np.random.uniform(0, 7))
+
+        if size_x * size_y > 1e7:
+          size_y = int(1e7 / size_x)
+
+        arr = np.ones([size_x, size_y], dtype=dtype_np)
+        col_sum = np.sum(arr, axis=0)
+        row_sum = np.sum(arr, axis=1)
+
+        tf_row_sum = self._tf_reduce(arr, 1, False)
+        tf_col_sum = self._tf_reduce(arr, 0, False)
+        tf_out_row, tf_out_col = self.evaluate([tf_row_sum, tf_col_sum])
+        self.assertAllCloseAccordingToType(col_sum, tf_out_col)
+        self.assertAllCloseAccordingToType(row_sum, tf_out_row)
+
+      for size_x in [1, 3, 16]:
+        for size_y in [1, 3, 16]:
+          for size_z in [1, 3, 16]:
+            arr = np.ones([size_x, size_y, size_z], dtype=dtype_np)
+            sum_y = np.sum(arr, axis=1)
+            sum_xz = np.sum(arr, axis=(0, 2))
+
+            tf_sum_xz = self._tf_reduce(arr, [0, 2], False)
+            tf_sum_y = self._tf_reduce(arr, 1, False)
+            tf_out_sum_xz, tf_out_sum_y = self.evaluate([tf_sum_xz, tf_sum_y])
+            self.assertAllCloseAccordingToType(sum_y, tf_out_sum_y)
+            self.assertAllCloseAccordingToType(sum_xz, tf_out_sum_xz)
 
   @test_util.run_deprecated_v1
   def testFloat64(self):
@@ -526,10 +564,10 @@ class MeanReductionTest(BaseReductionTest):
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
-  def testBfloat16(self):
+  def testBFloat16(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
-      self._compareAllAxes(np_arr, rtol=1e-3, atol=1.)
+      self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
   def testFloat64(self):

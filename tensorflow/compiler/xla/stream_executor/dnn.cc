@@ -1118,7 +1118,7 @@ bool DnnSupport::IsStatusOk(const tsl::Status& status, bool report_error) {
     return true;
   }
   if (report_error) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   return false;
 }

@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
+#include "tensorflow/lite/async/backend_async_kernel_interface.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/async/c/types.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/testing/mock_async_kernel.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/c/common.h"
 
 using ::testing::_;
 

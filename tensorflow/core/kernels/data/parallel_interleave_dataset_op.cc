@@ -1264,8 +1264,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           iterator_name, CodeKey(idx), static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            iterator_name, ErrorMessageKey(idx), status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(iterator_name,
+                                               ErrorMessageKey(idx),
+                                               std::string(status.message())));
       }
       return OkStatus();
     }

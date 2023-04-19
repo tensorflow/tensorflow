@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
@@ -267,8 +268,8 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
   if (const auto status = ConvertMlirToGraph(module_op, config, &graph,
                                              &flib_def, &control_ret_nodes);
       !status.ok()) {
-    return absl::InternalError("Failed to convert MLIR to GraphDef. " +
-                               status.error_message());
+    return absl::InternalError(
+        absl::StrCat("Failed to convert MLIR to GraphDef. ", status.message()));
   }
 
   GraphDef graph_def{};
@@ -343,7 +344,7 @@ absl::Status RunPasses(const absl::string_view name, FuncT add_passes_func,
   if (failed(pm.run(module_op))) {
     return absl::InternalError(
         absl::StrFormat("Failed to run pass: %s. %s", name,
-                        diagnostic_handler.ConsumeStatus().error_message()));
+                        diagnostic_handler.ConsumeStatus().message()));
   }
 
   return absl::OkStatus();
@@ -472,8 +473,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
                                           absl::MakeSpan(exported_names),
                                           &context, import_options, &bundle);
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
@@ -549,8 +550,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
                                           &context, import_options, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
@@ -621,8 +622,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
                                           &context, import_options, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
@@ -694,8 +695,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
                                           &context, import_options, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();

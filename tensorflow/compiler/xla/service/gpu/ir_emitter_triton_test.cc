@@ -74,6 +74,7 @@ ENTRY entry {
       GetGpuDeviceInfo(backend().default_stream_executor());
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
 
   tensorflow::AutotuneResult::TritonGemmKey config;
   config.set_block_m(512);
@@ -85,7 +86,7 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_computation,
                     GetCudaComputeCapability(), dev_info, config, &llvm_module,
-                    &MatMul),
+                    &MatMul, mlir_context),
       tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                              "Requires too much shared memory: 1310720"));
 
@@ -94,7 +95,7 @@ ENTRY entry {
   config.set_block_k(32);
   TF_EXPECT_OK(TritonWrapper("test_fn", triton_dot_computation,
                              GetCudaComputeCapability(), dev_info, config,
-                             &llvm_module, &MatMul)
+                             &llvm_module, &MatMul, mlir_context)
                    .status());
 }
 
@@ -533,7 +534,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, ParametrizedRewriteTest,
 // into Triton fusions.
 using CompareTest = TritonGemmTest;
 
-TEST_F(CompareTest, DifferentTilings) {
+TEST_F(CompareTest, DifferentTilingsProduceSameResult) {
   const char* hlo_text_ref = R"(
 HloModule t
 
@@ -548,7 +549,7 @@ ENTRY e {
   p0 = s8[101,202]{1,0} parameter(0)
   p1 = f32[202,303]{1,0} parameter(1)
   ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"128\",\"block_n\":\"64\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"3\",\"num_warps\":\"8\"}"
+    backend_config="{\"block_m\":\"16\",\"block_n\":\"64\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"3\",\"num_warps\":\"8\"}"
 })";
 
   const char* hlo_text_triton = R"(
@@ -677,7 +678,7 @@ ENTRY e {
   arg0 = bf16[512,16]{1,0} parameter(0)
   arg1 = bf16[512,256]{1,0} parameter(1)
   ROOT _ = bf16[16,256]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+    backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"16\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
 }
 )";
 

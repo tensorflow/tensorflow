@@ -137,6 +137,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
     ],
 )

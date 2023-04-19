@@ -508,6 +508,21 @@ func.func @FuseFullyConnectedAddWithNoBias(%arg0: tensor<40x37xf32>, %arg1: tens
   // CHECK: return %[[fc]]
 }
 
+// CHECK-LABEL: @FuseFullyConnectedReducedAddWithNoBias
+func.func @FuseFullyConnectedReducedAddWithNoBias(%arg0: tensor<1024x1x126xf32>, %arg1: tensor<128x126xf32>) -> tensor<1024x1x128xf32> {
+  %cst = "tfl.no_value"() {value} : () -> none
+  %cst2 = arith.constant dense<2.0> : tensor<1x1x128xf32>
+
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1024x1x126xf32>, tensor<128x126xf32>, none) -> (tensor<1024x1x128xf32>)
+  %1 = "tfl.add"(%0, %cst2) {fused_activation_function = "NONE"} : (tensor<1024x1x128xf32>, tensor<1x1x128xf32>) -> tensor<1024x1x128xf32>
+
+  func.return %1 : tensor<1024x1x128xf32>
+
+  // CHECK-DAG: %cst = arith.constant dense<2.000000e+00> : tensor<128xf32>
+  // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %cst)
+  // CHECK: return %[[fc]]
+}
+
 // CHECK-LABEL: @FuseFullyConnectedAddWithExistingBias
 func.func @FuseFullyConnectedAddWithExistingBias(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
   %cst = arith.constant dense<3.0> : tensor<40xf32>
@@ -594,6 +609,38 @@ func.func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: te
   // FOLD: %[[cst:.*]] = arith.constant dense<5.000000e+00> : tensor<40x40xf32>
   // FOLD: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[cst]])
   // FOLD: return %[[fc]]
+}
+
+// CHECK-LABEL: @RemoveRedundantReshapeUsedAsInputToBinaryOp
+func.func @RemoveRedundantReshapeUsedAsInputToBinaryOp(%arg0: tensor<128xf32>, %arg1: tensor<1x512x512x128xf32>, %arg2: tensor<1x512x512x128xf32>) -> (tensor<1x512x512x128xf32>, tensor<1x512x512x128xf32>) {
+  %cst_10 = arith.constant  dense<[1, 1, 1, 128]> : tensor<4xi32>
+
+  %894 = "tfl.reshape"(%arg0, %cst_10) : (tensor<128xf32>, tensor<4xi32>) -> tensor<1x1x1x128xf32>
+  %895 = "tfl.mul"(%894, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x128xf32>, tensor<1x512x512x128xf32>) -> tensor<1x512x512x128xf32>
+  %896 = "tfl.mul"(%arg2, %894) {fused_activation_function = "NONE"} : (tensor<1x512x512x128xf32>, tensor<1x1x1x128xf32>) -> tensor<1x512x512x128xf32>
+
+  return %895, %896 : tensor<1x512x512x128xf32>, tensor<1x512x512x128xf32>
+
+  // CHECK:  %0 = tfl.mul(%arg0, %arg1)
+  // CHECK:  %1 = tfl.mul(%arg2, %arg0)
+  // CHECK:  return %0, %1
+}
+
+// CHECK-LABEL: @RetainRedundantReshapeUseInNonBinaryOp
+func.func @RetainRedundantReshapeUseInNonBinaryOp(%arg0: tensor<128xf32>, %arg1: tensor<1x512x512x128xf32>, %arg2: tensor<1x512x512x128xf32>) -> (tensor<1x512x512x128xf32>, tensor<128xf32>) {
+  %cst = arith.constant dense<0> : tensor<1xi32>
+  %cst_10 = arith.constant  dense<[1, 1, 1, 128]> : tensor<4xi32>
+  %894 = "tfl.reshape"(%arg0, %cst_10) : (tensor<128xf32>, tensor<4xi32>) -> tensor<1x1x1x128xf32>
+  %895 = "tfl.mul"(%894, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x128xf32>, tensor<1x512x512x128xf32>) -> tensor<1x512x512x128xf32>
+  %896 = "tfl.reduce_max"(%894, %cst) {keep_dims = false} : (tensor<1x1x1x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  return %895, %896 : tensor<1x512x512x128xf32>, tensor<128xf32>
+
+  // CHECK-DAG: %cst = arith.constant dense<0> : tensor<1xi32>
+  // CHECK-DAG: %cst_0 = arith.constant dense<[1, 1, 1, 128]> : tensor<4xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst_0) : (tensor<128xf32>, tensor<4xi32>) -> tensor<1x1x1x128xf32>
+  // CHECK: %1 = tfl.mul(%0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x128xf32>, tensor<1x512x512x128xf32>) -> tensor<1x512x512x128xf32>
+  // CHECK: %2 = "tfl.reduce_max"(%0, %cst) {keep_dims = false} : (tensor<1x1x1x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  // CHECK: return %1, %2
 }
 
 // CHECK-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute

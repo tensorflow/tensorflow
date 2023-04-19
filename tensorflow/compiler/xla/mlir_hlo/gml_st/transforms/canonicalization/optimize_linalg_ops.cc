@@ -21,6 +21,7 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -50,8 +51,14 @@ std::optional<Value> getSplatValue(PatternRewriter& rewriter, Location loc,
 
     if (!denseElementsAttr.isSplat()) return std::nullopt;
 
-    return rewriter.create<arith::ConstantOp>(
-        loc, denseElementsAttr.getSplatValue<Attribute>());
+    auto splatAttr = denseElementsAttr.getSplatValue<Attribute>();
+    auto splatType = denseElementsAttr.getElementType();
+
+    if (complex::ConstantOp::isBuildableWith(splatAttr, splatType))
+      return rewriter.create<complex::ConstantOp>(loc, splatType,
+                                                  splatAttr.cast<ArrayAttr>());
+
+    return rewriter.create<arith::ConstantOp>(loc, splatAttr);
   }
 
   if (auto fillOp = dyn_cast_or_null<linalg::FillOp>(definingOp))

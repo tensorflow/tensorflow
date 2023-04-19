@@ -12,6 +12,7 @@ load(
 load(
     "//tensorflow/tsl:tsl.bzl",
     "if_libtpu",
+    "set_external_visibility",
     "tsl_copts",
     "tsl_gpu_library",
 )
@@ -30,14 +31,14 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xla/pjrt:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -73,12 +74,12 @@ cc_library(
 cc_library(
     name = "gpu_driver_header",
     hdrs = if_gpu_is_configured(["gpu_driver.h"]),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
         "//tensorflow/core/util/autotune_maps:__subpackages__",
-    ],
+    ]),
     deps = [
         ":gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor:device_options",
@@ -149,9 +150,9 @@ tsl_gpu_library(
     hdrs = [
         "gpu_init.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/tsl:internal",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/platform:status",
     ] + if_static(
@@ -169,12 +170,12 @@ tsl_gpu_library(
     ],
     copts = tsl_copts(),
     linkstatic = True,
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
-    ],
+    ]),
     deps = [
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
@@ -270,11 +271,11 @@ cc_library(
 cc_library(
     name = "gpu_asm_opts",
     hdrs = ["gpu_asm_opts.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-    ],
+    ]),
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -285,12 +286,12 @@ cc_library(
     name = "asm_compiler_header",
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
     copts = tsl_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-    ],
+    ]),
     deps = if_gpu_is_configured([
         ":gpu_asm_opts",
         ":gpu_driver_header",
@@ -323,12 +324,12 @@ cc_library(
     srcs = if_gpu_is_configured(["asm_compiler.cc"]),
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
     copts = tsl_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-    ],
+    ]),
     deps = if_gpu_is_configured([
         ":gpu_asm_opts",
         ":gpu_driver_header",
@@ -366,11 +367,11 @@ cc_library(
     srcs = if_gpu_is_configured(["redzone_allocator.cc"]),
     hdrs = if_gpu_is_configured(["redzone_allocator.h"]),
     copts = tsl_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-    ],
+    ]),
     deps = if_gpu_is_configured([
         ":asm_compiler",
         ":gpu_asm_opts",

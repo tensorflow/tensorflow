@@ -1220,12 +1220,17 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
                                const StackTracesMap& stack_traces,
                                bool finalized)
+    : FunctionRecord(FunctionDef(fdef), stack_traces, finalized) {}
+
+FunctionRecord::FunctionRecord(FunctionDef&& fdef,
+                               const StackTracesMap& stack_traces,
+                               bool finalized)
     : finalized_(finalized),
-      fdef_(fdef),
+      fdef_(std::move(fdef)),
       stack_traces_(stack_traces),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
-      op_registration_data_(fdef.signature(), shape_inference::UnknownShape,
+      op_registration_data_(fdef_.signature(), shape_inference::UnknownShape,
                             true /* is_function */) {}
 
 void FunctionRecord::finalize() {
@@ -1352,8 +1357,9 @@ Status FunctionLibraryDefinition::AddFunctionDef(
 }
 
 Status FunctionLibraryDefinition::AddFunctionDefHelper(
-    const FunctionDef& fdef, const StackTracesMap& stack_traces, bool* added) {
-  FunctionRecord* record = new FunctionRecord(fdef, stack_traces, true);
+    FunctionDef&& fdef, const StackTracesMap& stack_traces, bool* added) {
+  FunctionRecord* record =
+      new FunctionRecord(std::move(fdef), stack_traces, true);
   core::ScopedUnref scoped_unref(record);
   Status status = AddHelper(record, added);
   return status;
@@ -1446,16 +1452,20 @@ Status FunctionLibraryDefinition::AddLibrary(
     const FunctionLibraryDefinition& other) {
   // Clone `other` to ensure thread-safety (grabbing `other`'s lock for
   // the duration of the function could lead to deadlock).
-  FunctionLibraryDefinition clone(other);
+  return AddLibrary(FunctionLibraryDefinition(other));
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    FunctionLibraryDefinition&& other) {
   mutex_lock l(mu_);
-  mutex_lock l2(clone.mu_);
+  mutex_lock l2(other.mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
   std::vector<string> funcs_with_grads;
   Status s;
   bool added;
-  for (const auto& [name, record] : clone.records_) {
+  for (const auto& [name, record] : other.records_) {
     s = AddHelper(record, &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
@@ -1468,7 +1478,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       funcs.push_back(record->fdef().signature().name());
     }
   }
-  for (auto iter : clone.func_grad_) {
+  for (auto iter : other.func_grad_) {
     GradientDef grad;
     grad.set_function_name(iter.first);
     grad.set_gradient_func(iter.second);
@@ -1489,11 +1499,20 @@ Status FunctionLibraryDefinition::AddLibrary(
 
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionDefLibrary& lib_def) {
-  return AddLibrary(lib_def, /*stack_traces=*/{});
+  return AddLibrary(FunctionDefLibrary(lib_def), /*stack_traces=*/{});
+}
+
+Status FunctionLibraryDefinition::AddLibrary(FunctionDefLibrary&& lib_def) {
+  return AddLibrary(std::move(lib_def), /*stack_traces=*/{});
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionDefLibrary& lib_def, const StackTracesMap& stack_traces) {
+  return AddLibrary(FunctionDefLibrary(lib_def), stack_traces);
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    FunctionDefLibrary&& lib_def, const StackTracesMap& stack_traces) {
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   mutex_lock l(mu_);
@@ -1501,8 +1520,9 @@ Status FunctionLibraryDefinition::AddLibrary(
   std::vector<string> funcs_with_grads;
   Status s;
   bool added;
-  for (const FunctionDef& fdef : lib_def.function()) {
-    s = AddFunctionDefHelper(fdef, stack_traces, &added);
+  for (FunctionDef& fdef : *lib_def.mutable_function()) {
+    string name = fdef.signature().name();
+    s = AddFunctionDefHelper(std::move(fdef), stack_traces, &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
       if (!remove_status.ok()) {
@@ -1511,7 +1531,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       return s;
     }
     if (added) {
-      funcs.push_back(fdef.signature().name());
+      funcs.push_back(std::move(name));
     }
   }
   for (const GradientDef& grad : lib_def.gradient()) {
@@ -1536,7 +1556,8 @@ Status FunctionLibraryDefinition::ReplaceFunction(
   mutex_lock l(mu_);
   bool added;
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, stack_traces, &added));
+  TF_RETURN_IF_ERROR(
+      AddFunctionDefHelper(FunctionDef(fdef), stack_traces, &added));
   return OkStatus();
 }
 

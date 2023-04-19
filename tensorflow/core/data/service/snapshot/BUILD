@@ -180,6 +180,7 @@ cc_library(
         "//tensorflow/tsl/platform:status_to_from_proto",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/time",
     ],
 )

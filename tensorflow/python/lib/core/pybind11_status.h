@@ -71,7 +71,7 @@ inline pybind11::dict TFStatusPayloadToDict(TF_Status* status) {
 inline void MaybeRaiseFromStatus(const Status& status) {
   if (!status.ok()) {
     PyErr_SetString(internal::StatusToPyExc(status),
-                    status.error_message().c_str());
+                    tsl::NullTerminatedMessage(status));
     throw pybind11::error_already_set();
   }
 }

@@ -705,4 +705,29 @@ int GetDeviceOrdinal(const DeviceBase* device) {
   return device->parsed_name().id;
 }
 
+Status RunPjRtExecutable(
+    const xla::PjRtClient& pjrt_client,
+    const std::vector<const Tensor*>& inputs,
+    const std::vector<VariableInfo>& variables,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx) {
+  TF_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * device,
+      pjrt_client.LookupAddressableDevice(GetDeviceOrdinal(ctx->device())));
+
+  const std::vector<xla::PjRtBuffer*> executable_args =
+      PreparePjRtExecutableArguments(compilation_result.input_mapping, inputs,
+                                     variables);
+  // TODO(b/257548614): currently PJRT is compiled as portable (num_replica = 1
+  // and num_partition = 1). Support multiple partitions case.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
+      executable->ExecutePortable(executable_args, device,
+                                  GetPjRtExecuteOptions()));
+
+  TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
+      inputs, variables, compilation_result, execute_outputs, ctx));
+  return OkStatus();
+}
+
 }  // namespace tensorflow

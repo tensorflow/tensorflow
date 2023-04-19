@@ -301,7 +301,9 @@ ElementwiseDescriptor CreateElementwiseTwoInput(
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorDescriptor const_tensor_desc = definition.src_tensors[0];
+  TensorDescriptor const_tensor_desc =
+      TensorDescriptor(definition.src_tensors[0].GetDataType(),
+                       definition.src_tensors[0].GetStorageType(), Layout::HWC);
   auto status = const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
   const_tensor_desc.UploadData(constant_tensor);
 

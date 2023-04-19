@@ -84,8 +84,8 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot create directory '" << prefix
+                 << "': " << status.message();
     return;
   }
 
@@ -98,8 +98,7 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   std::unique_ptr<WritableFile> file_writer;
   status = env->NewWritableFile(prefix, &file_writer);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
     return;
   }
 
@@ -112,8 +111,8 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
 
   status = file_writer->Append(txt_module);
   if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "error writing to file '" << prefix
+                 << "': " << status.message();
     return;
   }
   (void)file_writer->Close();
@@ -242,10 +241,12 @@ Status MlirFunctionOptimizationPass::Run(
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
-    if (SHOULD_DUMP(function_name) || VLOG_IS_ON(1)) {
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
       ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(function_name,
-                            llvm::formatv("mlir_{0}_before", name)),
+          DEBUG_DATA_DUMPER()->GetDumpFilename(
+              function_name, kDebugGroupMain,
+              llvm::formatv("mlir_{0}_before", name)),
           *module_ref, llvm::StringRef(), nullptr);
     }
 
@@ -313,11 +314,12 @@ Status MlirFunctionOptimizationPass::Run(
       }
     }
 
-    if (SHOULD_DUMP(function_name) || VLOG_IS_ON(1)) {
-      ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(function_name,
-                            llvm::formatv("mlir_{0}_after", name)),
-          *module_ref, llvm::StringRef(), nullptr);
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(DEBUG_DATA_DUMPER()->GetDumpFilename(
+                                         function_name, kDebugGroupMain,
+                                         llvm::formatv("mlir_{0}_after", name)),
+                                     *module_ref, llvm::StringRef(), nullptr);
     }
   }
 

@@ -84,7 +84,7 @@ py_strict_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/ops/distributions:util",
-        "//tensorflow/python/ops/signal",
+        "//tensorflow/python/ops/signal:fft_ops",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -288,7 +288,7 @@ py_strict_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/framework:tensor_conversion",
-        "//tensorflow/python/ops/signal",
+        "//tensorflow/python/ops/signal:fft_ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

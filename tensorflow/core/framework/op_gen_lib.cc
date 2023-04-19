@@ -496,7 +496,7 @@ Status ApiDefMap::LoadFile(Env* env, const string& filename) {
     // Return failed status annotated with filename to aid in debugging.
     return errors::CreateWithUpdatedMessage(
         status, strings::StrCat("Error parsing ApiDef file ", filename, ": ",
-                                status.error_message()));
+                                status.message()));
   }
   return OkStatus();
 }

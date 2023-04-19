@@ -249,7 +249,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   const Status status =
       ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false, &reuse_port);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   auto server_build_option =
       reuse_port

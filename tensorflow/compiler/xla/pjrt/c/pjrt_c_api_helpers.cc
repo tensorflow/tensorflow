@@ -192,7 +192,7 @@ void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {
       error, MakeErrorDeleter(api));
   xla::Status _status = PjrtErrorToStatus(_error.get(), api);
   if (!_status.ok()) {
-    LOG(FATAL) << "Unexpected error status " << _status.error_message();
+    LOG(FATAL) << "Unexpected error status " << _status.message();
   }
 }
 

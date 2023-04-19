@@ -1,3 +1,14 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -671,6 +671,7 @@
+     ],
+     strip_include_prefix = ".",
+     deps = [
++        ":base",
+         ":chlo_ops",
+         ":stablehlo_ops",
+         ":stablehlo_ops_inc_gen",
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py

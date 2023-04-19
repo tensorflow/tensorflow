@@ -67,7 +67,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
-  options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
+  options.setFunctionBoundaryTypeConversion(LayoutMapOption::IdentityLayoutMap);
   options.createDeallocs = !new_deallocator;
   options.unknownTypeConverterFn = [](mlir::Value value,
                                       mlir::Attribute memorySpace,
@@ -181,7 +181,8 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::gml_st::createOptimizeLinalgOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::gml_st::createOptimizeLinalgOpsPass());
   if (options.enable_tiling_and_fusion) {
     mlir::gml_st::GmlStCPUTilingOptions opts =
         mlir::gml_st::getDefaultCPUPipelineOptions(options.cpu_name);
@@ -328,7 +329,7 @@ static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
       Status status = CreateHloXlaPipeline(pm, options);
       if (!status.ok()) {
         LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                   << status.error_message();
+                   << status.message();
       }
     });
 

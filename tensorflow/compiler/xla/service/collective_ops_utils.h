@@ -43,6 +43,11 @@ std::optional<ReductionKind> MatchReductionInstruction(
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
+// Returns the reduction identity value for a certain ReductionKind and
+// PrimitiveType.
+std::optional<Literal> GetReductionIdentity(ReductionKind kind,
+                                            PrimitiveType type);
+
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,

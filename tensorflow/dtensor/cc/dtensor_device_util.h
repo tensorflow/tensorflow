@@ -67,7 +67,7 @@ using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
     if (!return_if_not_ok_status.ok()) {                                  \
       RETURN_STATUS((c_status),                                           \
                     static_cast<TF_Code>(return_if_not_ok_status.code()), \
-                    return_if_not_ok_status.error_message().c_str());     \
+                    NullTerminatedMessage(return_if_not_ok_status));      \
     }                                                                     \
   }
 

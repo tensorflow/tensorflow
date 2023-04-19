@@ -301,6 +301,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     // Remove the global rendezvous instance from the local rendezvous table
     // if it uses local rendezvous type, which forces EagerContext to create a
     // new local rendezvous instance in the table.
+    // TODO(b/274683676) Why can't we abort the old rendezvous here?
     local_rendezvous_cache_->Remove(-1);
     Rendezvous* rendezvous;
     TF_CHECK_OK(CreateRendezvousFactory()(-1, nullptr, &rendezvous));
@@ -585,8 +586,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         int64_t step_id, DeviceMgr* device_mgr);
 
     using RendezvousCache<IntraProcessRendezvous>::Find;
-    using RendezvousCache<IntraProcessRendezvous>::Remove;
     using RendezvousCache<IntraProcessRendezvous>::GetActiveStepIds;
+    using RendezvousCache<IntraProcessRendezvous>::Remove;
+    using RendezvousCache<IntraProcessRendezvous>::RemoveAndAbort;
   };
 
   Rendezvous::Factory CreateRendezvousFactory() const {
@@ -634,7 +636,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
           },
           [this](const int64_t step_id) {
             VLOG(6) << "Cleaning up rendezvous from local_device_mgr.";
-            local_rendezvous_cache_->Remove(step_id);
+            local_rendezvous_cache_->RemoveAndAbort(step_id);
             return OkStatus();
           }};
     }

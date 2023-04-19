@@ -223,6 +223,66 @@ void DefRepeatedProperty(py::class_<T>& cls, const char* name,
       });
 }
 
+StatusOr<bool> IsOpShardingFullyReplicated(const OpSharding& op_sharding) {
+  switch (op_sharding.type()) {
+    case OpSharding::REPLICATED:
+    case OpSharding::MAXIMAL:
+      return true;
+    case OpSharding::TUPLE: {
+      for (const OpSharding& tuple_sharding : op_sharding.tuple_shardings()) {
+        TF_ASSIGN_OR_RETURN(bool replicated,
+                            IsOpShardingFullyReplicated(tuple_sharding));
+        if (!replicated) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case OpSharding::OTHER: {
+      if (op_sharding.tile_assignment_devices_size() == 1) {
+        return true;
+      }
+      if (op_sharding.last_tile_dims_size() > 0) {
+        if (op_sharding.last_tile_dims_size() >
+            op_sharding.tile_assignment_dimensions_size()) {
+          return InvalidArgument(
+              "last_tile_dims is larger than tile_assignment_dimensions");
+        }
+        size_t last_dims = op_sharding.tile_assignment_dimensions_size() -
+                           op_sharding.last_tile_dims_size();
+        for (size_t i = 0; i < last_dims; ++i) {
+          if (op_sharding.tile_assignment_dimensions(i) != 1) {
+            return false;
+          }
+        }
+        // This handles cases like [MANUAL, REPLICATED], where all the
+        // non-replicated dimensions have tile dimension 1.
+        for (size_t i = 0; i < op_sharding.last_tile_dims_size(); ++i) {
+          if (op_sharding.tile_assignment_dimensions(last_dims + i) != 1 &&
+              op_sharding.last_tile_dims(i) != OpSharding::REPLICATED) {
+            return false;
+          }
+        }
+        return true;
+      } else if (op_sharding.replicate_on_last_tile_dim()) {
+        for (size_t i = 0;
+             i + 1 < op_sharding.tile_assignment_dimensions_size(); ++i) {
+          if (op_sharding.tile_assignment_dimensions(i) != 1) {
+            return false;
+          }
+        }
+        return true;
+      } else {
+        return false;
+      }
+    }
+    case OpSharding::MANUAL:
+      return op_sharding.tile_assignment_devices_size() == 1;
+    default:
+      return InvalidArgument("Unknown/invalid op_sharding type");
+  }
+}
+
 }  // namespace
 
 void BuildXlaCompilerSubmodule(py::module& m) {
@@ -874,6 +934,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_tuple_shardings);
   DefRepeatedProperty(op_sharding, "last_tile_dims",
                       &xla::OpSharding::mutable_last_tile_dims);
+
+  m.def("is_op_sharding_fully_replicated",
+        xla::ValueOrThrowWrapper(IsOpShardingFullyReplicated));
 
   py::class_<HloSharding> hlo_sharding(m, "HloSharding");
   hlo_sharding

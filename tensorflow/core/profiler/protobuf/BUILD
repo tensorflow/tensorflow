@@ -245,3 +245,10 @@ tf_proto_library(
     ],
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "trace_events_raw_proto",
+    srcs = ["trace_events_raw.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)

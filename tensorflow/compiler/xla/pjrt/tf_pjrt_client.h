@@ -158,6 +158,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->SerializeExecutable();
   }
 
+  StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return wrapped_->GetCompileOptions();
+  }
+
  private:
   TfPjRtClient* client_;
   std::unique_ptr<PjRtLoadedExecutable> wrapped_;

@@ -112,7 +112,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
@@ -529,6 +529,7 @@ cc_library(
         "translate/import_model.h",
     ],
     visibility = [
+        # copybara:uncomment "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:__pkg__",
         # copybara:uncomment "//learning/brain/experimental/tfrt/visualization:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/tests/saved_model:__pkg__",
         "//tensorflow/core/tfrt/eager:__pkg__",
@@ -539,6 +540,7 @@ cc_library(
         ":function",
         ":tf_to_tfrt",
         ":tfrt_compile_options",
+        ":tfrt_pipeline_options",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -549,8 +551,7 @@ cc_library(
         "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:fallback_state",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:FuncDialect",
+        "//tensorflow/tsl/platform:errors",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -563,6 +564,7 @@ cc_library(
     name = "tfrt_compile_options",
     srcs = ["translate/tfrt_compile_options.cc"],
     hdrs = ["translate/tfrt_compile_options.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/strings",

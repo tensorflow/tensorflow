@@ -227,7 +227,8 @@ struct GmlStCPUTilingOptions
 
   Option<int64_t> statsDetailLevel{
       *this, "stats-detail-level",
-      llvm::cl::desc("Vector size for a 1D reduction."), llvm::cl::init(0)};
+      llvm::cl::desc("Detail level for collecting IR statistics."),
+      llvm::cl::init(0)};
 
   Option<bool> fuseDegenerateReshapes{
       *this, "fuse-degenerate-reshapes",

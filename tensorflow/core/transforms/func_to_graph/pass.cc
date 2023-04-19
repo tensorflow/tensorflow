@@ -62,7 +62,7 @@ void FuncToGraphPass::runOnOperation() {
   auto status = FuncToGraph(lifted_graph_func);
   if (!status.ok()) {
     emitError(lifted_graph_func.getLoc())
-        << "FuncToGraph failed: " << status.error_message();
+        << "FuncToGraph failed: " << status.message();
     signalPassFailure();
   }
 }

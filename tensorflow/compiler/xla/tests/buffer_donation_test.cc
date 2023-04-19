@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
@@ -253,6 +254,10 @@ class BufferDonationTest : public HloTestBase {
 // This tests a simple while loop where the parameters are aliased with the
 // output buffers.
 TEST_F(BufferDonationTest, SimpleWhileTupleTest) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
+  }
+
   std::unique_ptr<HloModule> module = CreateTestModule("SimpleWhile");
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
@@ -269,6 +274,10 @@ TEST_F(BufferDonationTest, SimpleWhileTupleTest) {
 // Tests a case where we have promised aliasing to the compiler, but the runtime
 // has not actually donated the buffers.
 TEST_F(BufferDonationTest, SimpleWhileTupleTestCopyProtection) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
+  }
+
   std::unique_ptr<HloModule> module =
       CreateTestModule("SimpleWhileCopyProtection");
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));

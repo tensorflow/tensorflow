@@ -18,6 +18,7 @@ import functools
 import itertools
 import multiprocessing.pool
 import pickle
+import platform
 import re
 import sys
 import time
@@ -988,8 +989,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(a, math_ops.matmul(t, t).numpy())
     self.assertAllEqual(b['b'].numpy(), 1.0)
 
-  def testGraphFunctionNoneOutput(self):
+  def testZipStrictBuiltin(self):
+    major, minor, _ = platform.python_version_tuple()
+    if not (major == '3' and int(minor) >= 10):
+      self.skipTest('strict zip is only supported in Python 3.10+')
 
+    @polymorphic_function.function
+    def foo(x):
+      return list(zip([x], [x], strict=True))
+
+    self.assertEqual(foo(2)[0][0].numpy(), 2)
+
+  def testGraphFunctionNoneOutput(self):
     @polymorphic_function.function
     def fn(unused_a, unused_b):
       return None

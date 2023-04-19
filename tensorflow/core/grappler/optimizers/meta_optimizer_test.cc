@@ -743,7 +743,7 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   GraphDef original = item.graph;
   const Status status =
       RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
-  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
+  EXPECT_EQ(status.message(), "meta_optimizer exceeded deadline.");
   // Make sure the graph was reverted to the original regardless of when the
   // optimizer timed out.
   CompareGraphs(original, output);
@@ -766,7 +766,7 @@ TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
   const int original_node_size = item.graph.node_size();
   const Status status =
       RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
-  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
+  EXPECT_EQ(status.message(), "meta_optimizer exceeded deadline.");
   // The meta optimizer should manage to finish one iteration.
   EXPECT_EQ(original_node_size + 1, output.node_size());
 }
@@ -898,7 +898,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
   EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
 }
 
@@ -973,7 +973,7 @@ TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnInvalidGraph) {
       optimizer_with_inter_verifiers.Optimize(nullptr, item, &output);
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
 }
 

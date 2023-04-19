@@ -157,6 +157,8 @@ ios_static_framework(
     name = "TensorFlowLiteSelectTfOps_framework",
     avoid_deps = [
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/async/interop/c:types",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
     ],
     bundle_name = "TensorFlowLiteSelectTfOps",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,

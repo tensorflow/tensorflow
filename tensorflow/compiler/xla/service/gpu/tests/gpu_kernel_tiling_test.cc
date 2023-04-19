@@ -845,7 +845,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr(
           "Number of physical blocks (4294967296) does not fit in an i32"));
 }

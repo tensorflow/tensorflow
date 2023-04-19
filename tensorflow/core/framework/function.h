@@ -388,6 +388,8 @@ class FunctionRecord : public core::RefCounted {
  public:
   FunctionRecord(const FunctionDef& fdef, const StackTracesMap& stack_traces,
                  bool finalized);
+  FunctionRecord(FunctionDef&& fdef, const StackTracesMap& stack_traces,
+                 bool finalized);
 
   // Mark FunctionRecord as finalized (disable mutation).
   void finalize();
@@ -503,16 +505,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // This operation is atomic.
   Status AddLibrary(const FunctionLibraryDefinition& other)
       TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionLibraryDefinition&& other) TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored. This overload adds the
   // functions with no stack traces. This operation is atomic.
   Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def) TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
   Status AddLibrary(const FunctionDefLibrary& lib_def,
+                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def,
                     const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
@@ -625,7 +631,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef,
+  Status AddFunctionDefHelper(FunctionDef&& fdef,
                               const StackTracesMap& stack_traces, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)

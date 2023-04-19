@@ -684,7 +684,7 @@ CoordinationServiceStandaloneImpl::GetTaskState(
     }
     *state_info.mutable_task() = task;
     state_info.set_error_code(error.raw_code());
-    state_info.set_error_message(error.error_message());
+    state_info.set_error_message(std::string(error.message()));
     if (!error.ok()) {
       *state_info.mutable_error_payload()->mutable_source_task() = task;
       state_info.mutable_error_payload()->set_is_reported_error(false);
@@ -745,7 +745,7 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
   auto request = std::make_shared<ReportErrorToTaskRequest>();
   auto response = std::make_shared<ReportErrorToTaskResponse>();
   request->set_error_code(error.raw_code());
-  request->set_error_message(error.error_message());
+  request->set_error_message(std::string(error.message()));
   CoordinatedTask* error_source =
       request->mutable_error_payload()->mutable_source_task();
   error_source->set_job_name("coordination_service");
@@ -777,7 +777,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   assert(!error.ok());
   ReportErrorToTaskRequest request;
   request.set_error_code(error.raw_code());
-  request.set_error_message(error.error_message());
+  request.set_error_message(std::string(error.message()));
   CoordinationServiceError* payload = request.mutable_error_payload();
   *payload->mutable_source_task() = source_task;
   payload->set_is_reported_error(is_reported_by_task);

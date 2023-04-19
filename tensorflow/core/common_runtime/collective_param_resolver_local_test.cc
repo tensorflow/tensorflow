@@ -290,7 +290,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
     EXPECT_EQ(statuses[i].code(), error::INTERNAL);
-    EXPECT_EQ(statuses[i].error_message(),
+    EXPECT_EQ(statuses[i].message(),
               strings::StrCat(
                   "Instance ", kInstanceKey,
                   " found no source for broadcast.  This could mean that there"
@@ -330,7 +330,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
                                 [&done, cp = cp[i]](const Status& s) {
                                   EXPECT_EQ(s.code(),
                                             absl::StatusCode::kAborted);
-                                  EXPECT_EQ(s.error_message(), "__aborted__");
+                                  EXPECT_EQ(s.message(), "__aborted__");
                                   done.DecrementCount();
                                   cp->Unref();
                                 });
@@ -381,7 +381,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
                                 [&done, cp = cp[i]](const Status& s) {
                                   EXPECT_EQ(s.code(),
                                             absl::StatusCode::kAborted);
-                                  EXPECT_EQ(s.error_message(), "__aborted__");
+                                  EXPECT_EQ(s.message(), "__aborted__");
                                   done.DecrementCount();
                                   cp->Unref();
                                 });
@@ -430,7 +430,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
     prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp, &cancel_mgr,
                               [&done](const Status& s) {
                                 EXPECT_EQ(s.code(), absl::StatusCode::kAborted);
-                                EXPECT_EQ(s.error_message(), "__aborted__");
+                                EXPECT_EQ(s.message(), "__aborted__");
                                 done.Notify();
                               });
     done.WaitForNotification();
@@ -477,7 +477,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
               // The status should be either OK or the aborted status.
               if (!status.ok()) {
                 EXPECT_EQ(status.code(), absl::StatusCode::kAborted);
-                EXPECT_EQ(status.error_message(), "__aborted__");
+                EXPECT_EQ(status.message(), "__aborted__");
                 done.DecrementCount();
                 return;
               }
