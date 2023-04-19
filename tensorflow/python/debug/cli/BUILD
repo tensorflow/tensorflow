@@ -103,6 +103,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/lib:common",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -139,7 +140,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":debugger_cli_common",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -150,6 +151,7 @@ py_library(
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tf_session",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -192,6 +194,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -211,6 +214,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -226,6 +230,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:pywrap_tf_session",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -242,6 +247,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 

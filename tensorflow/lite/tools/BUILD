@@ -82,6 +82,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
     ],
 )
@@ -129,7 +130,7 @@ py_library(
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
         "@flatbuffers//:runtime_py",
     ],
 )

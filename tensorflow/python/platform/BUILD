@@ -347,7 +347,6 @@ tf_py_test(
     deps = [
         ":build_info",
         ":client_testlib",
-        ":platform",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
     ],
 )
