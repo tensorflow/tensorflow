@@ -172,13 +172,14 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "grpc_response_cache",
-    srcs = ["grpc_response_cache.cc"],
-    hdrs = ["grpc_response_cache.h"],
+    name = "rpc_response_cache",
+    srcs = ["rpc_response_cache.cc"],
+    hdrs = ["rpc_response_cache.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -189,10 +190,10 @@ tf_cuda_library(
     hdrs = ["grpc_worker_service.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        ":grpc_response_cache",
         ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
+        ":rpc_response_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

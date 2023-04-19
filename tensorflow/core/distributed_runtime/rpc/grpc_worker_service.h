@@ -20,8 +20,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "grpcpp/server_builder.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
@@ -39,7 +39,7 @@ namespace tensorflow {
 class ConfigProto;
 struct WorkerEnv;
 class WorkerSession;
-class GrpcResponseCache;
+class RpcResponseCache;
 
 class GrpcWorker : public Worker {
  public:
@@ -68,7 +68,7 @@ class GrpcWorker : public Worker {
   void RemoveCacheEntryForId(int64_t request_id);
 
  private:
-  std::unique_ptr<GrpcResponseCache> response_cache_;
+  std::unique_ptr<RpcResponseCache> response_cache_;
   const int32 recv_buf_max_chunk_;
 };
 

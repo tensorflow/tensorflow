@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_RESPONSE_CACHE_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_RESPONSE_CACHE_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_RPC_RESPONSE_CACHE_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_RPC_RESPONSE_CACHE_H_
 
 #include <memory>
 #include <unordered_map>
@@ -38,7 +38,7 @@ namespace tensorflow {
 // * ACTIVE: another thread is active processing this RPC
 // * FINISHED: the worker has finished processing the method
 
-class GrpcResponseCache {
+class RpcResponseCache {
  public:
   using FinishResponseCB = std::function<void(
       const Tensor& tensor, bool is_dead, const Status& status)>;
@@ -55,14 +55,16 @@ class GrpcResponseCache {
 
   // Fill the response cache for the given request_id and respond to all
   // pending request.
-  void OnRequestFinished(int64_t request_id, const Tensor& tensor, bool is_dead,
-                         const Status& status);
+  void RequestFinished(int64_t request_id, const Tensor& tensor, bool is_dead,
+                       const Status& status);
 
   // Erase the cache entry with the given request_id
   void EraseRequestId(int64_t request_id);
 
   // Erase cache entries with the given step_id
   void CleanEntriesForStep(int64_t step_id);
+
+  int64_t size();
 
  private:
   struct ResponseCacheEntry {
@@ -92,4 +94,4 @@ class GrpcResponseCache {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_RESPONSE_CACHE_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_RPC_RESPONSE_CACHE_H_

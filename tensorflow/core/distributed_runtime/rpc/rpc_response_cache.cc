@@ -13,15 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_response_cache.h"
+
+#include "absl/log/log.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
-bool GrpcResponseCache::QueueRequest(int64_t request_id, int64_t step_id,
-                                     const FinishResponseCB& cb) {
-  VLOG(1) << "GrpcResponseCache Lookup " << request_id;
+auto* tf_response_cache_hits = monitoring::Counter<0>::New(
+    "/tensorflow/rpc/service/response_cache_hits",
+    "Number of times the tensor response cache was used.");
+
+bool RpcResponseCache::QueueRequest(int64_t request_id, int64_t step_id,
+                                    const FinishResponseCB& cb) {
+  VLOG(1) << "RpcResponseCache Lookup " << request_id;
 
   mu_.lock();
 
@@ -29,12 +36,18 @@ bool GrpcResponseCache::QueueRequest(int64_t request_id, int64_t step_id,
 
   if (entry.state == ResponseCacheEntry::State::FINISHED) {
     VLOG(1) << "Reuse cached response for " << request_id;
+
     // Make a copy of the ResponseCacheEntry so that we can run FinishResponse
     // outside the critical section. FinishResponse can be potentially
     // expensive.
     auto entry_copy = entry;
 
     mu_.unlock();
+
+    tf_response_cache_hits->GetCell()->IncrementBy(1);
+    LOG_EVERY_N_SEC(INFO, 60)
+        << "RPC Cache rescued duplicate RPC request. id=" << request_id
+        << " step=" << step_id;
     entry_copy.FinishResponse(cb);
     return true;
   }
@@ -45,6 +58,11 @@ bool GrpcResponseCache::QueueRequest(int64_t request_id, int64_t step_id,
     VLOG(1) << "Found active request for " << request_id
             << ".  Adding entry to response queue.";
     mu_.unlock();
+
+    tf_response_cache_hits->GetCell()->IncrementBy(1);
+    LOG_EVERY_N_SEC(INFO, 60)
+        << "RPC Cache rescued duplicate RPC request. id=" << request_id
+        << " step=" << step_id;
     return true;
   } else {
     VLOG(2) << "No cache entry for " << request_id
@@ -56,10 +74,9 @@ bool GrpcResponseCache::QueueRequest(int64_t request_id, int64_t step_id,
   }
 }
 
-void GrpcResponseCache::OnRequestFinished(int64_t request_id,
-                                          const Tensor& tensor, bool is_dead,
-                                          const Status& status) {
-  absl::optional<ResponseCacheEntry> entry_copy;
+void RpcResponseCache::RequestFinished(int64_t request_id, const Tensor& tensor,
+                                       bool is_dead, const Status& status) {
+  ResponseCacheEntry entry_copy;
 
   {
     mutex_lock m(mu_);
@@ -88,28 +105,33 @@ void GrpcResponseCache::OnRequestFinished(int64_t request_id,
     entry.callbacks.clear();
   }
 
-  for (auto& cb : entry_copy->callbacks) {
-    entry_copy->FinishResponse(cb);
+  for (auto& cb : entry_copy.callbacks) {
+    entry_copy.FinishResponse(cb);
   }
 }
 
-void GrpcResponseCache::EraseRequestId(int64_t request_id) {
+void RpcResponseCache::EraseRequestId(int64_t request_id) {
   mutex_lock m(mu_);
   response_cache_.erase(request_id);
 }
 
-void GrpcResponseCache::CleanEntriesForStep(int64_t step_id) {
+void RpcResponseCache::CleanEntriesForStep(int64_t step_id) {
   mutex_lock m(mu_);
   // Remove all cache entries whose step id is the given step_id
   for (auto it = response_cache_.begin(), last = response_cache_.end();
        it != last;) {
     if (it->second.step_id == step_id) {
-      VLOG(1) << "Erase stale GrpcResponseCache entry " << it->first;
+      VLOG(1) << "Erase stale RpcResponseCache entry " << it->first;
       it = response_cache_.erase(it);
     } else {
       ++it;
     }
   }
+}
+
+int64_t RpcResponseCache::size() {
+  mutex_lock m(mu_);
+  return response_cache_.size();
 }
 
 }  // namespace tensorflow
