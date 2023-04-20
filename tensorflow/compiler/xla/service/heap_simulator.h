@@ -18,12 +18,17 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+// TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
+#if defined(__GNUC__) || defined(__clang__)
+#include "absl/container/btree_map.h"
+#endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -370,6 +375,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   using Result = HeapSimulator::Result<BufferType>;
   using Chunk = HeapSimulator::Chunk;
 
+  // A mapping from a free chunk offset to the end of that chunk (exclusive).
+#if defined(__GNUC__) || defined(__clang__)
+  using FreeChunks = absl::btree_map<int64_t, int64_t, std::greater<int64_t>>;
+#else
+  using FreeChunks = std::map<int64_t, int64_t, std::greater<int64_t>>;
+#endif
+
   enum Type {
     kSpatial = 0,
     kTemporal,
@@ -474,9 +486,29 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Returns the buffer intervals sorted according to buffer_interval_compare_.
   std::vector<BufferInterval> GetSortedBufferIntervals() const;
 
-  // TODO(b/275905276): create a FindChunkCandidates that takes a
-  // SlicedBufferInterval and return a vector of chunks, one per allocation
-  // slice
+  // Compute free chunks as all memory - chunks that are allocated at some time
+  // during the lifetime of buffer_interval or during the lifetime of buffers
+  // that are colocated with buffer_interval.
+  //
+  // Imagine that we've already allocated three chunks : a, b and c.  And now
+  // we want to allocate d. Since e is colocated with d, we have to allocate
+  // chunks for them together at the same address. To do this, we first gather
+  // all chunks that overlap with d and e on the time dimension, in this case
+  // the overlapped chunks are a and b (c doesn't overlap with either of d and
+  // e), then find create a new chunk that doesn't overlap with a and b on the
+  // space dimension.
+  //
+  // space
+  //   ^
+  //   |+--d---+      +---e---+
+  //   |
+  //   |+---+  +---------------+  +-------+
+  //   ||   |  |               |  |       |
+  //   ||   |  |               |  |       |
+  //   |+-a-+  +-------b-------+  +---c---+
+  //   ----------------------------------------> time
+  FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
+                            int64_t max_colocation_size) const;
 
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for
