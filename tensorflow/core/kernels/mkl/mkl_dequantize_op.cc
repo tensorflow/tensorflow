@@ -145,13 +145,12 @@ class MklDequantizeOp : public OpKernel {
         scale_factor = max_range / v_max;
       }
       std::vector<float> scales;
+      scales.push_back(scale_factor);
       primitive_attr attr;
 #ifndef ENABLE_ONEDNN_V3
-      scales.push_back(scale_factor);
       attr.set_output_scales(0, scales);
 #else
-      scales.push_back(1.0 / scale_factor);
-      attr.set_scales_mask(DNNL_ARG_DST, 0);
+      attr.set_scales_mask(DNNL_ARG_SRC, 0);
       auto scale_mem =
           memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
                  cpu_engine, scales.data());
@@ -166,12 +165,13 @@ class MklDequantizeOp : public OpKernel {
       std::vector<std::unordered_map<int, memory>> reorder_net_args;
 #ifndef ENABLE_ONEDNN_V3
       reorder_net_args.push_back({{DNNL_ARG_FROM, *src.GetUsrMem()},
-                                  {DNNL_ARG_TO, *dst.GetUsrMem()}});
+                                  { DNNL_ARG_TO,
+                                    *dst.GetUsrMem() }});
 #else
       reorder_net_args.push_back(
           {{DNNL_ARG_FROM, *src.GetUsrMem()},
            {DNNL_ARG_TO, *dst.GetUsrMem()},
-           {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, scale_mem}});
+           {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, scale_mem}});
 #endif  // !ENABLE_ONEDNN_V3
       execute_primitives(net, reorder_stream, reorder_net_args);
     } catch (dnnl::error& e) {
