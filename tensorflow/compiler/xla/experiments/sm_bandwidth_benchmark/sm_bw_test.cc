@@ -246,6 +246,7 @@ TEST(SMBandwidthTest, IncreaseThreadsNumber) {
   constexpr size_t kSize = 1 << 28;
   constexpr int kReps = 10;
   constexpr int kNumThreads = 256;
+  constexpr int kChunkSize = 32;
 
   DeviceMemory<float> d_in = MakeDeviceMemory<float>(kSize);
   DeviceMemory<float> d_out = MakeDeviceMemory<float>(kSize);
@@ -260,7 +261,7 @@ TEST(SMBandwidthTest, IncreaseThreadsNumber) {
                         cudaMemcpyHostToDevice));
 
   for (int num_blocks = 1; num_blocks <= kNumSM; num_blocks++) {
-    float time_diff = BenchmarkCustomDeviceCopy<1 << 8>(
+    float time_diff = BenchmarkCustomDeviceCopy<kChunkSize>(
         kReps, d_in.get(), d_out.get(), kSize, num_blocks, kNumThreads);
     EXPECT_TRUE(
         CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), kSize));

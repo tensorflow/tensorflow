@@ -23,6 +23,8 @@ namespace benchmark {
 #define DFUNC __forceinline__ __device__
 #define HDFUNC DFUNC __host__
 
+constexpr int kMaxBlockSize = 1024;
+
 template <typename ET, size_t S>
 class Vec {
  public:
@@ -72,9 +74,9 @@ DFUNC void LoadNc(Vec<float, 4>& vx, const float* __restrict__ x, size_t id) {
 }
 
 template <int chunks>
-__global__ void BenchmarkDeviceCopyKernel(const float* __restrict__ in,
-                                          float* __restrict__ out,
-                                          int64_t size) {
+__launch_bounds__(kMaxBlockSize) __global__
+    void BenchmarkDeviceCopyKernel(const float* __restrict__ in,
+                                   float* __restrict__ out, int64_t size) {
   const int64_t lines = size / (blockDim.x * chunks);
   const int64_t start_line = lines * blockIdx.x / gridDim.x;
   const int64_t end_line = lines * (blockIdx.x + 1) / gridDim.x;
