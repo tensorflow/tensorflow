@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -890,6 +891,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinElu:
     case kTfLiteBuiltinExp:
     case kTfLiteBuiltinFloor:
+    case kTfLiteBuiltinGelu:
     case kTfLiteBuiltinLog:
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
