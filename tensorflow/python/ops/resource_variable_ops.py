@@ -38,8 +38,8 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_module
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -2722,7 +2722,7 @@ def write_object_proto_for_resource_variable(resource_variable,
                      f"{resource_variable.name} because of "
                      f"unexpected suffix in the name (expected ':0')"
                      f"which won't be restored.")
-  proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
+  proto.variable.name = tensor_module.get_op_name(resource_variable.name)
   proto.variable.trainable = resource_variable.trainable
   proto.variable.dtype = resource_variable.dtype.as_datatype_enum
   proto.variable.synchronization = resource_variable.synchronization.value

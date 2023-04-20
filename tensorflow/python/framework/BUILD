@@ -307,6 +307,7 @@ py_library(
         ":graph_util",
         ":random_seed",
         ":sparse_tensor",
+        ":tensor",
         ":tensor_spec",
         ":tensor_util",
         ":type_spec",

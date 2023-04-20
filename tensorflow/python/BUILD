@@ -2375,6 +2375,7 @@ py_library(
         "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/saved_model:nested_structure_coder",
