@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -314,8 +313,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     // leader and type (RPC / local) of the collectives.
     // Other EagerContexts are broken if they disagree with the worker service.
     env_->collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
-        opts.config, device_mgr, MaybeCreateNcclCommunicator(opts.config),
-        worker_session->worker_cache(), worker_session->worker_name());
+        opts.config, device_mgr, worker_session->worker_cache(),
+        worker_session->worker_name());
   }
 
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(

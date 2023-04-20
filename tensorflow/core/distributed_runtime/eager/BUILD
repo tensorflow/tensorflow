@@ -115,7 +115,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         "@com_google_absl//absl/container:fixed_array",

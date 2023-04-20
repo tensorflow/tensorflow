@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 
 namespace tensorflow {
 
@@ -171,8 +172,9 @@ void RpcCollectiveExecutorMgr::RetireStepId(int64_t graph_key,
 
 std::unique_ptr<RpcCollectiveExecutorMgr> CreateProdRpcCollectiveExecutorMgr(
     const ConfigProto& config, const DeviceMgr* device_mgr,
-    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
     WorkerCacheInterface* worker_cache, const string& default_worker_name) {
+  std::unique_ptr<NcclCommunicatorInterface> nccl_communicator =
+      MaybeCreateNcclCommunicator(config);
   auto dev_resolver = std::make_unique<DeviceResolverDistributed>(device_mgr);
   auto param_resolver = std::make_unique<CollectiveParamResolverDistributed>(
       config, device_mgr, dev_resolver.get(), nccl_communicator.get(),

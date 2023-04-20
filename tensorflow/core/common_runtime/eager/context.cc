@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
@@ -158,12 +157,11 @@ EagerContext::EagerContext(
   context_view_id_ = 0;
 #endif  // IS_MOBILE_PLATFORM
 
-  // TODO(yuefengz): consider creating a new RpcCollectiveExecutorMgr each
-  // time.
+  // TODO(b/278898454): Consider consolidating Local and RPC to a unified API,
+  // like CreateCollectiveExecutorMgr.
   if (collective_executor_mgr_.Get() == nullptr) {
-    collective_executor_mgr_.Reset(CreateProdLocalCollectiveExecutorMgr(
-        opts.config, local_device_mgr(),
-        MaybeCreateNcclCommunicator(opts.config)));
+    collective_executor_mgr_.Reset(
+        CreateProdLocalCollectiveExecutorMgr(opts.config, local_device_mgr()));
   }
 
   ResetGlobalRendezvousForFunction();
