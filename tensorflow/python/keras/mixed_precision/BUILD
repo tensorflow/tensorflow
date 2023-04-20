@@ -92,7 +92,7 @@ py_library(
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/keras/distribute",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
     ],
 )
 
