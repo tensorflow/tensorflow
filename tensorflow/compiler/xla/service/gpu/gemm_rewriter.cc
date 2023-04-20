@@ -1204,7 +1204,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
         bias->shape().element_type() == F32) {
       if (convert == nullptr) {
-        return true;
+        return false;
       }
 
       HloInstruction *bias_f16_or_bf16 = convert->mutable_operand(0);
@@ -1232,7 +1232,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       } else {
         VLOG(1) << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
                    "currently not supported. See the cublasLT support matrix.";
-        return true;
+        return false;
       }
     }
 
