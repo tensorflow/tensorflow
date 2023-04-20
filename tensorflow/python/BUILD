@@ -4978,6 +4978,56 @@ tf_python_pybind_extension(
     ),
 )
 
+py_library(
+    name = "pywrap_tfe_monitoring_reader",
+    testonly = True,
+    srcs = ["pywrap_tfe_monitoring_reader.py"],
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_pywrap_tfe_monitoring_reader",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tfe_monitoring_reader",
+    testonly = True,
+    srcs = ["tfe_wrapper_monitoring_reader.cc"],
+    hdrs = [
+        "//tensorflow/c/eager:headers_monitoring_reader",
+        "//tensorflow/c/eager:pywrap_headers_monitoring_reader",
+        "//tensorflow/python/util:util_hdr",
+    ],
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental_reader",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
+        "//tensorflow/compiler/jit:flags_headers_only",
+        "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/config:flags_headers",
+        "//tensorflow/core/framework:pywrap_required_hdrs",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
 tf_python_pybind_extension(
     name = "_pywrap_parallel_device",
     srcs = [
