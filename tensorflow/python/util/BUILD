@@ -10,6 +10,7 @@ visibility = [
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
+    "//tensorflow/compiler/tf2xla:__pkg__",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
@@ -1154,5 +1155,35 @@ tf_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+tf_py_strict_test(
+    name = "pywrap_xla_ops_test",
+    srcs = ["pywrap_xla_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_gpu",
+        "no_pip",
+    ],
+    deps = [
+        ":pywrap_xla_ops",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "pywrap_xla_ops",
+    srcs = ["tf2xla_opset_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/compiler/tf2xla:tf2xla_opset_hdrs",
+    ],
+    deps = [
+        "//tensorflow/python:pybind11_lib",
+        "@com_google_absl//absl/status:statusor",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )

@@ -4117,6 +4117,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
+        "//tensorflow/compiler/tf2xla:tf2xla_opset",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib",
@@ -4219,6 +4220,7 @@ filegroup(
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
+        "//tensorflow/compiler/tf2xla:tf2xla_opset",  # pywrap_xla_ops
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
