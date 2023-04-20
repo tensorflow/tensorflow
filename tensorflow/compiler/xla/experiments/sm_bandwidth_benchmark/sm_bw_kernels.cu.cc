@@ -123,10 +123,6 @@ template void BenchmarkDeviceCopy<1 << 9>(float* in, float* out, int64_t size,
                                           int num_blocks, int num_threads);
 template void BenchmarkDeviceCopy<1 << 10>(float* in, float* out, int64_t size,
                                            int num_blocks, int num_threads);
-template void BenchmarkDeviceCopy<1 << 11>(float* in, float* out, int64_t size,
-                                           int num_blocks, int num_threads);
-template void BenchmarkDeviceCopy<1 << 12>(float* in, float* out, int64_t size,
-                                           int num_blocks, int num_threads);
 }  // namespace benchmark
 }  // namespace experiments
 

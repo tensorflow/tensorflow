@@ -24,7 +24,9 @@ namespace experiments {
 namespace benchmark {
 namespace {
 
-constexpr int kSMNumber = 108;
+constexpr int kNumSM = 108;
+constexpr int kNum32BitRegisters = 64 * 1024;
+constexpr int kMaxBlockSize = 1024;
 
 template <typename T>
 struct DeviceMemoryDeleter {
@@ -80,7 +82,7 @@ bool CheckOutputAndClean(float* h_in, float* h_out, float* d_out, size_t size) {
 
 template <int chunks>
 float BenchmarkCustomDeviceCopy(int kReps, float* d_in, float* d_out,
-                                size_t size, int num_blocks = kSMNumber,
+                                size_t size, int num_blocks = kNumSM,
                                 int num_threads = 64) {
   Event start = MakeEvent();
   Event stop = MakeEvent();
@@ -151,43 +153,43 @@ TEST(SMBandwidthTest, IncreasingMemorySize) {
 }
 
 TEST(SMBandwidthTest, IncreasingNumBlocks) {
-  constexpr size_t size = 1 << 28;
+  constexpr size_t kSize = 1 << 28;
+  constexpr int kReps = 10;
+  constexpr int kNumThreads = 64;
 
-  DeviceMemory<float> d_in = MakeDeviceMemory<float>(size);
-  DeviceMemory<float> d_out = MakeDeviceMemory<float>(size);
+  DeviceMemory<float> d_in = MakeDeviceMemory<float>(kSize);
+  DeviceMemory<float> d_out = MakeDeviceMemory<float>(kSize);
 
-  HostMemory<float> h_in = MakeHostMemory<float>(size);
-  HostMemory<float> h_out = MakeHostMemory<float>(size);
+  HostMemory<float> h_in = MakeHostMemory<float>(kSize);
+  HostMemory<float> h_out = MakeHostMemory<float>(kSize);
 
-  for (size_t i = 0; i < size; i++) {
+  for (size_t i = 0; i < kSize; i++) {
     h_in.get()[i] = i;
   }
-  CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), size * sizeof(float),
+  CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), kSize * sizeof(float),
                         cudaMemcpyHostToDevice));
 
-  constexpr int kReps = 10;
-  constexpr int num_threads = 64;
   LOG(ERROR) << "num_blocks,TB/s";
-  for (int64_t num_blocks = kSMNumber; num_blocks <= kSMNumber * 32;
-       num_blocks += kSMNumber) {
+  for (int64_t num_blocks = kNumSM; num_blocks <= kNumSM * 32;
+       num_blocks += kNumSM) {
     Event start = MakeEvent();
     Event stop = MakeEvent();
     CHECK_CUDA(cudaEventRecord(start.get()));
     for (int i = 0; i < kReps; i++) {
-      BenchmarkDeviceCopy<1>(d_in.get(), d_out.get(), size, num_blocks,
-                             num_threads);
+      BenchmarkDeviceCopy<1>(d_in.get(), d_out.get(), kSize, num_blocks,
+                             kNumThreads);
     }
     CHECK_CUDA(cudaEventRecord(stop.get()));
     CHECK_CUDA(cudaEventSynchronize(stop.get()));
     float time_diff = 0.0f;
     CHECK_CUDA(cudaEventElapsedTime(&time_diff, start.get(), stop.get()));
     time_diff /= kReps;
-    LOG(ERROR) << num_blocks << "," << TbPerSec(size, time_diff);
+    LOG(ERROR) << num_blocks << "," << TbPerSec(kSize, time_diff);
 
-    CHECK_CUDA(cudaMemcpy(h_out.get(), d_out.get(), size * sizeof(float),
+    CHECK_CUDA(cudaMemcpy(h_out.get(), d_out.get(), kSize * sizeof(float),
                           cudaMemcpyDeviceToHost));
     EXPECT_TRUE(
-        CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), size));
+        CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), kSize));
   }
 }
 
@@ -211,59 +213,98 @@ struct ForLoop<0> {
 template <int chunks_log>
 struct IterateOverChunkSizeImpl {
   void operator()() {
-    constexpr size_t size = 1 << 28;
-    DeviceMemory<float> d_in = MakeDeviceMemory<float>(size);
-    DeviceMemory<float> d_out = MakeDeviceMemory<float>(size);
+    constexpr size_t kSize = 1 << 28;
+    constexpr int kReps = 10;
 
-    HostMemory<float> h_in = MakeHostMemory<float>(size);
-    HostMemory<float> h_out = MakeHostMemory<float>(size);
+    DeviceMemory<float> d_in = MakeDeviceMemory<float>(kSize);
+    DeviceMemory<float> d_out = MakeDeviceMemory<float>(kSize);
 
-    for (size_t i = 0; i < size; i++) {
+    HostMemory<float> h_in = MakeHostMemory<float>(kSize);
+    HostMemory<float> h_out = MakeHostMemory<float>(kSize);
+
+    for (size_t i = 0; i < kSize; i++) {
       h_in.get()[i] = i;
     }
-    CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), size * sizeof(float),
+    CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), kSize * sizeof(float),
                           cudaMemcpyHostToDevice));
 
-    constexpr int kReps = 10;
     float time_diff = BenchmarkCustomDeviceCopy<1 << chunks_log>(
-        kReps, d_in.get(), d_out.get(), size);
+        kReps, d_in.get(), d_out.get(), kSize);
     EXPECT_TRUE(
-        CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), size));
+        CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), kSize));
 
-    LOG(ERROR) << (1 << chunks_log) << "," << TbPerSec(size, time_diff);
+    LOG(ERROR) << (1 << chunks_log) << "," << TbPerSec(kSize, time_diff);
   }
 };
 
 TEST(SMBandwidthTest, IterateOverChunkSize) {
   LOG(ERROR) << "chunks,TB/s";
-  ForLoop<12>::iterate<IterateOverChunkSizeImpl>();
+  ForLoop<10>::iterate<IterateOverChunkSizeImpl>();
 }
 
 TEST(SMBandwidthTest, IncreaseThreadsNumber) {
-  constexpr size_t size = 1 << 28;
-  DeviceMemory<float> d_in = MakeDeviceMemory<float>(size);
-  DeviceMemory<float> d_out = MakeDeviceMemory<float>(size);
+  constexpr size_t kSize = 1 << 28;
+  constexpr int kReps = 10;
+  constexpr int kNumThreads = 256;
 
-  HostMemory<float> h_in = MakeHostMemory<float>(size);
-  HostMemory<float> h_out = MakeHostMemory<float>(size);
+  DeviceMemory<float> d_in = MakeDeviceMemory<float>(kSize);
+  DeviceMemory<float> d_out = MakeDeviceMemory<float>(kSize);
 
-  for (size_t i = 0; i < size; i++) {
+  HostMemory<float> h_in = MakeHostMemory<float>(kSize);
+  HostMemory<float> h_out = MakeHostMemory<float>(kSize);
+
+  for (size_t i = 0; i < kSize; i++) {
     h_in.get()[i] = i;
   }
-  CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), size * sizeof(float),
+  CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), kSize * sizeof(float),
                         cudaMemcpyHostToDevice));
 
-  constexpr int kReps = 10;
-  constexpr int num_threads = 256;
-  for (int num_blocks = 1; num_blocks <= kSMNumber; num_blocks++) {
+  for (int num_blocks = 1; num_blocks <= kNumSM; num_blocks++) {
     float time_diff = BenchmarkCustomDeviceCopy<1 << 8>(
-        kReps, d_in.get(), d_out.get(), size, num_blocks, num_threads);
+        kReps, d_in.get(), d_out.get(), kSize, num_blocks, kNumThreads);
     EXPECT_TRUE(
-        CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), size));
+        CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), kSize));
     LOG(ERROR) << "num_blocks: " << num_blocks
-               << ", num_threads: " << num_threads
-               << ", TB/sec: " << TbPerSec(size, time_diff);
+               << ", num_threads: " << kNumThreads
+               << ", TB/sec: " << TbPerSec(kSize, time_diff);
   }
+}
+
+template <int chunks_log>
+struct UseMaxNumberOfRegistersPerSmImpl {
+  void operator()() {
+    constexpr size_t kSize = 1 << 28;
+    constexpr int kReps = 10;
+    constexpr int kNumBlocks = kNumSM;
+
+    DeviceMemory<float> d_in = MakeDeviceMemory<float>(kSize);
+    DeviceMemory<float> d_out = MakeDeviceMemory<float>(kSize);
+
+    HostMemory<float> h_in = MakeHostMemory<float>(kSize);
+    HostMemory<float> h_out = MakeHostMemory<float>(kSize);
+
+    for (size_t i = 0; i < kSize; i++) {
+      h_in.get()[i] = i;
+    }
+    CHECK_CUDA(cudaMemcpy(d_in.get(), h_in.get(), kSize * sizeof(float),
+                          cudaMemcpyHostToDevice));
+
+    for (int coeff = 1; coeff <= 3; coeff++) {
+      int num_threads = kNum32BitRegisters / ((1 << chunks_log) * coeff);
+      if (num_threads > kMaxBlockSize) continue;
+      float time_diff = BenchmarkCustomDeviceCopy<1 << chunks_log>(
+          kReps, d_in.get(), d_out.get(), kSize, kNumBlocks, num_threads);
+      EXPECT_TRUE(
+          CheckOutputAndClean(h_in.get(), h_out.get(), d_out.get(), kSize));
+      LOG(ERROR) << "num_threads: " << num_threads
+                 << ", chunks: " << (1 << chunks_log)
+                 << ", TB/sec: " << TbPerSec(kSize, time_diff);
+    }
+  }
+};
+
+TEST(SMBandwidthTest, UseMaxNumberOfRegistersPerSm) {
+  ForLoop<10>::iterate<UseMaxNumberOfRegistersPerSmImpl>();
 }
 
 }  // namespace
