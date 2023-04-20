@@ -25,7 +25,7 @@ from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1106,7 +1106,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     graph = concrete_function.graph
     # Add given distributed variable to captures with given placeholder.
     graph.replace_capture(self, internal_capture)
-    tape.record_operation(
+    record.record_operation(
         "captured_value", [internal_capture], [self],
         backward_function=lambda x: [x],
         forward_function=lambda x: [x])

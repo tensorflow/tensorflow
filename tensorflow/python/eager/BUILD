@@ -393,7 +393,17 @@ py_library(
     srcs = ["tape.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/python/util:lazy_loader"],
+    deps = [
+        "//tensorflow/python:pywrap_tfe",
+    ],
+)
+
+py_library(
+    name = "record",
+    srcs = ["record.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/python:pywrap_tfe"],
 )
 
 cuda_py_test(
@@ -423,6 +433,7 @@ cuda_py_test(
         ":backprop",
         ":backprop_util",
         ":context",
+        ":record",
         ":test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:cond",
@@ -449,6 +460,7 @@ cuda_py_test(
     deps = [
         ":forwardprop",
         ":forwardprop_util",
+        ":record",
         ":test",
         "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python/distribute:mirrored_strategy",
@@ -731,13 +743,13 @@ tf_py_logged_benchmark(
 )
 
 tf_py_test(
-    name = "tape_test",
-    srcs = ["tape_test.py"],
+    name = "record_test",
+    srcs = ["record_test.py"],
     python_version = "PY3",
     deps = [
         ":backprop",
         ":context",
-        ":tape",
+        ":record",
         ":test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",

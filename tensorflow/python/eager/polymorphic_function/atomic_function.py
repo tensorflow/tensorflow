@@ -20,7 +20,7 @@ from typing import Any
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
@@ -187,7 +187,7 @@ class AtomicFunction:
         # case by explicitly pausing recording. We don't have a gradient
         # registered for PartitionedCall, so recording this operation confuses
         # forwardprop code (GradientTape manages to ignore it).
-        with tape.stop_recording():
+        with record.stop_recording():
           if self._bound_context.executing_eagerly():
             outputs = self._bound_context.call_function(
                 self.name,

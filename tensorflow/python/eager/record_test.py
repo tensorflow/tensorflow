@@ -17,7 +17,7 @@
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -169,7 +169,7 @@ class VariableWatcherTest(test.TestCase):
   def testBasic(self):
     var1 = variables.Variable(0.0)
     var2 = variables.Variable(1.0)
-    with tape.VariableWatcher() as variable_watcher:
+    with record.VariableWatcher() as variable_watcher:
       var1.assign_add(1.0)
       var2.assign_add(2.0)
 
@@ -178,7 +178,7 @@ class VariableWatcherTest(test.TestCase):
   def testNonTrainableVariables(self):
     var1 = variables.Variable(0.0)
     var2 = variables.Variable(1.0, trainable=False)
-    with tape.VariableWatcher() as variable_watcher:
+    with record.VariableWatcher() as variable_watcher:
       var1.assign_add(1.0)
       var2.assign_add(2.0)
 
@@ -187,9 +187,9 @@ class VariableWatcherTest(test.TestCase):
   def testMultipleScopes(self):
     var1 = variables.Variable(0.0)
     var2 = variables.Variable(1.0)
-    with tape.VariableWatcher() as variable_watcher1:
+    with record.VariableWatcher() as variable_watcher1:
       var1.assign_add(1.0)
-      with tape.VariableWatcher() as variable_watcher2:
+      with record.VariableWatcher() as variable_watcher2:
         var2.assign_add(2.0)
 
     # variable_watcher1 should see both vars and variable_watcher2 only sees
@@ -198,7 +198,7 @@ class VariableWatcherTest(test.TestCase):
     self.assertAllEqual(variable_watcher2.watched_variables(), (var2,))
 
   def testCreateVariables(self):
-    with tape.VariableWatcher() as variable_watcher:
+    with record.VariableWatcher() as variable_watcher:
       var1 = variables.Variable(0.0)
       var2 = variables.Variable(1.0)
       var1.assign_add(1.0)

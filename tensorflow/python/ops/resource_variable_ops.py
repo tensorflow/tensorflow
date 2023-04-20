@@ -29,6 +29,7 @@ from tensorflow.python.checkpoint import tensor_callable
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
+from tensorflow.python.eager import record
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import composite_tensor
@@ -755,7 +756,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
-      tape.record_operation(
+      record.record_operation(
           "ReadVariableOp", [result], [self.handle],
           backward_function=lambda x: [x],
           forward_function=lambda x: [x])
