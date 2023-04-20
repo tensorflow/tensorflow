@@ -71,8 +71,6 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
                                        absl::Span<const int64_t> row_dims,
                                        absl::Span<const int64_t> col_dims) {
   TF_RET_CHECK(shape.has_layout());
-  TF_RET_CHECK(!row_dims.empty());
-  TF_RET_CHECK(!col_dims.empty());
 
   std::vector<int64_t> minor_to_major;
   for (size_t i = 0; i < shape.rank();) {
@@ -83,16 +81,16 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
         if (*it != shape.layout().minor_to_major()[i++])
-          return InvalidArgument("dims not physically sequential");
+          return InvalidArgument("dims not physically_sequential");
       }
       return OkStatus();
     };
 
     int64_t dim = shape.layout().minor_to_major()[i];
-    if (dim == row_dims.back()) {
+    if (!row_dims.empty() && dim == row_dims.back()) {
       minor_to_major.push_back(1);
       TF_RETURN_IF_ERROR(check_physically_sequential(row_dims));
-    } else if (dim == col_dims.back()) {
+    } else if (!col_dims.empty() && dim == col_dims.back()) {
       minor_to_major.push_back(2);
       TF_RETURN_IF_ERROR(check_physically_sequential(col_dims));
     } else if (!batch_dims.empty() && (dim == batch_dims.back())) {
@@ -103,6 +101,8 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
     }
   }
 
+  if (col_dims.empty()) minor_to_major.push_back(2);
+  if (row_dims.empty()) minor_to_major.push_back(1);
   if (batch_dims.empty()) minor_to_major.push_back(0);
 
   auto dim_size = [&](absl::Span<const int64_t> dims) {
