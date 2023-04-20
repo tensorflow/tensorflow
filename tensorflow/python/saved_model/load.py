@@ -21,8 +21,8 @@ import sys
 
 from absl import logging
 
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.function.capture import restore_captures
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
