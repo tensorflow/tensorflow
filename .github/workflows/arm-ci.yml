@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-name: ARM CI
+owner: Carlos Alberto Sacaza Palacio
 
 on:
   push:
