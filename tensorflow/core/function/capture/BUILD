@@ -65,7 +65,7 @@ pytype_strict_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:object_identity",
     ],
 )

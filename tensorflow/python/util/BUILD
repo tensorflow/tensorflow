@@ -288,7 +288,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops/linalg:linear_operator_diag",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
     ],
 )
 

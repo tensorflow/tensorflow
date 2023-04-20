@@ -83,7 +83,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
     ],
 )
 
@@ -582,7 +582,7 @@ py_library(
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/tools/docs:doc_controls",
@@ -597,7 +597,8 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
+        "//tensorflow/python/types:distribute",
     ],
 )
 
@@ -864,7 +865,9 @@ py_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
+        "//tensorflow/python/types:distribute",
+        "//tensorflow/python/types:trace",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -887,7 +890,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/types",
     ],
 )
 
@@ -923,7 +925,7 @@ py_library(
         "//tensorflow/python/distribute/coordinator:coordinator_context",
         "//tensorflow/python/keras/saving/saved_model:load_context",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:lazy_loader",
     ],
 )
@@ -1525,7 +1527,7 @@ distribute_py_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1563,7 +1565,6 @@ distribute_py_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1605,7 +1606,6 @@ distribute_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
     ],
 )
