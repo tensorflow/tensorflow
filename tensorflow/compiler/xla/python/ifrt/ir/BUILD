@@ -50,6 +50,20 @@ gentbl_cc_library(
             ],
             "ifrt_types.cc.inc",
         ),
+        (
+            [
+                "-gen-attrdef-decls",
+                "--attrdefs-dialect=ifrt",
+            ],
+            "ifrt_attrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "--attrdefs-dialect=ifrt",
+            ],
+            "ifrt_attrs.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ifrt_dialect.td",

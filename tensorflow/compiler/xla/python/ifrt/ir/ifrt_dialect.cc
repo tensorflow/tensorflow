@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 #define GET_TYPEDEF_CLASSES
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_types.cc.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_attrs.cc.inc"
 
 namespace xla {
 namespace ifrt {
@@ -42,6 +44,10 @@ void IfrtDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_types.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_attrs.cc.inc"
       >();
   addOperations<
 #define GET_OP_LIST
