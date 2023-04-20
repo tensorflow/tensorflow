@@ -366,6 +366,25 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "small_constants_optimizer_test",
+    size = "medium",
+    srcs = ["small_constants_optimizer_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":context",
+        ":test",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+    ],
+)
+
 py_library(
     name = "tape",
     srcs = ["tape.py"],
