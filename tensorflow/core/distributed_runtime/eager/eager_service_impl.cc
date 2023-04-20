@@ -292,14 +292,6 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   // Set the rendezvous as context-global instance for eager op-by-op execution.
   r->SetRemoteEagerContextDefault();
 
-  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
-      [worker_session, this](const int64_t step_id) {
-        tsl::core::RefCountPtr<RemoteRendezvous> r =
-            env_->rendezvous_mgr->Find(step_id);
-        r->Initialize(worker_session.get()).IgnoreError();
-        return r.release();
-      };
-
   LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
             << " eager service context with rendezvous_id on host "
             << port::Hostname() << " " << worker_session->worker_name();
@@ -328,10 +320,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   auto remote_mgr =
       std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
   Status s = ctx->InitializeRemoteWorker(
-      std::move(remote_eager_workers), worker_session->remote_device_mgr(),
-      remote_workers, request->context_id(), request->context_view_id(),
-      std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr),
-      std::move(session_destroyer));
+      env_, worker_session, std::move(remote_eager_workers),
+      worker_session->remote_device_mgr(), remote_workers,
+      request->context_id(), request->context_view_id(), cluster_flr,
+      std::move(remote_mgr), std::move(session_destroyer));
   if (!s.ok()) {
     VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
             << s.ToString();

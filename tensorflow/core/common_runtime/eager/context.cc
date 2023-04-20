@@ -644,15 +644,11 @@ EagerContext::~EagerContext() {
 
   // Clean up all the rendezvous instances created via EagerContext.
   // Currently there are 3 cases in which a rendezvous instances is created:
-  // (1). Created through a rendezvous_creator passed to EagerContext.
-  // (2). Created through rendezvous_mgr.
-  // (3). Created within EagerContext using LocalRendezvousCache.
+  // (1). Created through rendezvous_mgr.
+  // (2). Created within EagerContext using LocalRendezvousCache.
   //
-  // Currently case-(3) is taken care of automatically when an EagerContext
-  // instance is deleted. The following code takes care of case-(2). Case-(1)
-  // is tricky as EagerContext does not have a way to access those rendezvous
-  // instances.
-  // TODO (tfrt-dev): Take care of case-(1) mentioned above.
+  // Currently case-(2) is taken care of automatically when an EagerContext
+  // instance is deleted. The following code takes care of case-(1).
   if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
     worker_env_->rendezvous_mgr->CleanupAll();
   }
@@ -1535,7 +1531,7 @@ void EagerContext::FilterDevicesForRemoteWorkers(
   }
 }
 
-void EagerContext::SetWorkerEnv(WorkerEnv* worker_env,
+void EagerContext::SetWorkerEnv(const WorkerEnv* worker_env,
                                 std::shared_ptr<WorkerSession> worker_session) {
   worker_env_ = worker_env;
   worker_session_ = worker_session;
@@ -1678,8 +1674,9 @@ Status EagerContext::SetMasterContextState(
   server_ = std::move(server);
 
   remote_mgr_ = std::move(remote_mgr);
-  worker_env_ = worker_env;
-  worker_session_ = std::move(worker_session);
+
+  SetWorkerEnv(worker_env, std::move(worker_session));
+
   remote_eager_workers_ = std::move(remote_eager_workers);
 
   remote_device_manager_.Reset(std::move(remote_device_manager));
@@ -1762,12 +1759,11 @@ Status EagerContext::SetMasterContextState(
 }
 
 Status EagerContext::InitializeRemoteWorker(
+    const WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    uint64 context_view_id,
-    std::function<Rendezvous*(const int64_t)> rendezvous_creator,
-    DistributedFunctionLibraryRuntime* cluster_flr,
+    uint64 context_view_id, DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr,
     std::function<void()> resource_deallocator) {
@@ -1790,9 +1786,11 @@ Status EagerContext::InitializeRemoteWorker(
   context_id_ = context_id;
   context_view_id_ = context_view_id;
 
-  rendezvous_creator_ = std::move(rendezvous_creator);
   remote_eager_workers_ = std::move(remote_eager_workers);
   remote_mgr_ = std::move(remote_mgr);
+
+  SetWorkerEnv(worker_env, std::move(worker_session));
+
   ResetClusterFLR(cluster_flr);
 
   remote_device_manager_.Reset(remote_device_mgr);
