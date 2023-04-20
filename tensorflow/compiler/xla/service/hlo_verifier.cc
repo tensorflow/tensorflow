@@ -2690,6 +2690,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kFusion &&
         instruction->opcode() != HloOpcode::kBitcast &&
         instruction->opcode() != HloOpcode::kCopy &&
+        instruction->opcode() != HloOpcode::kCopyStart &&
+        instruction->opcode() != HloOpcode::kCopyDone &&
         instruction->opcode() != HloOpcode::kGetTupleElement &&
         instruction->opcode() != HloOpcode::kTuple &&
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
