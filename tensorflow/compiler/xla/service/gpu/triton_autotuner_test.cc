@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
@@ -126,6 +129,30 @@ class TritonAutotunerTest : public HloTestBase {
         });
   }
 };
+
+TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::VOLTA, /*minor=*/0};
+  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(compute_capability);
+  EXPECT_FALSE(
+      std::any_of(configs.begin(), configs.end(),
+                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
+                    return key.num_stages() > 2;
+                  }));
+}
+
+TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(compute_capability);
+  EXPECT_TRUE(
+      std::any_of(configs.begin(), configs.end(),
+                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
+                    return key.num_stages() > 2;
+                  }));
+}
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {
   const std::string hlo = R"(
