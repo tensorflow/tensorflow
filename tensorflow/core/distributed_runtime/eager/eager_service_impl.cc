@@ -35,10 +35,12 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+#include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -233,21 +235,27 @@ Status ResetAgentAndConnectToCoordinationService(
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
+  bool update_collective_executor_mgr = false;
   {
     mutex_lock l(contexts_mu_);
-    auto context_it = contexts_.find(request->context_id());
-    if (context_it != contexts_.end()) {
-      if (request->context_view_id() <
-          context_it->second->Context()->GetContextViewId()) {
-        return errors::InvalidArgument("EagerService:CreateContext failed. ",
-                                       "Context id: <", request->context_id(),
-                                       "> already exists.");
-      } else {
-        // For existing context with a stale context_view_id, close the old one
-        // and recreate with new view id. This is likely due to the worker
-        // disconnected and then reconnected after one or more cluster updates.
-        context_it->second->Unref();
-        contexts_.erase(context_it);
+    if (contexts_.empty()) {
+      update_collective_executor_mgr = true;
+    } else {
+      auto context_it = contexts_.find(request->context_id());
+      if (context_it != contexts_.end()) {
+        if (request->context_view_id() <
+            context_it->second->Context()->GetContextViewId()) {
+          return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                         "Context id: <", request->context_id(),
+                                         "> already exists.");
+        } else {
+          // For existing context with a stale context_view_id, close the old
+          // one and recreate with new view id. This is likely due to the worker
+          // disconnected and then reconnected after one or more cluster
+          // updates.
+          context_it->second->Unref();
+          contexts_.erase(context_it);
+        }
       }
     }
   }
@@ -297,10 +305,24 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
             << port::Hostname() << " " << worker_session->worker_name();
   SessionOptions opts;
   opts.config = request->server_def().default_session_config();
+
+  LOG(INFO) << "SessionOptions: " << opts.config.DebugString();
+
+  if (update_collective_executor_mgr) {
+    // Replace the collective execution manager in worker env. This ensures
+    // this newly create EagerContext and the worker service agrees about the
+    // leader and type (RPC / local) of the collectives.
+    // Other EagerContexts are broken if they disagree with the worker service.
+    env_->collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
+        opts.config, device_mgr, MaybeCreateNcclCommunicator(opts.config),
+        worker_session->worker_cache(), worker_session->worker_name());
+  }
+
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       request->async(), device_mgr, false, r.release(),
       worker_session->cluster_flr(), env_->collective_executor_mgr.get());
+
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
