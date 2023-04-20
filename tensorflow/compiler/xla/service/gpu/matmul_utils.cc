@@ -195,6 +195,21 @@ void MatrixLayout::Transpose() {
   order = (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
 }
 
+namespace {
+// Returns the relative order of 'dims' as indices from 0 to dims.size() - 1.
+// Let 'indices' be the returned vector, then it holds that
+// dims[indices[i - 1]] < dims[indices[i]] for 0 < i < dims.size()
+std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
+  // Remap the dimensions to values between 0 and dims.size() - 1, keeping their
+  // relative order the same.
+  std::vector<int64_t> indices(dims.size());
+  absl::c_iota(indices, 0);
+  absl::c_sort(indices,
+               [&](int64_t a, int64_t b) { return dims[a] < dims[b]; });
+  return indices;
+}
+}  // namespace
+
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
@@ -223,11 +238,20 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(transpose.shape(), batch_dims, contracting_dims));
 
+  // TransposeFolding assumes that folding the transpose into the dot operand
+  // doesn't change the dot shape. This means that the non-contracting
+  // dimensions of the dot operand need to keep their relative order.
+  auto transposed_non_contracting_dims = transposed(non_contracting_dims);
+  if (NormalizedRelativeOrder(non_contracting_dims) !=
+      NormalizedRelativeOrder(transposed_non_contracting_dims)) {
+    return false;
+  }
+
   // If we're able to construct a valid `MatrixLayout` for the transposed
   // dimensions, then GeMM can support folding the transpose.
   return MatrixLayout::For(transpose.operand(0)->shape(),
                            transposed(batch_dims), transposed(contracting_dims),
-                           transposed(non_contracting_dims))
+                           transposed_non_contracting_dims)
       .ok();
 }
 
