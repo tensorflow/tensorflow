@@ -213,7 +213,8 @@ void AllocateAndParseFlags() {
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
-  ops_flags->tf_xla_use_device_api = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = false;
 
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
   // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
@@ -267,9 +268,15 @@ void AllocateAndParseFlags() {
             "When lazy compilation is enabled, asynchronous compilation starts "
             "the cluster compilation in the background, and the fallback path "
             "is executed until the compilation has finished."),
-       Flag("tf_xla_use_device_api", &ops_flags->tf_xla_use_device_api,
-            "If true, uses the Device API (PjRt) for single device compilation."
-            " Defaults to false."),
+       Flag("tf_xla_use_device_api_for_xla_launch",
+            &ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_,
+            "If true, uses Device API (PjRt) for single device compilation and "
+            "execution of functions marked for JIT compilation i.e. "
+            "jit_compile=True. Defaults to false."),
+       Flag("tf_xla_use_device_api_for_compile_on_demand",
+            &ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_,
+            "If true, uses Device API (PjRt) for compiling and executing ops "
+            "one by one in 'on-demand' mode. Defaults to false."),
 
        Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
             "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
