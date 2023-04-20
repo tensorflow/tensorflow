@@ -43,13 +43,27 @@ namespace {
 
 using namespace mlir;  // NOLINT
 
-template <class ConstAttr>
-ConstAttr getAttrFromConstant(Value v) {
-  return v.getDefiningOp<mhlo::ConstantOp>().getValue().cast<ConstAttr>();
+DenseIntElementsAttr getDenseIntAttrFromConstant(Value v) {
+  if (auto const_op = v.getDefiningOp<mhlo::ConstantOp>()) {
+    return const_op.getValue().cast<DenseIntElementsAttr>();
+  } else if (auto itoa_op = v.getDefiningOp<mhlo::IotaOp>()) {
+    // MHLO canonicalizer canonicalizes constants like [0, 1, 2, .., n-1] to
+    // mhlo.itoa {itoa_dimension=0}: tensor<n x i64>
+    RankedTensorType rtt = itoa_op.getOutput().getType();
+    // We only use 1-D tensors to encode constant parameters in custom calls.
+    assert(itoa_op.getIotaDimension() == 0 && rtt.getRank() == 1);
+    SmallVector<int64_t> const_values;
+    const_values.reserve(rtt.getShape()[0]);
+    for (int i = 0; i < rtt.getShape()[0]; ++i) {
+      const_values.push_back(i);
+    }
+    return DenseIntElementsAttr::get(rtt, const_values);
+  }
+  llvm_unreachable("unrecognizable type of constant");
 }
 
 void getIntegersFromDenseElements(Value v, SmallVectorImpl<int64_t>& values) {
-  auto attr = getAttrFromConstant<DenseIntElementsAttr>(v);
+  auto attr = getDenseIntAttrFromConstant(v);
   values.reserve(values.size() + attr.size());
   auto range = llvm::map_range(attr, [](APInt i) { return i.getZExtValue(); });
   values.append(range.begin(), range.end());
@@ -202,8 +216,8 @@ struct SparseSliceCallRewriter {
     auto loc = op.getLoc();
     auto retTp = op.getResults().getTypes()[0].cast<RankedTensorType>();
 
-    auto offsets = getAttrFromConstant<DenseIntElementsAttr>(op.getInputs()[1]);
-    auto strides = getAttrFromConstant<DenseIntElementsAttr>(op.getInputs()[3]);
+    auto offsets = getDenseIntAttrFromConstant(op.getInputs()[1]);
+    auto strides = getDenseIntAttrFromConstant(op.getInputs()[3]);
 
     assert(offsets.getNumElements() == strides.getNumElements() &&
            offsets.getNumElements() == retTp.getRank());
@@ -253,8 +267,7 @@ struct SparseDynSliceCallRewriter {
     // Strips the tensor operand at the front and the static_size array at
     // the end. Inputs in between specify the dynamic offsets.
     auto dyn_off_tensors = op.getInputs().drop_front().drop_back();
-    auto sizes =
-        getAttrFromConstant<DenseIntElementsAttr>(op.getInputs().back());
+    auto sizes = getDenseIntAttrFromConstant(op.getInputs().back());
 
     assert(sizes.getNumElements() == retTp.getRank() &&
            dyn_off_tensors.size() == retTp.getRank());
