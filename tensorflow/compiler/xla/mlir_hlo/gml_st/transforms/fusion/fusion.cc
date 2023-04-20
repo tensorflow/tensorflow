@@ -730,11 +730,15 @@ LogicalResult inlineFusionCluster(FusionOp fusionOp,
     rewriter.clone(op, mapper);
   }
 
-  SmallVector<Value> yieldOpOperands = llvm::to_vector(
-      llvm::map_range(fusionOp.getTerminator().getOperands(),
-                      [&](Value v) { return mapper.lookupOrDefault(v); }));
+  if (fusionOp.hasTensorSemantics()) {
+    SmallVector<Value> yieldOpOperands = llvm::to_vector(
+        llvm::map_range(fusionOp.getTerminator().getOperands(),
+                        [&](Value v) { return mapper.lookupOrDefault(v); }));
 
-  rewriter.replaceOp(fusionOp, yieldOpOperands);
+    rewriter.replaceOp(fusionOp, yieldOpOperands);
+  } else {
+    rewriter.eraseOp(fusionOp);
+  }
 
   return success();
 }
