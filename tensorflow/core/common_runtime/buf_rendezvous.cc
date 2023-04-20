@@ -89,6 +89,12 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
                                const AllocatorAttributes& attr,
                                const ProducerCallback& done,
                                CancellationManager* cancellation_manager) {
+  DVLOG(4) << "ProvideBuf: key = " << key;
+#ifndef NDEBUG
+  if (VLOG_IS_ON(4)) {
+    LogContents();
+  }
+#endif
   Hook* h = nullptr;
   Status providebuf_status;
   do {
@@ -139,6 +145,8 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
     }
   } while (false);
   if (h) {
+    DVLOG(4) << "ProvideBuf: key = " << key << ": calling cons_cb"
+             << h->DebugString();
     DeregisterCancellation(h);
     h->cons_cb(OkStatus(), h);
   }
@@ -151,6 +159,12 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
                                const uint64 device_incarnation,
                                const ConsumerCallback& done,
                                CancellationManager* cancellation_manager) {
+  DVLOG(4) << "ConsumeBuf: key = " << key << " device_name = " << device_name;
+#ifndef NDEBUG
+  if (VLOG_IS_ON(4)) {
+    LogContents();
+  }
+#endif
   // Check the incarnation in the request matches the current device
   // incarnation of the producer.
   Device* device;
@@ -168,7 +182,6 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
     done(consumebuf_status, nullptr);
     return;
   }
-
   Hook* existing_hook = nullptr;
   do {
     mutex_lock l(mu_);
@@ -208,6 +221,8 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
     }
   } while (false);
   if (existing_hook) {
+    DVLOG(4) << "ConsumeBuf: key = " << key << ": calling cons_cb"
+             << existing_hook->DebugString();
     DeregisterCancellation(existing_hook);
     existing_hook->cons_cb(OkStatus(), existing_hook);
     return;
