@@ -288,7 +288,7 @@ auto* graph_optimization_cache_failure_count = tsl::monitoring::Counter<1>::New(
 );
 
 auto* graph_optimization_cache_miss_count = tsl::monitoring::Counter<1>::New(
-    "/tensorflow/core/optimization_cache_miss_count",
+    "/tensorflow/core/graph_optimization_cache_miss_count",
     "The number of times the cache for the graph optimization is missed.",
     "source"  // graph optimization source
 );
