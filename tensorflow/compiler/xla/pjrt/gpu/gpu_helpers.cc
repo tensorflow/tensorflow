@@ -78,7 +78,7 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
                                           &enable_unified_memory);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
-               << status.error_message();
+               << status.message();
   }
 
   int device_ordinal = executor->device_ordinal();

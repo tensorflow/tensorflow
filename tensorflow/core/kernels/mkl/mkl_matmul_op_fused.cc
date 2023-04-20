@@ -64,6 +64,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     const Tensor& weight_tensor = ctx->input(this->kInputIndexWeight);
     const Tensor& bias_tensor = MklGetInput(ctx, this->kInputIndexBias);
 
+    if (std::is_same<T, float>::value) {
+      (void)SetFPMathMode();
+    }
+
     MklDnnShape src_mkl_shape;
     MklDnnShape weight_mkl_shape;
     GetMklShape(ctx, this->kInputIndexSrc, &src_mkl_shape, native_format);

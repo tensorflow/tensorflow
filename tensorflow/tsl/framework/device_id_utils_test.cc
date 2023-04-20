@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/tsl/framework/device_id_manager.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
 namespace tsl {
 namespace {
@@ -28,6 +29,13 @@ using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 constexpr std::string_view kTestDeviceType = "CPU";
+
+PlatformDeviceId TfToPlatformDeviceId(TfDeviceId tf_device_id) {
+  PlatformDeviceId platform_device_id;
+  TF_CHECK_OK(DeviceIdManager::TfToPlatformDeviceId(
+      DeviceType(kTestDeviceType), tf_device_id, &platform_device_id));
+  return platform_device_id;
+}
 
 TEST(DeviceIdUtilsTest, CheckValidTfDeviceIdPass) {
   TfDeviceId tf_device_id(0);
@@ -91,6 +99,79 @@ TEST(DeviceIdUtilsTest, ParseDuplicateVisibleDeviceList) {
       StatusIs(
           tensorflow::error::INVALID_ARGUMENT,
           HasSubstr("visible_device_list contained a duplicate entry: 1,1")));
+}
+
+TEST(DeviceIdUtilsTest, GetNumberTfDevicesDefault) {
+  TF_ASSERT_OK_AND_ASSIGN(size_t num_tf_device,
+                          GetNumberTfDevicesAndConfigurePlatformDeviceId(
+                              {}, kTestDeviceType, "", 2));
+
+  EXPECT_EQ(num_tf_device, 2);
+  TfDeviceId tf_device_id_0(0);
+  PlatformDeviceId expected_0(0);
+  EXPECT_EQ(expected_0, TfToPlatformDeviceId(tf_device_id_0));
+  TfDeviceId tf_device_id_1(1);
+  PlatformDeviceId expected_1(1);
+  EXPECT_EQ(expected_1, TfToPlatformDeviceId(tf_device_id_1));
+  DeviceIdManager::TestOnlyReset();
+}
+
+TEST(DeviceIdUtilsTest, GetNumberTfDevicesWithVisibleDeviceList) {
+  TF_ASSERT_OK_AND_ASSIGN(size_t num_tf_device,
+                          GetNumberTfDevicesAndConfigurePlatformDeviceId(
+                              {}, kTestDeviceType, "2,0", 3));
+
+  EXPECT_EQ(num_tf_device, 2);
+  TfDeviceId tf_device_id_0(0);
+  PlatformDeviceId expected_2(2);
+  EXPECT_EQ(expected_2, TfToPlatformDeviceId(tf_device_id_0));
+  TfDeviceId tf_device_id_1(1);
+  PlatformDeviceId expected_0(0);
+  EXPECT_EQ(expected_0, TfToPlatformDeviceId(tf_device_id_1));
+  DeviceIdManager::TestOnlyReset();
+}
+
+TEST(DeviceIdUtilsTest, GetNumberTfDevicesWithSessionOptionDeviceCount) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      size_t num_tf_device,
+      GetNumberTfDevicesAndConfigurePlatformDeviceId(
+          {{std::string(kTestDeviceType), 2}}, kTestDeviceType, "1,0,2", 3));
+
+  EXPECT_EQ(num_tf_device, 2);
+  TfDeviceId tf_device_id_0(0);
+  PlatformDeviceId expected_1(1);
+  EXPECT_EQ(expected_1, TfToPlatformDeviceId(tf_device_id_0));
+  TfDeviceId tf_device_id_1(1);
+  PlatformDeviceId expected_0(0);
+  EXPECT_EQ(expected_0, TfToPlatformDeviceId(tf_device_id_1));
+  DeviceIdManager::TestOnlyReset();
+}
+
+TEST(DeviceIdUtilsTest, GetDeviceIdWithPlatformDeviceId) {
+  TfDeviceId tf_device_id(0);
+  PlatformDeviceId platform_device_id(1);
+  TF_EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+      DeviceType(kTestDeviceType), tf_device_id, platform_device_id));
+  DeviceNameUtils::ParsedName device_name;
+  device_name.id = 0;
+
+  TF_ASSERT_OK_AND_ASSIGN(int device_id,
+                          GetDeviceIdFromDeviceParsedName(
+                              device_name, DeviceType(kTestDeviceType)));
+
+  EXPECT_EQ(device_id, 1);
+  DeviceIdManager::TestOnlyReset();
+}
+
+TEST(DeviceIdUtilsTest, GetDeviceIdWithoutPlatformDeviceId) {
+  DeviceNameUtils::ParsedName device_name;
+  device_name.id = 0;
+
+  TF_ASSERT_OK_AND_ASSIGN(int device_id,
+                          GetDeviceIdFromDeviceParsedName(
+                              device_name, DeviceType(kTestDeviceType)));
+
+  EXPECT_EQ(device_id, 0);
 }
 
 }  // namespace

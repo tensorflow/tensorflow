@@ -2681,22 +2681,21 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   static Status VerifyS4U4Usage(HloInstruction* instruction) {
-    bool has_s4u4_operand =
-        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
-        });
     // TODO(b/259306620): Support S4/U4 operands in all instructions that
     // support inputs of other integer dtypes. Currently only aim to use it in
     // matmul and convolution op.
-    if (has_s4u4_operand && instruction->opcode() != HloOpcode::kDot &&
+    if (instruction->opcode() != HloOpcode::kDot &&
         instruction->opcode() != HloOpcode::kConvolution &&
         instruction->opcode() != HloOpcode::kConvert &&
         instruction->opcode() != HloOpcode::kFusion &&
         instruction->opcode() != HloOpcode::kBitcast &&
         instruction->opcode() != HloOpcode::kCopy &&
         instruction->opcode() != HloOpcode::kGetTupleElement &&
-        instruction->opcode() != HloOpcode::kTuple) {
+        instruction->opcode() != HloOpcode::kTuple &&
+        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
+          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
+                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
+        })) {
       return InvalidArgument(
           "S4/U4 is currently only supported in matmul and convolution, but "
           "got instruction with S4/U4 input: %s",

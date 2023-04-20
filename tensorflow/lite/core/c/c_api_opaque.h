@@ -505,38 +505,39 @@ void TfLiteOpaqueContextReportErrorVa(
 // extremely expensive computations should be done.
 // NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #if !defined(TF_LITE_OPAQUE_ENSURE_EQ)
-#define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                         \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%d != %d)", \
-                                __FILE__, __LINE__, #a, #b, (a), (b));         \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                  \
+  do {                                                                  \
+    if ((a) != (b)) {                                                   \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context),                       \
+                                "%s:%d: %s != %s (%d != %d)", __FILE__, \
+                                __LINE__, #a, #b, (a), (b));            \
+      return kTfLiteError;                                              \
+    }                                                                   \
   } while (0)
 #endif
 
 #if !defined(TF_LITE_OPAQUE_ENSURE_TYPES_EQ)
-#define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                   \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%s != %s)", \
-                                __FILE__, __LINE__, #a, #b,                    \
-                                TfLiteTypeGetName(a), TfLiteTypeGetName(b));   \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                  \
+  do {                                                                        \
+    if ((a) != (b)) {                                                         \
+      TF_LITE_OPAQUE_KERNEL_LOG(                                              \
+          (opaque_context), "%s:%d: %s != %s (%s != %s)", __FILE__, __LINE__, \
+          #a, #b, TfLiteTypeGetName(a), TfLiteTypeGetName(b));                \
+      return kTfLiteError;                                                    \
+    }                                                                         \
   } while (0)
 #endif
 
 #if !defined(TF_LITE_OPAQUE_ENSURE_NEAR)
-#define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)            \
-  do {                                                                       \
-    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
-    if (delta > epsilon) {                                                   \
-      TF_LITE_OPAQUE_KERNEL_LOG(                                             \
-          (opaque_context), "%s:%d %s not near %s (%f != %f)", __FILE__,     \
-          __LINE__, #a, #b, static_cast<double>(a), static_cast<double>(b)); \
-      return kTfLiteError;                                                   \
-    }                                                                        \
+#define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)             \
+  do {                                                                        \
+    double delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                   \
+    if (delta > epsilon) {                                                    \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context),                             \
+                                "%s:%d: %s not near %s (%f != %f)", __FILE__, \
+                                __LINE__, #a, #b, (double)(a), (double)(b));  \
+      return kTfLiteError;                                                    \
+    }                                                                         \
   } while (0)
 #endif
 

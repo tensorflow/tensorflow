@@ -448,10 +448,6 @@ Status KernelAndDeviceFunc::Run(
     delete opts->cancellation_manager;
   }
   static_cast<Rendezvous*>(opts->rendezvous)->Unref();
-  if (opts->cleanup_rendezvous_after_run) {
-    // Clean up the rendezvous created in PrepareForRun.
-    TF_RETURN_IF_ERROR(rendezvous_factory_.CleanUp(opts->step_id));
-  }
   outputs->reserve(rets.size());
   for (auto& v : rets) {
     outputs->push_back(std::move(v));
@@ -483,12 +479,7 @@ void KernelAndDeviceFunc::RunAsync(
                  delete opts->cancellation_manager;
                }
                static_cast<Rendezvous*>(opts->rendezvous)->Unref();
-               Status status = s;
-               if (opts->cleanup_rendezvous_after_run) {
-                 // Clean up the rendezvous created in PrepareForRun.
-                 status.Update(rendezvous_factory_.CleanUp(opts->step_id));
-               }
-               done(status);
+               done(s);
              });
 }
 

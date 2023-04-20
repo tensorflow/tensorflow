@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/refcount.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
@@ -103,7 +104,7 @@ const int64_t EagerContext::kGlobalRendezvousId = -1;
 tsl::core::RefCountPtr<IntraProcessRendezvous>
 EagerContext::LocalRendezvousCache::FindOrCreate(int64_t step_id,
                                                  DeviceMgr* device_mgr) {
-  return RendezvousCache<IntraProcessRendezvous>::FindOrCreate(step_id, [&]() {
+  return cache_->FindOrCreate(step_id, [&]() {
     return tsl::core::RefCountPtr<IntraProcessRendezvous>(
         new IntraProcessRendezvous(device_mgr));
   });
@@ -165,10 +166,6 @@ EagerContext::EagerContext(
         MaybeCreateNcclCommunicator(opts.config)));
   }
 
-  // Initialization of local_rendezvous_cache_ needs to happen before the
-  // initialization of global_rendezvous_for_functions_ because the latter
-  // depends on the former.
-  local_rendezvous_cache_ = std::make_unique<LocalRendezvousCache>();
   ResetGlobalRendezvousForFunction();
 }
 
@@ -1038,7 +1035,7 @@ EagerContext::GetCacheStats() {
   }
   {
     stats.local_rendezvous_cache_active_size =
-        local_rendezvous_cache_->GetActiveStepIds().size();
+        local_rendezvous_cache_.GetActiveStepIds().size();
   }
   return stats;
 }
@@ -1303,7 +1300,7 @@ void EagerContext::ClearResourceContainer(const string& name) {
 Status EagerContext::GetGlobalRendezvousForFunctionLocalRendezvousStatus() {
   mutex_lock l(global_rendezvous_mu_);
   IntraProcessRendezvous* rendezvous =
-      local_rendezvous_cache_->Find(kGlobalRendezvousId).release();
+      local_rendezvous_cache_.Find(kGlobalRendezvousId).release();
   if (rendezvous == nullptr) return OkStatus();
   Status s = rendezvous->GetLocalRendezvousStatus();
   rendezvous->Unref();
@@ -1314,7 +1311,7 @@ void EagerContext::UpdateGlobalRendezvousDeviceManager(
     tensorflow::DeviceMgr* device_mgr) {
   mutex_lock l(global_rendezvous_mu_);
   IntraProcessRendezvous* rendezvous =
-      local_rendezvous_cache_->Find(kGlobalRendezvousId).release();
+      local_rendezvous_cache_.Find(kGlobalRendezvousId).release();
   if (rendezvous == nullptr) return;
   rendezvous->UpdateDeviceManager(device_mgr);
   rendezvous->Unref();

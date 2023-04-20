@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
@@ -70,6 +71,110 @@ inline bool IsCompleteFlow(const TraceEventFlow& flow) {
   DCHECK(!flow.empty());
   return flow.front()->flow_entry_type() == TraceEvent::FLOW_START &&
          flow.back()->flow_entry_type() == TraceEvent::FLOW_END;
+}
+
+// Nway-merge implementation.
+
+// Reorders the elements of the range [first, last) to restore the heap
+// condition (i.e. `std::is_heap(first, last, comp)`) following a change
+// in the value of `*first`.
+//
+// REQUIRES: `first < last`, and [first, last) would be a valid heap if `*first`
+// had a suitable value.
+template <typename RandIt, typename Compare>
+void push_down_root(RandIt first, RandIt last, Compare comp) {
+  size_t size = last - first;
+  size_t hole = 0;  // root.
+  auto value = std::move(*first);
+  while (true) {
+    size_t l_child = 2 * hole + 1;
+    size_t r_child = l_child + 1;
+    size_t max_child = l_child;
+    if (r_child < size && comp(first[l_child], first[r_child])) {
+      max_child = r_child;
+    }
+    if (max_child >= size) break;
+    if (!comp(value, first[max_child])) break;
+    first[hole] = std::move(first[max_child]);
+    hole = max_child;
+  }
+  first[hole] = std::move(value);
+}
+
+template <typename T>
+struct can_dereference_helper {
+  template <typename U, typename = decltype(*std::declval<U>())>
+  static std::true_type test(U);
+  template <typename... U>
+  static std::false_type test(U...);
+  using type = decltype(test(std::declval<T>()));
+};
+
+template <typename T>
+struct can_dereference
+    : can_dereference_helper<typename std::decay<T>::type>::type {};
+
+template <typename T>
+auto recursive_dereference(T&& t, std::false_type)
+    -> decltype(std::forward<T>(t)) {
+  return std::forward<T>(t);
+}
+
+template <typename T>
+auto recursive_dereference(T&& t)
+    -> decltype(recursive_dereference(std::forward<T>(t),
+                                      can_dereference<T>{}));
+
+template <typename T>
+auto recursive_dereference(T&& t, std::true_type)
+    -> decltype(recursive_dereference(*std::forward<T>(t))) {
+  return recursive_dereference(*std::forward<T>(t));
+}
+
+template <typename T>
+auto recursive_dereference(T&& t)
+    -> decltype(recursive_dereference(std::forward<T>(t),
+                                      can_dereference<T>{})) {
+  return recursive_dereference(std::forward<T>(t), can_dereference<T>{});
+}
+
+// ContainerContainer could be a container of a container or a container of
+// pointer of a container.
+template <typename ContainerContainer, typename Out, typename Cmp>
+Out nway_merge(const ContainerContainer& containers, Out out, Cmp cmp) {
+  using std::begin;
+  using std::end;
+  using In = decltype(begin(
+      recursive_dereference(*begin(containers))));  // The input iterator type.
+  using Range = std::pair<In, In>;
+  std::vector<Range> sources;
+  for (const auto& container : containers) {
+    Range r(begin(recursive_dereference(container)),
+            end(recursive_dereference(container)));
+    if (r.first != r.second) {
+      sources.push_back(r);
+    }
+  }
+  if (sources.empty()) return out;
+  // Take a comparator for T and produce an inverse comparator
+  // for std::pair<In<T>, In<T>>, inverted so as to produce a min-heap.
+  auto heap_cmp = [&](const Range& a, const Range& b) {
+    // Compares b < a instead of a < b.
+    return cmp(*b.first, *a.first);
+  };
+  std::make_heap(sources.begin(), sources.end(), heap_cmp);
+  while (true) {
+    Range& r = sources.front();
+    *out = *r.first;
+    ++r.first;
+    ++out;
+    if (r.first == r.second) {
+      if (sources.size() == 1) return out;
+      r = std::move(sources.back());
+      sources.pop_back();
+    }
+    push_down_root(sources.begin(), sources.end(), heap_cmp);
+  }
 }
 
 }  // namespace profiler

@@ -76,6 +76,13 @@ py_library(
         ":gradient_checker_v2",
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/platform:app",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/tpu:tpu_estimator",
         "//tensorflow/python/util:all_util",
@@ -243,6 +250,12 @@ py_library(
         "//tensorflow/python/ops/signal:util_ops",
         "//tensorflow/python/ops/signal:window_ops",
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
+        "//tensorflow/python/platform:app",
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
@@ -466,6 +479,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
@@ -520,10 +534,8 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
@@ -1314,6 +1326,7 @@ tf_py_test(
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -1476,7 +1489,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
@@ -1510,7 +1523,7 @@ py_library(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -1547,6 +1560,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":platform",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -1590,6 +1604,7 @@ py_library(
         ":control_flow_util",
         ":control_flow_util_v2",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -1727,6 +1742,7 @@ cuda_py_test(
     deps = [
         ":bincount_ops",
         ":platform_test",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -1737,6 +1753,7 @@ py_library(
     deps = [
         ":array_ops",
         ":ctc_ops_gen",
+        ":functional_ops",
         ":nn_grad",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
@@ -1863,6 +1880,7 @@ py_library(
         "//tensorflow/python/eager:forwardprop",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1933,6 +1951,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
@@ -2219,6 +2238,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
@@ -2309,6 +2329,7 @@ py_library(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -2477,6 +2498,7 @@ py_library(
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform:device_context",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -2514,6 +2536,7 @@ py_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops/ragged:ragged_math_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -2805,6 +2828,7 @@ tf_py_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2914,6 +2938,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -2934,6 +2959,7 @@ py_library(
         "//tensorflow/python/framework:fast_tensor_util",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
@@ -3124,6 +3150,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -3141,6 +3168,7 @@ py_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:fast_tensor_util",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_decorator",
@@ -3178,6 +3206,7 @@ py_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec_registry",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_should_use",
@@ -3213,6 +3242,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:function_utils",
@@ -3239,6 +3269,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:deprecation",
@@ -3301,6 +3332,7 @@ py_library(
         "//tensorflow/python/framework:fast_tensor_util",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -3318,6 +3350,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -3415,6 +3448,7 @@ cuda_py_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -3437,6 +3471,7 @@ cuda_py_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -3499,6 +3534,7 @@ cuda_py_test(
     shard_count = 5,
     deps = [
         ":image_grad_test_base",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3511,6 +3547,7 @@ cuda_py_test(
     shard_count = 5,
     deps = [
         ":image_grad_test_base",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3883,6 +3920,8 @@ cuda_py_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:benchmark",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -3900,6 +3939,7 @@ tf_py_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
@@ -4377,13 +4417,8 @@ py_library(
     deps = [
         ":platform",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:tf_logging",
     ],
-)
-
-alias(
-    name = "summary",
-    actual = "//tensorflow/python/summary:summary",
-    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -4583,6 +4618,7 @@ cuda_py_test(
         "//tensorflow/python/client",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:flags",
         "//third_party/py/numpy",
     ],
 )
@@ -4602,6 +4638,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -4633,7 +4670,10 @@ cuda_py_test(
     srcs = ["ops/matmul_benchmark.py"],
     main = "ops/matmul_benchmark.py",
     python_version = "PY3",
-    deps = [":matmul_benchmark_main_lib"],
+    deps = [
+        ":matmul_benchmark_main_lib",
+        "//tensorflow/python/platform:client_testlib",
+    ],
 )
 
 py_library(
@@ -4735,6 +4775,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -5151,6 +5192,7 @@ alias(
 alias(
     name = "dtypes",
     actual = "//tensorflow/python/framework:dtypes",
+    visibility = visibility + ["//smartass:__subpackages__"],
 )
 
 alias(
@@ -5166,6 +5208,7 @@ alias(
 alias(
     name = "function",
     actual = "//tensorflow/python/framework:function",
+    visibility = visibility + ["//smartass/brain:__subpackages__"],
 )
 
 alias(
@@ -5276,6 +5319,7 @@ alias(
 alias(
     name = "tensor_shape",
     actual = "//tensorflow/python/framework:tensor_shape",
+    visibility = visibility + ["//smartass/brain/configure/python:__pkg__"],
 )
 
 alias(

@@ -307,7 +307,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/acceleration/configuration:delegate_registry",
     ],
 )
 
@@ -453,7 +453,7 @@ cc_library_with_tflite(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin",
     ],
 )
 

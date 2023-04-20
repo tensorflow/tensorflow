@@ -553,17 +553,16 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
       return embedding_ops.safe_embedding_lookup_sparse_v2(
           sv, sp_ids, sp_weights)
 
-    # TODO(chenkai): Add safe_sparse_lookup to the list. Currently
-    # ShardedVariable is converted to a tensor in safe_sparse_lookup.
-    for func in [lookup, sparse_lookup]:
+    for func in [lookup, sparse_lookup, safe_sparse_lookup]:
       num_gather_ops = 0
       for op in func.get_concrete_function().graph.get_operations():
         if op.type == 'ResourceGather':
           num_gather_ops += 1
       self.assertEqual(
-          num_gather_ops, len(v), 'Number of ResourceGather op does not match'
-          ' expected, possibly due to ShardedVariable accidentally being'
-          ' converted to tensor in embedding_lookup ops.')
+          num_gather_ops, len(v), 'Number of ResourceGather op '
+          f'({num_gather_ops}) does not match expected ({len(v)}), possibly '
+          'due to ShardedVariable accidentally being converted to tensor in '
+          'embedding_lookup ops.')
 
     self.assertAllEqual(lookup(), [[1., 2.], [7., 8.], [9., 10.]])
     self.assertAllClose(sparse_lookup(), [[4., 5.], [9., 10.], [3., 4.]])

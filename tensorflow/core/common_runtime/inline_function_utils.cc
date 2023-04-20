@@ -578,6 +578,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   std::vector<Node*> input_nodes;
   std::map<absl::string_view, absl::string_view> input_node_name_map;
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
+    if (inputs[i].node == nullptr)
+      return errors::Internal("Null node found for input ", i);
+
     Node* n = input_identity("input", inputs[i], i);
     input_node_name_map[arg_name(fbody->fdef.signature().input_arg(), i)] =
         n->name();

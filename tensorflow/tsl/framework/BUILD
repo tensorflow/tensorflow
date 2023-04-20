@@ -266,7 +266,10 @@ cc_library(
         ":device_type",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/util:device_name_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -426,5 +429,6 @@ tsl_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/util:device_name_utils",
     ],
 )

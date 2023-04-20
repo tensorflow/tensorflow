@@ -23,7 +23,6 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1762,7 +1761,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # generated from map_fn.
     self.skipTest("b/150742232")
 
-    @function.defun_with_attributes(attributes={"_noinline": True})
+    @def_function.function(experimental_attributes={"_noinline": True})
     def generator(c):
       return list_ops.tensor_list_from_tensor(c, element_shape=[])
 

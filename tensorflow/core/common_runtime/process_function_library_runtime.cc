@@ -1227,12 +1227,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
 void ProcessFunctionLibraryRuntime::CleanupCreatedRendezvous(
     const Rendezvous* created_rendezvous, const int64_t step_id) const {
   if (created_rendezvous) {
-    DCHECK(rendezvous_factory_);
     created_rendezvous->Unref();
-    Status s = rendezvous_factory_.CleanUp(step_id);
-    if (!s.ok()) {
-      LOG(ERROR) << s;
-    }
   }
 }
 
@@ -1242,13 +1237,9 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     FunctionLibraryRuntime::DoneCallback done,
     const FunctionLibraryRuntime::Options& opts,
     const Rendezvous* created_rendezvous) const {
-  const Rendezvous* rendezvous_to_cleanup = nullptr;
-  if (opts.cleanup_rendezvous_after_run) {
-    rendezvous_to_cleanup = created_rendezvous;
-  }
   return [this, items, done = std::move(done), step_id = opts.step_id,
-          rendezvous_to_cleanup](const Status& status) {
-    this->CleanupCreatedRendezvous(rendezvous_to_cleanup, step_id);
+          created_rendezvous](const Status& status) {
+    this->CleanupCreatedRendezvous(created_rendezvous, step_id);
     auto* local_status = new Status(status);
     CleanUp(items, [local_status, done](const Status& cleanup_status) {
       local_status->Update(cleanup_status);
@@ -1537,9 +1528,7 @@ Status ProcessFunctionLibraryRuntime::RunSync(
 
     Status status = RunMultiDeviceSync(new_opts, handle, &function_rets,
                                        std::move(get_component_args));
-    if (new_opts.cleanup_rendezvous_after_run) {
-      CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
-    }
+    CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
     status.Update(FunctionRetsToTensors(&function_rets, rets));
     return status;
   } else {

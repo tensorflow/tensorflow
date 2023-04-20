@@ -146,6 +146,7 @@ tsl_gpu_cc_test(
     srcs = ["cuda_driver_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171512140): re-enable.
+        "no_rocm",
     ],
     deps = [
         ":cuda_driver",

@@ -1869,7 +1869,7 @@ void DTensorDevice::ExecuteEPUFunctions(
     if (!mesh.ok()) {
       RETURN_STATUS(status, TF_INVALID_ARGUMENT,
                     absl::StrCat("Failed to convert mesh, get error: ",
-                                 mesh.status().error_message())
+                                 mesh.status().message())
                         .c_str());
     }
 
@@ -2594,7 +2594,7 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
   if (!mesh_config_or_status.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
                  absl::StrCat("Failed to parse mesh config. ",
-                              mesh_config_or_status.status().error_message())
+                              mesh_config_or_status.status().message())
                      .c_str());
     return;
   }

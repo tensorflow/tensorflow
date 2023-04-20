@@ -86,6 +86,10 @@ class MklMatMulOp : public OpKernel {
       return;
     }
 
+    if (std::is_same<T, float>::value) {
+      (void)SetFPMathMode();
+    }
+
     const int m = a.dim_size(1 - dim_pair[0].first);
     const int k = a.dim_size(dim_pair[0].first);
     const int n = b.dim_size(1 - dim_pair[0].second);
@@ -191,6 +195,10 @@ class MklMatMulOp : public OpKernel {
   }
 };
 
+// We do not want to use this kernel for aarch64 because the
+// Arm Compute Library does not provide a BLAS SGEMM
+// interface, which is what MklMatMulOp calls by default.
+#ifndef DNNL_AARCH64_USE_ACL
 #define REGISTER_CPU(T)                                   \
   REGISTER_KERNEL_BUILDER(                                \
       Name("_MklMatMul")                                  \
@@ -203,5 +211,7 @@ class MklMatMulOp : public OpKernel {
 // additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
+#endif  // !DNNL_AARCH64_USE_ACL
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

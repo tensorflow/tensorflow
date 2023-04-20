@@ -620,6 +620,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 4;
+      }
       if (op_sig.inputs.at(0).dims.size() != 4) {
         return 3;
       }
