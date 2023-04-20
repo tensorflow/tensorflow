@@ -41,6 +41,10 @@ def ConvertArithConstToTfConst : Pat<
   (TF_ConstOp $value),
   [(AnyStaticShapeTensor $res)]>;
 
+// Converts CheckNumerics op to Identity
+def ConvertCheckNumerics : Pat<
+  (TF_CheckNumericsOp $arg, $msg),
+  (TF_IdentityOp $arg)>;
 
 // Only handles the case where batch_dimension is empty.
 def IsXlaGatherWithoutBatch :
