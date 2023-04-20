@@ -116,16 +116,19 @@ inline void LoadImagePng(std::string* filename, ImageData* image_data) {
                         std::istreambuf_iterator<char>());
 
   tensorflow::png::DecodeContext context;
-  CHECK(CommonInitDecode(image_str, 3 /*RGB*/, 8 /*uint8*/, &context));
-  char* image_buffer = new char[3 * context.width * context.height];
+  // 0: channels is detected from the input
+  CHECK(CommonInitDecode(image_str, 0, 8 /*uint8*/, &context));
+  char* image_buffer =
+      new char[context.channels * context.width * context.height];
   CHECK(CommonFinishDecode(absl::bit_cast<png_byte*>(image_buffer),
-                           3 * context.width /*stride*/, &context));
+                           context.channels * context.width /*stride*/,
+                           &context));
 
   image_data->width = context.width;
   image_data->height = context.height;
   std::vector<float>* float_image = new std::vector<float>();
-  float_image->reserve(3 * context.width * context.height);
-  for (int i = 0; i < 3 * context.width * context.height; ++i) {
+  float_image->reserve(context.channels * context.width * context.height);
+  for (int i = 0; i < context.channels * context.width * context.height; ++i) {
     float_image->push_back(static_cast<float>(image_buffer[i]));
   }
   image_data->data.reset(float_image);
