@@ -1505,6 +1505,7 @@ tf_proto_library(
     protodeps = [
         ":attr_value_proto",
         ":function_proto",
+        ":graph_debug_info_proto",
         ":node_def_proto",
         ":op_def_proto",
         ":resource_handle_proto",
