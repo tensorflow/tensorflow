@@ -178,6 +178,7 @@ cuda_py_test(
     deps = [
         ":cancellation",
         ":test",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -208,7 +209,6 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
-        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
@@ -277,6 +277,7 @@ cuda_py_test(
         ":context",
         ":test",
         "//tensorflow/compiler/xla/service:hlo_proto_py",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -311,6 +312,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
@@ -449,6 +452,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
     ],
 )
@@ -577,6 +581,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
@@ -603,9 +608,9 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":forwardprop_util",
-        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
@@ -626,7 +631,10 @@ py_library(
     srcs = ["benchmarks_test_base.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
-    deps = [":test"],
+    deps = [
+        ":test",
+        "//tensorflow/python/platform:flags",
+    ],
 )
 
 cuda_py_test(
@@ -855,6 +863,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
@@ -900,9 +909,9 @@ py_library(
     deps = [
         ":context",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/platform:remote_utils",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ] + tf_additional_rpc_deps(),
@@ -953,6 +962,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -973,6 +983,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute/failure_handling:check_preemption_py",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1060,6 +1071,6 @@ py_test(
         ":gradient_input_output_exclusions",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
