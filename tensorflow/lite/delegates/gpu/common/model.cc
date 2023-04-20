@@ -52,21 +52,7 @@ std::vector<Value*> GraphFloat32::variable_inputs() const {
 }
 
 std::vector<Value*> GraphFloat32::outputs() const {
-  std::vector<Value*> values;
-  values.reserve(values_.size());
-  for (auto& v : values_) {
-    auto value_ptr = v.value.get();
-    if (value_ptr == nullptr) continue;
-    // Find v which meets one of the following conditions.
-    // 1. v doesn't have a consumer.
-    // 2. v has a consumer but it's also in known_graph_outputs_.
-    if (v.consumers.empty() ||
-        std::find(known_graph_outputs_.begin(), known_graph_outputs_.end(),
-                  value_ptr) != known_graph_outputs_.end()) {
-      values.push_back(v.value.get());
-    }
-  }
-  return values;
+  return FilterValues([](const ValueDef& v) { return v.consumers.empty(); });
 }
 
 std::vector<Value*> GraphFloat32::FindInputs(NodeId id) const {
@@ -93,10 +79,6 @@ bool GraphFloat32::IsGraphInput(ValueId id) const {
 bool GraphFloat32::IsGraphOutput(ValueId id) const {
   if (id >= values_.size()) {
     return false;
-  }
-  if (std::find(known_graph_outputs_.begin(), known_graph_outputs_.end(),
-                values_[id].value.get()) != known_graph_outputs_.end()) {
-    return true;
   }
   return values_[id].consumers.empty();
 }

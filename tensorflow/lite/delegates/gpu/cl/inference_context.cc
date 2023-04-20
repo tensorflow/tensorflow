@@ -554,20 +554,10 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
   shared_buffer_tensors_.resize(buffer_usage_records.size());
-  bool create_model_output_tensors = false;
   for (auto& node : gpu_model.nodes) {
-    // Handle node input tensors.
     std::vector<ValueId> node_tensor_ids = node.inputs;
-    // Handle node output tensors.
     node_tensor_ids.insert(node_tensor_ids.end(), node.outputs.begin(),
                            node.outputs.end());
-    if (!create_model_output_tensors) {
-      // Handle graph output tensors.
-      for (const auto& output : gpu_model.output_ids_and_refs) {
-        node_tensor_ids.push_back(output.first);
-      }
-      create_model_output_tensors = true;
-    }
     for (auto& tensor_id : node_tensor_ids) {
       if (GetTensorType(gpu_model, create_info, gpu_info, tensor_id) !=
           TensorType::kRuntime) {
