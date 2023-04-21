@@ -319,7 +319,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r.release(),
+      request->async(), device_mgr, false, std::move(r),
       worker_session->cluster_flr(), env_->collective_executor_mgr.get());
 
   // Ownership will be transferred to the ServerContext, or else in an error

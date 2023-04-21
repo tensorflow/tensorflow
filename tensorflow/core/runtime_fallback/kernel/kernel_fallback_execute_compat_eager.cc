@@ -15,11 +15,13 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 
 #include <functional>
+#include <utility>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/tsl/platform/refcount.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -53,7 +55,7 @@ Status SetUpKernelFallbackCompatRequestContext(
   auto step_id = builder->id();
 
   Rendezvous::Factory creator = eager_context->RendezvousFactory();
-  Rendezvous* rendezvous;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous;
   TF_RETURN_IF_ERROR(
       creator(step_id, eager_context->local_device_mgr(), &rendezvous));
 
@@ -64,8 +66,7 @@ Status SetUpKernelFallbackCompatRequestContext(
           GetDefaultRunner(), eager_context->local_device_mgr(), step_id,
           tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{
               eager_context->StepContainer()},
-          eager_context->GetCollectiveExecutorHandle(),
-          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(rendezvous),
+          eager_context->GetCollectiveExecutorHandle(), std::move(rendezvous),
           runner_table, resource_array, user_intra_op_threadpool,
           model_metadata, eager_context->pflr());
 

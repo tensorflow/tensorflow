@@ -147,15 +147,11 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
         /*thread_pool=*/nullptr, cluster_flr_.get(), session_metadata,
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-          *r = this->rendezvous_cache_
-                   ->FindOrCreate(
-                       step_id,
-                       [device_mgr]() {
-                         return tsl::core::RefCountPtr<IntraProcessRendezvous>(
-                             new IntraProcessRendezvous(device_mgr));
-                       })
-                   .release();
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = this->rendezvous_cache_->FindOrCreate(step_id, [device_mgr]() {
+            return tsl::core::RefCountPtr<IntraProcessRendezvous>(
+                new IntraProcessRendezvous(device_mgr));
+          });
           return OkStatus();
         }}));
   }

@@ -789,8 +789,9 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         /*session_metadata=*/nullptr,
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-          *r = worker_env_.rendezvous_mgr->Find(step_id).release();
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              worker_env_.rendezvous_mgr->Find(step_id).release());
           return OkStatus();
         }});
   }
@@ -1229,13 +1230,15 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
 
 // Test requests sent to the eager service on master.
 TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
-  tensorflow::Rendezvous* rendezvous =
-      new tensorflow::IntraProcessRendezvous(device_mgr_.get());
+  tsl::core::RefCountPtr<tensorflow::Rendezvous> rendezvous =
+      tsl::core::RefCountPtr<tensorflow::Rendezvous>(
+          new tensorflow::IntraProcessRendezvous(device_mgr_.get()));
   // Create a master eager context.
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, device_mgr_.get(), false, rendezvous, nullptr, nullptr,
+      /*async=*/false, device_mgr_.get(), false, std::move(rendezvous), nullptr,
+      nullptr,
       /*run_eager_op_as_function=*/true);
   const uint64 context_id = random::New64();
 

@@ -138,14 +138,14 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
       new tensorflow::DynamicDeviceMgr(std::move(devices)));
 
-  tensorflow::Rendezvous* r =
-      new tensorflow::IntraProcessRendezvous(device_mgr.get());
+  auto r = tsl::core::RefCountPtr<tensorflow::IntraProcessRendezvous>(
+      new tensorflow::IntraProcessRendezvous(device_mgr.get()));
   tensorflow::EagerContext* eager_context = new tensorflow::EagerContext(
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
       opts->async, device_mgr.release(),
-      /*device_mgr_owned*/ true, r,
+      /*device_mgr_owned*/ true, std::move(r),
       /*cluster_flr=*/nullptr,
       /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/opts->run_eager_op_as_function,
