@@ -83,8 +83,8 @@ class TFPackage {
   // Returns a BundleReader for reading variable values.
   //
   // This TFPackage retains ownership of the underlying reader.
-  tensorflow::BundleReader* GetVariableReader() {
-    return variable_reader_.get();
+  const std::unique_ptr<tensorflow::BundleReader> &GetVariableReader() {
+    return variable_reader_;
   }
 
   // Returns whether or not we found a valid checkpoint when loading the
@@ -92,7 +92,7 @@ class TFPackage {
   bool HasCheckpoint() { return has_checkpoint_; }
 
   // Returns the path to the variables file.
-  const std::string GetVariablesFilepath() { return variables_filepath_; }
+  const std::string GetVariablesFilepath() const { return variables_filepath_; }
 
  private:
   SavedModel saved_model_proto_;
