@@ -1918,7 +1918,6 @@ removed during the bridge rewrite.
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
-
 def TF_ConvertToCooTensorOp : TF_Op<"ConvertToCooTensor", [Pure]> {
   let summary = [{
 Op that converts tensors into coo format.
@@ -1945,5 +1944,25 @@ format which contains three 1D tensors.
   );
 }
 
+def TF_ResourceGatherNdOp : TF_Op<"ResourceGatherNd", []> {
+  let summary = "GatherNd on a resource.";
+
+  let description = [{
+This op reads the variable referenced by the first argument, and
+then performs a GatherNd operation on it.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$resource,
+    TF_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
 
 #endif // TF_OPS
