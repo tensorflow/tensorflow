@@ -104,9 +104,8 @@ tensorflow::Status RunTFXLABridge(
         module, llvm::StringRef(), &bridge);
   }
 
-  if (enable_logging || VLOG_IS_ON(2) ||
-      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(),
-                                      kDebugGroupBridgePhase1)) {
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           module_name.str(), kDebugGroupBridgePhase1)) {
     EnableDetailedLogging(&bridge, module_name);
   }
 
