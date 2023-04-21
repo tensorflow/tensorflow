@@ -40,6 +40,20 @@ namespace xla {
 using absl::flat_hash_map;
 using absl::flat_hash_set;
 
+HeapSimulator::Chunk HeapSimulator::Chunk::FromOffsetEnd(int64_t offset,
+                                                         int64_t end) {
+  return FromOffsetSize(offset, end - offset);
+}
+
+HeapSimulator::Chunk HeapSimulator::Chunk::FromOffsetSize(int64_t offset,
+                                                          int64_t size) {
+  return Chunk(offset, size);
+}
+
+std::string HeapSimulator::Chunk::ToString() const {
+  return absl::StrCat("[", offset, ",", chunk_end(), ")");
+}
+
 bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
   CHECK_NE(size, 0);
   CHECK_NE(other_chunk.size, 0);
@@ -550,7 +564,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
     const BufferType* buffer, int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
-    result_.chunk_map.emplace(buffer, Chunk{0, 0});
+    result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(0, 0));
     return;
   }
 
@@ -565,7 +579,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::ShareWith(
     const BufferType* buffer, const BufferType* share_with, int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
-    result_.chunk_map.emplace(buffer, Chunk{0, 0});
+    result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(0, 0));
     return;
   }
   DCHECK_NE(buffer_intervals_.count(share_with), 0);
@@ -976,7 +990,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
   // not only fits in each free chunk, but the slices of buffer interval can
   // be allocated according to their requirements.
   // Try to find a large enough free chunk containing the preferred offset.
-  Chunk chunk{preferred_offset, max_colocation_size};
+  Chunk chunk = Chunk::FromOffsetSize(preferred_offset, max_colocation_size);
   auto it = (preferred_offset < 0) ? free_chunks.end()
                                    : free_chunks.lower_bound(preferred_offset);
   if (it == free_chunks.end() || (it->second < chunk.chunk_end())) {
@@ -1008,7 +1022,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     auto colocation_interval = buffer_intervals_[colocation];
     // Create a colocation chunk with the same offset but with the correct size
     // of the colocated interval in case the colocations are of different sizes.
-    Chunk colocation_chunk{chunk.offset, colocation_interval.size};
+    Chunk colocation_chunk =
+        Chunk::FromOffsetSize(chunk.offset, colocation_interval.size);
     AddToChunkMap(colocation, colocation_chunk);
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
                        colocation_chunk);

@@ -237,7 +237,7 @@ class HeapCallRecorder : public HeapAlgorithm<HloValue> {
     // call.  This isn't a valid assignment, but allows us to easily test for
     // buffer sharing.
     const int64_t offset = result_.chunk_map.size();
-    result_.chunk_map.emplace(buffer, Chunk{offset, size});
+    result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(offset, size));
   }
 
   void ShareWith(const HloValue* buffer, const HloValue* shared,
@@ -247,7 +247,7 @@ class HeapCallRecorder : public HeapAlgorithm<HloValue> {
     // call.  This isn't a valid assignment, but allows us to easily test for
     // buffer sharing.
     const int64_t offset = result_.chunk_map[shared].offset;
-    result_.chunk_map.emplace(buffer, Chunk{offset, size});
+    result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(offset, size));
   }
   void Free(const HloValue* buffer, int64_t size) override {
     calls_->emplace_back(kFree, buffer);
@@ -1516,7 +1516,7 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
 class IntervalTreeTest : public ::testing::Test {};
 
 TEST_F(IntervalTreeTest, InsertAndRemove) {
-  HeapSimulator::Chunk chunk({1, 2});
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(1, 2);
   BufferIntervalTree tree;
   tree.Add(1, 2, chunk);
   EXPECT_TRUE(tree.Remove(1, 2, chunk));
@@ -1530,7 +1530,8 @@ TEST_F(IntervalTreeTest, InsertAndRemove) {
 }
 
 TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsLeft) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //     /
   //  [1, 45] (45)
@@ -1545,7 +1546,8 @@ TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsLeft) {
 }
 
 TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsRight) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //          \
   //         [21, 45] (45)
@@ -1559,7 +1561,8 @@ TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsRight) {
 }
 
 TEST_F(IntervalTreeTest, TwoLevelsRight_RootFirst) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //          \
   //         [21, 45] (45)
@@ -1577,7 +1580,8 @@ TEST_F(IntervalTreeTest, TwoLevelsRight_RootFirst) {
 }
 
 TEST_F(IntervalTreeTest, TwoLevelsLeft_RootFirst) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //      /
   //  [1, 45] (45)
@@ -1595,7 +1599,8 @@ TEST_F(IntervalTreeTest, TwoLevelsLeft_RootFirst) {
 }
 
 TEST_F(IntervalTreeTest, ThreeLevelsRight) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //          \
   //         [21, 45] (45)
@@ -1613,7 +1618,8 @@ TEST_F(IntervalTreeTest, ThreeLevelsRight) {
   ASSERT_EQ(tree.GetRoot(), nullptr);
 }
 TEST_F(IntervalTreeTest, ThreeLevelsLeftLeft) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //       /
   //  [10, 45] (45)
@@ -1632,7 +1638,8 @@ TEST_F(IntervalTreeTest, ThreeLevelsLeftLeft) {
 }
 
 TEST_F(IntervalTreeTest, ThreeLevelsLeftRight) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //       /
   //  [10, 45] (45)
@@ -1651,7 +1658,8 @@ TEST_F(IntervalTreeTest, ThreeLevelsLeftRight) {
 }
 
 TEST_F(IntervalTreeTest, ThreeLevelsRightLeft) {
-  HeapSimulator::Chunk chunk({1, 2});  // Value in chunk doesn't matter here.
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      1, 2);  // Value in chunk doesn't matter here.
   //    [20, 36] (45)
   //          \
   //         [25, 45] (45)
@@ -1670,9 +1678,9 @@ TEST_F(IntervalTreeTest, ThreeLevelsRightLeft) {
 }
 
 TEST_F(IntervalTreeTest, ThreeLevelsRightLeftChunkDifferent) {
-  HeapSimulator::Chunk chunk1({1, 2});
-  HeapSimulator::Chunk chunk2({2, 3});
-  HeapSimulator::Chunk chunk3({3, 4});
+  HeapSimulator::Chunk chunk1 = HeapSimulator::Chunk::FromOffsetSize(1, 2);
+  HeapSimulator::Chunk chunk2 = HeapSimulator::Chunk::FromOffsetSize(2, 3);
+  HeapSimulator::Chunk chunk3 = HeapSimulator::Chunk::FromOffsetSize(3, 4);
   //    [20, 36] (45) Chunk1({1, 2})
   //          \
   //         [25, 45] (45) Chunk2({2, 3})

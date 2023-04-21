@@ -64,6 +64,12 @@ class HeapSimulator {
   // Chunk represents a contiguous piece of memory.  Each BufferValue will be
   // associated with a chunk in the assignment result.
   struct Chunk {
+    static Chunk FromOffsetEnd(int64_t offset, int64_t end);
+    static Chunk FromOffsetSize(int64_t offset, int64_t size);
+    Chunk() : Chunk(-1, 0) {}
+
+    std::string ToString() const;
+
     int64_t offset;
     int64_t size;
 
@@ -74,6 +80,9 @@ class HeapSimulator {
     bool operator==(const Chunk& other) const {
       return offset == other.offset && size == other.size;
     }
+
+   private:
+    Chunk(int64_t offset, int64_t size) : offset(offset), size(size) {}
   };
 
   template <typename BufferType>
