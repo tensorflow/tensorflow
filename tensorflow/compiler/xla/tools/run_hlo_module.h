@@ -43,7 +43,7 @@ struct RunHloModuleOptions {
         treat_gte_as_data_formatting(false),
         abs_error_bound(1e-3),
         rel_error_bound(1e-3),
-        input_format("hlo"),
+        input_format(""),
         input_module(""),
         iterations(1),
         output_literals_file(""),
