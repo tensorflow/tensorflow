@@ -16,28 +16,7 @@
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
-[TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
-for machine learning. It has a comprehensive, flexible ecosystem of
-[tools](https://www.tensorflow.org/resources/tools),
-[libraries](https://www.tensorflow.org/resources/libraries-extensions), and
-[community](https://www.tensorflow.org/community) resources that lets
-researchers push the state-of-the-art in ML and developers easily build and
-deploy ML-powered applications.
-
-TensorFlow was originally developed by researchers and engineers working on the
-Google Brain team within Google's Machine Intelligence Research organization to
-conduct machine learning and deep neural networks research. The system is
-general enough to be applicable in a wide variety of other domains, as well.
-
-TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
-and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as
-non-guaranteed backward compatible API for
-[other languages](https://www.tensorflow.org/api_docs).
-
-Keep up-to-date with release announcements and security updates by subscribing
-to
-[announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
-See all the [mailing lists](https://www.tensorflow.org/community/forums).
+TensorFlow is a versatile and open source platform for machine learning that provides a comprehensive ecosystem of tools, libraries, and community resources. Its flexibility allows researchers to push the boundaries of machine learning, while developers can easily build and deploy machine learning-powered applications. Originally developed by researchers and engineers at Google Brain, TensorFlow is now applicable in a wide range of domains. It offers stable APIs for Python and C++, and non-guaranteed backward compatible APIs for other programming languages. To stay up-to-date with the latest release announcements and security updates, you can subscribe to the announce@tensorflow.org mailing list. Additionally, TensorFlow has various mailing lists available for its community members to join and participate in.
 
 ## Install
 
@@ -91,32 +70,18 @@ For more examples, see the
 
 ## Contribution guidelines
 
-**If you want to contribute to TensorFlow, be sure to review the
-[contribution guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
-[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
-uphold this code.**
+If you are interested in contributing to TensorFlow, please take a moment to review the project's contribution guidelines. It is important to note that TensorFlow has a code of conduct that all participants are expected to adhere to.
 
-**We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
-tracking requests and bugs, please see
-[TensorFlow Forum](https://discuss.tensorflow.org/) for general questions and
-discussion, and please direct specific questions to
-[Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
+For bug reports and feature requests, please use GitHub issues. If you have general questions or want to engage in discussion about TensorFlow, you can visit the TensorFlow Forum. For specific technical questions, we recommend directing them to Stack Overflow.
 
-The TensorFlow project strives to abide by generally accepted best practices in
-open-source software development.
+The TensorFlow project follows best practices in open-source software development.
 
-## Patching guidelines
+If you need to patch a specific version of TensorFlow to address bugs or security vulnerabilities, you can follow these steps:
 
-Follow these steps to patch a specific version of TensorFlow, for example, to
-apply fixes to bugs or security vulnerabilities:
-
-*   Clone the TensorFlow repo and switch to the corresponding branch for your
-    desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry pick) the desired changes and resolve any code
-    conflicts.
-*   Run TensorFlow tests and ensure they pass.
-*   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
-    package from source.
+Clone the TensorFlow repository and switch to the branch corresponding to the version of TensorFlow you want to patch (e.g., branch r2.8 for version 2.8).
+Apply the desired changes by cherry picking and resolve any code conflicts.
+Run TensorFlow tests to ensure they pass.
+Build the TensorFlow pip package from source following the installation instructions.
 
 ## Continuous build status
 
