@@ -298,6 +298,10 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                      Value on_value, Value off_value,
                                      int32_t depth, int32_t axis);
 
+// Lowers cast operator to a sequence of TOSA ops.
+std::optional<Value> convertCastOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, RankedTensorType output_type);
+
 // Lowers 32-bit floating sin operator to a sequence of TOSA ops.
 std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
                                   Value input, ShapedType output_type);
