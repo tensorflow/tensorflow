@@ -18,14 +18,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/core/shims/c/common.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 #if !defined(_WIN32)
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #endif  // !defined(_WIN32)

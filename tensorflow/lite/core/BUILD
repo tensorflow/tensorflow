@@ -224,7 +224,7 @@ alias(
     name = "cc_api",
     actual = "cc_api_experimental",
     visibility = [
-        "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],

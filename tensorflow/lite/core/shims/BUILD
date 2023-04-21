@@ -243,7 +243,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":builtin_ops_list",
-        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
     ],

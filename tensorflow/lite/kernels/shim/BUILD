@@ -248,7 +248,7 @@ cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
-        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest_main",
     ],

@@ -217,9 +217,9 @@ cc_library_with_tflite(
     srcs = ["delegate_plugin_converter.cc"],
     hdrs = ["delegate_plugin_converter.h"],
     tflite_deps = [
-        "//tensorflow/lite/core/shims:delegate_plugin",
-        "//tensorflow/lite/core/shims:delegate_registry",
-        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/c:common",
     ],
     deps = ["@com_google_absl//absl/memory"],
 )
@@ -421,10 +421,10 @@ cc_library(
     hdrs = ["stable_delegate_plugin.h"],
     deps = [
         ":configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/core/shims:common",
-        "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
         "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
