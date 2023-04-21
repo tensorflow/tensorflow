@@ -582,6 +582,12 @@ bool OutputInputSameShapes(const HloInstruction* ins);
 
 bool IsEntryComputationInputOrOutput(const HloModule* module,
                                      const HloInstruction* ins);
+
+// Given a number of devices (`num_devices`), create a list different mesh
+// shapes of a given rank (`num_mesh_dims`) to try, if the option to try
+// multiple mesh shapes is enabled.
+std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
+    int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims);
 }  // namespace spmd
 }  // namespace xla
 
