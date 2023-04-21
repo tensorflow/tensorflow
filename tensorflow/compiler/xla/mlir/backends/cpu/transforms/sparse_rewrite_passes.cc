@@ -75,7 +75,8 @@ struct SparsePackCallRewriter {
     assert(op.getResults().size() == 1 && "Must be packing into one tensor");
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
-        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1]);
+        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1],
+        nullptr);
     return success();
   }
 };
