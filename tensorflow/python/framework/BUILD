@@ -1190,7 +1190,6 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/saved_model:save_context",

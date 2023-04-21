@@ -89,6 +89,8 @@ py_library(
         ":tf_method_target",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/polymorphism:function_cache",
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:lazy_loader",
