@@ -3802,9 +3802,11 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
                                        node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+                                           node->inputs->data[0],
+                                           BuiltinOperator_MEAN, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
-    const int num_input_dims = NumDimensions(&input_tensor);
 
     const TfLiteTensor& axes_tensor = tensors[node->inputs->data[1]];
     TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, axes_tensor,
@@ -3821,25 +3823,24 @@ class Subgraph {
     const int num_reduction_axes = NumElements(&axes_tensor);
     switch (num_reduction_axes) {
       case 1:
-        if (axes_data[0] != num_input_dims - 2) {
+        if (axes_data[0] != 2) {
           TF_LITE_MAYBE_KERNEL_LOG(
               logging_context,
               "unsupported MEAN reduction along non-spatial "
-              "axis %d over %dD tensor #%d in node %d",
-              axes_data[0], num_input_dims, node->inputs->data[0], node_index);
+              "axis %d in node %d",
+              axes_data[0], node_index);
           return kTfLiteError;
         }
         break;
       case 2:
-        if (std::min(axes_data[0], axes_data[1]) != num_input_dims - 3 ||
-            std::max(axes_data[0], axes_data[1]) != num_input_dims - 2) {
+        if (std::min(axes_data[0], axes_data[1]) != 1 ||
+            std::max(axes_data[0], axes_data[1]) != 2) {
           TF_LITE_MAYBE_KERNEL_LOG(
               logging_context,
               "unsupported MEAN reduction along non-spatial "
-              "axes %d and %d over %dD tensor #%d in node %d",
+              "axes %d and %d in node %d",
               std::min(axes_data[0], axes_data[1]),
-              std::max(axes_data[0], axes_data[1]), num_input_dims,
-              node->inputs->data[0], node_index);
+              std::max(axes_data[0], axes_data[1]), node_index);
           return kTfLiteError;
         }
         break;
@@ -3851,16 +3852,11 @@ class Subgraph {
         return kTfLiteError;
     }
 
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorShape(logging_context, input_tensor, 1 + num_reduction_axes,
-                         XNN_MAX_TENSOR_DIMS, node->inputs->data[0],
-                         BuiltinOperator_MEAN, node_index));
-
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
-    int expected_output_dims = num_input_dims;
+    int expected_output_dims = 4;
     if (!reducer_params->keep_dims) {
       expected_output_dims -= num_reduction_axes;
     }

@@ -330,10 +330,12 @@ Below is the list of currently supported floating-point operators:
 
 #### `MEAN`
 
-* The first input and the output must be in 32-bit floating-point format.
+* The first input and the output must be 4D tensors in 32-bit
+  floating-point format.
 * The second input (the input with the axes specification) must be static
   (use `kTfLiteMmapRo` allocation type).
-* Only reduction along the one or two pre-innermost dimensions is supported.
+* Only [1, 2], [2, 1], and [2] axes specification (i.e. reduction across either
+  both spatial dimensions or across the width dimension) is supported.
 
 #### `MINIMUM`
 
@@ -625,10 +627,11 @@ Below is the list of currently supported quantized operators:
 
 #### `MEAN`
 
-* The first input and the output must be in 8-bit quantized format.
+* The first input and the output must be 4D tensors in 8-bit quantized format.
 * The second input (the input with the axes specification) must be static
   (use `kTfLiteMmapRo` allocation type).
-* Only reduction along the one or two pre-innermost dimensions is supported.
+* Only [1, 2], [2, 1], and [2] axes specification (i.e. reduction across either
+  both spatial dimensions or across the width dimension) is supported.
 
 #### `MUL`
 
