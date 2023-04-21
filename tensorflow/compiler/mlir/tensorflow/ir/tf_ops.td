@@ -1896,7 +1896,7 @@ on host. `tpu_tensors` are list of tpu device tensors without the padded data.
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
-def TF_TPUAnnotateTensorsWithDynamicShapeOp : TF_Op<"TPUAnnotateTensorsWithDynamicShape", []> {
+def TF_TPUAnnotateTensorsWithDynamicShapeOp : TF_Op<"TPUAnnotateTensorsWithDynamicShape", [Pure]> {
   let summary = [{
 Placeholder op which takes the output of TPUCopyWithDynamicShapeOp and pass
 them to the following tpu ops.
