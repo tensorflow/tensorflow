@@ -18,6 +18,7 @@ import dataclasses
 from typing import Any
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
@@ -26,6 +27,7 @@ from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
@@ -94,13 +96,15 @@ class AtomicFunction:
   __slots__ = [
       "_name",
       "_bound_context",
+      "_function_type",
       "_graph_artifacts",
       "_cached_definition",
   ]
 
-  def __init__(self, name, bound_context, graph_artifacts):
+  def __init__(self, name, bound_context, function_type, graph_artifacts):
     self._name = compat.as_bytes(name)
     self._bound_context = bound_context
+    self._function_type = function_type
     self._graph_artifacts = graph_artifacts
     self._cached_definition = None
 
@@ -113,6 +117,10 @@ class AtomicFunction:
   @property
   def _c_func(self):
     return context.get_c_function(self.name)
+
+  @property
+  def function_type(self):
+    return self._function_type
 
   # TODO(fmuham): Remove this property.
   @property
@@ -437,4 +445,25 @@ def from_func_graph_no_transforms(
       stateful_ops=tuple(op for op in operations if op._is_stateful),  # pylint: disable=protected-access
   )
 
-  return AtomicFunction(name, bound_context, graph_artifacts)
+  if graph.structured_input_signature is not None:
+    input_signature = graph.structured_input_signature
+  else:
+    input_signature = (
+        tuple(tensor_spec.TensorSpec.from_tensor(i) for i in inputs),
+        {},
+    )
+
+  if graph.structured_outputs is not None:
+    output_signature = graph.structured_outputs
+  else:
+    output_signature = tuple(
+        tensor_spec.TensorSpec.from_tensor(o) for o in outputs
+    )
+
+  function_type = function_type_lib.from_structured_signature(
+      input_signature,
+      output_signature,
+      graph.function_captures.capture_types,
+  )
+
+  return AtomicFunction(name, bound_context, function_type, graph_artifacts)

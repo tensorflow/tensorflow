@@ -367,6 +367,13 @@ class WrappedFunction(function.ConcreteFunction):
     # reconstituted into their original composite form.
     pruned_graph.structured_outputs = nest.map_structure(
         _structured_output_mapping, fetches, expand_composites=True)
+
+    if input_signature:
+      # canonicalize the signature before setting
+      args, kwargs = input_signature
+      args = () if args is None else args
+      input_signature = (args, kwargs)
+
     pruned_graph.structured_input_signature = input_signature
     pruned_fn = WrappedFunction(
         pruned_graph, variable_holder=self._variable_holder)
