@@ -164,7 +164,6 @@ class EagerServiceImplTest : public ::testing::Test {
 
     device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
-    worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
   }
 
@@ -172,7 +171,7 @@ class EagerServiceImplTest : public ::testing::Test {
   WorkerEnv worker_env_;
   tensorflow::RpcRendezvousMgr rendezvous_mgr_;
   std::unique_ptr<SessionMgr> session_mgr_;
-  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> device_mgr_;
 };
 
 void SetTensorProto(TensorProto* tensor_proto) {

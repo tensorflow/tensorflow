@@ -206,7 +206,6 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     worker_env_.device_mgr = opts.local_device_mgr;
     owned_device_manager_.reset(nullptr);
   }
-  worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
 
   int num_tasks = 0;
