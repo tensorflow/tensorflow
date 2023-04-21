@@ -1034,20 +1034,6 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
-    name = "compat_internal",
-    srcs = ["compat_internal.py"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
-    deps = [
-        ":compat",
-        # global_test_configuration is added here because all major tests depend on this
-        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
-        # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
-        "//tensorflow/python:global_test_configuration",
-    ],
-)
-
 tf_py_strict_test(
     name = "lock_util_test",
     size = "small",
