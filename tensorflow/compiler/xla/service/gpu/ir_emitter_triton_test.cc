@@ -15,16 +15,25 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/strings/substitute.h"
+#include "llvm/IR/LLVMContext.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
@@ -70,8 +79,7 @@ ENTRY entry {
       hlo_module->entry_computation()
           ->root_instruction()
           ->fused_instructions_computation();
-  const GpuDeviceInfo dev_info =
-      GetGpuDeviceInfo(backend().default_stream_executor());
+  const GpuDeviceInfo dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
@@ -85,18 +93,26 @@ ENTRY entry {
   config.set_num_warps(2);
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_computation,
-                    GetCudaComputeCapability(), dev_info, config, &llvm_module,
-                    &MatMul, mlir_context),
-      tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                             "Requires too much shared memory: 1310720"));
+                    se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
+                                              /*minor=*/0},
+                    dev_info, config, &llvm_module, &MatMul, mlir_context),
+      tsl::testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          absl::StrFormat("Requires too much shared memory: 1310720 > %d",
+                          dev_info.shared_memory_per_block_optin)));
 
-  config.set_block_m(32);
-  config.set_block_n(32);
-  config.set_block_k(32);
-  TF_EXPECT_OK(TritonWrapper("test_fn", triton_dot_computation,
-                             GetCudaComputeCapability(), dev_info, config,
-                             &llvm_module, &MatMul, mlir_context)
-                   .status());
+  config.set_block_m(64);
+  config.set_block_n(128);
+  config.set_block_k(128);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LaunchDimensions launch_dimensions,
+      TritonWrapper("test_fn", triton_dot_computation,
+                    se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
+                                              /*minor=*/0},
+                    dev_info, config, &llvm_module, &MatMul, mlir_context));
+  // Use optin shared memory which is > shared_memory_per_block.
+  EXPECT_GT(launch_dimensions.SharedMemBytes(),
+            dev_info.shared_memory_per_block);
 }
 
 TEST_F(TritonGemmTest, MultipleDims) {
@@ -684,6 +700,84 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
                                       ErrorSpec{1e-2, 1e-2},
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(CompareTest, UsingOptinSharedMemoryOnAmpereProducesSameResult) {
+  // On pre-Ampere GPUs the test would use a different amount of shared memory.
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "This test is for Ampere+ GPUs.";
+  }
+  const GpuDeviceInfo dev_info =
+      GetGpuDeviceInfo(backend().default_stream_executor());
+  constexpr int kBytesOfSharedMemoryTested = 64 * 1024;
+  EXPECT_GE(dev_info.shared_memory_per_block_optin, kBytesOfSharedMemoryTested);
+
+  const std::string kHloTextOptinShmem = R"(
+HloModule t
+
+triton_dot {
+  param_0.1 = s8[332,441]{1,0} parameter(0)
+  param_1.1 = f16[441,39]{1,0} parameter(1)
+  ROOT dot = f16[332,39]{1,0} dot(param_0.1, param_1.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s8[332,441]{1,0} parameter(0)
+  p1 = f16[441,39]{1,0} parameter(1)
+  ROOT _ = f16[332,39]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config="{\"block_m\":\"128\",\"block_n\":\"128\",\"block_k\":\"128\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"32\"}"
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloTextOptinShmem));
+  const HloComputation* triton_dot_computation =
+      hlo_module->entry_computation()
+          ->root_instruction()
+          ->fused_instructions_computation();
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const tensorflow::AutotuneResult::TritonGemmKey config,
+      hlo_module->entry_computation()
+          ->root_instruction()
+          ->backend_config<tensorflow::AutotuneResult::TritonGemmKey>());
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LaunchDimensions launch_dimensions,
+      TritonWrapper("test_fn", triton_dot_computation,
+                    GetCudaComputeCapability(), dev_info, config, &llvm_module,
+                    &MatMul, mlir_context));
+  // The config is chosen so that the used memory size is slightly above the
+  // 48 kB boundary of standard / optin shared memory so that any GPU that
+  // has the optin one should be able to execute the test.
+  EXPECT_EQ(launch_dimensions.SharedMemBytes(), kBytesOfSharedMemoryTested);
+  // Make sure the written config indeed has to use optin shared memory.
+  EXPECT_GT(launch_dimensions.SharedMemBytes(),
+            dev_info.shared_memory_per_block);
+
+  const std::string kHloTextLowShmem = R"(
+HloModule t
+
+triton_dot {
+  param_0.1 = s8[332,441]{1,0} parameter(0)
+  param_1.1 = f16[441,39]{1,0} parameter(1)
+  ROOT dot = f16[332,39]{1,0} dot(param_0.1, param_1.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s8[332,441]{1,0} parameter(0)
+  p1 = f16[441,39]{1,0} parameter(1)
+  ROOT _ = f16[332,39]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextLowShmem, kHloTextOptinShmem,
+                                      ErrorSpec{1e-6, 1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
