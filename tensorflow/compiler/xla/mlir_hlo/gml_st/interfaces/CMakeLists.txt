@@ -1,4 +1,4 @@
-# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_subdirectory(IR)
-add_subdirectory(interfaces)
-add_subdirectory(transforms)
-add_subdirectory(utils)
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+set(LLVM_OPTIONAL_SOURCES
+  bufferizable_op_interface_impl.cc
+)
+
+add_mlir_library(GmlStBufferizableOpInterface
+  bufferizable_op_interface_impl.cc
+
+  LINK_LIBS PUBLIC
+  GmlStDialect
+  MLIRBufferizationDialect
+  MLIRBufferizationTransforms
+  MLIRDialectUtils
+  MLIRIR
+  MLIRSupport
+)

@@ -45,6 +45,7 @@ add_mlir_library(MLIRBufferTransforms
 
   LINK_LIBS PUBLIC
   ChloOps
+  GmlStBufferizableOpInterface
   GmlStDialect
   MLIRGPUOps
   MLIRHLOAnalysis
