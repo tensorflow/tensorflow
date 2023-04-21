@@ -33,7 +33,7 @@ struct RewriteThreshold {
   // The model that is used to decide whether it is worth
   // accelerating operations using oneDNN is:
   //
-  // threshold = thread_synchronisation*thread_num + framework_tax
+  // threshold = thread_synchronisation * thread_num + framework_tax
   //
   // This finds threshold when framework overhead and thread synchronisations
   // are amortized with amount of computation that has to be performed.

@@ -50,9 +50,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-/// This table contains for each node name descriptors on which
-/// hardware to check whether we should rewrite the operations
-/// to use oneDNN based on the parameters for heuristic.
+// Table storing thread synchronization and framework overhead costs on each CPU
+// architecture for each oneNN-eligible operation. Our heuristics use these
+// costs to determine whether we should rewrite the operation to use oneDNN.
 static const RewriteThreshold rewrite_thresholds[] = {
 #ifdef DNNL_AARCH64_USE_ACL
     {"Conv2D", 0x41, 0xd40, {0.9349, 22.603}},
@@ -330,6 +330,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_native_pad_with_fused_conv2d = "_MklNativePadWithFusedConv2D";
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
     csinfo_.mkl_pad_with_fused_conv2d = "_MklPadWithFusedConv2D";
+    csinfo_.mkl_swish = "_MklSwish";
     csinfo_.pad = "Pad";
     csinfo_.pad_with_conv2d = "__MklDummyPadWithConv2D";
     csinfo_.pad_with_fused_conv2d = "__MklDummyPadWithFusedConv2D";
@@ -394,7 +395,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
     csinfo_.sigmoid = "Sigmoid";
-    csinfo_.swish = "_MklSwish";
     // End - element-wise ops. See note above.
 
     const bool native_fmt = NativeFormatEnabled();
@@ -767,7 +767,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Rule for merging sigmoid and multiplication to oneDNN swish.
     minfo_.push_back(
-        {csinfo_.sigmoid, csinfo_.mul, csinfo_.swish, GetSigmoidAndMul});
+        {csinfo_.sigmoid, csinfo_.mul, csinfo_.mkl_swish, GetSigmoidAndMul});
     // Add a rule for merging nodes
     minfo_.push_back({csinfo_.conv2d, csinfo_.bias_add,
                       csinfo_.conv2d_with_bias, GetConv2DOrBiasAdd});
@@ -977,6 +977,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_native_pad_with_fused_conv2d;
     string mkl_pad_with_conv2d;
     string mkl_pad_with_fused_conv2d;
+    string mkl_swish;
     string mul;
     string pad;
     string pad_with_conv2d;
@@ -1012,7 +1013,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string relu6_grad;
     string requantize;
     string sigmoid;
-    string swish;
     string tanh;
     string tanh_grad;
     string transpose;
@@ -3220,7 +3220,7 @@ Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
     }
   }
 
-  NodeBuilder nb(mul->name(), csinfo_.swish);
+  NodeBuilder nb(mul->name(), csinfo_.mkl_swish);
   nb.Input(sigmoid_in[0].first, sigmoid_in[0].second);
   nb.Attr("T", T_mul);  // Copy type attribute.
   nb.Device(mul->def().device());
