@@ -42,6 +42,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -113,7 +114,7 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_b = constant_op.constant(1.0)
 
       ops.disable_tensor_equality()
-      self._test_hashable(constant_a, constant_b, True)
+      self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
       ops.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
@@ -164,7 +165,7 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_b = constant_op.constant(float('nan'))
 
       ops.disable_tensor_equality()
-      self._test_hashable(constant_a, constant_b, True)
+      self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
       ops.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
@@ -1145,6 +1146,52 @@ class EagerTensorCacheTest(test_util.TensorFlowTestCase):
 
     cache.put('2', array_ops.zeros((2)))
     self.assertIsNotNone(cache.get('2'))
+
+
+class StatusToExceptionTest(test.TestCase):
+
+  def testStatusToException(self):
+    with test.mock.patch.object(
+        tf_logging, 'error_log', autospec=True
+    ) as mock_error_log:
+      # define input to _status_to_exception
+      error_message = 'Test Message'
+      test_class_code = errors.UNIMPLEMENTED
+      test_class_code_to_exception = errors.exception_type_from_error_code(
+          test_class_code
+      )
+      error = core._NotOkStatusException(error_message, test_class_code, None)
+      # call to _status_to_exception
+      exception = core._status_to_exception(error)
+      # validate return value
+      self.assertEqual(error_message, exception.message)
+      self.assertEqual(
+          test_class_code_to_exception.__name__,
+          exception.__class__.__name__,
+      )
+      # verify call to error log library
+      mock_error_log.assert_called_with(str(error))
+
+  def testStatusToExceptionUnknownError(self):
+    with test.mock.patch.object(
+        tf_logging, 'error_log', autospec=True
+    ) as mock_error_log:
+      # define input to _status_to_exception
+      error_message = 'Test Message'
+      invalid_class_code = 1000
+      error = core._NotOkStatusException(
+          error_message, invalid_class_code, None
+      )
+      # call to _status_to_exception
+      exception = core._status_to_exception(error)
+      # validate return value
+      self.assertEqual(error_message, exception.message)
+      self.assertEqual(
+          errors.UnknownError.__name__,
+          exception.__class__.__name__,
+      )
+      # verify call to error log library
+      mock_error_log.assert_called_with(str(error))
 
 
 if __name__ == '__main__':

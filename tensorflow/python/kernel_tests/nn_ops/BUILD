@@ -76,7 +76,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -104,6 +104,7 @@ cuda_py_test(
     shard_count = 2,
     deps = [
         ":bias_op_base",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -113,6 +114,7 @@ cuda_py_test(
     srcs = ["bias_op_test.py"],
     deps = [
         ":bias_op_base",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -241,9 +243,9 @@ cuda_py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
@@ -302,6 +304,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
     deps = [
         ":cudnn_deterministic_base",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -315,6 +318,7 @@ cuda_py_test(
     ],
     deps = [
         ":cudnn_deterministic_base",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -328,6 +332,7 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -342,6 +347,7 @@ cuda_py_test(
         ":depthwise_conv_op_base",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -353,6 +359,7 @@ cuda_py_test(
     shard_count = 8,
     deps = [
         ":depthwise_conv_op_base",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -378,10 +385,10 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
@@ -533,6 +540,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -576,7 +584,6 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
@@ -586,6 +593,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
@@ -634,6 +642,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )

@@ -20,7 +20,7 @@ import functools
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -192,7 +192,7 @@ class Loss:
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""
     if (not self._allow_sum_over_batch_size and
-        distribution_strategy_context.has_strategy() and
+        distribute_lib.has_strategy() and
         (self.reduction == losses_utils.ReductionV2.AUTO or
          self.reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)):
       raise ValueError(

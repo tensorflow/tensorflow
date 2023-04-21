@@ -478,7 +478,7 @@ mlir::LogicalResult GetHostDeviceOCInTPUPipeline(
   if (!status_or_device_coodinates.ok())
     return cluster.emitError()
            << "error in fetching tpu device coordinates: "
-           << status_or_device_coodinates.status().error_message();
+           << status_or_device_coodinates.status().message();
 
   // Determine compilation and execution devices.
   auto status_or_tpu_device_assignment =
@@ -489,7 +489,7 @@ mlir::LogicalResult GetHostDeviceOCInTPUPipeline(
   if (!status_or_tpu_device_assignment.ok())
     return cluster.emitError()
            << "error in fetching TPU compilation/execution devices: "
-           << status_or_tpu_device_assignment.status().error_message();
+           << status_or_tpu_device_assignment.status().message();
   auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
 
   *host_device = tpu_device_assignment.tpu_devices[0][0].host;

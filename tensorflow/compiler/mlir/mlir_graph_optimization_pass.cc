@@ -84,8 +84,8 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot create directory '" << prefix
+                 << "': " << status.message();
     return;
   }
 
@@ -98,8 +98,7 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   std::unique_ptr<WritableFile> file_writer;
   status = env->NewWritableFile(prefix, &file_writer);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
     return;
   }
 
@@ -112,8 +111,8 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
 
   status = file_writer->Append(txt_module);
   if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "error writing to file '" << prefix
+                 << "': " << status.message();
     return;
   }
   (void)file_writer->Close();

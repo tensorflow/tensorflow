@@ -237,11 +237,14 @@ cc_library(
 xla_cc_test(
     name = "gpu_device_info_test",
     srcs = if_cuda_is_configured(["gpu_device_info_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = if_cuda_is_configured([
+        ":gpu_device_info",
         ":gpu_device_info_for_tests",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
@@ -481,6 +484,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
@@ -493,7 +497,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "//tensorflow/tsl/util/proto:proto_utils",
-    ]),
+    ]) + ["@com_google_absl//absl/algorithm:container"],
 )
 
 xla_test(
@@ -514,6 +518,7 @@ xla_test(
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
@@ -648,6 +653,7 @@ tsl_gpu_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
@@ -1223,6 +1229,7 @@ xla_cc_test(
         ":matmul_utils",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
         "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/strings",
@@ -3253,6 +3260,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_helpers",
     ]),
 )
 

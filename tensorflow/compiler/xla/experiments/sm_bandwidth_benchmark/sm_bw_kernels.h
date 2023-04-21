@@ -20,7 +20,8 @@ namespace experiments {
 namespace benchmark {
 
 template <int chunks>
-void BenchmarkDeviceCopy(float* in, float* out, int64_t size, int num_blocks);
+void BenchmarkDeviceCopy(float* in, float* out, int64_t size, int num_blocks,
+                         int num_threads);
 
 }  // namespace benchmark
 }  // namespace experiments

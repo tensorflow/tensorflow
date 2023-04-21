@@ -34,7 +34,8 @@ limitations under the License.
 namespace tensorflow {
 
 BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
-    : worker_env_(worker_env) {}
+    : cache_(new RendezvousCache<BaseRemoteRendezvous>()),
+      worker_env_(worker_env) {}
 
 BaseRendezvousMgr::~BaseRendezvousMgr() = default;
 
@@ -45,7 +46,7 @@ tsl::core::RefCountPtr<RemoteRendezvous> BaseRendezvousMgr::Find(
 
 tsl::core::RefCountPtr<BaseRemoteRendezvous> BaseRendezvousMgr::FindOrCreate(
     int64_t step_id) {
-  return cache_.FindOrCreate(
+  return cache_->FindOrCreate(
       step_id, [this, step_id]() { return Create(step_id, worker_env_); });
 }
 

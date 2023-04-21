@@ -32,6 +32,9 @@ ABSL_FLAG(bool, next_pluggable_device_use_pjrt, true,
           "Use PjRtClient for data transfer and compile on demand op in next "
           "pluggable device.");
 
+ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
+          "Use PjRtAllocator in next pluggable device.");
+
 namespace tensorflow {
 
 // TODO(chuanhao): implement an API to query device memory, and make
@@ -53,7 +56,15 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
                                   options.compilation_device_name,
                                   options.shape_determination_fns)),
       device_ordinal_(options.device_ordinal) {
-  allocator_ = std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
+  if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt_allocator)) {
+    pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
+    allocator_ = pjrt_allocator_.get();
+  } else {
+    tfnpd_allocator_ =
+        std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
+    allocator_ = tfnpd_allocator_.get();
+  }
+
   if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
     // TODO(b/262472386) Support shape_determination_fns through
     // TFNPD_XlaShapeToDeviceShapeRepresentation.
@@ -86,7 +97,7 @@ Allocator* NextPluggableDevice::GetAllocator(AllocatorAttributes attr) {
   if (attr.on_host()) {
     return cpu_allocator();
   }
-  return allocator_.get();
+  return allocator_;
 }
 
 void NextPluggableDevice::Compute(OpKernel* op_kernel,
@@ -108,7 +119,7 @@ void NextPluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
 Status NextPluggableDevice::Sync() { return OkStatus(); }
 
 // TODO(chuanhao): implement NextPluggableDevice::Sync().
-void NextPluggableDevice::Sync(const DoneCallback& done) {}
+void NextPluggableDevice::Sync(const DoneCallback& done) { done(Sync()); }
 
 Status NextPluggableDevice::TryGetDeviceContext(DeviceContext** out_context) {
   *out_context = device_context_.get();

@@ -113,3 +113,15 @@ def StripModuleMetadata :
   let constructor = "createStripModuleMetadataPass()";
 }
 
+def VerifyFullyConverted :
+    Pass<"tosa-tflite-verify-fully-converted", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TFLite frontend ops were converted and none remain.";
+  let constructor = "createVerifyFullyConvertedPass()";
+}
+
+def ConvertFunctionMetadata :
+    Pass<"tosa-tflite-convert-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Converts TFLite input attributes to MLProgram arg attributes on functions.";
+  let constructor = "createConvertFunctionMetadataPass()";
+}
+

@@ -94,3 +94,20 @@ func.func @matmul_dynamic() -> tensor<2x2xi32> {
 // CHECK-LABEL: @matmul_dynamic
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: [[22, 28], [49, 64]]
+
+func.func @dynamic_generic_w_cst() -> tensor<4x?xf64> {
+  %cst_1 =  arith.constant 123.456 : f64
+  %extracted_slice_ = arith.constant dense<[[1.1, 2.2], [3.3, 4.4], [5.5, 6.6], [7.7, 8.8]]> : tensor<4x2xf64>
+  %extracted_slice = tensor.cast %extracted_slice_ : tensor<4x2xf64> to tensor<4x?xf64>
+  %6 = linalg.generic { indexing_maps = [affine_map<(d0, d1) -> ()>,
+      affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel",
+      "parallel"]} ins(%cst_1 : f64) outs(%extracted_slice : tensor<4x?xf64>) {
+  ^bb0(%in: f64, %out: f64):
+    linalg.yield %in : f64
+  } -> tensor<4x?xf64>
+  return %6 : tensor<4x?xf64>
+}
+
+// CHECK-LABEL: @dynamic_generic_w_cst
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: TensorOrMemref<4x2xf64>: [[1.234560e+02, 1.234560e+02], [1.234560e+02, 1.234560e+02], [1.234560e+02, 1.234560e+02], [1.234560e+02, 1.234560e+02]]

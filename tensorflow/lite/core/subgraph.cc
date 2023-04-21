@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/core/subgraph.h"
 
-#include <stdarg.h>
-#include <stddef.h>
-
 #include <algorithm>
 #include <atomic>
+#include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -39,8 +38,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -665,20 +662,28 @@ TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
       ->GetModelMetadata(name, ptr, bytes);
 }
 
-TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
-  TF_LITE_ENSURE(&context_, subgraph_index > 0);
-  TF_LITE_ENSURE(&context_,
-                 static_cast<size_t>(subgraph_index) <= subgraphs_->size());
-  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
-  return kTfLiteOk;
-}
-
 TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) {
   if (subgraph_index < 0 ||
       static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
     return nullptr;
   }
   return subgraphs_->at(subgraph_index)->context();
+}
+
+const TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) const {
+  if (subgraph_index < 0 ||
+      static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
+    return nullptr;
+  }
+  return subgraphs_->at(subgraph_index)->context();
+}
+
+TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
+  TF_LITE_ENSURE(&context_, subgraph_index > 0);
+  TF_LITE_ENSURE(&context_,
+                 static_cast<size_t>(subgraph_index) < subgraphs_->size());
+  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
+  return kTfLiteOk;
 }
 
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(

@@ -47,6 +47,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
+        "//tensorflow/core/tfrt/common:pjrt_state",
         "@com_google_absl//absl/flags:flag",
     ],
 )
@@ -84,6 +86,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
+        "//tensorflow/tsl/framework:device_id_utils",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/strings",
     ],
@@ -245,7 +248,10 @@ cc_library(
     name = "plugin_coordination_service_agent",
     hdrs = ["plugin_coordination_service_agent.h"],
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform:statusor"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+    ],
 )
 
 cc_library(

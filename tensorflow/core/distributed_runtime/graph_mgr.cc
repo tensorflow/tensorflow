@@ -151,10 +151,6 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
             TF_RETURN_IF_ERROR(remote_r->Initialize(session));
             *r = remote_r.release();
             return OkStatus();
-          },
-          [this](const int64_t step_id) {
-            this->worker_env_->rendezvous_mgr->Cleanup(step_id);
-            return OkStatus();
           }}));
 
   // Constructs the graph out of "gdef".

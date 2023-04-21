@@ -123,7 +123,7 @@ class OpKernelBuilderTest : public ::testing::Test {
     EXPECT_TRUE(op == nullptr);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
-      LOG(INFO) << "Status message: " << status.error_message();
+      LOG(INFO) << "Status message: " << status.message();
       EXPECT_EQ(code, status.code());
 
       // Test SupportedDeviceTypesForNode().

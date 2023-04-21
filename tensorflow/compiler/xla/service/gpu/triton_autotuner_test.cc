@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
@@ -127,6 +130,30 @@ class TritonAutotunerTest : public HloTestBase {
   }
 };
 
+TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::VOLTA, /*minor=*/0};
+  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(compute_capability);
+  EXPECT_FALSE(
+      std::any_of(configs.begin(), configs.end(),
+                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
+                    return key.num_stages() > 2;
+                  }));
+}
+
+TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(compute_capability);
+  EXPECT_TRUE(
+      std::any_of(configs.begin(), configs.end(),
+                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
+                    return key.num_stages() > 2;
+                  }));
+}
+
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {
   const std::string hlo = R"(
 HloModule module
@@ -224,6 +251,27 @@ ENTRY e {
   }
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.02, 0.01}));
+}
+
+TEST_F(TritonAutotunerTest, SkipConfigsProducingDeviantResults) {
+  const std::string kHloText = R"(
+HloModule module
+
+ENTRY e {
+  tmp_1 = pred[8192,12800]{1,0} parameter(0)
+  tmp_2 = f16[8192,12800]{1,0} convert(tmp_1)
+  tmp_3 = f16[4096,12800]{1,0} parameter(1)
+  ROOT tmp_4 = f16[8192,4096]{0,1} dot(tmp_2, tmp_3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  // Here split-K configs deviate strongly due to intermediate rounding
+  // but do execute fast - make sure they are filtered out (split_k = 1).
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: fusion(%tmp_1, %tmp_3), kind=kCustom
+; CHECK-SAME: split_k\":\"1\"
+)");
 }
 
 class TritonAutotunerLevelTest : public HloTestBase,

@@ -355,7 +355,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                 << status.error_message();
+                 << status.message();
     }
     runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
 
@@ -663,8 +663,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*rewrite_training_op=*/true,
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
-  pipeline.AddPass<LogisticExpander>(
-      /*expansion_type=*/LogisticExpansionType::kExp);
+  pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
   auto dynamic_padder_options = DynamicPadderOptions();
@@ -1268,6 +1267,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      options::SlpVectorizerDisabled(module->config()),
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
       OrcJITPostCompilationHook::Create(module.get()));
@@ -1761,6 +1761,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
+        options::SlpVectorizerDisabled(module->config()),
         llvm_ir::GetCpuFastMathFlags(module->config()),
         pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook,
         aot_options.sanitize_dataflow(),

@@ -23,7 +23,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
@@ -49,8 +49,23 @@ template <typename Device, typename Tlhs, typename Trhs, typename Toutput,
 class BatchMatMulMkl : public OpKernel {
  public:
   explicit BatchMatMulMkl(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("adj_x", &adj_x_));
-    OP_REQUIRES_OK(context, context->GetAttr("adj_y", &adj_y_));
+    if (context && context->HasAttr("transpose_a")) {
+      // This is needed for using BatchMatMulMkl as the super class of
+      // MklMatMulOp (below) whose context has a transpose_a attribute which is
+      // effectively the same as adj_x_
+      OP_REQUIRES_OK(context, context->GetAttr("transpose_a", &adj_x_));
+    } else {
+      OP_REQUIRES_OK(context, context->GetAttr("adj_x", &adj_x_));
+    }
+
+    if (context && context->HasAttr("transpose_b")) {
+      // This is needed for using BatchMatMulMkl as the super class of
+      // MklMatMulOp (below) whose context has a transpose_b attribute which is
+      // effectively the same as adj_y_
+      OP_REQUIRES_OK(context, context->GetAttr("transpose_b", &adj_y_));
+    } else {
+      OP_REQUIRES_OK(context, context->GetAttr("adj_y", &adj_y_));
+    }
   }
 
   virtual ~BatchMatMulMkl() {}
@@ -58,6 +73,10 @@ class BatchMatMulMkl : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& lhs = ctx->input(0);
     const Tensor& rhs = ctx->input(1);
+
+    if (std::is_same<Tlhs, float>::value) {
+      (void)SetFPMathMode();
+    }
 
     if (!v2_bcast) {
       // Using V1, so check to make sure lhs and rhs dimensions are correct and
@@ -306,6 +325,29 @@ class FusedBatchMatMulMkl
   }
 };
 
+// Direct calls for MklMatMulOp to BatchMatMulMkl for aarch64,
+// because the Arm Compute Library does not provide a BLAS SGEMM
+// interface, which is what MklMatMulOp calls by default.
+#ifdef DNNL_AARCH64_USE_ACL
+template <typename Device, typename T, bool USE_CUBLAS>
+class MklMatMulOp : public BatchMatMulMkl<Device, T, T, T, USE_CUBLAS> {
+ public:
+  explicit MklMatMulOp(OpKernelConstruction* ctx)
+      : BatchMatMulMkl<Device, T, T, T, false>(ctx) {}
+
+  virtual ~MklMatMulOp() {}
+};
+
+#define REGISTER_MATMUL_MKL(TYPE)                         \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklMatMul")                                  \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<TYPE>("T")                      \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklMatMulOp<CPUDevice, TYPE, false /* cublas, ignored for CPU */>);
+
+#endif  // DNNL_AARCH64_USE_ACL
+
 #define REGISTER_BATCH_MATMUL_MKL(TYPE)                                       \
   REGISTER_KERNEL_BUILDER(Name("_MklBatchMatMul")                             \
                               .Device(DEVICE_CPU)                             \
@@ -327,14 +369,17 @@ class FusedBatchMatMulMkl
           .TypeConstraint<TYPE>("T"),         \
       FusedBatchMatMulMkl<CPUDevice, TYPE, TYPE, TYPE, true>)
 
-#ifdef INTEL_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_float(REGISTER_FUSED_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_bfloat16(REGISTER_FUSED_BATCH_MATMUL_MKL);
-#endif  // INTEL_MKL
+
+#ifdef DNNL_AARCH64_USE_ACL
+TF_CALL_float(REGISTER_MATMUL_MKL);
+TF_CALL_bfloat16(REGISTER_MATMUL_MKL);
+#endif  // DNNL_AARCH64_USE_ACL
 
 }  // end namespace tensorflow
-#endif
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

@@ -25,7 +25,7 @@ from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
@@ -361,7 +361,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(v, variables.Variable)
 
     def replica_fn():
-      replica_id = distribution_strategy_context.get_replica_context(
+      replica_id = distribute_lib.get_replica_context(
       ).replica_id_in_sync_group
       val = array_ops.reshape(
           math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
@@ -394,7 +394,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(v.variables[0], variables.Variable)
 
     def replica_fn():
-      replica_id = distribution_strategy_context.get_replica_context(
+      replica_id = distribute_lib.get_replica_context(
       ).replica_id_in_sync_group
       val = array_ops.reshape(
           math_ops.cast(replica_id + 10, dtype=v.dtype), [1])

@@ -35,6 +35,7 @@ package_group(
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/core/tpu/...",
         "//tensorflow/python/compiler/...",
+        "//tensorflow/python/util/...",
     ],
 )
 
@@ -1398,5 +1399,43 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+filegroup(
+    name = "tf2xla_opset_hdrs",
+    srcs = [
+        "tf2xla_opset.h",
+    ],
+    visibility = ["//tensorflow/python/util:__pkg__"],
+)
+
+cc_library(
+    name = "tf2xla_opset",
+    srcs = [
+        "tf2xla_opset.cc",
+    ],
+    hdrs = ["tf2xla_opset.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        ":tf2xla_util",
+        ":xla_op_registry",
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tf2xla_opset_test",
+    srcs = [
+        "tf2xla_opset_test.cc",
+    ],
+    deps = [
+        ":tf2xla_opset",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/dataset.pb.h"
@@ -780,9 +781,7 @@ Status DatasetBase::ComputeNumSources() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
-    return errors::Unimplemented(
-        "Cannot compute input sources for dataset of type ", type_string(),
-        ", because the dataset does not implement `InputDatasets`.");
+    return s;
   }
   if (num_sources_ >= 0) {
     // Already computed.
@@ -844,9 +843,7 @@ Status DatasetBase::MergeOptionsFromInputs() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
-    return errors::Unimplemented(
-        "Cannot merge options for dataset of type ", type_string(),
-        ", because the dataset does not implement `InputDatasets`.");
+    return s;
   }
   if (inputs.empty()) {
     return OkStatus();
@@ -931,8 +928,11 @@ int64_t DatasetBase::Cardinality(CardinalityOptions options) const {
 
 Status DatasetBase::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
-  return errors::Unimplemented("InputDatasets not implemented for ",
-                               type_string());
+  return errors::Unimplemented(
+      "Cannot compute input sources for dataset of type ", type_string(),
+      ", because the dataset does not implement `InputDatasets`. To fix this, "
+      "your dataset should override the `InputDatasets` method. If it is a "
+      "source dataset, it should return empty inputs.");
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
@@ -1143,7 +1143,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " GetNext exit";
@@ -1180,7 +1180,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " Skip exit";

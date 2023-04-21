@@ -214,7 +214,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
 )
@@ -235,6 +234,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -250,7 +250,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -273,6 +273,7 @@ tf_py_test(
     size = "small",
     srcs = ["fingerprint_op_test.py"],
     deps = [
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -435,6 +436,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -514,7 +516,6 @@ cuda_py_test(
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
         "//third_party/py/numpy",
@@ -621,6 +622,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -702,7 +704,6 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:weights_broadcast_ops",
         "//third_party/py/numpy",
     ],
@@ -717,6 +718,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )

@@ -21,7 +21,7 @@ import sys
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import ops

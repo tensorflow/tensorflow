@@ -13,16 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """A module for interm merge-call related internal APIs."""
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("__internal__.distribute.strategy_supports_no_merge_call", v1=[])
 def strategy_supports_no_merge_call():
   """Returns if the current `Strategy` can operate in pure replica context."""
-  if not distribution_strategy_context.has_strategy():
+  if not distribute_lib.has_strategy():
     return True
-  strategy = distribution_strategy_context.get_strategy()
+  strategy = distribute_lib.get_strategy()
   return not strategy.extended._use_merge_call()  # pylint: disable=protected-access
 
 
@@ -50,5 +50,5 @@ def maybe_merge_call(fn, strategy, *args, **kwargs):
   if strategy_supports_no_merge_call():
     return fn(strategy, *args, **kwargs)
   else:
-    return distribution_strategy_context.get_replica_context().merge_call(
+    return distribute_lib.get_replica_context().merge_call(
         fn, args=args, kwargs=kwargs)

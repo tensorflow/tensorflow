@@ -623,12 +623,15 @@ class Graph {
   // imported function differs from an existing function or op with the same
   // name. This overload adds the function definitions with no stack traces.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
+  Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib);
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
   // imported function differs from an existing function or op with the same
   // name.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                            const StackTracesMap& stack_traces);
+  Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
                             const StackTracesMap& stack_traces);
 
   // Adds the function definition and its stacktraces to this graph's op

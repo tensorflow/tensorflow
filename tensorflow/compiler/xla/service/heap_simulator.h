@@ -17,11 +17,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HEAP_SIMULATOR_H_
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
+// TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
+#if defined(__GNUC__) || defined(__clang__)
+#include "absl/container/btree_map.h"
+#endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -368,6 +375,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   using Result = HeapSimulator::Result<BufferType>;
   using Chunk = HeapSimulator::Chunk;
 
+  // A mapping from a free chunk offset to the end of that chunk (exclusive).
+#if defined(__GNUC__) || defined(__clang__)
+  using FreeChunks = absl::btree_map<int64_t, int64_t, std::greater<int64_t>>;
+#else
+  using FreeChunks = std::map<int64_t, int64_t, std::greater<int64_t>>;
+#endif
+
   enum Type {
     kSpatial = 0,
     kTemporal,
@@ -375,6 +389,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
+    // Convenience method for use with debugging and logging.
+    std::string ToString() const;
+
     const BufferType* buffer;
     int64_t size;
     // Alloc time of the buffer.
@@ -393,6 +410,61 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Comparison function that is used to store buffer intervals.
   using BufferIntervalCompare =
       std::function<bool(const BufferInterval&, const BufferInterval&)>;
+
+  // A BufferInterval that we intend to allocate in slices. If
+  // sorted_slices.empty(), the allocation is not sliced. Sometimes we refer to
+  // such allocations as having a single slice.
+  //
+  // For example, instead of allocating A in space and time as illustrated on
+  // the left, we may wish to allocate A0 and A1 overlapping in time, contiguous
+  // in memory, (as illustrated on the right). Doing so allows us to free up
+  // allocation space between [s,i], but we only have the full allocation for A
+  // from [i,e].
+  //
+  //   ^
+  // s | +-----------+                 s |       +-----+
+  // p | |           |                 p |       |  A1 |
+  // a | |     A     |                 a | +-----+-----+
+  // c | |           |                 c | |     A0    |
+  // e | +-----------+                 e | +-----------+
+  //   --|-----------|------->           --|-----|-----|------->
+  //     s           e   time              s     i     e   time
+  //
+  // The allocation slices of a SlicedBufferInterval have the following
+  // properties:
+  // slice 0:
+  //   * size = full_buffer_interval.size - sum_over_j(sorted_slices[j].size)
+  //   * lifetime = [full_buffer_interval.start, full_buffer_interval.end)
+  // slice i (for i > 0):
+  //   * size = sorted_slices[i - 1].size
+  //   * lifetime = [sorted_slices[i - 1].start, full_buffer_interval.end)
+  //
+  // The only requirement on the spatial ordering of the slices is that they
+  // form a contiguous spatial block of memory, once all slices have been
+  // allocated.
+  struct SlicedBufferInterval {
+    // Represents a slice of full_buffer_interval that lives from start to
+    // full_buffer_interval.end.
+    struct IntervalSlice {
+      int64_t size;
+      int64_t allocation_start_time;
+    };
+
+    explicit SlicedBufferInterval(const BufferInterval& buffer_interval)
+        : full_buffer_interval(buffer_interval) {}
+    SlicedBufferInterval() = delete;
+
+    // Convenience method for use with debugging and logging.
+    std::string ToString() const;
+
+    const BufferInterval& full_buffer_interval;
+
+    // Describes allocations slices, after slice 0.
+    //
+    // sorted_slices is expected to be sorted according to
+    // sorted_slices[i].start < sorted_slices[i+1].start.
+    std::vector<IntervalSlice> sorted_slices;
+  };
 
   explicit GlobalDecreasingSizeBestFitHeap(int64_t alignment,
                                            Type type = kSpatial);
@@ -414,6 +486,30 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Returns the buffer intervals sorted according to buffer_interval_compare_.
   std::vector<BufferInterval> GetSortedBufferIntervals() const;
 
+  // Compute free chunks as all memory - chunks that are allocated at some time
+  // during the lifetime of buffer_interval or during the lifetime of buffers
+  // that are colocated with buffer_interval.
+  //
+  // Imagine that we've already allocated three chunks : a, b and c.  And now
+  // we want to allocate d. Since e is colocated with d, we have to allocate
+  // chunks for them together at the same address. To do this, we first gather
+  // all chunks that overlap with d and e on the time dimension, in this case
+  // the overlapped chunks are a and b (c doesn't overlap with either of d and
+  // e), then find create a new chunk that doesn't overlap with a and b on the
+  // space dimension.
+  //
+  // space
+  //   ^
+  //   |+--d---+      +---e---+
+  //   |
+  //   |+---+  +---------------+  +-------+
+  //   ||   |  |               |  |       |
+  //   ||   |  |               |  |       |
+  //   |+-a-+  +-------b-------+  +---c---+
+  //   ----------------------------------------> time
+  FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
+                            int64_t max_colocation_size) const;
+
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for
   // each BufferInterval, after calling GetSortedBufferIntervals. If a
@@ -423,6 +519,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // heap size is within the limits.
   Chunk FindChunkCandidate(const BufferInterval& buffer_interval,
                            int64_t preferred_offset = -1) const;
+  // FindChunkCandidates is the same as FindChunkCandidate, except it finds
+  // spatially contiguous chunks candidates for a sliced buffer interval.
+  // Returned chunk i will correspond to slice i, as described in
+  // SlicedBufferInterval::sorted_slices.
+  std::vector<Chunk> FindChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t preferred_offset = -1) const;
   void CommitChunk(const BufferInterval& buffer_interval, Chunk chunk);
 
   // Adds the buffer and the chunk to the result chunk map.

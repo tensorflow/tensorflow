@@ -2229,7 +2229,7 @@ static void BuildTopKOp(OpBuilder* builder, OperationState& result, Value input,
   if (!val_type.hasRank())
     return TFL::TopKV2Op::build(
         *builder, result, UnrankedTensorType::get(val_type.getElementType()),
-        UnrankedTensorType::get(builder->getIntegerType(32)), input, k);
+        UnrankedTensorType::get(k.getType()), input, k);
 
   // Resultant shape is value.shape[:-1] + [k]
   std::vector<int64_t> shape(val_type.getShape());
@@ -2237,8 +2237,7 @@ static void BuildTopKOp(OpBuilder* builder, OperationState& result, Value input,
   TFL::TopKV2Op::build(
       *builder, result,
       tensorflow::GetTypeFromTFTensorShape(shape, val_type.getElementType()),
-      tensorflow::GetTypeFromTFTensorShape(shape, builder->getIntegerType(32)),
-      input, k);
+      tensorflow::GetTypeFromTFTensorShape(shape, k.getType()), input, k);
 }
 
 //===----------------------------------------------------------------------===//

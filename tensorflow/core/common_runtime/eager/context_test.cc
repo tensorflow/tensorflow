@@ -283,7 +283,7 @@ TEST_F(EagerContextTest, FunctionErrorRecovery) {
   op_and_sync_status.Update(
       fail_op->Execute(absl::MakeSpan(retvals), &num_retvals));
   op_and_sync_status.Update(context()->SyncExecutors());
-  ASSERT_THAT(op_and_sync_status.as_summary_status().error_message(),
+  ASSERT_THAT(op_and_sync_status.as_summary_status().message(),
               HasSubstr("assertion failed"));
   if (retvals[0] != nullptr) {
     retvals[0]->Unref();

@@ -93,7 +93,7 @@ llvm::SmallVector<InterpreterValue> generic(
   auto outputMaps = ArrayRef<AffineMap>(indexingMaps).drop_front(inputs.size());
   std::function<void(int64_t)> run;
   run = [&](int64_t loopIndex) {
-    // Abort recursion if we encountered some error previously.s
+    // Abort recursion if we encountered some error previously.
     if (state.hasFailure()) return;
 
     if (loopIndex < ranges.size()) {

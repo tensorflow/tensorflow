@@ -133,6 +133,9 @@ bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
   for (Value operand : op->getOperands())
     if (!ancestor_of_replicate(operand.getParentRegion())) return false;
 
+  // _TPUDeviceOrdinalPlaceholder implicitly depends on the replica.
+  if (llvm::isa<TF::_TPUDeviceOrdinalPlaceholderOp>(op)) return false;
+
   bool has_replicate_operands = false;
   visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
     if (!ancestor_of_replicate(operand->get().getParentRegion()))

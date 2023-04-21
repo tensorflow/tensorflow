@@ -1681,8 +1681,7 @@ void initialize_cublas() {
           });
 
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuBLAS factory: "
-               << status.error_message();
+    LOG(ERROR) << "Unable to register cuBLAS factory: " << status.message();
   }
 
   PluginRegistry::Instance()->SetDefaultFactory(

@@ -2016,6 +2016,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       raise ValueError("Only support at least one signature key.")
 
+    # Default `serve` endpoint for `model.export`
+    if len(signature_keys) > 1 and hasattr(saved_model, "serve"):
+      signature_keys = ["serve"]
+
     funcs = []
     for key in signature_keys:
       if key not in saved_model.signatures:

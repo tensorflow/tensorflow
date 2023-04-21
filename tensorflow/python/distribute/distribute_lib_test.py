@@ -20,7 +20,6 @@ from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -121,12 +120,13 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
 
 
 def _assert_in_default_state(t):
-  t.assertIs(ds_context._get_default_replica_context(),
-             ds_context.get_replica_context())
-  t.assertIs(None, ds_context.get_cross_replica_context())
-  t.assertFalse(ds_context.in_cross_replica_context())
-  t.assertIs(ds_context._get_default_strategy(), ds_context.get_strategy())
-  t.assertFalse(ds_context.has_strategy())
+  t.assertIs(distribute_lib._get_default_replica_context(),
+             distribute_lib.get_replica_context())
+  t.assertIs(None, distribute_lib.get_cross_replica_context())
+  t.assertFalse(distribute_lib.in_cross_replica_context())
+  t.assertIs(
+      distribute_lib._get_default_strategy(), distribute_lib.get_strategy())
+  t.assertFalse(distribute_lib.has_strategy())
 
 
 def _run_in_and_out_of_scope(unbound_test_method):
@@ -155,12 +155,12 @@ class TestStrategyTest(test.TestCase):
     dist = _TestStrategy()
 
     def run_fn():
-      replica_context = ds_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       self.assertIsNotNone(replica_context)
-      self.assertIs(None, ds_context.get_cross_replica_context())
-      self.assertFalse(ds_context.in_cross_replica_context())
-      self.assertTrue(ds_context.has_strategy())
-      self.assertIs(dist, ds_context.get_strategy())
+      self.assertIs(None, distribute_lib.get_cross_replica_context())
+      self.assertFalse(distribute_lib.in_cross_replica_context())
+      self.assertTrue(distribute_lib.has_strategy())
+      self.assertIs(dist, distribute_lib.get_strategy())
       self.assertEqual("foo", replica_context.merge_call(None, test_arg="foo"))
       expected_value = _get_test_variable(
           "bar", variable_scope.VariableSynchronization.AUTO,
@@ -177,11 +177,11 @@ class TestStrategyTest(test.TestCase):
     _assert_in_default_state(self)
     dist = _TestStrategy()
     with dist.scope():
-      self.assertIs(None, ds_context.get_replica_context())
-      self.assertIs(dist, ds_context.get_cross_replica_context())
-      self.assertTrue(ds_context.in_cross_replica_context())
-      self.assertTrue(ds_context.has_strategy())
-      self.assertIs(dist, ds_context.get_strategy())
+      self.assertIs(None, distribute_lib.get_replica_context())
+      self.assertIs(dist, distribute_lib.get_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
+      self.assertTrue(distribute_lib.has_strategy())
+      self.assertIs(dist, distribute_lib.get_strategy())
       expected_value = _get_test_variable(
           "baz", variable_scope.VariableSynchronization.AUTO,
           variable_scope.VariableAggregation.NONE)
@@ -196,7 +196,7 @@ class TestStrategyTest(test.TestCase):
     dist.extended._default_device = "/device:GPU:0"
     scope = dist.scope()
     scope.__enter__()
-    self.assertIs(dist, ds_context.get_strategy())
+    self.assertIs(dist, distribute_lib.get_strategy())
     with ops.device("/device:CPU:0"):
       with self.assertRaisesRegex(RuntimeError, "Device scope nesting error"):
         scope.__exit__(None, None, None)
@@ -212,7 +212,7 @@ class TestStrategyTest(test.TestCase):
     dist = _TestStrategy()
     scope = dist.scope()
     scope.__enter__()
-    self.assertIs(dist, ds_context.get_strategy())
+    self.assertIs(dist, distribute_lib.get_strategy())
     with variable_scope.variable_creator_scope(creator):
       with self.assertRaisesRegex(RuntimeError,
                                   "Variable creator scope nesting error"):
@@ -229,7 +229,7 @@ class TestStrategyTest(test.TestCase):
       dist = _TestStrategy()
       scope = dist.scope()
       scope.__enter__()
-      self.assertIs(dist, ds_context.get_strategy())
+      self.assertIs(dist, distribute_lib.get_strategy())
       with variable_scope.variable_scope("AA"):
         with self.assertRaisesRegex(RuntimeError,
                                     "Variable scope nesting error"):
@@ -256,20 +256,20 @@ class TestStrategyTest(test.TestCase):
     _assert_in_default_state(self)
     dist = _TestStrategy()
     dist2 = _TestStrategy()
-    ds_context.experimental_set_strategy(dist)
-    self.assertIs(None, ds_context.get_replica_context())
-    self.assertIs(dist, ds_context.get_cross_replica_context())
-    self.assertTrue(ds_context.in_cross_replica_context())
-    self.assertTrue(ds_context.has_strategy())
-    self.assertIs(dist, ds_context.get_strategy())
+    distribute_lib.experimental_set_strategy(dist)
+    self.assertIs(None, distribute_lib.get_replica_context())
+    self.assertIs(dist, distribute_lib.get_cross_replica_context())
+    self.assertTrue(distribute_lib.in_cross_replica_context())
+    self.assertTrue(distribute_lib.has_strategy())
+    self.assertIs(dist, distribute_lib.get_strategy())
     expected_value = _get_test_variable(
         "baz", variable_scope.VariableSynchronization.AUTO,
         variable_scope.VariableAggregation.NONE)
     self.assertDictEqual(expected_value,
                          variable_scope.variable(1.0, name="baz"))
-    ds_context.experimental_set_strategy(dist2)
-    self.assertIs(dist2, ds_context.get_strategy())
-    ds_context.experimental_set_strategy(None)
+    distribute_lib.experimental_set_strategy(dist2)
+    self.assertIs(dist2, distribute_lib.get_strategy())
+    distribute_lib.experimental_set_strategy(None)
     _assert_in_default_state(self)
 
   def testSetStrategyInScope(self):
@@ -279,15 +279,15 @@ class TestStrategyTest(test.TestCase):
       with self.assertRaisesRegex(
           RuntimeError,
           "Must not be called inside a `tf.distribute.Strategy` scope"):
-        ds_context.experimental_set_strategy(_TestStrategy())
+        distribute_lib.experimental_set_strategy(_TestStrategy())
       with self.assertRaisesRegex(
           RuntimeError,
           "Must not be called inside a `tf.distribute.Strategy` scope"):
-        ds_context.experimental_set_strategy(dist)
+        distribute_lib.experimental_set_strategy(dist)
       with self.assertRaisesRegex(
           RuntimeError,
           "Must not be called inside a `tf.distribute.Strategy` scope"):
-        ds_context.experimental_set_strategy(None)
+        distribute_lib.experimental_set_strategy(None)
     _assert_in_default_state(self)
 
   def testSameScopeNesting(self):
@@ -295,14 +295,14 @@ class TestStrategyTest(test.TestCase):
     dist = _TestStrategy()
     scope_a = dist.scope()
     with scope_a:
-      self.assertIs(dist, ds_context.get_strategy())
+      self.assertIs(dist, distribute_lib.get_strategy())
       scope_b = dist.scope()
       with scope_b:
-        self.assertIs(dist, ds_context.get_strategy())
+        self.assertIs(dist, distribute_lib.get_strategy())
         with scope_a:
-          self.assertIs(dist, ds_context.get_strategy())
-        self.assertIs(dist, ds_context.get_strategy())
-      self.assertIs(dist, ds_context.get_strategy())
+          self.assertIs(dist, distribute_lib.get_strategy())
+        self.assertIs(dist, distribute_lib.get_strategy())
+      self.assertIs(dist, distribute_lib.get_strategy())
       dist2 = _TestStrategy()
       scope2 = dist2.scope()
       with self.assertRaisesRegex(
@@ -311,7 +311,7 @@ class TestStrategyTest(test.TestCase):
           pass
     _assert_in_default_state(self)
     with scope_b:
-      self.assertIs(dist, ds_context.get_strategy())
+      self.assertIs(dist, distribute_lib.get_strategy())
     _assert_in_default_state(self)
 
   @_run_in_and_out_of_scope
@@ -460,16 +460,16 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
     _assert_in_default_state(self)
 
     def merge_fn(dist, s):
-      self.assertIs(ds_context._get_default_strategy(), dist)
-      self.assertIs(None, ds_context.get_replica_context())
-      self.assertIs(dist, ds_context.get_cross_replica_context())
-      self.assertTrue(ds_context.in_cross_replica_context())
-      self.assertIs(dist, ds_context.get_strategy())
-      self.assertFalse(ds_context.has_strategy())
+      self.assertIs(distribute_lib._get_default_strategy(), dist)
+      self.assertIs(None, distribute_lib.get_replica_context())
+      self.assertIs(dist, distribute_lib.get_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
+      self.assertIs(dist, distribute_lib.get_strategy())
+      self.assertFalse(distribute_lib.has_strategy())
       return "foo_" + s
 
-    replica_ctx = ds_context.get_replica_context()
-    self.assertIs(ds_context._get_default_replica_context(), replica_ctx)
+    replica_ctx = distribute_lib.get_replica_context()
+    self.assertIs(distribute_lib._get_default_replica_context(), replica_ctx)
     self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, args=("bar",)))
     _assert_in_default_state(self)
 
@@ -482,7 +482,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function  # AutoGraph is default-on only within tf.function
     def test_fn():
-      replica_ctx = ds_context.get_replica_context()
+      replica_ctx = distribute_lib.get_replica_context()
       replica_ctx.merge_call(merge_fn, args=("bar",))
 
     test_fn()
@@ -494,7 +494,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
     with test_strategy.scope():
       variable_scope.variable(1.0, name="before")
 
-    default_strategy = ds_context._get_default_strategy()
+    default_strategy = distribute_lib._get_default_strategy()
     scope = default_strategy.scope()
     with scope:
       _assert_in_default_state(self)
@@ -519,7 +519,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
       variable_scope.variable(1.0, name="after")
 
   def testExperimentalRunV2(self):
-    default_strategy = ds_context._get_default_strategy()
+    default_strategy = distribute_lib._get_default_strategy()
     dataset = dataset_ops.Dataset.range(10).batch(2)
     iterator = default_strategy.extended._make_dataset_iterator(dataset)
     next_val = iterator.get_next()
@@ -532,7 +532,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testDistributedDatasets(self):
-    default_strategy = ds_context._get_default_strategy()
+    default_strategy = distribute_lib._get_default_strategy()
     if context.executing_eagerly():
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset = default_strategy.experimental_distribute_dataset(
@@ -549,7 +549,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testDistributedDatasetsFromFunction(self):
-    default_strategy = ds_context._get_default_strategy()
+    default_strategy = distribute_lib._get_default_strategy()
     if context.executing_eagerly():
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset_from_func = \
@@ -566,11 +566,13 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(tf_api_version=1))
   def testV1(self):
-    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.StrategyV1)
+    self.assertIsInstance(
+        distribute_lib.get_strategy(), distribute_lib.StrategyV1)
 
   @combinations.generate(combinations.combine(tf_api_version=2))
   def testV2(self):
-    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.Strategy)
+    self.assertIsInstance(
+        distribute_lib.get_strategy(), distribute_lib.Strategy)
 
 
 class InputContextTest(test.TestCase):

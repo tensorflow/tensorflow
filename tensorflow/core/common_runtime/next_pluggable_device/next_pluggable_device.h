@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_context.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
 namespace tensorflow {
 
@@ -42,7 +43,7 @@ class NextPluggableDevice : public PjRtBaseDevice {
     // The name of the compilation device (e.g., "XLA_TPU_JIT");
     string compilation_device_name;
 
-    // The number of the device.
+    // The TfDeviceId.
     int device_ordinal = -1;
 
     // A vector of ShapeDeterminationFn (i.e., a bundle of LayoutSelectionFn,
@@ -74,7 +75,7 @@ class NextPluggableDevice : public PjRtBaseDevice {
   Status TryGetDeviceContext(DeviceContext** out_context) override;
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
+                             AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
   int GetDeviceOrdinal() const { return device_ordinal_; }
@@ -83,7 +84,9 @@ class NextPluggableDevice : public PjRtBaseDevice {
   int device_ordinal_;
   // Need to use RefCountPtr since DeviceContext is a ref counted object.
   core::RefCountPtr<DeviceContext> device_context_;
-  std::unique_ptr<NextPluggableDeviceAllocator> allocator_;
+  std::unique_ptr<NextPluggableDeviceAllocator> tfnpd_allocator_;
+  std::unique_ptr<AsyncValueAllocator> pjrt_allocator_;
+  Allocator* allocator_ = nullptr;  // Not owned.
   std::unique_ptr<DeviceBase::AcceleratorDeviceInfo> accelerator_device_info_;
 };
 

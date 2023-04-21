@@ -87,7 +87,10 @@ def ConvertDeallocationOpsToLLVMPass
     : Pass<"hlo-convert-deallocation-ops-to-llvm", "mlir::func::FuncOp"> {
   let summary = "Convert `deallocation` ops to LLVM";
   let constructor = "::mlir::deallocation::createConvertDeallocationOpsToLLVM()";
-  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+  let dependentDialects = [
+    "::mlir::LLVM::LLVMDialect",
+    "::mlir::memref::MemRefDialect",
+  ];
 }
 
 def DeallocationToScfPass : Pass<"hlo-deallocation-to-scf",

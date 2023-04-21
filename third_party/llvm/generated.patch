@@ -1,1 +1,106 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/IR/DebugInfo.cpp b/llvm/lib/IR/DebugInfo.cpp
+--- a/llvm/lib/IR/DebugInfo.cpp
++++ b/llvm/lib/IR/DebugInfo.cpp
+@@ -19,7 +19,6 @@
+ #include "llvm/ADT/SmallPtrSet.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
+-#include "llvm/Analysis/ValueTracking.h"
+ #include "llvm/IR/BasicBlock.h"
+ #include "llvm/IR/Constants.h"
+ #include "llvm/IR/DIBuilder.h"
+diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/clang/lib/Analysis/FlowSensitive/BUILD.gn b/llvm/utils/gn/secondary/clang/lib/Analysis/FlowSensitive/BUILD.gn
+--- a/llvm/utils/gn/secondary/clang/lib/Analysis/FlowSensitive/BUILD.gn
++++ b/llvm/utils/gn/secondary/clang/lib/Analysis/FlowSensitive/BUILD.gn
+@@ -1,16 +1,34 @@
++action("HTMLLogger") {
++  script = "//clang/utils/bundle_resources.py"
++  outputs = [ "$target_gen_dir/HTMLLogger.inc" ]
++  inputs = [
++    "HTMLLogger.html",
++    "HTMLLogger.css",
++    "HTMLLogger.js",
++  ]
++  args =
++      rebase_path(outputs, root_build_dir) + rebase_path(inputs, root_build_dir)
++}
++
+ static_library("FlowSensitive") {
+   output_name = "clangAnalysisFlowSensitive"
+   configs += [ "//llvm/utils/gn/build:clang_code" ]
+   deps = [
++    ":HTMLLogger",
+     "//clang/lib/AST",
+     "//clang/lib/Analysis",
+   ]
++  include_dirs = [
++    # To pick up HTMLLogger.inc:
++    target_gen_dir,
++  ]
+   sources = [
+     "Arena.cpp",
+     "ControlFlowContext.cpp",
+     "DataflowAnalysisContext.cpp",
+     "DataflowEnvironment.cpp",
+     "DebugSupport.cpp",
++    "HTMLLogger.cpp",
+     "Logger.cpp",
+     "Transfer.cpp",
+     "TypeErasedDataflowAnalysis.cpp",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+@@ -406,6 +406,14 @@
+     cmd = "echo '#undef CLANG_REVISION' > $@",
+ )
+ 
++py_binary(
++    name = "bundle_resources",
++    srcs = [
++        "utils/bundle_resources.py",
++    ],
++    main = "utils/bundle_resources.py",
++)
++
+ # A hacky library to expose some internal headers of the `basic` library to its
+ # own implementation source files using a stripped include prefix rather than
+ # file-relative-inclusion. This is inherently non-modular as these headers will
+@@ -817,6 +825,18 @@
+     ],
+ )
+ 
++genrule(
++    name = "analysis_htmllogger_gen",
++    outs = ["lib/Analysis/FlowSensitive/HTMLLogger.inc"],
++    srcs = [
++        "lib/Analysis/FlowSensitive/HTMLLogger.html",
++        "lib/Analysis/FlowSensitive/HTMLLogger.css",
++        "lib/Analysis/FlowSensitive/HTMLLogger.js",
++    ],
++    tools = [":bundle_resources"],
++    cmd = "$(location :bundle_resources) $@ $(SRCS)",
++)
++
+ cc_library(
+     name = "analysis",
+     srcs = glob([
+@@ -824,11 +844,16 @@
+         "lib/Analysis/FlowSensitive/*.cpp",
+         "lib/Analysis/*.cpp",
+         "lib/Analysis/*.h",
+-    ]),
++    ]) + [
++        ":analysis_htmllogger_gen"
++    ],
+     hdrs = glob([
+         "include/clang/Analysis/**/*.h",
+     ]),
+-    includes = ["include"],
++    includes = [
++        "include",
++        "lib/Analysis/FlowSensitive",
++    ],
+     textual_hdrs = glob([
+         "include/clang/Analysis/**/*.def",
+     ]),

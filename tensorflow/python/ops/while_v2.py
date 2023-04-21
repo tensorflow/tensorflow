@@ -22,7 +22,6 @@ performance parity.
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.function.capture import capture_container
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -1104,7 +1103,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       return captured_tensor
 
     if tensor.graph is not self._forward_graph:
-      already_captured = id(tensor) in self.function_captures.by_val_captures
+      already_captured = id(tensor) in self.function_captures.by_val_internal
       captured_tensor = super(_WhileBodyGradFuncGraph, self)._capture_helper(
           tensor, name)
       if not already_captured:
@@ -1328,8 +1327,11 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
   tuples = zip(body_graph_captures, tensors)
   keys = [id(t) for t in body_graph_captures]
   for k, v in zip(keys, tuples):
-    capture = capture_container.CaptureContainer(v[0], v[1], k, False)
-    cond_graph.function_captures._by_val[k] = capture  # pylint: disable=protected-access
+    cond_graph._function_captures.add_or_replace(
+        key=k,
+        external=v[0],
+        internal=v[1],
+        is_by_ref=False)
   cond_graph.inputs.extend(tensors)
 
 

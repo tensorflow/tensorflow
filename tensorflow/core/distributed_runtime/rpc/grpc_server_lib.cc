@@ -249,7 +249,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   const Status status =
       ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false, &reuse_port);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   auto server_build_option =
       reuse_port
@@ -304,8 +304,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     }
   } else {
     worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
-        config, worker_env_.device_mgr, MaybeCreateNcclCommunicator(config),
-        worker_cache, default_worker_name);
+        config, worker_env_.device_mgr, worker_cache, default_worker_name);
   }
 
   auto* grpc_coordination_service =
@@ -489,7 +488,6 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   }
   worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
-      MaybeCreateNcclCommunicator(server_def_.default_session_config()),
       worker_cache, default_worker_name);
 
   master_env_.worker_cache = worker_cache;

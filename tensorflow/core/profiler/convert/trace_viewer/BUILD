@@ -59,15 +59,38 @@ cc_library(
     srcs = ["trace_events_to_json.cc"],
     hdrs = ["trace_events_to_json.h"],
     deps = [
+        ":trace_events_util",
         ":trace_viewer_color",
         "//tensorflow/core/profiler/lib:context_types",
         "//tensorflow/core/profiler/protobuf:task_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
         "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "trace_event_arguments_builder",
+    hdrs = ["trace_event_arguments_builder.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "trace_events_util",
+    srcs = ["trace_events_util.cc"],
+    hdrs = ["trace_events_util.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
+        "//tensorflow/core/profiler/utils:timespan",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )

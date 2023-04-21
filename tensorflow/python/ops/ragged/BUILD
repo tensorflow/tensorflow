@@ -451,7 +451,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/framework:extension_type",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -544,7 +544,6 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
@@ -653,6 +652,7 @@ py_test(
         ":ragged_factory_ops",
         ":ragged_math_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -926,6 +926,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:benchmark",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -1537,6 +1538,7 @@ py_test(
         ":ragged_tensor",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1571,6 +1573,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

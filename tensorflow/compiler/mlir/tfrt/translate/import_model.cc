@@ -113,7 +113,7 @@ Status ConvertFunctionToBef(
   if (!expected_module.ok())
     return tensorflow::errors::Internal(
         "Failed to convert function to mlir for function ", function_name.str(),
-        ". Error: ", expected_module.status().error_message());
+        ". Error: ", expected_module.status().message());
 
   auto module = std::move(expected_module).value();
 

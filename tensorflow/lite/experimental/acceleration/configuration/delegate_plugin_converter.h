@@ -15,23 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_PLUGIN_CONVERTER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_PLUGIN_CONVERTER_H_
 
-#include <functional>
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
-#include "tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/acceleration/configuration/delegate_plugin_converter.h"  // IWYU pragma: export
 
-namespace tflite {
-namespace delegates {
-
-// Converts from the C delegate plugin API to the C++ delegate plugin API.
-// Given an instance of the (C) TfLiteOpaqueDelegatePlugin struct, this returns
-// a function that takes a TFLiteSettings FlatBuffer and returns a unique_ptr to
-// an instance of the (C++) DelegatePluginInterface abstract class.
-std::function<std::unique_ptr<tflite_shims::delegates::DelegatePluginInterface>(
-    const ::tflite::TFLiteSettings&)>
-DelegatePluginConverter(const TfLiteOpaqueDelegatePlugin& plugin_c_api);
-
-}  // namespace delegates
-}  // namespace tflite
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/delegate_plugin_converter.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_PLUGIN_CONVERTER_H_

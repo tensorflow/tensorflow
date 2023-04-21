@@ -2033,6 +2033,7 @@ transitive_hdrs(
 #     deps = [
 #         "//tensorflow/core/example:example_parser_configuration_go_proto",
 #         "//tensorflow/core/example:example_protos_go_proto",
+#         "//tensorflow/core/framework:graph_debug_info_go_proto",
 #         "//tensorflow/core/protobuf:for_core_protos_go_proto",
 #         "//tensorflow/core/util:event_go_proto",
 #         "//tensorflow/core/util:memmapped_file_system_go_proto",

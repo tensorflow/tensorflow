@@ -111,6 +111,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/distributed_runtime:message_wrappers",
+        "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",

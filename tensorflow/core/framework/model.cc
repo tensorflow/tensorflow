@@ -2208,7 +2208,7 @@ Model::Model()
                                                   gap_times_usec_.end()};
               return model_proto.DebugString();
             }
-            LOG(WARNING) << s.error_message();
+            LOG(WARNING) << s.message();
           }
         }
         return DebugString();
@@ -2325,6 +2325,11 @@ Model::ModelParameters Model::CollectTunableParameters(
 }
 
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
+  // TODO(wilsin): If this turns out to be the cause of fleetwide degradation in
+  // the experiment, remove the downsize code.
+  if (experiments_.contains("autotune_buffer_optimization")) {
+    return false;
+  }
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
   nodes.push_back(snapshot);
@@ -3000,7 +3005,7 @@ std::string Model::DebugString() {
   if (s.ok()) {
     cached_debug_string_ = model_proto.DebugString();
   } else {
-    LOG(WARNING) << s.error_message();
+    LOG(WARNING) << s.message();
   }
   cache_until_ = absl::Now() + absl::Seconds(kMinSecondsBetweenCalls);
   return cached_debug_string_;

@@ -88,7 +88,7 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
                auto status = file->Append("node_id,node_name,stackframes\n");
                if (!status.ok()) {
                  LOG(WARNING) << "error writing to file to " << dump_filename
-                              << ": " << status.error_message();
+                              << ": " << status.message();
                  return status;
                }
 
@@ -113,7 +113,7 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
 
                  if (!status.ok()) {
                    LOG(WARNING) << "error writing to file to " << dump_filename
-                                << ": " << status.error_message();
+                                << ": " << status.message();
                    return status;
                  }
                }

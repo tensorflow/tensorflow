@@ -51,7 +51,7 @@ namespace {
 
 class TestEagerServiceImpl : public EagerServiceImpl {
  public:
-  explicit TestEagerServiceImpl(const WorkerEnv* env) : EagerServiceImpl(env) {}
+  explicit TestEagerServiceImpl(WorkerEnv* env) : EagerServiceImpl(env) {}
   Status GetEagerContext(const uint64 context_id, EagerContext** ctx) {
     ServerContext* context = nullptr;
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
@@ -546,7 +546,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       Env::Default()->SleepForMicroseconds(500000);
       call_opts.StartCancel();
       n.WaitForNotification();
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
     } else {
       n.WaitForNotification();
       TF_ASSERT_OK(status);
@@ -639,7 +639,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     }
     n.WaitForNotification();
     if (test_cancel) {
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
     } else {
       TF_ASSERT_OK(status);
       // Retrieve the output.
@@ -1244,9 +1244,9 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   auto remote_mgr =
       std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
   TF_ASSERT_OK(ctx->InitializeRemoteWorker(
+      /*worker_env=*/nullptr, /*worker_session=*/nullptr,
       /*remote_eager_workers=*/nullptr, /*remote_device_mgr=*/nullptr,
       /*remote_contexts=*/{}, context_id, /*context_view_id=*/0,
-      /*rendezvous_creator=*/nullptr,
       /*cluster_flr=*/nullptr, std::move(remote_mgr),
       /*resource_deallocator=*/nullptr));
 
@@ -1265,7 +1265,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
                                              &remote_enqueue_response);
   EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "Unable to find a context_id matching the specified one"));
 
   // The request can be handled after adding the master eager context to
@@ -1302,7 +1302,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
 
   EXPECT_EQ(status.code(), error::ABORTED);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
-                      status.error_message());
+                      std::string(status.message()));
 
   uint64 new_context_id = random::New64();
   // Create a new context.

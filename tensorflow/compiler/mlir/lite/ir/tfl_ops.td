@@ -3458,12 +3458,12 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$input,
-    TFL_I32Tensor:$k);
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[I16, I32]>:$k);
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$values,
-    TFL_I32Tensor:$indices);
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8]>:$values,
+    TFL_TensorOf<[I16, I32]>:$indices);
 
   let builders = [
     OpBuilder<(ins "Value":$input, "Value":$k),
@@ -3588,13 +3588,13 @@ def TFL_BatchToSpaceNdOp: TFL_Op<"batch_to_space_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[I32]>:$block_shape,
     TFL_TensorOf<[I32]>:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I16, I32, I64, UI8, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I16, I32, I64, UI8, QI8, QUI8, QI16]>:$output
   );
 }
 
@@ -3613,13 +3613,13 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32Tensor:$block_shape,
     TFL_I32Tensor:$paddings
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 }
 

@@ -115,7 +115,6 @@ tf_cuda_library(
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/nccl:collective_communicator",
         "@com_google_absl//absl/container:flat_hash_map",
     ] + select({
         "//tensorflow:android": [
@@ -457,7 +456,9 @@ cc_library(
     hdrs = ["small_constants_optimizer.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )

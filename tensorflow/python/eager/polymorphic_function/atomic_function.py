@@ -17,17 +17,18 @@
 import dataclasses
 from typing import Any
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 
 
 class _InterpolateFunctionError(object):
@@ -186,7 +187,7 @@ class AtomicFunction:
         # case by explicitly pausing recording. We don't have a gradient
         # registered for PartitionedCall, so recording this operation confuses
         # forwardprop code (GradientTape manages to ignore it).
-        with tape.stop_recording():
+        with record.stop_recording():
           if self._bound_context.executing_eagerly():
             outputs = self._bound_context.call_function(
                 self.name,
@@ -247,13 +248,84 @@ def _set_read_only_resource_inputs_attr(op, func_graph):
                         read_only_indices)
 
 
+def partitioned_call_op(
+    name,
+    args,
+    is_stateful,
+    tout,
+    config=None,
+    executor_type=None,
+    xla_compile_attr=None,
+):
+  """Generates a function call op respecting device annotations.
+
+  Args:
+    name: Name of the function to call.
+    args: The arguments of the function, including captured inputs.
+    is_stateful: If the function is stateful.
+    tout: a list containing the output dtypes enums
+    config: (Optional) A `tensorflow::ConfigProto` proto, serialized. If `None`,
+      all optimizations are disabled. Currently only handled for eager defined
+      functions.
+    executor_type: (Optional) A string for the name of the executor to be used
+      in the function call. If not set, or set to an empty string, the default
+      tensorflow executor will be used.
+    xla_compile_attr: (Optional) value of the XLA compilation attribute.
+
+  Returns:
+    Returns the operation.
+  """
+  if config is None:
+    config = function_utils.get_disabled_rewriter_config()
+
+  if executor_type is None:
+    executor_type = ""
+
+  # The generated binding returns an empty list for functions that don't
+  # return any Tensors, hence the need to use `create_op` directly.
+  args = [ops.convert_to_tensor(x) for x in args]
+  tin_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(
+          type=[x.dtype.as_datatype_enum for x in args]))
+  tout_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(type=tout))
+  func_attr = attr_value_pb2.AttrValue(
+      func=attr_value_pb2.NameAttrList(name=name))
+  executor_type_attr = attr_value_pb2.AttrValue(
+      s=compat.as_bytes(executor_type))
+
+  # When running in graph mode, the graph and function graphs are optimized
+  # (i.e. run through grappler) per the session options, so we can disable any
+  # eager-specific rewriting.
+  config_proto = attr_value_pb2.AttrValue(s=config)
+
+  op_name = "StatefulPartitionedCall" if is_stateful else "PartitionedCall"
+
+  # Propagate the attribute indicating the need to compile from function to the
+  # call itself.
+  op_attrs = {
+      "Tin": tin_attr,
+      "Tout": tout_attr,
+      "f": func_attr,
+      "config_proto": config_proto,
+      "executor_type": executor_type_attr,
+  }
+  if xla_compile_attr is not None:
+    op_attrs[attributes_lib.XLA_COMPILE] = xla_compile_attr
+
+  op = ops.get_default_graph().create_op(
+      op_name, args, tout, name=op_name, attrs=op_attrs
+  )
+  return op
+
+
 def make_call_op_in_graph(atomic, tensor_inputs):
   """Adds an AtomicFunction to graph."""
   graph = ops.get_default_graph()
   graph._add_function_recursive(atomic)  # pylint: disable=protected-access
 
   function_call_attrs = atomic.graph_call_attrs
-  op = functional_ops.partitioned_call_op(
+  op = partitioned_call_op(
       name=atomic.name,
       args=tensor_inputs,
       is_stateful=function_call_attrs["is_stateful"],

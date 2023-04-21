@@ -629,11 +629,11 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     PatternRewriter& rewriter, const FusionCluster& fusionCluster) {
   auto loc = fusionCluster.root->getLoc();
 
+  SetVector<Value> inputOperands;
   SmallVector<Value> initOperands =
       getRootOpInitOperands(rewriter, fusionCluster);
 
   // 1. Find operands and results of the cluster op.
-  SetVector<Value> clusterOperands;
   SmallVector<Value> clusterResults;
   SmallVector<Value> constantOps;
   auto visitOpOperand = [&](OpOperand* operand) {
@@ -647,7 +647,7 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     if (fusionCluster.operations.contains(definingOp)) return;
     if (llvm::is_contained(initOperands, operand->get())) return;
 
-    clusterOperands.insert(operand->get());
+    inputOperands.insert(operand->get());
   };
 
   for (Operation* op : fusionCluster.operations) {
@@ -663,6 +663,7 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     }
   }
 
+  SetVector<Value> clusterOperands = inputOperands;
   clusterOperands.insert(initOperands.begin(), initOperands.end());
 
   // 2. Create an empty op.
@@ -670,7 +671,8 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   rewriter.setInsertionPointAfter(fusionCluster.root);
   auto fusionClusterOp = rewriter.create<gml_st::FusionOp>(
       loc, TypeRange(ValueRange(clusterResults)),
-      clusterOperands.getArrayRef());
+      ValueRange(inputOperands.getArrayRef()), ValueRange(initOperands),
+      nullptr, nullptr);
 
   // 3. Create block with mapping between operands and block arguments.
   SmallVector<Type, 4> blockArgTypes =
@@ -728,11 +730,15 @@ LogicalResult inlineFusionCluster(FusionOp fusionOp,
     rewriter.clone(op, mapper);
   }
 
-  SmallVector<Value> yieldOpOperands = llvm::to_vector(
-      llvm::map_range(fusionOp.getTerminator().getOperands(),
-                      [&](Value v) { return mapper.lookupOrDefault(v); }));
+  if (fusionOp.hasTensorSemantics()) {
+    SmallVector<Value> yieldOpOperands = llvm::to_vector(
+        llvm::map_range(fusionOp.getTerminator().getOperands(),
+                        [&](Value v) { return mapper.lookupOrDefault(v); }));
 
-  rewriter.replaceOp(fusionOp, yieldOpOperands);
+    rewriter.replaceOp(fusionOp, yieldOpOperands);
+  } else {
+    rewriter.eraseOp(fusionOp);
+  }
 
   return success();
 }

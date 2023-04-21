@@ -29,20 +29,21 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_color.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
-
-using TaskMap = proto2::Map<uint32_t, Task>;
 
 // JSON generation options.
 struct JsonTraceOptions {
@@ -127,11 +128,7 @@ inline double PicosToMicros(uint64_t ps) { return ps / 1E6; }
 // Also adds double quotes to the beginning and end of the string.
 std::string JsonEscape(absl::string_view raw);
 
-std::string ProtoString(const proto2::Message& pb);
-
-inline Timespan EventSpan(const TraceEvent& event) {
-  return Timespan(event.timestamp_ps(), event.duration_ps());
-}
+std::string ProtoString(const tsl::protobuf::Message& pb);
 
 template <typename RawData, typename IOBuffer>
 void WriteTpuData(const RawData& data, JsonSeparator<IOBuffer>* separator,
@@ -371,7 +368,8 @@ class JsonEventWriter {
 };
 
 template <typename IOBuffer>
-void WriteTasks(const TaskMap& tasks, IOBuffer* output) {
+void WriteTasks(const Trace& trace, IOBuffer* output) {
+  const auto& tasks = trace.tasks();
   if (tasks.empty()) return;
   output->Append(R"("tasks":[)");
   JsonSeparator<IOBuffer> task_separator(output);
@@ -433,9 +431,10 @@ void WriteTasks(const TaskMap& tasks, IOBuffer* output) {
 }
 
 template <typename IOBuffer>
-void WriteStackFrames(const proto2::Map<uint64_t, std::string>& name_table,
+void WriteStackFrames(const Trace& trace,
                       const std::map<uint64_t, uint64_t>& references,
                       IOBuffer* output) {
+  const auto& name_table = trace.name_table();
   output->Append(R"("stackFrames":{)");
   JsonSeparator<IOBuffer> separator(output);
   for (const auto& [fp, name] : name_table) {
@@ -477,8 +476,7 @@ void WriteSelectedDeviceIds(
   output->Append("],");
 }
 
-std::map<uint64_t, uint64_t> BuildStackFrameReferences(
-    const proto2::Map<uint64_t, std::string>& name_table);
+std::map<uint64_t, uint64_t> BuildStackFrameReferences(const Trace& trace);
 
 template <typename IOBuffer>
 void WriteReturnedEventsSize(const int events_size, IOBuffer* output) {
@@ -518,11 +516,11 @@ void TraceEventsToJson(const JsonTraceOptions& options,
 
   const Trace& trace = events.trace();
 
-  WriteTasks(trace.tasks(), output);
+  WriteTasks(trace, output);
 
-  auto references = BuildStackFrameReferences(trace.name_table());
+  auto references = BuildStackFrameReferences(trace);
   if (options.generate_stack_frames) {
-    WriteStackFrames(trace.name_table(), references, output);
+    WriteStackFrames(trace, references, output);
   }
 
   output->Append(R"("traceEvents":[)");

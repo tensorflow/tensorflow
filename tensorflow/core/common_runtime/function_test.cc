@@ -71,7 +71,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 
 void HasError(const Status& s, const error::Code code, StringPiece substr) {
   EXPECT_EQ(s.code(), code) << s;
-  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
+  EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -251,8 +251,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -309,8 +309,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }

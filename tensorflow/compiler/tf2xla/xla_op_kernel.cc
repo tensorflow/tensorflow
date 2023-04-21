@@ -756,8 +756,7 @@ Status XlaOpKernelContext::AssignVariable(absl::string_view name, DataType type,
 static Status GetStatusWithStackTrace(const Status& s,
                                       const XlaOpKernelContext* ctx) {
   if (s.code() == error::INVALID_ARGUMENT) {
-    return Status{s.code(),
-                  absl::StrCat(s.error_message(), "\n", ctx->StackTrace())};
+    return Status{s.code(), absl::StrCat(s.message(), "\n", ctx->StackTrace())};
   }
   return s;
 }

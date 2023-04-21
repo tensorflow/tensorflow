@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -71,9 +72,9 @@ TEST(OptimizeFunctionGraphTest,
       Env::Default(), OptimizedFunctionGraph::AOT);
   EXPECT_TRUE(errors::IsInvalidArgument(aot_result.status()))
       << "Actual status: " << aot_result.status();
-  EXPECT_TRUE(absl::StrContains(aot_result.status().error_message(),
+  EXPECT_TRUE(absl::StrContains(aot_result.status().message(),
                                 "Failed to find function"))
-      << "Actual error message: " << aot_result.status().error_message();
+      << "Actual error message: " << aot_result.status().message();
 }
 
 TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphReturnsCorrectResult) {
@@ -136,6 +137,16 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
     device_set.AddDevice(device.get());
   }
 
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+
   // Expect no caching with an extremely high caching threshold.
   StatusOr<OptimizedFunctionGraphInfo> optimized_info =
       OptimizeFunctionGraphOrReadFromFileCache(
@@ -146,6 +157,15 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   std::vector<string> file_list;
   TF_ASSERT_OK(env->GetMatchingPaths(absl::StrCat(temp_dir, "/*"), &file_list));
   EXPECT_EQ(file_list.size(), 0);
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+                metrics::GraphOptimizationSource::kJit),
+            1);
 
   // Expect one file cache with zero caching threshold duration.
   optimized_info = OptimizeFunctionGraphOrReadFromFileCache(
@@ -158,6 +178,15 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   TF_ASSERT_OK(env->GetMatchingPaths(absl::StrCat(temp_dir, "/_FindDevice"),
                                      &file_list));
   EXPECT_EQ(file_list.size(), 1);
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+                metrics::GraphOptimizationSource::kJit),
+            2);
 
   // Expect one file cache after running for the same function again.
   optimized_info = OptimizeFunctionGraphOrReadFromFileCache(
@@ -169,7 +198,15 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   TF_ASSERT_OK(env->GetMatchingPaths(absl::StrCat(temp_dir, "/_FindDevice"),
                                      &file_list));
   EXPECT_EQ(file_list.size(), 1);
-
+  EXPECT_GT(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
+                metrics::GraphOptimizationSource::kJit),
+            0);
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
+                metrics::GraphOptimizationSource::kJit),
+            1);
+  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+                metrics::GraphOptimizationSource::kJit),
+            2);
   EXPECT_EQ(optimized_info->name, "FindDevice_1234");
   EXPECT_EQ(optimized_info->num_return_nodes, 1);
   EXPECT_THAT(optimized_info->ret_types, ElementsAre(DT_STRING));

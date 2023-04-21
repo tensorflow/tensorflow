@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
+#include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -505,10 +506,10 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
 
   // Start recording the op execution time, given a non-null cost recorder.
   auto* cost_recorder = fallback_request_state->cost_recorder();
-  uint64_t run_start_time_ns = 0;
+  uint64_t run_start_time = 0;
   tfrt::AsyncValueRef<tfrt::Chain> cost_chain;
   if (cost_recorder != nullptr) {
-    run_start_time_ns = Env::Default()->NowNanos();
+    run_start_time = tfrt::GetCpuClockCycle();
     if (op_chain == nullptr) op_chain = &cost_chain;
   }
 
@@ -534,9 +535,9 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   // execution time. (It's not urgent because async ops are rare.)
   if (cost_recorder != nullptr) {
     op_chain->AndThen(
-        [cost_recorder, run_start_time_ns, op_key = frame.op_key().GetValue()] {
-          cost_recorder->RecordCostNanosecond(
-              op_key, Env::Default()->NowNanos() - run_start_time_ns);
+        [cost_recorder, run_start_time, op_key = frame.op_key().GetValue()] {
+          cost_recorder->RecordCostCpuCycle(
+              op_key, tfrt::GetCpuClockCycle() - run_start_time);
         });
   }
 }

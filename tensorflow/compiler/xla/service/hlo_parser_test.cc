@@ -2729,7 +2729,7 @@ TEST_F(HloParserTest, ConstantU4Underflow) {
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "is out of range for literal's primitive type U4");
 }
 
@@ -2741,7 +2741,7 @@ TEST_F(HloParserTest, ConstantU4Overflow) {
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "is out of range for literal's primitive type U4");
 }
 
@@ -2753,7 +2753,7 @@ TEST_F(HloParserTest, ConstantS4Underflow) {
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "is out of range for literal's primitive type S4");
 }
 
@@ -2765,7 +2765,7 @@ TEST_F(HloParserTest, ConstantS4Overflow) {
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "is out of range for literal's primitive type S4");
 }
 

@@ -462,7 +462,7 @@ Graph::Graph(const FunctionLibraryDefinition& flib_def)
     versions_->set_min_consumer(12);
   }
   Status s = ops_.AddLibrary(flib_def);
-  CHECK(s.ok()) << s.error_message();
+  CHECK(s.ok()) << s.message();
 }
 
 Graph::~Graph() {
@@ -767,15 +767,24 @@ Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
                                  const StackTracesMap& stack_traces) {
+  return AddFunctionLibrary(FunctionDefLibrary(fdef_lib), stack_traces);
+}
+
+Status Graph::AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
+                                 const StackTracesMap& stack_traces) {
   // Need a new-enough consumer to support the functions we add to the graph.
   if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
     versions_->set_min_consumer(12);
   }
-  return ops_.AddLibrary(fdef_lib, stack_traces);
+  return ops_.AddLibrary(std::move(fdef_lib), stack_traces);
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
   return AddFunctionLibrary(fdef_lib, /*stack_traces=*/{});
+}
+
+Status Graph::AddFunctionLibrary(FunctionDefLibrary&& fdef_lib) {
+  return AddFunctionLibrary(std::move(fdef_lib), /*stack_traces=*/{});
 }
 
 Status Graph::AddFunctionDef(const FunctionDef& fdef,

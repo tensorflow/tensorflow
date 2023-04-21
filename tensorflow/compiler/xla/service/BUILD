@@ -22,6 +22,7 @@ load(
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
     "if_rocm_is_configured",
 )
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -1287,6 +1288,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor:timer",
         "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
@@ -1596,6 +1598,7 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1605,9 +1608,6 @@ xla_cc_test(
     deps = [
         ":buffer_value",
         ":heap_simulator",
-        ":hlo_alias_analysis",
-        ":hlo_buffer",
-        ":hlo_dataflow_analysis",
         ":hlo_ordering",
         ":hlo_value",
         ":tuple_points_to_analysis",
@@ -1617,11 +1617,8 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -4035,6 +4032,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -4615,13 +4613,10 @@ xla_cc_test(
     deps = [
         ":instruction_hoister",
         ":memory_space_assignment",
-        ":memory_space_assignment_utils",
-        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -6969,7 +6964,15 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-    ]) + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]),
+    ]) + if_rocm_is_configured([
+        "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
+    ]) + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+    ]) + if_rocm([
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
+    ]),
 )
 
 # A simple test of xla_aot_compile which generates an output file from an mhlo file.

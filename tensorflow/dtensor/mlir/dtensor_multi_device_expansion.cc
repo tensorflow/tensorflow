@@ -213,7 +213,7 @@ mlir::LogicalResult ExpandOperations(ExpandedArgumentMap& expanded_arguments,
         if (status.ok()) {
           expanded = true;
         } else {
-          op->emitOpError(status.error_message());
+          op->emitOpError(tsl::NullTerminatedMessage(status));
           return mlir::failure();
         }
       }
@@ -328,7 +328,8 @@ struct DTensorMultiDeviceExpansion
       StatusOr<absl::Span<mlir::Value>> expanded_arguments =
           GetExpandedArguments(main_func, expanded_arguments_map, i);
       if (!expanded_arguments.ok()) {
-        main_func->emitOpError(expanded_arguments.status().error_message());
+        main_func->emitOpError(
+            tsl::NullTerminatedMessage(expanded_arguments.status()));
         return;
       }
     }

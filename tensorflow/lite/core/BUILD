@@ -413,7 +413,7 @@ cc_library(
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//visibility:private",
+        "//tensorflow/lite:__subpackages__",
     ],
 )
 
@@ -477,8 +477,8 @@ cc_test(
     deps = [
         ":framework_stable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
+        "//tensorflow/lite/testing:util",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
     ],
 )

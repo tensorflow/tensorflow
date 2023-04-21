@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_UTILS_FALLBACK_TENSOR_H_
 
 #include "absl/types/variant.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -76,6 +77,10 @@ class FallbackTensor {
 
   FallbackTensor(FallbackTensor&&) = default;
   FallbackTensor& operator=(FallbackTensor&&) = default;
+
+  const TensorBuffer* buffer() const {
+    return tensorflow::DMAHelper::buffer(&tensor());
+  }
 
   bool is_immutable() const {
     return absl::holds_alternative<ImmutableTensor*>(tensor_);

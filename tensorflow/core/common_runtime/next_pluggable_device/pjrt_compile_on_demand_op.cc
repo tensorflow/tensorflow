@@ -54,6 +54,8 @@ Status PjRtCompileOnDemandOp::Compile(
   xla::ExecutableBuildOptions build_options =
       GetExecutableBuildOptions(options, *compilation_result, -1);
   xla::CompileOptions pjrt_compile_options;
+  pjrt_compile_options.argument_layouts.emplace(
+      compilation_result->xla_input_shapes);
   pjrt_compile_options.executable_build_options = build_options;
   pjrt_compile_options.compile_portable_executable = true;
   TF_ASSIGN_OR_RETURN(

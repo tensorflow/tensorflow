@@ -125,20 +125,27 @@ static void EnqueueWorkWhenReady(
   });
 }
 
-TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
-    : id_(id),
-      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int id) : id_(id) {
   debug_string_ = absl::StrCat("TFRT_CPU_", id);
   to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
 }
 
-absl::string_view TfrtCpuDevice::device_kind() const {
+absl::string_view TfrtCpuDeviceDescription::device_kind() const {
   return kCpuPlatformName;
 }
 
-absl::string_view TfrtCpuDevice::DebugString() const { return debug_string_; }
+absl::string_view TfrtCpuDeviceDescription::DebugString() const {
+  return debug_string_;
+}
 
-absl::string_view TfrtCpuDevice::ToString() const { return to_string_; }
+absl::string_view TfrtCpuDeviceDescription::ToString() const {
+  return to_string_;
+}
+
+TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
+    : description_(id),
+      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+}
 
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
@@ -1068,18 +1075,25 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   bool should_sync_copy = device_buffer_wait_avs.empty() &&
                           literal->size_bytes() < kSmallDataTransferByteSize;
+  StatusOr<Shape> device_shape = logical_on_device_shape();
+  if (!device_shape.ok()) {
+    return PjRtFuture<Status>(device_shape.status());
+  }
   if (should_sync_copy) {
     if (!on_device_shape().IsTuple()) {
       const std::shared_ptr<MaybeOwningCpuMemory>& b =
           device_buffer->Buffers()[0];
-      std::memcpy(literal->untyped_data(), b->data(), b->size());
+      std::memcpy(literal->untyped_data(), b->data(),
+                  ShapeUtil::ByteSizeOf(*device_shape));
     } else {
       // Tuple case.
       int num_leaves = literal->shape().tuple_shapes().size();
       for (int i = 0; i < num_leaves; ++i) {
         const std::shared_ptr<MaybeOwningCpuMemory>& b =
             device_buffer->Buffers()[i];
-        std::memcpy(literal->untyped_data({i}), b->data(), b->size());
+        std::memcpy(
+            literal->untyped_data({i}), b->data(),
+            ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(*device_shape, {i})));
       }
     }
     // Unblock ToLiteral caller.
@@ -1094,7 +1108,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         client()->pjrt_client_thread_pool(), device_buffer_wait_avs,
         [this, device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
          literal, ready_event = ready_event.CopyRef(), device_buffer,
-         ready_on_exit = std::move(ready_on_exit)]() mutable {
+         device_shape, ready_on_exit = std::move(ready_on_exit)]() mutable {
           tsl::profiler::TraceMe traceme("D2H Dispatch");
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
@@ -1108,14 +1122,17 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           if (!on_device_shape().IsTuple()) {
             const std::shared_ptr<MaybeOwningCpuMemory>& b =
                 device_buffer->Buffers()[0];
-            std::memcpy(literal->untyped_data(), b->data(), b->size());
+            std::memcpy(literal->untyped_data(), b->data(),
+                        ShapeUtil::ByteSizeOf(*device_shape));
           } else {
             // Tuple case.
             int num_leaves = literal->shape().tuple_shapes().size();
             for (int i = 0; i < num_leaves; ++i) {
               const std::shared_ptr<MaybeOwningCpuMemory>& b =
                   device_buffer->Buffers()[i];
-              std::memcpy(literal->untyped_data({i}), b->data(), b->size());
+              std::memcpy(literal->untyped_data({i}), b->data(),
+                          ShapeUtil::ByteSizeOf(
+                              ShapeUtil::GetSubshape(*device_shape, {i})));
             }
           }
 
@@ -1445,7 +1462,7 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
 static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
     absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
   std::vector<xla::cpu::BufferDesc> descriptor_table;
-  descriptor_table.reserve(descriptor_table.size());
+  descriptor_table.reserve(buffer_table.size());
   for (const auto& buf : buffer_table) {
     descriptor_table.emplace_back(
         xla::cpu::BufferDesc{buf->data(), buf->size()});

@@ -1593,7 +1593,8 @@ AliasSet BuildAliasSet(const HloModule* module,
     }
   });
 
-  // Uses the same sharding spec for while loop related instructions.
+  // Uses the same sharding spec for while loop and conditional related
+  // instructions.
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
@@ -1610,6 +1611,18 @@ AliasSet BuildAliasSet(const HloModule* module,
             strategy_map
                 .at(instruction->while_condition()->parameter_instruction(0))
                 .get());
+      } else if (instruction->opcode() == HloOpcode::kConditional) {
+        auto branch_computations = instruction->branch_computations();
+        for (size_t i = 0; i < branch_computations.size(); ++i) {
+          const auto& branch_computation = branch_computations[i];
+          traverse_tuple_alias(
+              strategy_map.at(instruction).get(),
+              strategy_map.at(branch_computation->root_instruction()).get());
+          traverse_tuple_alias(
+              strategy_map.at(instruction->operand(i + 1)).get(),
+              strategy_map.at(branch_computation->parameter_instruction(0))
+                  .get());
+        }
       }
     }
   }

@@ -210,7 +210,7 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
         status.code(),
         absl::StrCat("Failed copying input tensor from ", handle_device->name(),
                      " to ", expected_input_device->name(), " in order to run ",
-                     op->Name(), ": ", status.error_message()));
+                     op->Name(), ": ", status.message()));
   }
 
   *result = result_handle;

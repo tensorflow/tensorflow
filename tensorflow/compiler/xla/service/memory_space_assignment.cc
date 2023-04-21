@@ -1745,6 +1745,9 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
   }
 
+  // TODO(b/275905276): if slicing is turned on, ensure repacking is disabled,
+  // i.e., max_repacks == 0
+
   AllocateReservedScopedAllocations();
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -3818,6 +3821,10 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
       continue;
     }
 
+    // TODO(b/275905276): when slicing, compute start times and sizes for
+    // each slice
+
+    // TODO(b/275905276): pass slice info to FindBestChunkCandidate
     auto chunk_candidate = FindBestChunkCandidate(
         request, request.preferred_offset, &alternate_mem_interval);
     // Check if we could find a suitable chunk.
@@ -3831,6 +3838,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
               << options_.prefetch_interval_picker->ToDebugString();
       AddToPendingChunks(alternate_mem_interval, *chunk_candidate);
 
+      // TODO(b/275905276): when slicing, account for multiple chunks & call
+      // AddAsyncSlicedCopy
       AddAsyncCopy(prev_allocation_in_default_mem, MemorySpace::kAlternate,
                    chunk_candidate, alternate_mem_interval.start,
                    request.end_time, prefetch_end_time,

@@ -149,6 +149,7 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
+  pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(CreateTPUClusterFormationPass());
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.

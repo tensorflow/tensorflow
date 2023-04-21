@@ -328,13 +328,18 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
         Executable::GetResultsMemoryLayout(*runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
+    bool requires_blas = false;
+    if (Attribute requires_blas_attr = func->getAttr("xla.requires_blas")) {
+      requires_blas = cast<BoolAttr>(requires_blas_attr).getValue();
+    }
+
     // Add function with an unresolved function pointer; it will be updated once
     // we compile the input module to the native executable.
     functions.push_back(Executable::Function(
         name,
         /*fptr=*/nullptr, std::move(*signature), std::move(*runtime_signature),
-        std::move(*arguments_memory_layout),
-        std::move(*results_memory_layout)));
+        std::move(*arguments_memory_layout), std::move(*results_memory_layout),
+        requires_blas));
   }
 
   // Run the compilation pipeline to lower the module to LLVM dialect.

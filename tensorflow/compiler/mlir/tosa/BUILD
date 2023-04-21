@@ -179,6 +179,7 @@ cc_library(
     name = "tfl_passes",
     srcs = [
         "tfl_passes.cc",
+        "transforms/convert_metadata.cc",
         "transforms/convert_tfl_uint8.cc",
         "transforms/legalize_tfl.cc",
         "transforms/lower_complex_types.cc",
@@ -187,6 +188,7 @@ cc_library(
         "transforms/strip_metadata.cc",
         "transforms/strip_quant_types.cc",
         "transforms/tfl_legalize_patterns.inc",
+        "transforms/verify_fully_converted.cc",
     ],
     hdrs = [
         "tfl_passes.h",
@@ -209,6 +211,7 @@ cc_library(
         "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",

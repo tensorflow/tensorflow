@@ -30,7 +30,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -2293,7 +2293,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # confusion, we disallow the 'mixed_float16' policy with unsupported
       # strategies. This is because 'mixed_float16' requires loss scaling for
       # numeric stability.
-      strategy = ds_context.get_strategy()
+      strategy = distribute_lib.get_strategy()
       raise ValueError('Mixed precision is not supported with the '
                        'tf.distribute.Strategy: %s. Either stop using mixed '
                        'precision by removing the use of the "%s" policy or '

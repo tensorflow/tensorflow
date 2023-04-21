@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
@@ -641,10 +642,17 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
     StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
         ReadFromCache(file_name, env);
     if (optimized_function_graph_info.ok()) {
+      metrics::UpdateFunctionGraphOptimizationSavingTime(
+          optimized_function_graph_info->optimization_duration_usecs,
+          metrics::GraphOptimizationSource::kJit);
+      metrics::IncrementFunctinGraphOptimizationCacheHitCount(
+          1, metrics::GraphOptimizationSource::kJit);
       return optimized_function_graph_info;
     }
 
     // Run the optimization passes if reading from cache fails.
+    metrics::IncrementFunctionGraphOptimizationCacheFailureCount(
+        1, metrics::GraphOptimizationSource::kJit);
     LOG(ERROR) << "Reading from file cache failed. Continue to run the "
                   "optimization passes instead. Error message: "
                << optimized_function_graph_info.status().ToString();
@@ -656,6 +664,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Scenario (3): No file cache exists for this function.
   // Run the optimization (Step 1) then write to the cache if eligible (Step 2).
+  metrics::IncrementFunctinGraphOptimizationCacheMissCount(
+      1, metrics::GraphOptimizationSource::kJit);
   VLOG(3) << "No cache existed; run the optimization passes. function name:"
           << " " << function_name;
 
@@ -718,8 +728,8 @@ PreprocessAndPartitionGraph(
 
   // Dump graph before the partition starts.
   DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
-                                 "before_partition", graph.get(), lib_def,
-                                 VLOG_IS_ON(4));
+                                 "before_partition", graph.get(),
+                                 &input_optimized_graph.lib_def, VLOG_IS_ON(4));
 
   // Partition the graph.
   auto device_name_to_subgraphs =
@@ -732,9 +742,9 @@ PreprocessAndPartitionGraph(
     std::string partitioned_func_name =
         absl::StrCat(function_name, "_partition_" + pair.first);
     const auto* optimized_subgraph = pair.second.get();
-    DEBUG_DATA_DUMPER()->DumpGraph(partitioned_func_name, kDebugGroupMain,
-                                   "before_partition_passes",
-                                   optimized_subgraph, lib_def, false);
+    DEBUG_DATA_DUMPER()->DumpGraph(
+        partitioned_func_name, kDebugGroupMain, "before_partition_passes",
+        optimized_subgraph, &input_optimized_graph.lib_def, false);
   }
 
   // Doing post-partitioning passes.
@@ -762,7 +772,7 @@ PreprocessAndPartitionGraph(
     const auto* optimized_subgraph = pair.second.get();
     DEBUG_DATA_DUMPER()->DumpGraph(partitioned_func_name, kDebugGroupMain,
                                    "after_partition_passes", optimized_subgraph,
-                                   lib_def, false);
+                                   &input_optimized_graph.lib_def, false);
   }
 
   return std::move(device_name_to_subgraphs);
