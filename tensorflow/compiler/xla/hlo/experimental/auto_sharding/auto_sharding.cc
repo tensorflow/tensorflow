@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/matrix.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/metrics.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -432,6 +433,19 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
   return resharding_costs;
 }
 
+// TODO(pratikf) Communication costs for sort HLO ops. This is currently a
+// placeholder approximation and should be improved.
+double ComputeSortCommunicationCost(int64_t sort_dim,
+                                    int64_t operand_sharded_dim,
+                                    int64_t mesh_sharding_dim,
+                                    const Shape& shape,
+                                    const ClusterEnvironment& cluster_env) {
+  if (sort_dim == operand_sharded_dim) {
+    return cluster_env.AllToAllCost(GetBytes(shape), mesh_sharding_dim);
+  }
+  return 0;
+}
+
 // Enumerate all 1d partition strategies.
 void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
                              const Array<int64_t>& device_mesh,
@@ -474,6 +488,12 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
       } else {
         resharding_costs = GenerateReshardingCostsForAllOperands(
             ins, output_spec, strategy_map, cluster_env, call_graph);
+      }
+      if (ins->opcode() == HloOpcode::kSort) {
+        auto sort_ins = xla::DynCast<HloSortInstruction>(ins);
+        CHECK(sort_ins);
+        communication_cost = ComputeSortCommunicationCost(
+            sort_ins->sort_dimension(), i, j, shape, cluster_env);
       }
       strategies->leaf_vector.push_back(
           ShardingStrategy({name,
@@ -544,6 +564,20 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
       } else {
         resharding_costs = GenerateReshardingCostsForAllOperands(
             ins, output_spec, strategy_map, cluster_env, call_graph);
+      }
+      // TODO(pratikf) Communication costs for sort HLO ops. This is currently a
+      // placeholder approximation and should be improved.
+      if (ins->opcode() == HloOpcode::kSort) {
+        auto sort_ins = xla::DynCast<HloSortInstruction>(ins);
+        CHECK(sort_ins);
+
+        if (sort_ins->sort_dimension() == i) {
+          communication_cost = ComputeSortCommunicationCost(
+              sort_ins->sort_dimension(), i, 0, shape, cluster_env);
+        } else if (sort_ins->sort_dimension() == j) {
+          communication_cost = ComputeSortCommunicationCost(
+              sort_ins->sort_dimension(), j, 1, shape, cluster_env);
+        }
       }
       strategies->leaf_vector.push_back(
           ShardingStrategy({name,
@@ -1842,7 +1876,18 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             CreateAllStrategiesVector(
                 ins, ins->shape(), instruction_id, leaf_strategies, cluster_env,
                 strategy_map, solver_option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible, true)
+                call_graph, only_allow_divisible,
+                /*create_replicated_strategies*/ true)
+                .value();
+        break;
+      }
+      case HloOpcode::kSort: {
+        strategies =
+            CreateAllStrategiesVector(
+                ins, ins->shape(), instruction_id, leaf_strategies, cluster_env,
+                strategy_map, solver_option, replicated_penalty, batch_dim_map,
+                call_graph, only_allow_divisible,
+                /*create_replicated_strategies*/ true)
                 .value();
         break;
       }
