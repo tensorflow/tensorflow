@@ -25,8 +25,7 @@ GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
   info.name = "NVIDIA RTX A6000";
   info.threads_per_block_limit = 1024;
   info.threads_per_warp = 32;
-  info.shared_memory_per_block = 48 * 1024;
-  info.shared_memory_per_block_optin = 99 * 1024;
+  info.shared_memory_per_block = 49152;
   info.shared_memory_per_core = 100 * 1024;
   info.threads_per_core_limit = 1536;
   info.core_count = 84;

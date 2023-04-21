@@ -139,8 +139,7 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   // amount works as well, not only the full size.
   const int n_cols = executor->GetDeviceDescription().threads_per_block_limit();
   const int n_rows =
-      0.9 * executor->GetDeviceDescription().shared_memory_per_block_optin() /
-      n_cols;
+      0.9 * executor->GetDeviceDescription().shared_memory_per_block() / n_cols;
   const int n_elements = n_cols * n_rows;
   using data_type = uint8_t;
   constexpr int max_value = UINT8_MAX;

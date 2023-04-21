@@ -502,14 +502,9 @@ class GpuDriver {
   static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
       GpuDeviceHandle device);
 
-  // Returns the amount of static shared memory available for a single block
+  // Returns the amount of shared memory available for a single block
   // (cooperative thread array).
   static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(
-      GpuDeviceHandle device);
-
-  // Returns the total amount of shared memory available for a single block
-  // (cooperative thread array).
-  static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerBlockOptin(
       GpuDeviceHandle device);
 
   // Returns the maximum supported number of registers per block.

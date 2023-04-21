@@ -40,7 +40,6 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
         ::testing::FieldsAre(
             test_info.name, test_info.threads_per_block_limit,
             test_info.threads_per_warp, test_info.shared_memory_per_block,
-            test_info.shared_memory_per_block_optin,
             test_info.shared_memory_per_core, test_info.threads_per_core_limit,
             test_info.core_count, test_info.fpus_per_core,
             test_info.block_dim_limit_x, test_info.block_dim_limit_y,
@@ -55,7 +54,6 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
         ::testing::FieldsAre(
             name, /*threads_per_block_limit=*/1024,
             /*threads_per_warp=*/32, /*shared_memory_per_block=*/48 * 1024,
-            /*shared_memory_per_block_optin=*/48 * 1024,
             /*shared_memory_per_core=*/96 * 1024,
             /*threads_per_core_limit=*/2048, /*core_count=*/5,
             /*fpus_per_core=*/128,
@@ -71,7 +69,6 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
         ::testing::FieldsAre(name, /*threads_per_block_limit=*/1024,
                              /*threads_per_warp=*/32,
                              /*shared_memory_per_block=*/48 * 1024,
-                             /*shared_memory_per_block_optin=*/48 * 1024,
                              /*shared_memory_per_core=*/64 * 1024,
                              /*threads_per_core_limit=*/2048, /*core_count=*/56,
                              /*fpus_per_core=*/64,
