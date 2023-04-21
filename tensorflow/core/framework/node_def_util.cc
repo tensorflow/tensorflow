@@ -1035,4 +1035,11 @@ Status MaybeUpdateColocationConstraintsWithMap(
   return OkStatus();
 }
 
+void ChangeToNoOp(NodeDef* node_def) {
+  node_def->set_op("NoOp");
+  // NoOp nodes have no outputs. Remove any full type information describing
+  // any outputs the node previous had.
+  node_def->clear_experimental_type();
+}
+
 }  // namespace tensorflow
