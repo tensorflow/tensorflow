@@ -301,7 +301,49 @@ TEST(UnsignedQuantizedMean, DISABLED_3DReduceBatchKeepDims) {
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantizedMean, DISABLED_3DReduceWidthSqueezeDims) {
+TEST(UnsignedQuantizedMean, 3DReduceBatchWidthSqueezeDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedReduceTester()
+      .Unsigned(true)
+      .InputShape({batch, width, channels})
+      .Axes({0, 1})
+      .KeepDims(false)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(UnsignedQuantizedMean, 3DReduceBatchWidthKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedReduceTester()
+      .Unsigned(true)
+      .InputShape({batch, width, channels})
+      .Axes({0, 1})
+      .KeepDims(true)
+      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+}
+
+TEST(UnsignedQuantizedMean, 3DReduceWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -322,7 +364,7 @@ TEST(UnsignedQuantizedMean, DISABLED_3DReduceWidthSqueezeDims) {
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantizedMean, DISABLED_3DReduceWidthKeepDims) {
+TEST(UnsignedQuantizedMean, 3DReduceWidthKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -385,7 +427,7 @@ TEST(UnsignedQuantizedMean, DISABLED_3DReduceChannelsKeepDims) {
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantizedMean, DISABLED_2DReduceBatchSqueezeDims) {
+TEST(UnsignedQuantizedMean, 2DReduceBatchSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -405,7 +447,7 @@ TEST(UnsignedQuantizedMean, DISABLED_2DReduceBatchSqueezeDims) {
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantizedMean, DISABLED_2DReduceBatchKeepDims) {
+TEST(UnsignedQuantizedMean, 2DReduceBatchKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
