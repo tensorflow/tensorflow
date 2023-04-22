@@ -102,22 +102,22 @@ template <typename T>
 std::string TypeString();
 
 template <>
-std::string TypeString<float>() {
+inline std::string TypeString<float>() {
   return "float";
 }
 
 template <>
-std::string TypeString<double>() {
+inline std::string TypeString<double>() {
   return "double";
 }
 
 template <>
-std::string TypeString<std::complex<float>>() {
+inline std::string TypeString<std::complex<float>>() {
   return "std::complex<float>";
 }
 
 template <>
-std::string TypeString<std::complex<double>>() {
+inline std::string TypeString<std::complex<double>>() {
   return "std::complex<double>";
 }
 
