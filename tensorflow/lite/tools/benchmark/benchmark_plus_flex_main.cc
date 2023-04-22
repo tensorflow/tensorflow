@@ -22,7 +22,7 @@ namespace benchmark {
 
 int Main(int argc, char** argv) {
   ::tflite::InitTensorFlow();
-  TFLITE_LOG(INFO) << "STARTING!";
+  TFLITE_LOG(INFO) << "STARTING2!";
   BenchmarkTfLiteModel benchmark;
   benchmark.Run(argc, argv);
   return 0;

@@ -1,8 +1,9 @@
-"""Generate Flatbuffer binary from json."""
+"""Build macros for TF Lite."""
 
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
+    "if_oss",
     "tf_binary_additional_srcs",
     "tf_cc_shared_object",
     "tf_cc_test",
@@ -122,12 +123,33 @@ def tflite_symbol_opts():
         ],
     })
 
+def tflite_linkopts_no_undefined():
+    """Defines linker flags to enable errors for undefined symbols.
+
+    This enables link-time errors for undefined symbols even when linking
+    shared libraries, where the default behaviour on many systems is to only
+    report errors for undefined symbols at runtime.
+    """
+    return if_oss(
+        ["-Wl,--no-undefined"],
+        select({
+            # Can't enable errors for undefined symbols for asan/msan/tsan mode,
+            # since undefined symbols in shared libraries (references to symbols
+            # that will be defined in the main executable) are normal and
+            # expected in those cases.
+            "//tools/cpp:asan_build": [],
+            "//tools/cpp:msan_build": [],
+            "//tools/cpp:tsan_build": [],
+            "//conditions:default": ["-Wl,--no-undefined"],
+        }),
+    )
+
 def tflite_linkopts():
-    """Defines linker flags to reduce size of TFLite binary."""
+    """Defines linker flags for linking TFLite binary."""
     return tflite_linkopts_unstripped() + tflite_symbol_opts()
 
 def tflite_jni_linkopts():
-    """Defines linker flags to reduce size of TFLite binary with JNI."""
+    """Defines linker flags for linking TFLite binary with JNI."""
     return tflite_jni_linkopts_unstripped() + tflite_symbol_opts()
 
 def tflite_jni_binary(
@@ -199,7 +221,6 @@ def tf_to_tflite(name, src, options, out):
     toco_cmdline = " ".join([
         "$(location //tensorflow/lite/python:tflite_convert)",
         "--enable_v1_converter",
-        "--experimental_new_converter",
         ("--graph_def_file=$(location %s)" % src),
         ("--output_file=$(location %s)" % out),
     ] + options)
@@ -1008,6 +1029,10 @@ def tflite_combine_cc_tests(
         # Tests with data, args or special build option are not counted.
         if r["data"] or r["args"] or r["copts"] or r["defines"] or \
            r["includes"] or r["linkopts"] or r["additional_linker_inputs"]:
+            continue
+
+        # We only consider a single-src-file unit test.
+        if len(r["srcs"]) > 1:
             continue
 
         dep_attr = r["deps"]

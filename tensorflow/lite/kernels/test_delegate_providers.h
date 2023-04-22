@@ -64,6 +64,9 @@ class KernelTestDelegateProviders {
     return delegate_list_util_.CreateAllRankedDelegates();
   }
 
+  // An option name to use Simple Memory Allocator.
+  static constexpr char kUseSimpleAllocator[] = "use_simple_allocator";
+
  private:
   // Contain delegate-related parameters that are initialized from command-line
   // flags.

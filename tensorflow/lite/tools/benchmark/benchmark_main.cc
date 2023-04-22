@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
+#include <fstream>
 
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -22,6 +23,11 @@ namespace tflite {
 namespace benchmark {
 
 int Main(int argc, char** argv) {
+
+  // std::ofstream offile("a_Bert/mobile_bert/layer.txt");
+  // offile << "0" << std::endl;
+  // offile.close();
+
   TFLITE_LOG(INFO) << "STARTING!";
   BenchmarkTfLiteModel benchmark;
   if (benchmark.Run(argc, argv) != kTfLiteOk) {

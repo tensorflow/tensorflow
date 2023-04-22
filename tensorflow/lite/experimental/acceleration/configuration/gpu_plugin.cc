@@ -89,8 +89,8 @@ GpuPlugin::GpuPlugin(const TFLiteSettings& tflite_settings)
   if (gpu_settings->cache_directory() &&
       gpu_settings->cache_directory()->size() > 0 &&
       gpu_settings->model_token() && gpu_settings->model_token()->size()) {
-    cache_dir_ = gpu_settings->cache_directory()->string_view();
-    model_token_ = gpu_settings->model_token()->string_view();
+    cache_dir_ = gpu_settings->cache_directory()->str();
+    model_token_ = gpu_settings->model_token()->str();
     options_.serialization_dir = cache_dir_.c_str();
     options_.model_token = model_token_.c_str();
     options_.experimental_flags |=

@@ -32,10 +32,14 @@ limitations under the License.
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
+#include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
+
+class SingleOpModel;  // Class for friend declarations.
+
 namespace delegates {
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
@@ -45,6 +49,7 @@ class TestDelegate;  // Class for friend declarations.
 class Subgraph {
  public:
   friend class Interpreter;
+  friend class SingleOpModel;
 
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
@@ -212,9 +217,6 @@ class Subgraph {
   // Change the dimensionality of a given tensor. Note, this is only acceptable
   // for tensor indices that are inputs.
   // Returns status of failure or success.
-  // TODO(aselle): Consider implementing ArraySlice equivalent to make this
-  //   more adept at accepting data without an extra copy. Use absl::ArraySlice
-  //   if our partners determine that dependency is acceptable.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
@@ -273,7 +275,6 @@ class Subgraph {
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
   // WARNING: This is an experimental API and subject to change.
-  // TODO(b/119495520): make this private when refactoring complete.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     TfLiteTensor* t = &tensors_[tensor_index];
     TF_LITE_ENSURE(&context_, t != nullptr);
@@ -329,9 +330,9 @@ class Subgraph {
   // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
-  // NOTE: User needs to call AllocateTensors() after this. In case of input
-  // resizing, buffers will be checked for required data size during
-  // AllocateTensors().
+  // NOTE: User needs to call AllocateTensors() after this.
+  // Invalid/insufficient buffers will cause an error during AllocateTensors or
+  // Invoke (in case of dynamic shapes in the graph).
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -353,6 +354,17 @@ class Subgraph {
 
   void SetName(const char* name);
   const std::string& GetName() const;
+
+  // WARNING: This is an experimental API and subject to change.
+  // Dumps debugging info by the underlying memory planner.
+  // Note: to have minimal binary increase caused by this debug info dump for
+  // the TfLite library and allow users to plug-in their own memory planner
+  // debugger, we have utilized weak symbols to meet these two requirements. By
+  // default, there is no debugging info dumped. However, if the TfLite-provided
+  // lite:simple_memory_arena_debug_dump (i.e. containing the strong defintion)
+  // is linked to the program, calling this function will output memory usage
+  // information about tenosrs and ops.
+  void DumpMemoryPlannerDebugInfo() const;
 
  private:
   friend class InterpreterBuilder;
@@ -488,7 +500,6 @@ class Subgraph {
   TfLiteStatus ResizeTensorImpl(TfLiteTensor* tensor, TfLiteIntArray* new_size);
 
   // Report a detailed error string (will be printed to stderr).
-  // TODO(aselle): allow user of class to provide alternative destinations.
   void ReportErrorImpl(const char* format, va_list args);
 
   // Entry point for C node plugin API to request an tensor be resized.
@@ -556,6 +567,17 @@ class Subgraph {
       struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegateParams** partition_params_array, int* num_partitions);
 
+  // Retrieves named metadata from the TFLite model. Returns kTfLiteOk if
+  // metadata is successfully obtained.
+  // See the Metadata table in TFLite schema.
+  TfLiteStatus GetModelMetadata(const char* name, const char** ptr,
+                                size_t* bytes);
+
+  // Entry point for C node plugin API to get model metadata based on name.
+  static TfLiteStatus GetModelMetadata(const struct TfLiteContext* context,
+                                       const char* name, const char** ptr,
+                                       size_t* bytes);
+
   // Used to clear partitioning_preview_cache_, in case
   // PreviewDelegatePartitioning was called.
   void FreeDelegatePartitioningData();
@@ -608,6 +630,9 @@ class Subgraph {
   // Returns true if the subgraph has delegates applied.
   bool HasDelegates();
 
+  // Returns true if the subgraph has been fully delegated.
+  bool IsFullyDelegated() const;
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);
@@ -635,6 +660,15 @@ class Subgraph {
   // condition and body subgraphs.
   bool OpMightHaveSideEffect(const TfLiteNode* node,
                              const TfLiteRegistration* registration) const;
+
+  // Returns new GraphInfo object based on the current Subgraph.
+  std::unique_ptr<GraphInfo> CreateGraphInfo();
+
+  // Store a ptr to the model metadata owned by the Interpreter.
+  // Since the lifetime of the Interpreter exceeds the Subgraph, metadata
+  // remains valid for the latter's lifetime.
+  // Also sets relevant fields on context_ based on known metadata.
+  TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata);
 
   // The state of the Interpreter.
   enum State {
@@ -736,8 +770,8 @@ class Subgraph {
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
-  // Contains <tensor idx, custom allocation> pairs for all applicable tensors.
-  std::vector<std::pair<int, TfLiteCustomAllocation>> custom_allocations_;
+  // Maps tensor index to custom allocation for all applicable tensors.
+  std::map<int, TfLiteCustomAllocation> custom_allocations_;
 
   // Tracking bit for whether a tensor was resized in the course of an op
   // invocation. This is a useful hint to ensure that dynamic tensor outputs
@@ -755,6 +789,12 @@ class Subgraph {
   // public function).
   // The value is invalid before `PrepareOpStartingAt` is called.
   bool has_dynamic_tensors_ = true;
+
+  // WARNING: This is an experimental interface that is subject to change.
+  // This is the index of dynamic tensor which was checked at
+  // PrepareOpsStartingAt() when `has_dynamic_tensors_` is set. This information
+  // is kept only for user error message.
+  int dynamic_tensor_index_ = -1;
 
   // Reference to cancellation function that can cancel a request in the middle
   // of a call to Invoke(). When this function returns True, a kTfLiteError is
@@ -782,6 +822,9 @@ class Subgraph {
   // Whether memory planner should be instantiated to retain intermediates for
   // debugging.
   bool preserve_all_tensors_ = false;
+
+  // Model-metadata owned by the Interpreter.
+  const std::map<std::string, std::string>* metadata_ = nullptr;
 };
 
 }  // namespace tflite

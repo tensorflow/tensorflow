@@ -124,8 +124,7 @@ TfLiteTensorView::StringBuffer::StringBuffer(TfLiteTensorView *t_view)
 }
 
 TfLiteTensorView::StringBuffer::~StringBuffer() {
-  if (wrapped_tensor == nullptr || buffer.empty()) return;
-  VLOG(2) << "Flushing: " << buffer.data();
+  if (wrapped_tensor == nullptr) return;
   tflite::DynamicBuffer buf;
   for (const auto &s : buffer) buf.AddString(s.data(), s.length());
   buf.WriteToTensor(wrapped_tensor, /*new_shape=*/nullptr);

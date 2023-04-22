@@ -410,6 +410,24 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
+TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
+                                     const TfLiteTensor* input,
+                                     TfLiteIntArray** output_shape) {
+  if (NumDimensions(input) != 1) {
+    TF_LITE_KERNEL_LOG(const_cast<TfLiteContext*>(context),
+                       "Invalid %dD input tensor (must be a 1D tensor).",
+                       NumDimensions(input));
+    return kTfLiteError;
+  }
+  const int output_dims = SizeOfDimension(input, 0);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
+      TfLiteIntArrayCreate(output_dims), TfLiteIntArrayFree);
+  for (int i = 0; i < output_dims; i++) {
+    shape->data[i] = input->data.i32[i];
+  }
+  *output_shape = shape.release();
+  return kTfLiteOk;
+}
 
 // TODO(b/172067338): Having this function be part of TF_LITE_STATIC_MEMORY
 // build results in a 6KB size increase, even though the function is unsused for

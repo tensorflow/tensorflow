@@ -1,6 +1,6 @@
 """Rules for generating unit-tests using hexagon delegates."""
 
-load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_mobile_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_mobile_test")  #'@unused'
 
 def hexagon_op_tests(
         srcs = [],
@@ -38,4 +38,5 @@ def hexagon_op_tests(
             "notap",
         ],
     )
-    tflite_hexagon_mobile_test(all_ops_test_name)
+    # Re-enable after b/195062187 is fixed.
+    # tflite_hexagon_mobile_test(all_ops_test_name)

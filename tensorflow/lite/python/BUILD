@@ -186,6 +186,7 @@ py_library(
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/python/optimize:calibrator",
+        "//tensorflow/lite/tools/optimize/debugging/python:debugger",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -237,7 +238,7 @@ py_test(
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 18,
     srcs_version = "PY3",
     tags = [
         "no_windows",
@@ -384,6 +385,7 @@ py_library(
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
+        "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
@@ -584,8 +586,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/python:wrap_toco",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/tools:visualize_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

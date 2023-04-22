@@ -40,6 +40,7 @@ from tensorflow.lite.python.metrics_wrapper import metrics_wrapper as _metrics_w
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader as _resource_loader
@@ -205,8 +206,8 @@ def mlir_quantize(input_data_str,
                   output_data_type=dtypes.float32,
                   enable_numeric_verify=False,
                   enable_whole_model_verify=False,
-                  blocklisted_ops=None,
-                  blocklisted_nodes=None):
+                  denylisted_ops=None,
+                  denylisted_nodes=None):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -226,9 +227,9 @@ def mlir_quantize(input_data_str,
     disabled (per-layer) float and quantized ops will be run from same input
     (output of previous quantized layer). When enabled, float and quantized ops
     will run with respective float and quantized output of previous ops.
-    blocklisted_ops: Experimental. Subject to change. Set of ops to blocklist.
-    blocklisted_nodes: Experimental. Subject to change. Set of notes to
-      blocklist.
+    denylisted_ops: Experimental. Subject to change. Set of ops to denylist.
+    denylisted_nodes: Experimental. Subject to change. Set of notes to
+      denylist.
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
@@ -237,8 +238,8 @@ def mlir_quantize(input_data_str,
       input_data_str, disable_per_channel, fully_quantize, inference_type,
       convert_tensor_tf_type_to_tflite_type(input_data_type),
       convert_tensor_tf_type_to_tflite_type(output_data_type),
-      enable_numeric_verify, enable_whole_model_verify, blocklisted_ops,
-      blocklisted_nodes)
+      enable_numeric_verify, enable_whole_model_verify, denylisted_ops,
+      denylisted_nodes)
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)
@@ -282,7 +283,8 @@ def toco_convert_protos(model_flags_str,
       `toco/model_flags.proto`.
     toco_flags_str: Serialized proto describing conversion properties, see
       `toco/toco_flags.proto`.
-    input_data_str: Input data in serialized form (e.g. a graphdef is common)
+    input_data_str: Input data in serialized form (e.g. a graphdef is common, or
+      it can be hlo text or proto)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information. (default None)
     enable_mlir_converter: Enables MLIR-based conversion instead of the default
@@ -444,8 +446,12 @@ def build_toco_flags(inference_type=dtypes.float32,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
                      lower_tensor_list_ops=True,
+                     default_to_single_batch_in_tensor_list_ops=False,
                      accumulation_type=None,
                      allow_bfloat16=False,
+                     unfold_large_splat_constant=False,
+                     supported_backends=None,
+                     disable_per_channel_quantization=False,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -482,11 +488,15 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.enable_tflite_resource_variables = enable_tflite_resource_variables
   toco.unfold_batchmatmul = unfold_batchmatmul
   toco.lower_tensor_list_ops = lower_tensor_list_ops
+  toco.default_to_single_batch_in_tensor_list_ops = default_to_single_batch_in_tensor_list_ops
+  toco.unfold_large_splat_constant = unfold_large_splat_constant
   if accumulation_type:
     toco.accumulation_type = convert_tensor_tf_type_to_tflite_type(
         accumulation_type, usage="accumulation_type flag")
   toco.allow_bfloat16 = allow_bfloat16
-
+  if supported_backends:
+    toco.supported_backends.extend(supported_backends)
+  toco.disable_per_channel_quantization = disable_per_channel_quantization
   return toco
 
 
@@ -519,8 +529,12 @@ def build_toco_convert_protos(input_tensors,
                               allow_all_select_tf_ops=False,
                               unfold_batchmatmul=True,
                               lower_tensor_list_ops=True,
+                              default_to_single_batch_in_tensor_list_ops=False,
                               accumulation_type=None,
-                              allow_bfloat16=False):
+                              allow_bfloat16=False,
+                              unfold_large_splat_constant=False,
+                              supported_backends=None,
+                              disable_per_channel_quantization=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -536,12 +550,12 @@ def build_toco_convert_protos(input_tensors,
       `inference_input_type` is in {tf.int8, tf.uint8}, then
       `quantized_input_stats` must be provided. (default is the value assigned
       to `inference_type`, must be in {tf.float32, tf.int8, tf.uint8})
-    input_format: Type of data to read.
-      (default TENSORFLOW_GRAPHDEF, must be in {TENSORFLOW_GRAPHDEF})
+    input_format: Type of data to read. (default TENSORFLOW_GRAPHDEF, must be in
+      {TENSORFLOW_GRAPHDEF})
     input_shapes: Input array shape. (default None, must be None or a list of
       the same length as `input_tensors`.)
-    output_format: Output file format. (default TFLITE, must be in
-    {TFLITE, GRAPHVIZ_DOT})
+    output_format: Output file format. (default TFLITE, must be in {TFLITE,
+      GRAPHVIZ_DOT})
     quantized_input_stats: Map of input tensor names to a tuple of floats
       representing the mean and standard deviation of the training data.
       (e.g., {"foo" : (0., 1.)}). Required if `inference_input_type` is tf.int8
@@ -604,10 +618,18 @@ def build_toco_convert_protos(input_tensors,
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
       not, use Flex tensor list ops.
+    default_to_single_batch_in_tensor_list_ops: Whether to force to use batch
+      size one when the tensor list ops has the unspecified batch size.
     accumulation_type: Data type of the accumulators in quantized inference.
       Typically used for float16 quantization and is either fp16 or fp32.
     allow_bfloat16: Whether the converted model supports reduced precision
       inference with the bfloat16 type.
+    unfold_large_splat_constant: Whether to unfold large splat constant tensors
+      in the flatbuffer model to reduce size.
+    supported_backends: List of TFLite backends which needs to check
+      compatibility.
+    disable_per_channel_quantization: Disable per-channel quantized weights for
+      dynamic range quantization. Only per-tensor quantization will be used.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -639,8 +661,12 @@ def build_toco_convert_protos(input_tensors,
       allow_all_select_tf_ops=allow_all_select_tf_ops,
       unfold_batchmatmul=unfold_batchmatmul,
       lower_tensor_list_ops=lower_tensor_list_ops,
+      default_to_single_batch_in_tensor_list_ops=default_to_single_batch_in_tensor_list_ops,
       accumulation_type=accumulation_type,
-      allow_bfloat16=allow_bfloat16)
+      allow_bfloat16=allow_bfloat16,
+      unfold_large_splat_constant=unfold_large_splat_constant,
+      supported_backends=supported_backends,
+      disable_per_channel_quantization=disable_per_channel_quantization)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
@@ -827,6 +853,33 @@ def convert_saved_model(saved_model_dir=None,
   return data
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_JAX_HLO)
+def convert_jax_hlo(input_content, input_names, is_proto_format, **kwargs):
+  """Converts a Jax hlo-based model using TF Lite converter."""
+  model_flags = _model_flags_pb2.ModelFlags()
+  model_flags.use_hlo_import = True
+  if is_proto_format:
+    model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_PROTO
+  else:
+    model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_TEXT
+
+  # Build input names.
+  for input_name in input_names:
+    input_array = _model_flags_pb2.InputArray()
+    input_array.name = input_name
+    model_flags.input_arrays.append(input_array)
+
+  toco_flags = build_toco_flags(**kwargs)
+  data = toco_convert_protos(
+      model_flags.SerializeToString(),
+      toco_flags.SerializeToString(),
+      input_content,
+      None,  # debug_info_str, unused
+      enable_mlir_converter=True)
+  return data
+
+
 @_tf_export(v1=["lite.toco_convert"])
 @deprecation.deprecated(None, "Use `lite.TFLiteConverter` instead.")
 def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
@@ -838,7 +891,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   been deprecated. Please use `tf.lite.TFLiteConverter` instead.
 
   Args:
-    input_data: Input data (i.e. often `sess.graph_def`),
+    input_data: Input data (i.e. often `sess.graph_def`).
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
@@ -855,3 +908,122 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   enable_mlir_converter = kwargs.get("enable_mlir_converter", False)
   return toco_convert_impl(input_data, input_tensors, output_tensors,
                            enable_mlir_converter, *args, **kwargs)
+
+
+def deduplicate_readonly_buffers(tflite_model):
+  """"Generates a new model byte array after deduplicating readonly buffers.
+
+  This function should be invoked after the model optimization toolkit. The
+  model optimization toolkit assumes that each tensor object owns its each
+  buffer separately.
+
+  Args:
+    tflite_model: TFLite flatbuffer in a byte array to be deduplicated.
+
+  Returns:
+    TFLite flatbuffer in a bytes array, processed with the deduplication method.
+
+  """
+  # Load TFLite Flatbuffer byte array into an object.
+  model = flatbuffer_utils.convert_bytearray_to_object(tflite_model)
+
+  # Get all the read-only buffers, which can be modified without causing any
+  # issue in the graph invocation stage.
+  read_only_buffer_indices = set()
+  for subgraph in model.subgraphs:
+    # To get all the read-only buffers:
+    # (1) Get all read-only input tensors.
+    # (2) Discard intermediate or output tensors.
+    # (3) Discard the subgraph's input/output tensors.
+    # (4) Gather the buffers of the read-only input tensors.
+
+    # (1) Get read-only input tensors.
+    read_only_input_tensor_indices = set()
+    for op in subgraph.operators:
+      if op.inputs is None:
+        continue
+      for i, input_tensor_idx in enumerate(op.inputs):
+        # Ignore mutable tensors.
+        if op.mutatingVariableInputs is not None:
+          # Ignore invalid tensors.
+          if (i < len(op.mutatingVariableInputs) and
+              op.mutatingVariableInputs[i]):
+            continue
+        # Ignore variable tensors.
+        if subgraph.tensors[input_tensor_idx].isVariable:
+          continue
+        read_only_input_tensor_indices.add(input_tensor_idx)
+
+    # (2) Discard intermediate or output tensors.
+    for op in subgraph.operators:
+      if op.outputs is not None:
+        for output_tensor_idx in op.outputs:
+          read_only_input_tensor_indices.discard(output_tensor_idx)
+      if op.intermediates is not None:
+        for intermediate_tensor_idx in op.intermediates:
+          read_only_input_tensor_indices.discard(intermediate_tensor_idx)
+
+    # (3) Discard the subgraph's input and output tensors.
+    if subgraph.inputs is not None:
+      for input_tensor_idx in subgraph.inputs:
+        read_only_input_tensor_indices.discard(input_tensor_idx)
+    if subgraph.outputs is not None:
+      for output_tensor_idx in subgraph.outputs:
+        read_only_input_tensor_indices.discard(output_tensor_idx)
+
+    # (4) Gather the buffers of the read-only input tensors.
+    for tensor_idx in read_only_input_tensor_indices:
+      read_only_buffer_indices.add(subgraph.tensors[tensor_idx].buffer)
+
+  # Ignore invalid negative index or zero-sized buffers.
+  for buffer_idx in read_only_buffer_indices.copy():
+    if (buffer_idx < 0 or (model.buffers[buffer_idx].data is None or
+                           isinstance(model.buffers[buffer_idx].data, list) or
+                           model.buffers[buffer_idx].data.size == 0)):
+      read_only_buffer_indices.discard(buffer_idx)
+
+  # Sort by buffer size.
+  read_only_buffer_indices = list(read_only_buffer_indices)
+  sorted(
+      read_only_buffer_indices,
+      key=lambda idx: model.buffers[idx].data.data.tobytes())
+
+  # Create a map of duplicate buffers (same size and same type).
+  # eg: In [1, 2, 3, 4, 5, 6] if (1, 4, 6) and (2, 5) are each, groups of buffer
+  # indices of the same size and type, then the map would be {4:1, 6:1, 5:2}
+  duplicate_buffer_map = {}
+  for i, buffer_i_idx in enumerate(read_only_buffer_indices):
+    # This buffer is a duplicate.
+    if buffer_i_idx in duplicate_buffer_map:
+      continue
+    # This buffer is unique. Scan rest of the list to find duplicates
+    # of this buffer and mark them accordingly.
+    buffer_i = model.buffers[buffer_i_idx]
+    for buffer_j_idx in read_only_buffer_indices[i + 1:]:
+      if buffer_j_idx in duplicate_buffer_map:
+        continue
+      buffer_j = model.buffers[buffer_j_idx]
+      if buffer_i.data.size != buffer_j.data.size:
+        break
+      if buffer_i.data.data != buffer_j.data.data:
+        continue
+      # Found duplicate. Nullify j-th buffer and use i-th buffer instead.
+      duplicate_buffer_map[buffer_j_idx] = buffer_i_idx
+
+  # Make the duplicated tensors use the single shared buffer index.
+  for subgraph in model.subgraphs:
+    for op in subgraph.operators:
+      if op.inputs is None:
+        continue
+      for input_tensor in op.inputs:
+        buffer_idx = subgraph.tensors[input_tensor].buffer
+        if buffer_idx in duplicate_buffer_map:
+          subgraph.tensors[input_tensor].buffer = (
+              duplicate_buffer_map[buffer_idx])
+
+  # Nullify the unused buffers.
+  for idx in duplicate_buffer_map:
+    model.buffers[idx].data = None
+
+  # Return a TFLite flatbuffer as a byte array.
+  return flatbuffer_utils.convert_object_to_bytearray(model)

@@ -42,8 +42,9 @@ class MiniBenchmark {
   // mini-benchmark event.
   virtual ComputeSettingsT GetBestAcceleration() = 0;
 
-  // Trigger the running of tests in the background in a separate process.
-  // If triggering fails, errors are stored internally.
+  // Trigger the running of tests in the background in a separate thread on
+  // Linux, but a separate process on Android. If triggering fails, errors are
+  // stored internally.
   //
   // Does nothing if the settings do not contain configurations to test or not
   // all relevant fields are present.
@@ -55,6 +56,13 @@ class MiniBenchmark {
   // and return these events. This can include errors in triggering the
   // mini-benchmark.
   virtual std::vector<MiniBenchmarkEventT> MarkAndGetEventsToLog() = 0;
+
+  // Get the number of remaining tests that still need to be completed.
+  // Note that this method should be only called after calling
+  // TriggerMiniBenchmark or GetBestAcceleration where additional
+  // mini-benchmark-related setup could be initialized. In short, -1 is returned
+  // if the overall mini-benchmark-related setup isn't properly initialized.
+  virtual int NumRemainingAccelerationTests() = 0;
 
   MiniBenchmark() {}
   virtual ~MiniBenchmark() {}

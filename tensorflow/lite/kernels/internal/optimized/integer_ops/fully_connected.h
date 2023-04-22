@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
+#include <fstream>
+#include <iostream>
+
 namespace tflite {
 namespace optimized_integer_ops {
 
@@ -85,6 +88,111 @@ inline void FullyConnected(
   cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, input_data,
                          dst_params, output_data, gemm_params,
                          cpu_backend_context);
+  // using namespace std;
+  // int layer;
+  // ifstream infile("a_Bert/mobile_bert/layer.txt");
+  // while (infile >> layer) cout << layer << ";\n";
+  // infile.close();
+
+  // {
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/weights/wgt_" + std::to_string(layer) +
+  //               ".csv");
+  //   const int8_t* res_pointer = filter_data;
+  //   int index = 0;
+  //   for (int c = 0; c < lhs_params.rows; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < lhs_params.cols; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
+
+  // {
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/inputs/inp_" + std::to_string(layer) +
+  //               ".csv");
+  //   const int8_t* res_pointer = input_data;
+  //   int index = 0;
+  //   for (int c = 0; c < rhs_params.cols; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < rhs_params.rows; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
+
+  // {
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/outputs/out_" + std::to_string(layer) +
+  //               ".csv");
+  //   int8_t* res_pointer = output_data;
+  //   int index = 0;
+  //   for (int c = 0; c < dst_params.cols; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < dst_params.rows; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
+
+  // layer++;
+
+  // ofstream offile("a_Bert/mobile_bert/layer.txt");
+  // offile << layer << endl;
+  // offile.close();
+
+  // using namespace std;
+  // {
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/fc_weight.csv");
+  //   const int8_t* res_pointer = filter_data;
+  //   int index = 0;
+  //   for (int c = 0; c < lhs_params.rows; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < lhs_params.cols; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
+
+  // {
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/fc_input.csv");
+  //   const int8_t* res_pointer = input_data;
+  //   int index = 0;
+  //   for (int c = 0; c < rhs_params.cols; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < rhs_params.rows; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
+
+  // {
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/dense_v3/fc_out.csv");
+  //   int8_t* res_pointer = output_data;
+  //   int index = 0;
+  //   for (int c = 0; c < dst_params.cols; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < dst_params.rows; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
 }
 
 }  // namespace optimized_integer_ops

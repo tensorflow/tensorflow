@@ -63,13 +63,6 @@ bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
   if (gpu_info.IsAMD()) {
     min_tiles = 64;
   }
-  if (total_tiles >= min_tiles * 8) {
-    min_depth /= 4;
-    min_depth = std::max(min_depth, 8);
-  } else if (total_tiles >= min_tiles * 4) {
-    min_depth /= 2;
-    min_depth = std::max(min_depth, 8);
-  }
   const bool recommended_channels =
       src_depth >= min_depth && dst_depth >= min_depth;
   const bool recommended_hw = total_tiles >= min_tiles;

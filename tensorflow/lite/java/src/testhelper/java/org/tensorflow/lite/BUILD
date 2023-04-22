@@ -19,3 +19,15 @@ android_library(
         "//tensorflow/lite/java:tensorflowlite_java",
     ],
 )
+
+java_library(
+    name = "testhelper_javalib",
+    srcs = glob(
+        [
+            "*.java",
+        ],
+    ),
+    deps = [
+        "//tensorflow/lite/java:tensorflowlite_javalib",
+    ],
+)

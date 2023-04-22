@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/verifier.h"
 
+#include <algorithm>
 #include <climits>
 #include <complex>
 #include <cstdint>
@@ -24,11 +25,11 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/verifier_internal.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
-
 namespace {
 
 const char* NameOrEmptyString(const flatbuffers::String* str) {
@@ -50,6 +51,7 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
     va_end(args);
   }
 }
+
 // Returns the int32_t value pointed by ptr.
 const uint32_t GetIntPtr(const char* ptr) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
@@ -58,17 +60,6 @@ const uint32_t GetIntPtr(const char* ptr) {
 #else
   return *reinterpret_cast<const uint32_t*>(ptr);
 #endif
-}
-
-// Verifies flatbuffer format of the model contents and returns the in-memory
-// model.
-const Model* VerifyFlatbufferAndGetModel(const void* buf, size_t len) {
-  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  if (VerifyModelBuffer(verifier)) {
-    return ::tflite::GetModel(buf);
-  } else {
-    return nullptr;
-  }
 }
 
 const uint32_t kMaxNumString = UINT_MAX / sizeof(int32_t) - 2;
@@ -362,7 +353,8 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
     }
     int block_dim_size =
         sparsity->dim_metadata()->Get(i + original_rank)->dense_size();
-    if (block_dim_size == 0) {
+    // If size is <= 0 we just return as it is invalid.
+    if (block_dim_size <= 0) {
       return absl::nullopt;
     }
 
@@ -739,14 +731,14 @@ bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
 }  // namespace
 
 bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter) {
-  const Model* model = VerifyFlatbufferAndGetModel(buf, len);
+  const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
   return VerifyModel(model, error_reporter);
 }
 
 // Deprecated: see comments in header.
 bool Verify(const void* buf, size_t len, const OpResolver& resolver,
             ErrorReporter* error_reporter) {
-  const Model* model = VerifyFlatbufferAndGetModel(buf, len);
+  const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
   if (!VerifyModel(model, error_reporter)) {
     return false;
   }
@@ -755,4 +747,5 @@ bool Verify(const void* buf, size_t len, const OpResolver& resolver,
   }
   return true;
 }
+
 }  // namespace tflite

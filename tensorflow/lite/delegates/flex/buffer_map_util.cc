@@ -25,7 +25,7 @@ namespace flex {
 
 void BaseTfLiteTensorBuffer::FillAllocationDescription(
     tensorflow::AllocationDescription* proto) const {
-  tensorflow::int64 rb = size();
+  int64_t rb = size();
   proto->set_requested_bytes(rb);
   proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
 }

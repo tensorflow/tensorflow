@@ -177,6 +177,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:simple_planner",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:type_to_tflitetype",
@@ -185,13 +186,13 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:acceleration_test_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/optimize:quantization_utils",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//tensorflow/lite/tools/versioning",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -610,6 +611,7 @@ BUILTIN_KERNEL_SRCS = [
     "pooling.cc",
     "pow.cc",
     "quantize.cc",
+    "random_standard_normal.cc",
     "range.cc",
     "rank.cc",
     "read_variable.cc",
@@ -783,10 +785,11 @@ cc_library(
         "irfft2d.cc",
         "multinomial.cc",
         "pooling3d.cc",
-        "random_standard_normal.cc",
+        "random_standard_normal_custom.cc",
         "random_uniform.cc",
         "roll.cc",
         "sign.cc",
+        "table.cc",
         "unidirectional_sequence_gru.cc",
     ],
     hdrs = ["custom_ops_register.h"],
@@ -798,6 +801,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:padding",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
@@ -1559,6 +1563,20 @@ cc_test(
     size = "small",
     srcs = ["random_standard_normal_test.cc"],
     deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "random_standard_normal_custom_test",
+    size = "small",
+    srcs = ["random_standard_normal_custom_test.cc"],
+    deps = [
         ":custom_ops",
         ":test_main",
         ":test_util",
@@ -2005,12 +2023,25 @@ cc_test(
     size = "small",
     srcs = ["strided_slice_test.cc"],
     tags = [
-        "notap",  # TODO(b/193935673): re-enable the test.
         "tflite_nnapi",
     ],
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "table_test",
+    size = "small",
+    srcs = ["table_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2652,5 +2683,12 @@ tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]
 # Note this is created mainly for validating external delegates in OSS.
 tflite_combine_cc_tests(
     name = "combined_all_kernel_tests",
+    deps_conditions = [":test_main"],
+)
+
+# This test uses SimpleAllocator and works nicely with ASAN.
+tflite_combine_cc_tests(
+    name = "combined_all_kernel_with_simple_allocator_tests",
+    args = ["--use_simple_allocator=true"],
     deps_conditions = [":test_main"],
 )

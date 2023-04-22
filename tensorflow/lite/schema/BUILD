@@ -91,6 +91,7 @@ exports_files([
     "schema_v2.fbs",
     "schema_v3.fbs",
     "schema_v3a.fbs",
+    "schema_v3b.fbs",
 ])
 
 flatbuffer_cc_library(
@@ -133,7 +134,7 @@ cc_test(
     srcs = ["flatbuffer_compatibility_test.cc"],
     data = [
         "schema.fbs",
-        "schema_v3a.fbs",
+        "schema_v3b.fbs",
     ],
     tags = [
         "no_oss",

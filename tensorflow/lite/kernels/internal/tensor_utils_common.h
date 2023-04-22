@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
@@ -173,20 +175,6 @@ void MatrixBatchVectorMultiply(const int16_t* hidden,
                                int32_t n_hidden, int32_t n_output,
                                int32_t output_zp, int8_t* proj_output);
 
-// Multiplies a matrix with a scalar and reduce the result on each row to a
-// scalar.
-// Parameters:
-//     - matrix: matrix of size n_row * n_col
-//     - scalar: the scalar that is multiplied to each element in the matrix
-//     - n_row:  the row count of the matrix
-//     - n_col:  the column count of the matrix
-//     - output: the 32bit output
-// Note: We do not need saturation because the int8 * int8 is safe from overflow
-// in (2^31-1) / (2^14) = 131072, which is bigger than the n_row. Non-zero
-// initial output value is not exceptionally large.
-void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
-                                    int32_t n_row, int32_t n_col,
-                                    int32_t* output);
 
 // Apply Layer Normalization (https://arxiv.org/abs/1607.06450) to a Quantized
 // vector.
@@ -307,28 +295,6 @@ void CwiseClipping(int16_t* vector, const int v_size,
 void CwiseClipping(int8_t* vector, const int v_size,
                    const int8_t clipping_value);
 
-// Cwise product of two vectors.
-template <typename T>
-inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
-                                     const T* __restrict__ vector2, int v_size,
-                                     T* __restrict__ result) {
-  for (int v = 0; v < v_size; v++) {
-    *result++ = *vector1++ * *vector2++;
-  }
-}
-
-// Cwise product and accumulate of two vectors. Since it's a MAC operation, the
-// assumption here is that result array is initialized to valid values.
-template <typename T>
-inline void VectorVectorCwiseProductAccumulate(const T* __restrict__ vector1,
-                                               const T* __restrict__ vector2,
-                                               int v_size,
-                                               T* __restrict__ result) {
-  for (int v = 0; v < v_size; v++) {
-    *result++ += *vector1++ * *vector2++;
-  }
-}
-
 // Dot product of two vectors.
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
                              int v_size);
@@ -363,60 +329,12 @@ void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
                                       int n_batch, int32_t* result);
 
-// Cwise product of a vector and a batch-vector.
-template <typename T>
-inline void VectorBatchVectorCwiseProduct(const T* vector, int v_size,
-                                          const T* batch_vector, int n_batch,
-                                          T* result) {
-  for (int b = 0; b < n_batch; b++) {
-    VectorVectorCwiseProduct(vector, batch_vector, v_size, result);
-    // Update the pointers.
-    result += v_size;
-    batch_vector += v_size;
-  }
-}
-
-// Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
-// operation, the assumption here is that result array is initialized to valid
-// values.
-template <typename T>
-inline void VectorBatchVectorCwiseProductAccumulate(const T* vector, int v_size,
-                                                    const T* batch_vector,
-                                                    int n_batch, T* result) {
-  for (int b = 0; b < n_batch; b++) {
-    VectorVectorCwiseProductAccumulate(vector, batch_vector, v_size, result);
-    // Update the pointers.
-    result += v_size;
-    batch_vector += v_size;
-  }
-}
 
 // Same as above, but inputs are 16bit integer and output is 16bit integer.
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
                                              const int16_t* batch_vector,
                                              int n_batch, int32_t multiplier,
                                              int shift, int16_t* result);
-
-// Add another vector for each batch in the batch vector.
-template <typename T>
-void VectorBatchVectorAdd(const T* vector, int v_size, int n_batch,
-                          T* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    for (int i = 0; i < v_size; ++i) {
-      batch_vector[i] += vector[i];
-    }
-    batch_vector += v_size;
-  }
-}
-
-// Batch vector initialization with another vector.
-template <typename T>
-void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
-                             T* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    std::copy_n(vector, v_size, batch_vector + b * v_size);
-  }
-}
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);

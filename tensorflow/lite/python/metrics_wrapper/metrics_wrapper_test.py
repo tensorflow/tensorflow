@@ -37,7 +37,7 @@ class MetricsWrapperTest(test_util.TensorFlowTestCase):
       return tf.cosh(x)
 
     converter = lite.TFLiteConverterV2.from_concrete_functions(
-        [func.get_concrete_function()])
+        [func.get_concrete_function()], func)
     try:
       converter.convert()
     except ConverterError as err:

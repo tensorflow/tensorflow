@@ -75,7 +75,6 @@ public final class InterpreterApiTest {
   }
 
   @Test
-  @SuppressWarnings("deprecation")
   public void testInterpreterWithOptions() throws Exception {
     try (InterpreterApi interpreter =
         new InterpreterFactory()
@@ -113,7 +112,7 @@ public final class InterpreterApiTest {
   public void testRunWithDirectByteBufferModel() throws Exception {
     ByteBuffer byteBuffer = ByteBuffer.allocateDirect(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    byteBuffer.put(MODEL_BUFFER);
+    byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
     try (InterpreterApi interpreter =
         new InterpreterFactory().create(byteBuffer, new InterpreterApi.Options())) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
@@ -132,7 +131,7 @@ public final class InterpreterApiTest {
   public void testRunWithInvalidByteBufferModel() throws Exception {
     ByteBuffer byteBuffer = ByteBuffer.allocate(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    byteBuffer.put(MODEL_BUFFER);
+    byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
     try {
       new InterpreterFactory().create(byteBuffer, new InterpreterApi.Options());
       fail();
@@ -418,8 +417,6 @@ public final class InterpreterApiTest {
   }
 
   @Test
-  // setAllowFp16PrecisionForFp32 is deprecated, suppress the warning to allow testing.
-  @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     InterpreterApi.Options options = new InterpreterApi.Options().setUseNNAPI(true);
     try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, options)) {

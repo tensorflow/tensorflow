@@ -1693,4 +1693,87 @@ inline int ANeuralNetworksExecution_startComputeWithDependencies(
                           event);
 }
 
+/**
+ * Specifies whether the {@link ANeuralNetworksExecution} is able to accept
+ * padded input and output buffers and memory objects.
+ *
+ * By default, the input and output buffers and memory objects of {@link
+ * ANeuralNetworksExecution} do not allow padding.
+ *
+ * Setting the execution to accept padded input and output buffers and memory
+ * objects enables the length argument of {@link
+ * ANeuralNetworksExecution_setInput},
+ * {@link ANeuralNetworksExecution_setInputFromMemory}, {@link
+ * ANeuralNetworksExecution_setOutput}, and {@link
+ * ANeuralNetworksExecution_setOutputFromMemory} to be greater than the raw
+ * size of the operand (i.e. the size of an element multiplied by the number
+ * of elements). The extra bytes at the end of the buffer or memory region may
+ * be used by the driver to access data in chunks, for efficiency.
+ *
+ * This method must not be called after {@link
+ * ANeuralNetworksExecution_setInput},
+ * {@link ANeuralNetworksExecution_setInputFromMemory}, {@link
+ * ANeuralNetworksExecution_setOutput}, or {@link
+ * ANeuralNetworksExecution_setOutputFromMemory}.
+ *
+ * See {@link ANeuralNetworksExecution} for information on multithreaded
+ * usage.
+ *
+ * @param execution The execution to be modified.
+ * @param enable 'true' if the execution is to be able to accept padded input
+ * and output buffers and memory objects, 'false' if not.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *         ANEURALNETWORKS_UNEXPECTED_NULL if execution is NULL.
+ *         ANEURALNETWORKS_BAD_STATE if {@link
+ * ANeuralNetworksExecution_setInput},
+ *         {@link ANeuralNetworksExecution_setInputFromMemory},
+ *         {@link ANeuralNetworksExecution_setOutput}, or
+ *         {@link ANeuralNetworksExecution_setOutputFromMemory} has been
+ * called on the execution.
+ *
+ * Available since API level 31.
+ */
+inline int ANeuralNetworksExecution_enableInputAndOutputPadding(
+    ANeuralNetworksExecution* execution, bool enable) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_enableInputAndOutputPadding);
+  EXECUTE_FUNCTION_RETURN(execution, enable);
+}
+
+/**
+ * Specifies whether the {@link ANeuralNetworksExecution} can be reused for
+ * multiple computations.
+ *
+ * By default, the {@link ANeuralNetworksExecution} is not reusable.
+ *
+ * Setting the execution to be reusable enables multiple computations to be
+ * scheduled and evaluated on the same execution sequentially, either by means
+ * of
+ * {@link ANeuralNetworksExecution_burstCompute}, {@link
+ * ANeuralNetworksExecution_compute},
+ * {@link ANeuralNetworksExecution_startCompute} or
+ * {@link ANeuralNetworksExecution_startComputeWithDependencies}.
+ *
+ * This function may only be invoked when the execution is in the preparation
+ * state.
+ *
+ * See {@link ANeuralNetworksExecution} for information on execution states
+ * and multithreaded usage.
+ *
+ * @param execution The execution to be modified.
+ * @param reusable 'true' if the execution is to be reusable, 'false' if not.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *         ANEURALNETWORKS_UNEXPECTED_NULL if execution is NULL.
+ *         ANEURALNETWORKS_BAD_STATE if the execution is not in the
+ * preparation state.
+ *
+ * Available since API level 31.
+ */
+inline int ANeuralNetworksExecution_setReusable(
+    ANeuralNetworksExecution* execution, bool reusable) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_setReusable);
+  EXECUTE_FUNCTION_RETURN(execution, reusable);
+}
+
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSSHIM_H_

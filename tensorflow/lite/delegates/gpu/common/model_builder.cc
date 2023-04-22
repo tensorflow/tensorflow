@@ -94,22 +94,6 @@ absl::Status RetrieveCustomInitialData(const TfLiteNode* tflite_node,
   return absl::OkStatus();
 }
 
-absl::Status CheckDilation(int dilation_h, int dilation_w) {
-  if (dilation_h <= 0 || dilation_w <= 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Incorrect dilation values: dilation_factor = ", dilation_h,
-        ", dilation_factor = ", dilation_w));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckStridesAndDilation(int strides_h, int strides_w,
-                                     int dilation_h, int dilation_w) {
-  RETURN_IF_ERROR(CheckStrides(strides_h, strides_w));
-  RETURN_IF_ERROR(CheckDilation(dilation_h, dilation_w));
-  return absl::OkStatus();
-}
-
 // Creates a simple node that holds tensor value.
 absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   ConstTensorAttributes attr;
@@ -181,6 +165,50 @@ absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
   return absl::OkStatus();
 }
 
+absl::Status MaybeFuseActivationForElementwiseNode(
+    OperationType operation_type, const TfLiteNode* tflite_node,
+    GraphFloat32* graph, Node* node) {
+  TfLiteFusedActivation activation = kTfLiteActNone;
+  switch (operation_type) {
+    case OperationType::MUL: {
+      const TfLiteMulParams* tf_options;
+      if (RetrieveBuiltinData(tflite_node, &tf_options).ok()) {
+        activation = tf_options->activation;
+      }
+      break;
+    }
+    case OperationType::ADD: {
+      const TfLiteAddParams* tf_options;
+      if (RetrieveBuiltinData(tflite_node, &tf_options).ok()) {
+        activation = tf_options->activation;
+      }
+      break;
+    }
+    case OperationType::SUB: {
+      const TfLiteSubParams* tf_options;
+      if (RetrieveBuiltinData(tflite_node, &tf_options).ok()) {
+        activation = tf_options->activation;
+      }
+      break;
+    }
+    case OperationType::DIV: {
+      const TfLiteDivParams* tf_options;
+      if (RetrieveBuiltinData(tflite_node, &tf_options).ok()) {
+        activation = tf_options->activation;
+      }
+      break;
+    }
+    default:
+      // No activation expected.
+      activation = kTfLiteActNone;
+  }
+
+  if (activation) {
+    return MaybeFuseActivation(activation, graph, node);
+  }
+  return absl::OkStatus();
+}
+
 struct TensorInfo {
   std::vector<std::pair<TfLiteNode*, TfLiteRegistration*>> producers;
   std::vector<std::pair<TfLiteNode*, TfLiteRegistration*>> consumers;
@@ -234,35 +262,6 @@ bool IsLogicalOp(tflite::gpu::OperationType op_type) {
          op_type == tflite::gpu::OperationType::EQUAL ||
          op_type == tflite::gpu::OperationType::NOT_EQUAL;
 }
-
-class AddOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    // TODO(eignasheva): Add shapes check.
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    // TFLite currently only supports 2 input ADDs.  Thus, the logic below only
-    // considers 2 input cases.  The underlying GPU shader programs can accept
-    // more inputs, but the logic below would have to be expanded.
-
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::ADD);
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-    ElementwiseAttributes attr;
-    RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
-    node->operation.attributes = std::move(attr);
-    const TfLiteAddParams* tf_options;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    return MaybeFuseActivation(tf_options->activation, graph, node);
-  }
-};
 
 class BatchedMatMulOperationParser : public TFLiteOperationParser {
  public:
@@ -728,7 +727,10 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    const int kMaxSupportedOpVersion =
+        operation_type_ == OperationType::MUL ? 3 : 2;
+    RETURN_IF_ERROR(
+        CheckMaxSupportedOpVersion(registration, kMaxSupportedOpVersion));
     if (IsLogicalOp(operation_type_)) {
       TensorInfo output_tensor_info;
       RETURN_IF_ERROR(GetTensorInfo(context, tflite_node->outputs->data[0],
@@ -752,6 +754,10 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                      GraphFloat32* graph, ObjectReader* reader) final {
     Node* node = graph->NewNode();
     node->operation.type = ToString(operation_type_);
+    if (operation_type_ == OperationType::ADD) {
+      ElementwiseAttributes attr;
+      node->operation.attributes = std::move(attr);
+    }
 
     if (IsOneArgumentOperation()) {
       RETURN_IF_ERROR(reader->VerifyInputsConstsOutputs(tflite_node,
@@ -770,32 +776,49 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       if (tflite_node->inputs->size != 2) {
         return absl::InvalidArgumentError("Applies only two input tensors");
       }
-      RETURN_IF_ERROR(reader->AddInput(node, 0));
-      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      const TfLiteTensor* input0 = reader->GetInputTensor(0);
+      const TfLiteTensor* input1 = reader->GetInputTensor(1);
 
-      TfLiteFusedActivation activation = kTfLiteActNone;
-      switch (operation_type_) {
-        case OperationType::SUB: {
-          const TfLiteSubParams* tf_options;
-          if (RetrieveBuiltinData(tflite_node, &tf_options).ok()) {
-            activation = tf_options->activation;
-          }
-          break;
+      // TODO(b/166831113): Support the same inputs for operations.
+      if (input0 == input1) {
+        if (operation_type_ == OperationType::MUL) {
+          // replace MUL(A, A) with POW(A, 2.0)
+          node->operation.type = ToString(OperationType::POW);
+          ElementwiseAttributes attr;
+          attr.param = 2.0f;
+          node->operation.attributes = std::move(attr);
+          RETURN_IF_ERROR(reader->AddInput(node, 0));
+        } else if (operation_type_ == OperationType::ADD) {
+          // replace ADD(A, A) with MUL(A, 2.0)
+          node->operation.type = ToString(OperationType::MUL);
+          ElementwiseAttributes attr;
+          attr.param = 2.0f;
+          node->operation.attributes = std::move(attr);
+          RETURN_IF_ERROR(reader->AddInput(node, 0));
+        } else {
+          return absl::UnimplementedError(
+              "No support of few identical inputs in the same operation.");
         }
-        case OperationType::DIV: {
-          const TfLiteDivParams* tf_options;
-          if (RetrieveBuiltinData(tflite_node, &tf_options).ok()) {
-            activation = tf_options->activation;
+      } else {
+        int input_tensor0 = 0;
+        int input_tensor1 = 1;
+        if (operation_type_ == OperationType::MUL ||
+            operation_type_ == OperationType::ADD) {
+          // The "larger" input tensor must be bound to 1st input and the
+          // "smaller" input tensor must be bound to 2nd input.
+          BHWC shape0;
+          RETURN_IF_ERROR(ExtractTensorShape(*input0, &shape0));
+          BHWC shape1;
+          RETURN_IF_ERROR(ExtractTensorShape(*input1, &shape1));
+          if (shape0.h <= shape1.h && shape0.w <= shape1.w &&
+              shape0.c == shape1.c) {
+            input_tensor0 = 1;
+            input_tensor1 = 0;
           }
-          break;
         }
-        default:
-          // No activation expected.
-          activation = kTfLiteActNone;
-      }
 
-      if (activation) {
-        RETURN_IF_ERROR(MaybeFuseActivation(activation, graph, node));
+        RETURN_IF_ERROR(reader->AddInput(node, input_tensor0));
+        RETURN_IF_ERROR(reader->AddInput(node, input_tensor1));
       }
     } else if (IsTwoArgumentOperationWithConst()) {
       RETURN_IF_ERROR(reader->VerifyInputsConstsOutputs(tflite_node,
@@ -811,7 +834,9 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       return absl::InvalidArgumentError("Incorrect operation type passed");
     }
 
-    return reader->AddOutputs(node);
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    return MaybeFuseActivationForElementwiseNode(operation_type_, tflite_node,
+                                                 graph, node);
   }
 
  private:
@@ -860,6 +885,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
 
   bool IsTwoArgumentOperation() const {
     switch (operation_type_) {
+      case OperationType::ADD:
       case OperationType::DIV:
       case OperationType::EQUAL:
       case OperationType::FLOOR_DIV:
@@ -870,6 +896,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::LESS_EQUAL:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
+      case OperationType::MUL:
       case OperationType::NOT_EQUAL:
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
@@ -882,6 +909,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
 
   bool IsTwoArgumentOperationWithConst() const {
     switch (operation_type_) {
+      case OperationType::ADD:
       case OperationType::DIV:
       case OperationType::EQUAL:
       case OperationType::FLOOR_DIV:
@@ -892,6 +920,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::LESS_EQUAL:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
+      case OperationType::MUL:
       case OperationType::NOT_EQUAL:
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
@@ -1147,79 +1176,6 @@ class LSTMOperationParser : public TFLiteOperationParser {
   }
 
   absl::flat_hash_map<int, ValueId> new_variable_input_value_map_;
-};
-
-class MulOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    const TfLiteTensor* input0 = reader->GetInputTensor(0);
-    if (!input0) {
-      return absl::InvalidArgumentError(
-          "Couldn't get the 1st input tensor for MUL.");
-    }
-    const TfLiteTensor* input1 = reader->GetInputTensor(1);
-    if (!input1) {
-      return absl::InvalidArgumentError(
-          "Couldn't get the 2nd input tensor for MUL.");
-    }
-    const bool constant_tensor0 = IsConstantTensor(input0);
-    const bool constant_tensor1 = IsConstantTensor(input1);
-    if (constant_tensor0 && constant_tensor1) {
-      return absl::InvalidArgumentError("No runtime input tensors for MUL.");
-    }
-    const bool runtime_tensor0 = !constant_tensor0;
-    const bool runtime_tensor1 = !constant_tensor1;
-
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::MUL);
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    // Determine runtime/constant tensors.
-    if (runtime_tensor0 && runtime_tensor1) {
-      if (input0 == input1) {
-        // replace MUL(A, A) with POW(A, 2.0)
-        // TODO(b/166831113): Support the same inputs for operations.
-        node->operation.type = ToString(OperationType::POW);
-        ElementwiseAttributes attr;
-        attr.param = 2.0f;
-        node->operation.attributes = std::move(attr);
-        return reader->AddInput(node, 0);
-      }
-
-      // The "larger" input tensor must be bound to 1st input and the "smaller"
-      // input tensor must be bound to 2nd input.
-      BHWC shape0;
-      RETURN_IF_ERROR(ExtractTensorShape(*input0, &shape0));
-      BHWC shape1;
-      RETURN_IF_ERROR(ExtractTensorShape(*input1, &shape1));
-      int input_tensor0 = 0;
-      int input_tensor1 = 1;
-      if (shape0.h <= shape1.h && shape0.w <= shape1.w &&
-          shape0.c == shape1.c) {
-        input_tensor0 = 1;
-        input_tensor1 = 0;
-      }
-      RETURN_IF_ERROR(reader->AddInput(node, input_tensor0));
-      RETURN_IF_ERROR(reader->AddInput(node, input_tensor1));
-    } else {
-      ElementwiseAttributes attr;
-      RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
-      node->operation.attributes = std::move(attr);
-    }
-
-    const TfLiteMulParams* tf_options;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    return MaybeFuseActivation(tf_options->activation, graph, node);
-  }
 };
 
 class PackOperationParser : public TFLiteOperationParser {
@@ -2489,7 +2445,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinAbs:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ABS);
     case kTfLiteBuiltinAdd:
-      return std::make_unique<AddOperationParser>();
+      return std::make_unique<ElementwiseOperationParser>(OperationType::ADD);
     case kTfLiteBuiltinAveragePool2d:
       return std::make_unique<Pooling2DOperationParser>(PoolingType::AVERAGE);
     case kTfLiteBuiltinBatchMatmul:
@@ -2564,7 +2520,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinMirrorPad:
       return std::make_unique<PadOperationParser>(/*mirror_pad=*/true);
     case kTfLiteBuiltinMul:
-      return std::make_unique<MulOperationParser>();
+      return std::make_unique<ElementwiseOperationParser>(OperationType::MUL);
     case kTfLiteBuiltinNeg:
       return std::make_unique<ElementwiseOperationParser>(OperationType::NEG);
     case kTfLiteBuiltinNotEqual:

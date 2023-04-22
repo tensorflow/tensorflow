@@ -197,12 +197,13 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
 
     root.f = func
     to_save = root.f.get_concrete_function()
-    return (to_save, calibration_gen)
+    return (root, to_save, calibration_gen)
 
   def test_conversion_from_frozen_graph_v2(self):
-    func, calibration_gen = self._getIntegerQuantizeModel()
+    model, func, calibration_gen = self._getIntegerQuantizeModel()
 
-    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
+                                                                         model)
     mock_metrics = mock.create_autospec(
         metrics.TFLiteConverterMetrics, instance=True)
     quantized_converter._tflite_metrics = mock_metrics
@@ -517,7 +518,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
       return tf.add(a, b, name='add')
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [model.get_concrete_function()])
+        [model.get_concrete_function()], model)
     self.convert_and_check_location_info(
         converter,
         converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
@@ -552,7 +553,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
           ])
 
   @parameterized.named_parameters(
-      ('_WithoutLoweringToSavedModel', False, 'keras/engine/functional.py'),
+      ('_WithoutLoweringToSavedModel', False, None),
       ('_WithLoweringToSavedModel', True,
        'tensorflow/lite/python/metrics_nonportable_test.py'))
   def test_location_from_keras_model(self, lower_to_saved_model,
@@ -575,7 +576,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     self.convert_and_check_location_info(
         converter,
         converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
-        expected_sources=[expected_source])
+        expected_sources=[expected_source] if expected_source else None)
 
 
 if __name__ == '__main__':

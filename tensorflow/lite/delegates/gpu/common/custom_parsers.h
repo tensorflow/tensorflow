@@ -31,12 +31,6 @@ namespace gpu {
 std::unique_ptr<TFLiteOperationParser> NewCustomOperationParser(
     absl::string_view op_name);
 
-// Matches the custom operation by the string name and parses attributes stored
-// as flexbuffers.
-absl::Status ParseCustomAttributes(absl::string_view op_name, int version,
-                                   const void* data, uint32_t data_size,
-                                   absl::any* attr, BHWC* output_shape);
-
 }  // namespace gpu
 }  // namespace tflite
 

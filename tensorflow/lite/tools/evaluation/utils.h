@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #endif
 
@@ -77,7 +77,7 @@ TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options);
 
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling);
-#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
 TfLiteDelegatePtr CreateHexagonDelegate(
     const TfLiteHexagonDelegateOptions* options,
     const std::string& library_directory_path);

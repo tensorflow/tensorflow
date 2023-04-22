@@ -28,53 +28,54 @@ import sys
 import tensorflow.compat.v1 as tf
 
 from tensorflow.lite.experimental.mlir.testing import mlir_convert
-# pylint: disable=unused-import
-from tensorflow.lite.experimental.mlir.testing.op_tests.batchmatmul import make_batchmatmul_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_args import make_broadcast_args_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_to import make_broadcast_to_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.complex_abs import make_complex_abs_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.cond import make_cond_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.control_dep import make_control_dep_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.conv3d import make_conv3d_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.conv3d_transpose import make_conv3d_transpose_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.conv_bias_activation import make_conv_bias_relu6_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.cumsum import make_cumsum_tests
-# Placeholder for make_dense_image_warp_tests import
-from tensorflow.lite.experimental.mlir.testing.op_tests.dynamic_rnn import make_dynamic_rnn_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.einsum import make_einsum_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.identify_dilated_conv import make_identify_dilated_conv_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.identify_dilated_conv1d import make_identify_dilated_conv1d_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.imag import make_imag_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.irfft2d import make_irfft2d_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.is_finite import make_is_finite_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.max_pool_with_argmax import make_max_pool_with_argmax_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.parse_example import make_parse_example_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.pool3d import make_avg_pool3d_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.pool3d import make_max_pool3d_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.real import make_real_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.reciprocal import make_reciprocal_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.rfft import make_rfft_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.rfft2d import make_rfft2d_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.roll import make_roll_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.roll import make_roll_with_constant_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.segment_sum import make_segment_sum_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.softplus import make_softplus_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.static_hashtable import make_static_hashtable_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.static_rnn_with_control_flow_v2 import make_static_rnn_with_control_flow_v2_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.stft import make_stft_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_concat import make_tensor_list_concat_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_dynamic_shape import make_tensor_list_dynamic_shape_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_get_item import make_tensor_list_get_item_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_length import make_tensor_list_length_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_resize import make_tensor_list_resize_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_set_item import make_tensor_list_set_item_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_scatter_update import make_tensor_scatter_update_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.where_v2 import make_where_v2_tests
-from tensorflow.lite.experimental.mlir.testing.op_tests.while_loop import make_while_tests
-
 from tensorflow.lite.testing import generate_examples_lib
+
+# pylint: disable=unused-import
+from tensorflow.lite.testing.op_tests.batchmatmul import make_batchmatmul_tests
+from tensorflow.lite.testing.op_tests.broadcast_args import make_broadcast_args_tests
+from tensorflow.lite.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
+from tensorflow.lite.testing.op_tests.broadcast_to import make_broadcast_to_tests
+from tensorflow.lite.testing.op_tests.complex_abs import make_complex_abs_tests
+from tensorflow.lite.testing.op_tests.cond import make_cond_tests
+from tensorflow.lite.testing.op_tests.control_dep import make_control_dep_tests
+from tensorflow.lite.testing.op_tests.conv3d import make_conv3d_tests
+from tensorflow.lite.testing.op_tests.conv3d_transpose import make_conv3d_transpose_tests
+from tensorflow.lite.testing.op_tests.conv_bias_activation import make_conv_bias_relu6_tests
+from tensorflow.lite.testing.op_tests.cumsum import make_cumsum_tests
+# Placeholder for make_dense_image_warp_tests import
+from tensorflow.lite.testing.op_tests.dynamic_rnn import make_dynamic_rnn_tests
+from tensorflow.lite.testing.op_tests.einsum import make_einsum_tests
+from tensorflow.lite.testing.op_tests.identify_dilated_conv import make_identify_dilated_conv_tests
+from tensorflow.lite.testing.op_tests.identify_dilated_conv1d import make_identify_dilated_conv1d_tests
+from tensorflow.lite.testing.op_tests.imag import make_imag_tests
+from tensorflow.lite.testing.op_tests.irfft2d import make_irfft2d_tests
+from tensorflow.lite.testing.op_tests.is_finite import make_is_finite_tests
+from tensorflow.lite.testing.op_tests.max_pool_with_argmax import make_max_pool_with_argmax_tests
+from tensorflow.lite.testing.op_tests.parse_example import make_parse_example_tests
+from tensorflow.lite.testing.op_tests.pool3d import make_avg_pool3d_tests
+from tensorflow.lite.testing.op_tests.pool3d import make_max_pool3d_tests
+from tensorflow.lite.testing.op_tests.real import make_real_tests
+from tensorflow.lite.testing.op_tests.reciprocal import make_reciprocal_tests
+from tensorflow.lite.testing.op_tests.rfft import make_rfft_tests
+from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
+from tensorflow.lite.testing.op_tests.roll import make_roll_tests
+from tensorflow.lite.testing.op_tests.roll import make_roll_with_constant_tests
+from tensorflow.lite.testing.op_tests.segment_sum import make_segment_sum_tests
+from tensorflow.lite.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
+from tensorflow.lite.testing.op_tests.softplus import make_softplus_tests
+from tensorflow.lite.testing.op_tests.static_hashtable import make_static_hashtable_tests
+from tensorflow.lite.testing.op_tests.static_rnn_with_control_flow_v2 import make_static_rnn_with_control_flow_v2_tests
+from tensorflow.lite.testing.op_tests.stft import make_stft_tests
+from tensorflow.lite.testing.op_tests.tensor_list_concat import make_tensor_list_concat_tests
+from tensorflow.lite.testing.op_tests.tensor_list_dynamic_shape import make_tensor_list_dynamic_shape_tests
+from tensorflow.lite.testing.op_tests.tensor_list_get_item import make_tensor_list_get_item_tests
+from tensorflow.lite.testing.op_tests.tensor_list_length import make_tensor_list_length_tests
+from tensorflow.lite.testing.op_tests.tensor_list_resize import make_tensor_list_resize_tests
+from tensorflow.lite.testing.op_tests.tensor_list_set_item import make_tensor_list_set_item_tests
+from tensorflow.lite.testing.op_tests.tensor_scatter_add import make_tensor_scatter_add_tests
+from tensorflow.lite.testing.op_tests.tensor_scatter_update import make_tensor_scatter_update_tests
+from tensorflow.lite.testing.op_tests.where_v2 import make_where_v2_tests
+from tensorflow.lite.testing.op_tests.while_loop import make_while_tests
 
 
 MLIR_CONVERTER_KNOWN_BUGS = {
@@ -134,6 +135,10 @@ parser.add_argument(
     action="store_true",
     help="Whether to generate test cases for edgetpu.")
 parser.add_argument(
+    "--make_tf_ptq_tests",
+    action="store_true",
+    help="Whether to generate test cases for TF post-training quantization.")
+parser.add_argument(
     "--make_forward_compat_test",
     action="store_true",
     help="Make tests by setting TF forward compatibility horizon to the future")
@@ -159,6 +164,7 @@ def main(unused_args):
   options.save_graphdefs = FLAGS.save_graphdefs
   options.run_with_flex = FLAGS.run_with_flex
   options.make_edgetpu_tests = FLAGS.make_edgetpu_tests
+  options.make_tf_ptq_tests = FLAGS.make_tf_ptq_tests
   options.tflite_convert_function = mlir_convert.mlir_convert
   options.known_bugs = MLIR_CONVERTER_KNOWN_BUGS
   options.make_forward_compat_test = FLAGS.make_forward_compat_test

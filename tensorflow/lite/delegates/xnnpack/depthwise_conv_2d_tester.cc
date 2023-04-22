@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
@@ -73,15 +73,14 @@ void DepthwiseConv2DTester::Test(TfLiteDelegate* delegate) const {
   auto rng = std::mt19937(random_device());
   auto input_rng =
       std::bind(std::uniform_real_distribution<float>(), std::ref(rng));
-  float* default_input_data = default_interpreter->typed_tensor<float>(
-      default_interpreter->inputs()[0]);
+  float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
   std::generate(default_input_data,
                 default_input_data + BatchSize() * InputHeight() *
                                          InputWidth() * InputChannels(),
                 input_rng);
 
-  float* delegate_input_data = delegate_interpreter->typed_tensor<float>(
-      delegate_interpreter->inputs()[0]);
+  float* delegate_input_data =
+      delegate_interpreter->typed_input_tensor<float>(0);
   std::copy(default_input_data,
             default_input_data +
                 BatchSize() * InputHeight() * InputWidth() * InputChannels(),
@@ -90,10 +89,10 @@ void DepthwiseConv2DTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
 
-  float* default_output_data = default_interpreter->typed_tensor<float>(
-      default_interpreter->outputs()[0]);
-  float* delegate_output_data = delegate_interpreter->typed_tensor<float>(
-      delegate_interpreter->outputs()[0]);
+  float* default_output_data =
+      default_interpreter->typed_output_tensor<float>(0);
+  float* delegate_output_data =
+      delegate_interpreter->typed_output_tensor<float>(0);
 
   for (int32_t i = 0; i < BatchSize(); i++) {
     for (int32_t y = 0; y < OutputHeight(); y++) {

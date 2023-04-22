@@ -84,14 +84,15 @@ class Conv2dOpBuilder : public OpBuilder {
 // based on the weights tensor, which is utilized while preprocessing bias.
 
 TfLiteStatus ProcessPerChannelQuantizedWeights(
-    const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
-    TfLiteContext* context, float* weights_min, float* weights_max,
-    GraphBuilder* graph_builder, PerChannelQuantData* per_channel_quant);
+    const TfLiteTensor& weights_tensor, TfLiteContext* context,
+    float* weights_min, float* weights_max, GraphBuilder* graph_builder,
+    PerChannelQuantData* per_channel_quant);
 
 TfLiteStatus ProcessPerChannelQuantizedBias(
-    const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
-    TfLiteContext* context, float* bias_min, float* bias_max,
-    GraphBuilder* graph_builder, PerChannelQuantData* per_channel_quant,
+    const TfLiteTensor& data_tensor, const TfLiteTensor& bias_tensor,
+    const int bias_tensor_idx, TfLiteContext* context, float* bias_min,
+    float* bias_max, GraphBuilder* graph_builder,
+    PerChannelQuantData* per_channel_quant,
     OpBuilder** bias_const_node = nullptr);
 
 }  // namespace hexagon

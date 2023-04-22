@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
+#include <fstream>
 #include <iostream>
 #include <sstream>
 
@@ -26,6 +27,8 @@ limitations under the License.
 namespace tflite {
 namespace benchmark {
 using tensorflow::Stat;
+
+constexpr int kMemoryCheckIntervalMs = 50;
 
 BenchmarkParams BenchmarkModel::DefaultParams() {
   BenchmarkParams params;
@@ -42,6 +45,10 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   params.AddParam("verbose", BenchmarkParam::Create<bool>(false));
   params.AddParam("dry_run", BenchmarkParam::Create<bool>(false));
+  params.AddParam("report_peak_memory_footprint",
+                  BenchmarkParam::Create<bool>(false));
+  params.AddParam("memory_footprint_check_interval_ms",
+                  BenchmarkParam::Create<int32_t>(kMemoryCheckIntervalMs));
   return params;
 }
 
@@ -64,9 +71,16 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
       << "Note: as the benchmark tool itself affects memory footprint, the "
          "following is only APPROXIMATE to the actual memory footprint of the "
          "model at runtime. Take the information at your discretion.";
-  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
-                   << init_mem_usage.max_rss_kb / 1024.0
+  TFLITE_LOG(INFO) << "Memory footprint delta from the start of the tool (MB): "
+                   << "init=" << init_mem_usage.max_rss_kb / 1024.0
                    << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
+
+  auto peak_mem_mb = results.peak_mem_mb();
+  if (peak_mem_mb > 0) {
+    TFLITE_LOG(INFO)
+        << "Overall peak memory footprint (MB) via periodic monitoring: "
+        << peak_mem_mb;
+  }
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
@@ -117,7 +131,16 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
                        "Whether to run the tool just with simply loading the "
                        "model, allocating tensors etc. but without actually "
                        "invoking any op kernels."),
-  };
+      CreateFlag<bool>(
+          "report_peak_memory_footprint", &params_,
+          "Report the peak memory footprint by periodically checking the "
+          "memory footprint. Internally, a separate thread will be spawned for "
+          "this periodic check. Therefore, the performance benchmark result "
+          "could be affected."),
+      CreateFlag<int32_t>("memory_footprint_check_interval_ms", &params_,
+                          "The interval in millisecond between two consecutive "
+                          "memory footprint checks. This is only used when "
+                          "--report_peak_memory_footprint is set to true.")};
 }
 
 void BenchmarkModel::LogParams() {
@@ -140,6 +163,10 @@ void BenchmarkModel::LogParams() {
   LOG_BENCHMARK_PARAM(float, "warmup_min_secs",
                       "Min warmup runs duration (seconds)", verbose);
   LOG_BENCHMARK_PARAM(bool, "dry_run", "Run w/o invoking kernels", verbose);
+  LOG_BENCHMARK_PARAM(bool, "report_peak_memory_footprint",
+                      "Report the peak memory footprint", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "memory_footprint_check_interval_ms",
+                      "Memory footprint check interval (ms)", verbose);
 }
 
 TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
@@ -163,9 +190,14 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   double manual_inter_run_gap = 1.0 / run_frequency;
   // float doesn't have sufficient precision for storing this number
   double next_run_finish_time = now_us * 1e-6 + manual_inter_run_gap;
-  for (int run = 0; (run < min_num_times || now_us < min_finish_us) &&
-                    now_us <= max_finish_us;
-       run++) {
+  // for (int run = 0; (run < min_num_times || now_us < min_finish_us) &&
+  //                   now_us <= max_finish_us;
+  //      run++) {
+  for (int run = 0; run < min_num_times; run++) {
+    std::ofstream offile("a_Bert/mobile_bert/layer.txt");
+    offile << "0" << std::endl;
+    offile.close();
+
     ResetInputsAndOutputs();
     listeners_.OnSingleRunStart(run_type);
     int64_t start_us = profiling::time::NowMicros();
@@ -196,7 +228,22 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   return run_stats;
 }
 
-TfLiteStatus BenchmarkModel::ValidateParams() { return kTfLiteOk; }
+TfLiteStatus BenchmarkModel::ValidateParams() {
+  if (params_.Get<bool>("report_peak_memory_footprint")) {
+    const int32_t interval =
+        params_.Get<int32_t>("memory_footprint_check_interval_ms");
+    if (interval <= 0) {
+      TFLITE_LOG(WARN) << "--memory_footprint_check_interval_ms is set to "
+                       << interval
+                       << " (ms), This value is invalid, and it will be set to "
+                          "the default value "
+                       << kMemoryCheckIntervalMs << " (ms).";
+      params_.Set<int32_t>("memory_footprint_check_interval_ms",
+                           kMemoryCheckIntervalMs);
+    }
+  }
+  return kTfLiteOk;
+}
 
 TfLiteStatus BenchmarkModel::Run(int argc, char** argv) {
   TF_LITE_ENSURE_STATUS(ParseFlags(argc, argv));
@@ -208,6 +255,8 @@ TfLiteStatus BenchmarkModel::Run() {
 
   LogParams();
 
+  auto peak_memory_reporter = MayCreateMemoryUsageMonitor();
+  if (peak_memory_reporter != nullptr) peak_memory_reporter->Start();
   const double model_size_mb = MayGetModelFileSize() / 1e6;
   const auto start_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_start_us = profiling::time::NowMicros();
@@ -237,23 +286,41 @@ TfLiteStatus BenchmarkModel::Run() {
   }
 
   listeners_.OnBenchmarkStart(params_);
-  Stat<int64_t> warmup_time_us =
-      Run(params_.Get<int32_t>("warmup_runs"),
-          params_.Get<float>("warmup_min_secs"), params_.Get<float>("max_secs"),
-          WARMUP, &status);
-  if (status != kTfLiteOk) {
-    return status;
-  }
 
+  // Stat<int64_t> warmup_time_us =
+  //     Run(params_.Get<int32_t>("warmup_runs"),
+  //         params_.Get<float>("warmup_min_secs"),
+  //         params_.Get<float>("max_secs"), WARMUP, &status);
+  // if (status != kTfLiteOk) {
+  //   return status;
+  // }
+
+  // std::cout << "Press Enter to Go" << std::endl;
+  // std::cin.ignore();
   Stat<int64_t> inference_time_us =
       Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
           params_.Get<float>("max_secs"), REGULAR, &status);
   const auto overall_mem_usage =
       profiling::memory::GetMemoryUsage() - start_mem_usage;
 
+  float peak_mem_mb = profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
+  if (peak_memory_reporter != nullptr) {
+    peak_memory_reporter->Stop();
+    peak_mem_mb = peak_memory_reporter->GetPeakMemUsageInMB();
+  }
+
+  Stat<int64_t> warmup_time_us = inference_time_us;
+  float run_time = inference_time_us.sum();
+  std::cout << "===========================" << std::endl;
+  std::cout << "average time: "
+            << (run_time / (params_.Get<int32_t>("num_runs") * 1000)) << " ms"
+            << "  std: " << inference_time_us.std_deviation() << std::endl;
+  std::cout << "===========================" << std::endl;
+
   listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
                              warmup_time_us, inference_time_us, init_mem_usage,
-                             overall_mem_usage});
+                             overall_mem_usage, peak_mem_mb});
+
   return status;
 }
 
@@ -281,6 +348,15 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   }
 
   return kTfLiteOk;
+}
+
+std::unique_ptr<profiling::memory::MemoryUsageMonitor>
+BenchmarkModel::MayCreateMemoryUsageMonitor() const {
+  if (!params_.Get<bool>("report_peak_memory_footprint")) return nullptr;
+
+  return std::unique_ptr<profiling::memory::MemoryUsageMonitor>(
+      new profiling::memory::MemoryUsageMonitor(
+          params_.Get<int32_t>("memory_footprint_check_interval_ms")));
 }
 
 }  // namespace benchmark

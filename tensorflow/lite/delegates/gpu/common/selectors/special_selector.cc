@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -50,13 +51,31 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   if (consumers.size() != 1) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
-  auto* conv_node = consumers[0];
-  if (conv_node == nullptr) {
+
+  Node* next_node;
+  next_node = consumers[0];
+  if (next_node == nullptr) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
-  if (consumed_nodes->find(conv_node->id) != consumed_nodes->end()) {
+  if (consumed_nodes->find(next_node->id) != consumed_nodes->end()) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
+  Node* relu_node = nullptr;
+  ReLUAttributes relu_attributes;
+  if (OperationTypeFromString(next_node->operation.type) ==
+      OperationType::RELU) {
+    relu_node = next_node;
+    auto relu_outputs = graph.FindOutputs(relu_node->id);
+    consumers = graph.FindConsumers(relu_outputs[0]->id);
+    if (consumers.size() != 1) {
+      return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+    }
+    relu_attributes =
+        absl::any_cast<ReLUAttributes>(relu_node->operation.attributes);
+    next_node = consumers[0];
+  }
+
+  auto* conv_node = next_node;
   if (OperationTypeFromString(conv_node->operation.type) !=
       OperationType::CONVOLUTION_2D) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
@@ -85,9 +104,14 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   }
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(dw_inputs, conv_outputs, gpu_subgraph);
-  auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, dw_attr, conv_attr);
+  ReLUAttributes* relu_attr_ptr = relu_node ? &relu_attributes : nullptr;
+  auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
+                                                  conv_attr, relu_attr_ptr);
   *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
   consumed_nodes->insert(dw_node->id);
+  if (relu_node) {
+    consumed_nodes->insert(relu_node->id);
+  }
   consumed_nodes->insert(conv_node->id);
   return absl::OkStatus();
 }
@@ -213,7 +237,7 @@ absl::Status GPUSubgraphFromGraph(
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
     std::string* name) {
-  if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() ||
+  if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() || gpu_info.IsMali() ||
        (gpu_info.IsApple() && gpu_info.apple_info.IsBionic())) &&
       TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
@@ -227,6 +251,12 @@ absl::Status GPUSubgraphFromGraph(
                  consumed_nodes, gpu_subgraph)
           .ok()) {
     *name = "fully_connected_x2_and_add";
+    return absl::OkStatus();
+  }
+  if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
+                            consumed_nodes, gpu_subgraph)
+          .ok()) {
+    *name = "slice_mul_mean_concat";
     return absl::OkStatus();
   }
   return absl::NotFoundError("No special combination.");

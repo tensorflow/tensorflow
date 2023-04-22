@@ -4,10 +4,19 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(":build_defs.bzl", "build_test")
+load(":cc_library_with_tflite.bzl", "custom_c_library_with_tflite")
 
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(
+    srcs = ["c/c_api.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
 )
 
 #------------------------------------------------------------------------------
@@ -349,10 +358,21 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
     ],
+)
+
+custom_c_library_with_tflite(
+    name = "custom_c_api_example",
+    testonly = True,
+    models = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+    visibility = ["//visibility:private"],
 )
 
 build_test(
@@ -362,6 +382,7 @@ build_test(
         ":c_api",
         ":c_api_experimental",
         ":common",
+        ":custom_c_api_example",
     ],
 )
 
@@ -414,6 +435,18 @@ build_test(
 
 #------------------------------------------------------------------------------
 # JNI bindings (Java API and Java Tasks library)
+
+cc_library(
+    name = "jni_utils",
+    srcs = ["jni/jni_utils.cc"],
+    hdrs = ["jni/jni_utils.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/java/jni",
+    ],
+)
 
 # Contains code to initialize TFLite through JNI in the internal version.
 cc_library(

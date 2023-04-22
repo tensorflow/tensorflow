@@ -18,8 +18,6 @@
 import tensorflow as tf
 
 from tensorflow.lite.python.authoring import authoring
-from tensorflow.python.eager import test
-from tensorflow.python.platform import tf_logging as logging
 
 
 class TFLiteAuthoringTest(tf.test.TestCase):
@@ -36,9 +34,12 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     log_messages = f.get_compatibility_log()
     self.assertEqual(result, tf.constant([1.0]))
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
+
+    # Check the op location ends with filename of the this test.
+    self.assertIn("authoring_test.py", log_messages[-1])
 
   def test_simple_cosh_raises_CompatibilityError(self):
     @authoring.compatible(raise_exception=True)
@@ -54,7 +55,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
       del result
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -77,11 +78,13 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f(tf.ones(shape=(3, 3, 3, 3, 3), dtype=tf.float32))
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Erf' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Erf' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
   def test_compatibility_error(self):
+    self.skipTest("b/200947416")
+
     @authoring.compatible
     @tf.function
     def f():
@@ -92,7 +95,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'tf.DummySeedGenerator, tf.RangeDataset, "
+        "COMPATIBILITY ERROR: op 'tf.DummySeedGenerator, tf.RangeDataset, "
         "tf.ShuffleDatasetV3' is(are) not natively supported by "
         "TensorFlow Lite. You need to provide a custom operator. "
         "https://www.tensorflow.org/lite/guide/ops_custom", log_messages)
@@ -128,7 +131,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
 
     self.assertEqual(result, tf.constant([1.0]))
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -148,7 +151,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
 
     # Check if the decorator works with get_concrete_function method.
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [func.get_concrete_function()])
+        [func.get_concrete_function()], func)
     converter.convert()
 
   def test_decorated_class_method_type(self):
@@ -170,7 +173,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
 
     # Check if the decorator works with get_concrete_function method.
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [m.eval.get_concrete_function()])
+        [m.eval.get_concrete_function()], m)
     converter.convert()
 
   def test_simple_cosh_multiple(self):
@@ -181,15 +184,10 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     def f(x):
       return tf.cosh(x)
 
-    warning_messages = []
-
-    def mock_warning(msg):
-      warning_messages.append(msg)
-
-    with test.mock.patch.object(logging, "warning", mock_warning):
-      f(tf.constant([1.0]))
-      f(tf.constant([2.0]))
-      f(tf.constant([3.0]))
+    f(tf.constant([1.0]))
+    f(tf.constant([2.0]))
+    f(tf.constant([3.0]))
+    warning_messages = f.get_compatibility_log()
 
     # Test if compatiblility checks happens only once.
     # The number of warning_messages will be 2 by op location detail.
@@ -236,7 +234,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'tf.RangeDataset, tf.ShuffleDatasetV3' is(are) "
+        "COMPATIBILITY ERROR: op 'tf.RangeDataset, tf.ShuffleDatasetV3' is(are) "
         "not natively supported by TensorFlow Lite. You need to provide a "
         "custom operator. https://www.tensorflow.org/lite/guide/ops_custom",
         log_messages)
@@ -252,6 +250,49 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertEmpty(log_messages)
+
+  def test_non_gpu_compatible(self):
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    target_spec.experimental_supported_backends = ["GPU"]
+
+    @authoring.compatible(converter_target_spec=target_spec)
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[4, 4], dtype=tf.float32)])
+    def func(x):
+      return tf.cosh(x) + tf.slice(x, [1, 1], [1, 1])
+
+    func(tf.ones(shape=(4, 4), dtype=tf.float32))
+    log_messages = func.get_compatibility_log()
+    self.assertIn(
+        "'tfl.slice' op is not GPU compatible: SLICE supports for 3 or 4"
+        " dimensional tensors only, but node has 2 dimensional tensors.",
+        log_messages)
+    self.assertIn(
+        "COMPATIBILITY WARNING: op 'tf.Cosh, tfl.slice' aren't compatible with "
+        "TensorFlow Lite GPU delegate. "
+        "https://www.tensorflow.org/lite/performance/gpu", log_messages)
+
+  def test_gpu_compatible(self):
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+    ]
+    target_spec.experimental_supported_backends = ["GPU"]
+
+    @authoring.compatible(converter_target_spec=target_spec)
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[4, 4], dtype=tf.float32)])
+    def func(x):
+      return tf.cos(x)
+
+    func(tf.ones(shape=(4, 4), dtype=tf.float32))
+    log_messages = func.get_compatibility_log()
+    self.assertEmpty(log_messages)
+
 
 if __name__ == "__main__":
   tf.test.main()

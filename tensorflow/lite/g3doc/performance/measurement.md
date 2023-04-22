@@ -564,7 +564,7 @@ disable tracing by removing the environment variable.
 
 Capture traces by following the steps below:
 
-1.  Select **Product > Scheme** from the top menus of Xcode.
+1.  Select **Product > Profile** from the top menus of Xcode.
 
 2.  Click **Logging** among profiling templates when Instruments tool launches.
 

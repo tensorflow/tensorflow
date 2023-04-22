@@ -27,11 +27,18 @@ def make_binary_op_tests(options,
                          binary_operator,
                          allow_fully_quantize=False,
                          expected_tf_failures=0,
-                         test_parameters=None):
+                         test_parameters=None,
+                         test_parameter_experimental_converter_only=False):
   """Make a set of tests to do binary ops with and without broadcast."""
 
   if test_parameters is None:
     test_parameters = []
+
+  # If the additional test parameters are experimental_converter only, we will
+  # clear the test parameters when it's not the experimental converter.
+  if test_parameter_experimental_converter_only:
+    if not options.use_experimental_converter:
+      test_parameters = []
 
   test_parameters = test_parameters + [
       # Avoid creating all combinations to keep the test size small.
@@ -278,7 +285,23 @@ def make_binary_op_tests_func(binary_operator):
 
 @register_make_test_function()
 def make_add_tests(options):
-  make_binary_op_tests(options, tf.add, allow_fully_quantize=True)
+  """Make zip tests for add op with uint32 case."""
+  test_parameters = [
+      {
+          "dtype": [tf.uint32],
+          "input_shape_1": [[1, 3, 3, 3], [1], [3, 3]],
+          "input_shape_2": [[3], [1]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options,
+      tf.add,
+      allow_fully_quantize=True,
+      test_parameters=test_parameters,
+      test_parameter_experimental_converter_only=True)
 
 
 @register_make_test_function()

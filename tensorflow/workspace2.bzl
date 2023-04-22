@@ -76,6 +76,17 @@ def _initialize_third_party():
     sobol_data()
     vulkan_headers()
 
+def clean_dep(target):
+    """Returns string to 'target' in @org_tensorflow repository.
+
+    Use this function when referring to targets in the @org_tensorflow
+    repository from macros that may be called from external repositories.
+    """
+
+    # A repo-relative label is resolved relative to the file in which the
+    # Label() call appears, i.e. @org_tensorflow.
+    return str(Label(target))
+
 # Toolchains & platforms required by Tensorflow to build.
 def _tf_toolchains():
     native.register_execution_platforms("@local_execution_config_platform//:platform")
@@ -1065,6 +1076,17 @@ def _tf_repositories():
             "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
         ],
     )
+
+    tf_http_archive(
+        name = "systemc",
+        build_file = clean_dep("//third_party:systemc.BUILD"),
+        sha256 = "5781b9a351e5afedabc37d145e5f7edec08f3fd5de00ffeb8fa1f3086b1f7b3f",
+        urls = [
+            "http://mirror.tensorflow.org/www.accellera.org/images/downloads/standards/systemc/systemc-2.3.3.tar.gz",
+            "https://www.accellera.org/images/downloads/standards/systemc/systemc-2.3.3.tar.gz",
+        ],
+    )
+
     tf_http_archive(
         name = "coremltools",
         sha256 = "0d594a714e8a5fd5bd740ad112ef59155c0482e25fdc8f8efa5758f90abdcf1e",

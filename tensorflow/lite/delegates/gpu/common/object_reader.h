@@ -19,14 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
 namespace gpu {
@@ -84,7 +84,7 @@ class ObjectReader {
       }
       switch (tflite_tensor->type) {
         case kTfLiteFloat32: {
-          optimize::sparsity::FormatConverter<float> converter(
+          internal::sparsity::FormatConverter<float> converter(
               dims, *tflite_tensor->sparsity);
           converter.SparseToDense(
               static_cast<const float*>(tflite_tensor->data.data));
@@ -93,7 +93,7 @@ class ObjectReader {
           break;
         }
         case kTfLiteFloat16: {
-          optimize::sparsity::FormatConverter<Eigen::half> converter(
+          internal::sparsity::FormatConverter<Eigen::half> converter(
               dims, *tflite_tensor->sparsity);
           converter.SparseToDense(
               static_cast<const Eigen::half*>(tflite_tensor->data.data));

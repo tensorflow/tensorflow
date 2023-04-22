@@ -17,7 +17,7 @@ If you are using a platform other than Android, or you are already familiar with
 the [TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite),
 you can download our trained model.
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/blob/master/lite/examples/reinforcement_learning/android/app/src/main/assets/planestrike.tflite">Download
+<a class="button button-primary" href="https://github.com/tensorflow/examples/blob/master/lite/examples/reinforcement_learning/android/app/src/main/assets/planestrike_tf.tflite">Download
 model</a>
 
 ## How it works

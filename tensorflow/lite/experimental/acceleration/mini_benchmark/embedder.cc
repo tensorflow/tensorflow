@@ -15,7 +15,11 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedder.h"
 
 #include <cstdint>
+#include <functional>
+#include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
@@ -51,7 +55,7 @@ namespace {
 // | |quantized image  |                  |
 // | +-----+-----------+                  |  +-----------------------+
 // |       |                              |  |'main_model' (0)       |
-// |       | dequantize                   |  | +---------------+     |
+// |       | dequantize (optional)        |  | +---------------+     |
 // |       v                              |  | |input          +---+ |
 // | +-----+-----------+                  |  | +---------------+   | |
 // | |float image      |                  |  |                     ~ |
@@ -61,9 +65,16 @@ namespace {
 // |       v                              |  |                       |
 // | +-----+-----output+ +---------input+ |  +-----------------------+
 // | |actual outputs   | |golden outputs| |
-// | +-----+-----------+ +-----------+--+ |  +-----------------------+
-// |       |  call                   |    |  |'validation model' (2) |
-// |       +<------------------------+------>+                       |
+// | +-----+-----------+ +-----------+--+ |
+// |       |                         |    |
+// |       | dequantize (optional)   |    |
+// |       |                         |    |
+// | +-----+-------------------------+-+  |
+// | | dequantized actual and golden   |  |
+// | | outputs (validation inputs)     |  |
+// | +-----+---------------------------+  |  +-----------------------+
+// |       |  call                        |  |'validation model' (2) |
+// |       +<------------------------------->+                       |
 // |       v                              |  | +---------------+     |
 // | +-----+-----output+                  |  | |inputs         +---+ |
 // | |results          |                  |  | +---------------+   | |
@@ -109,6 +120,7 @@ class ValidationGraphBuilder {
 
  private:
   static const int32_t kModelVersion = 3;
+  static const int32_t kSkippedIndex = -1;
   // Operator code numbering.
   static const int32_t kCallOperatorCode = 0;
   static const int32_t kDequantizeOperatorCode = 1;
@@ -136,6 +148,9 @@ class ValidationGraphBuilder {
     std::vector<int32_t> validation_inputs;
     // With a float model, validation_inputs is used directly. With a quantized
     // model, the inputs are first dequantized.
+    // Some models have a mixture of quantized outputs that need to be
+    // dequantized to floats; and integer outputs. For integer outputs
+    // kSkippedIndex is used.
     std::vector<int32_t> dequantized_validation_inputs;
     std::vector<int32_t> validation_outputs;
 
@@ -201,45 +216,59 @@ class ValidationGraphBuilder {
     // Copy tensors from a source subgraph, overriding the batch_size where
     // necessary (the called subgraph always uses batch size 1, the calling
     // subgraph always uses batch size equal jpeg_data_.size()).
-    auto copy = [&tensors, this, &buffer_count](
-                    const SubGraph* from_subgraph,
-                    const fb::Vector<int32_t>* indices,
-                    std::vector<int32_t>* store_indices_into, int batch_size,
-                    const std::string prefix = "") -> absl::Status {
-      for (auto index = indices->cbegin(); index != indices->cend(); index++) {
-        auto i = from_subgraph->tensors()->Get(*index);
-        std::vector<int32_t> shape{i->shape()->cbegin(), i->shape()->cend()};
+    auto copy =
+        [&tensors, this, &buffer_count](
+            const SubGraph* from_subgraph, const fb::Vector<int32_t>* indices,
+            std::vector<int32_t>* store_indices_into, int batch_size,
+            const std::string prefix = "",
+            std::function<absl::StatusOr<bool>(const Tensor*, int)> filter =
+                nullptr) -> absl::Status {
+      int counter = 0;
+      for (auto index = indices->cbegin(); index != indices->cend();
+           index++, counter++) {
+        const Tensor* tensor = from_subgraph->tensors()->Get(*index);
+        if (filter) {
+          auto statusor = filter(tensor, counter);
+          if (!statusor.ok()) {
+            return statusor.status();
+          } else if (!statusor.value()) {
+            store_indices_into->push_back(kSkippedIndex);
+            continue;
+          }
+        }
+        std::vector<int32_t> shape{tensor->shape()->cbegin(),
+                                   tensor->shape()->cend()};
         if (shape.size() >= 2 && shape[0] == 1 && batch_size > 0) {
           shape[0] = batch_size;
         }
         std::vector<int32_t> shape_signature;
-        if (i->shape_signature()) {
-          shape_signature.assign(i->shape_signature()->cbegin(),
-                                 i->shape_signature()->cend());
+        if (tensor->shape_signature()) {
+          shape_signature.assign(tensor->shape_signature()->cbegin(),
+                                 tensor->shape_signature()->cend());
           if (shape_signature.size() >= 2 && shape_signature[0] == 1 &&
               batch_size > 0) {
             shape_signature[0] = batch_size;
           }
         }
         auto quantization_parameters = helper_.CopyTable(
-            "tflite.QuantizationParameters", i->quantization());
+            "tflite.QuantizationParameters", tensor->quantization());
         if (!quantization_parameters.ok()) {
           return quantization_parameters.status();
         }
         auto sparsity_parameters =
-            helper_.CopyTable("tflite.SparsityParameters", i->sparsity());
+            helper_.CopyTable("tflite.SparsityParameters", tensor->sparsity());
         if (!sparsity_parameters.ok()) {
           return sparsity_parameters.status();
         }
         store_indices_into->push_back(tensors.size());
-        std::string name = i->name()->str();
+        std::string name = tensor->name()->str();
         if (!prefix.empty() && name.find(prefix) != 0) {  // NOLINT
           name = prefix + name;
         }
         tensors.push_back(CreateTensor(
-            fbb_, fbb_.CreateVector(shape), i->type(), buffer_count,
-            fbb_.CreateString(name), *quantization_parameters, i->is_variable(),
-            *sparsity_parameters,
+            fbb_, fbb_.CreateVector(shape), tensor->type(), buffer_count,
+            fbb_.CreateString(name), *quantization_parameters,
+            tensor->is_variable(), *sparsity_parameters,
             shape_signature.empty() ? 0 : fbb_.CreateVector(shape_signature)));
         buffer_count++;
       }
@@ -322,14 +351,38 @@ class ValidationGraphBuilder {
     }
     tensor_info->entrypoint_inputs.push_back(tensor_info->jpeg_images[0]);
     // Validation inputs, dequantized.
-    if (input_tensor->type() != TensorType_FLOAT32) {
-      status =
-          copy(validation_model_->subgraphs()->Get(0),
-               validation_model_->subgraphs()->Get(0)->inputs(),
-               &tensor_info->dequantized_validation_inputs, jpeg_data_.size());
-      if (!status.ok()) {
-        return status;
-      }
+    status = copy(
+        validation_model_->subgraphs()->Get(0),
+        validation_model_->subgraphs()->Get(0)->inputs(),
+        &tensor_info->dequantized_validation_inputs, jpeg_data_.size(), "",
+        [&tensors, &tensor_info, this](const Tensor* validation_model_input,
+                                       int i) -> absl::StatusOr<bool> {
+          // validation_model_input is the tensor for metrics calculation.
+          // validation_graph_input is the under-construction graph will be
+          // given to the metrics calculation but need to be dequantized first.
+          const Tensor* validation_graph_input = fb::GetTemporaryPointer(
+              fbb_, tensors[tensor_info->validation_inputs[i]]);
+          if (validation_model_input->type() == TensorType_FLOAT32 &&
+              (validation_graph_input->type() == TensorType_UINT8 ||
+               validation_graph_input->type() == TensorType_INT8)) {
+            return true;
+          } else if (validation_model_input->type() !=
+                     validation_graph_input->type()) {
+            const char* name = "(null)";
+            if (validation_model_input->name()) {
+              name = validation_model_input->name()->c_str();
+            }
+            return absl::InvalidArgumentError(
+                absl::StrFormat("Validation model input %s with type %d is "
+                                "incompatible with main model output type %d",
+                                name, validation_model_input->type(),
+                                validation_graph_input->type()));
+          } else {
+            return false;
+          }
+        });
+    if (!status.ok()) {
+      return status;
     }
     // Validation outputs.
     status = copy(validation_model_->subgraphs()->Get(0),
@@ -419,17 +472,13 @@ class ValidationGraphBuilder {
       return fbb_.CreateVector(ops);
     }
     // Call validation model.
-    if (tensor_info.dequantized_validation_inputs.empty()) {
-      ops.push_back(
-          CreateOperator(fbb_, kCallOperatorCode,
-                         fbb_.CreateVector(tensor_info.validation_inputs),
-                         fbb_.CreateVector(tensor_info.validation_outputs),
-                         tflite::BuiltinOptions_NONE, 0,
-                         CallOpCustomOptions(kValidationSubgraphIndex),
-                         tflite::CustomOptionsFormat_FLEXBUFFERS));
-    } else {
-      for (int i = 0; i < tensor_info.dequantized_validation_inputs.size();
-           i++) {
+    std::vector<int32_t> validation_input_indices;
+    for (int i = 0; i < tensor_info.dequantized_validation_inputs.size(); i++) {
+      int32_t validation_input_index;
+      if (tensor_info.dequantized_validation_inputs[i] == kSkippedIndex) {
+        validation_input_index = tensor_info.validation_inputs[i];
+      } else {
+        validation_input_index = tensor_info.dequantized_validation_inputs[i];
         std::vector<int32_t> dequantize_inputs{
             tensor_info.validation_inputs[i]};
         std::vector<int32_t> dequantize_outputs{
@@ -439,14 +488,14 @@ class ValidationGraphBuilder {
                                      fbb_.CreateVector(dequantize_outputs),
                                      BuiltinOptions_DequantizeOptions, 0));
       }
-      ops.push_back(CreateOperator(
-          fbb_, kCallOperatorCode,
-          fbb_.CreateVector(tensor_info.dequantized_validation_inputs),
-          fbb_.CreateVector(tensor_info.validation_outputs),
-          tflite::BuiltinOptions_NONE, 0,
-          CallOpCustomOptions(kValidationSubgraphIndex),
-          tflite::CustomOptionsFormat_FLEXBUFFERS));
+      validation_input_indices.push_back(validation_input_index);
     }
+    ops.push_back(CreateOperator(
+        fbb_, kCallOperatorCode, fbb_.CreateVector(validation_input_indices),
+        fbb_.CreateVector(tensor_info.validation_outputs),
+        tflite::BuiltinOptions_NONE, 0,
+        CallOpCustomOptions(kValidationSubgraphIndex),
+        tflite::CustomOptionsFormat_FLEXBUFFERS));
     return fbb_.CreateVector(ops);
   }
 
@@ -560,23 +609,26 @@ class ValidationGraphBuilder {
 
     auto validation_model_subgraph = validation_model_->subgraphs()->Get(0);
     // Dequantized validation inputs.
-    if (!tensor_info.dequantized_validation_inputs.empty()) {
-      RET_CHECK_INDEX(tensor_info.dequantized_validation_inputs.size(),
-                      validation_model_subgraph->inputs()->size());
-      int validation_graph_dequantized_input_index = 0;
-      for (auto i = validation_model_subgraph->inputs()->cbegin();
-           i != validation_model_subgraph->inputs()->cend(); i++) {
-        RET_CHECK_INDEX(tensor_info.dequantized_validation_inputs
-                            [validation_graph_dequantized_input_index],
-                        buffers.size());
+    RET_CHECK_INDEX(tensor_info.dequantized_validation_inputs.size(),
+                    validation_model_subgraph->inputs()->size());
+    int validation_graph_dequantized_input_index = 0;
+    for (auto i = validation_model_subgraph->inputs()->cbegin();
+         i != validation_model_subgraph->inputs()->cend(); i++) {
+      if (tensor_info.dequantized_validation_inputs
+              [validation_graph_dequantized_input_index] == kSkippedIndex) {
         validation_graph_dequantized_input_index++;
-        auto t = validation_model_subgraph->tensors()->Get(*i);
-        auto status = helper_.CopyTableToVector(
-            "tflite.Buffer", validation_model_->buffers()->Get(t->buffer()),
-            &buffers);
-        if (!status.ok()) {
-          return status;
-        }
+        continue;
+      }
+      RET_CHECK_INDEX(tensor_info.dequantized_validation_inputs
+                          [validation_graph_dequantized_input_index],
+                      buffers.size());
+      validation_graph_dequantized_input_index++;
+      auto t = validation_model_subgraph->tensors()->Get(*i);
+      auto status = helper_.CopyTableToVector(
+          "tflite.Buffer", validation_model_->buffers()->Get(t->buffer()),
+          &buffers);
+      if (!status.ok()) {
+        return status;
       }
     }
 
@@ -617,6 +669,7 @@ class ValidationGraphBuilder {
 // compile-time constants but can not be passed by reference (e.g., used with
 // absl::StrFormat).
 const int32_t ValidationGraphBuilder::kModelVersion;
+const int32_t ValidationGraphBuilder::kSkippedIndex;
 const int32_t ValidationGraphBuilder::kCallOperatorCode;
 const int32_t ValidationGraphBuilder::kDequantizeOperatorCode;
 const int32_t ValidationGraphBuilder::kDecodeJpegOperatorCode;

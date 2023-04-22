@@ -136,4 +136,38 @@ public final class NnApiDelegateTest {
     } catch (IllegalStateException expected) {
     }
   }
+
+  @Test
+  public void testSupportLibraryIsSetFromHandle() {
+    Interpreter.Options options = new Interpreter.Options();
+    NnApiDelegate.Options nnApiOptions = new NnApiDelegate.Options();
+    long mockSlHandle = getMockSlHandle();
+    try (NnApiDelegate delegate =
+            new NnApiDelegate(
+                nnApiOptions.setNnApiSupportLibraryHandle(mockSlHandle).setUseNnapiCpu(true));
+        Interpreter interpreter =
+            new Interpreter(MODEL_BUFFER, options.addDelegate(delegate).setUseXNNPACK(false))) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      // Not checking outputs since we're using mock NNAPI support library
+      assertThat(hasNnApiSlBeenCalled()).isTrue();
+    }
+    closeMockSl(mockSlHandle);
+  }
+
+  /**
+   * Allocates a mock NNAPI Support Library object. The mock library does nothing but remembers if
+   * any of its functions were called at least once.
+   */
+  private static native long getMockSlHandle();
+
+  /** Returns true if any function from the mock Support Library has been called at least once. */
+  private static native boolean hasNnApiSlBeenCalled();
+
+  /** Deallocates the Support Library object. */
+  private static native void closeMockSl(long handle);
 }

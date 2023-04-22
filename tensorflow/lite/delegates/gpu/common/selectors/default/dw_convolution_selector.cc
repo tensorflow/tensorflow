@@ -54,8 +54,9 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
   const MaliInfo mali_info = gpu_info.mali_info;
-  if (IsDepthwiseConv3x3Supported(gpu_info, attr) && !mali_info.IsMidgard() &&
-      !buffer_type && op_def.precision != CalculationsPrecision::F32) {
+  if (IsDepthwiseConv3x3Supported(gpu_info, attr) &&
+      (mali_info.IsBifrost() || mali_info.IsValhallGen1()) && !buffer_type &&
+      op_def.precision != CalculationsPrecision::F32) {
     return absl::make_unique<DepthwiseConv3x3>(
         CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {

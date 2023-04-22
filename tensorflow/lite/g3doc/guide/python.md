@@ -26,6 +26,10 @@ Python class. This small package is ideal when all you want to do is execute
 Note: If you need access to other Python APIs, such as the
 [TensorFlow Lite Converter](../convert/), you must install the
 [full TensorFlow package](https://www.tensorflow.org/install/).
+For example, the [Select TF ops]
+(https://www.tensorflow.org/lite/guide/ops_select) are not included in the
+`tflite_runtime` package. If your models have any dependencies to the Select TF
+ops, you need to use the full TensorFlow package instead.
 
 ## Install TensorFlow Lite for Python
 

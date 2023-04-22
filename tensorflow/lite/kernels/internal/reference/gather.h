@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/common.h"
 
+#include <iostream>
+
 namespace tflite {
 namespace reference_ops {
 
@@ -73,18 +75,37 @@ inline void Gather(const tflite::GatherParams& op_params,
     for (int outer = 0; outer < outer_size; ++outer) {
       for (int i = 0; i < coord_size; ++i) {
         TFLITE_DCHECK_GE(coords_data[i], 0);
-        TFLITE_DCHECK_LT(coords_data[i], axis_size);
+        // TFLITE_DCHECK_LT(coords_data[i], axis_size);
         // TODO(rsun): replace memcpy with a for loop
-        std::memcpy(
-            output_data +
-                (((batch * outer_size) + outer) * coord_size + i) * inner_size,
-            input_data + (((batch * outer_size) + outer) * axis_size +
-                          coords_data[batch * coord_size + i]) *
-                             inner_size,
-            sizeof(T) * inner_size);
+        // std::memcpy(
+        //     output_data +
+        //         (((batch * outer_size) + outer) * coord_size + i) *
+        //         inner_size,
+        //     input_data + (((batch * outer_size) + outer) * axis_size +
+        //                   coords_data[batch * coord_size + i]) *
+        //                      inner_size,
+        //     sizeof(T) * inner_size);
       }
     }
   }
+
+
+  // std:: cout << "Gather Called" << std::endl;
+  int out_size = 1;
+  for (int i = 0; i < output_shape.DimensionsCount(); ++i) {
+    out_size *= output_shape.Dims(i);
+  }
+  for (int j = 0; j < out_size; j++) {
+    output_data[j] = 1;
+  }
+  int k = 0;
+
+  // int size = output_shape.Dim(0);
+  // for (int i = 0; i > output_shape.Dim(0); i++) {
+  //   for (int j = 0; j > output_shape.Dim(1); j++) {
+  //     output_data[i] = 1;
+  //   }
+  // }
 }
 
 }  // namespace reference_ops

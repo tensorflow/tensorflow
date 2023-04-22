@@ -142,6 +142,27 @@ class Delegate(object):
 def load_delegate(library, options=None):
   """Returns loaded Delegate object.
 
+  Example usage:
+
+  ```
+  import tensorflow as tf
+
+  try:
+    delegate = tf.lite.experimental.load_delegate('delegate.so')
+  except ValueError:
+    // Fallback to CPU
+
+  if delegate:
+    interpreter = tf.lite.Interpreter(
+        model_path='model.tflite',
+        experimental_delegates=[delegate])
+  else:
+    interpreter = tf.lite.Interpreter(model_path='model.tflite')
+  ```
+
+  This is typically used to leverage EdgeTPU for running TensorFlow Lite models.
+  For more information see: https://coral.ai/docs/edgetpu/tflite-python/
+
   Args:
     library: Name of shared library containing the
       [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates).
@@ -182,31 +203,31 @@ class SignatureRunner(object):
     called while this object call has not finished.
   """
 
-  def __init__(self, interpreter=None, signature_def_name=None):
+  def __init__(self, interpreter=None, signature_key=None):
     """Constructor.
 
     Args:
       interpreter: Interpreter object that is already initialized with the
         requested model.
-      signature_def_name: SignatureDef names to be used.
+      signature_key: SignatureDef key to be used.
     """
     if not interpreter:
       raise ValueError('None interpreter provided.')
-    if not signature_def_name:
-      raise ValueError('None signature_def_name provided.')
+    if not signature_key:
+      raise ValueError('None signature_key provided.')
     self._interpreter = interpreter
     self._interpreter_wrapper = interpreter._interpreter
-    self._signature_def_name = signature_def_name
+    self._signature_key = signature_key
     signature_defs = interpreter._get_full_signature_list()
-    if signature_def_name not in signature_defs:
-      raise ValueError('Invalid signature_def_name provided.')
-    self._signature_def = signature_defs[signature_def_name]
+    if signature_key not in signature_defs:
+      raise ValueError('Invalid signature_key provided.')
+    self._signature_def = signature_defs[signature_key]
     self._outputs = self._signature_def['outputs'].items()
     self._inputs = self._signature_def['inputs']
 
     self._subgraph_index = (
-        self._interpreter_wrapper.GetSubgraphIndexFromSignatureDefName(
-            self._signature_def_name))
+        self._interpreter_wrapper.GetSubgraphIndexFromSignature(
+            self._signature_key))
 
   def __call__(self, **kwargs):
     """Runs the SignatureDef given the provided inputs in arguments.
@@ -246,6 +267,50 @@ class SignatureRunner(object):
     for output_name, output_index in self._outputs:
       result[output_name] = self._interpreter_wrapper.GetTensor(
           output_index, self._subgraph_index)
+    return result
+
+  def get_input_details(self):
+    """Gets input tensor details.
+
+    Returns:
+      A dictionary from input name to tensor details where each item is a
+      dictionary with details about an input tensor. Each dictionary contains
+      the following fields that describe the tensor:
+
+      + `name`: The tensor name.
+      + `index`: The tensor index in the interpreter.
+      + `shape`: The shape of the tensor.
+      + `shape_signature`: Same as `shape` for models with known/fixed shapes.
+        If any dimension sizes are unkown, they are indicated with `-1`.
+      + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
+      + `quantization`: Deprecated, use `quantization_parameters`. This field
+        only works for per-tensor quantization, whereas
+        `quantization_parameters` works in all cases.
+      + `quantization_parameters`: A dictionary of parameters used to quantize
+        the tensor:
+        ~ `scales`: List of scales (one if per-tensor quantization).
+        ~ `zero_points`: List of zero_points (one if per-tensor quantization).
+        ~ `quantized_dimension`: Specifies the dimension of per-axis
+        quantization, in the case of multiple scales/zero_points.
+      + `sparsity_parameters`: A dictionary of parameters used to encode a
+        sparse tensor. This is empty if the tensor is dense.
+    """
+    result = {}
+    for input_name, tensor_index in self._inputs.items():
+      result[input_name] = self._interpreter._get_tensor_details(tensor_index)  # pylint: disable=protected-access
+    return result
+
+  def get_output_details(self):
+    """Gets output tensor details.
+
+    Returns:
+      A dictionary from input name to tensor details where each item is a
+      dictionary with details about an output tensor. The dictionary contains
+      the same fields as described for `get_input_details()`.
+    """
+    result = {}
+    for output_name, tensor_index in self._outputs:
+      result[output_name] = self._interpreter._get_tensor_details(tensor_index)  # pylint: disable=protected-access
     return result
 
 
@@ -296,17 +361,44 @@ def _get_op_resolver_id(op_resolver_type=OpResolverType.AUTO):
 
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
-  """Interpreter interface for TensorFlow Lite Models.
+  """Interpreter interface for running TensorFlow Lite models.
 
-  This makes the TensorFlow Lite interpreter accessible in Python.
-  It is possible to use this interpreter in a multithreaded Python environment,
-  but you must be sure to call functions of a particular instance from only
-  one thread at a time. So if you want to have 4 threads running different
-  inferences simultaneously, create  an interpreter for each one as thread-local
-  data. Similarly, if you are calling invoke() in one thread on a single
-  interpreter but you want to use tensor() on another thread once it is done,
-  you must use a synchronization primitive between the threads to ensure invoke
-  has returned before calling tensor().
+  Models obtained from `TfLiteConverter` can be run in Python with
+  `Interpreter`.
+
+  As an example, lets generate a simple Keras model and convert it to TFLite
+  (`TfLiteConverter` also supports other input formats with `from_saved_model`
+  and `from_concrete_function`)
+
+  >>> x = np.array([[1.], [2.]])
+  >>> y = np.array([[2.], [4.]])
+  >>> model = tf.keras.models.Sequential([
+  ...           tf.keras.layers.Dropout(0.2),
+  ...           tf.keras.layers.Dense(units=1, input_shape=[1])
+  ...         ])
+  >>> model.compile(optimizer='sgd', loss='mean_squared_error')
+  >>> model.fit(x, y, epochs=1)
+  >>> converter = tf.lite.TFLiteConverter.from_keras_model(model)
+  >>> tflite_model = converter.convert()
+
+  `tflite_model` can be saved to a file and loaded later, or directly into the
+  `Interpreter`. Since TensorFlow Lite pre-plans tensor allocations to optimize
+  inference, the user needs to call `allocate_tensors()` before any inference.
+
+  >>> interpreter = tf.lite.Interpreter(model_content=tflite_model)
+  >>> interpreter.allocate_tensors()  # Needed before execution!
+
+  Sample execution:
+
+  >>> output = interpreter.get_output_details()[0]  # Model has single output.
+  >>> input = interpreter.get_input_details()[0]  # Model has single input.
+  >>> input_data = tf.constant(1., shape=[1, 1])
+  >>> interpreter.set_tensor(input['index'], input_data)
+  >>> interpreter.invoke()
+  >>> interpreter.get_tensor(output['index']).shape
+  (1, 1)
+
+  Use `get_signature_runner()` for a more user-friendly inference API.
   """
 
   def __init__(self,
@@ -703,52 +795,7 @@ class Interpreter(object):
     """
     return self._interpreter.GetSignatureDefs()
 
-  def _set_input_tensor(self, input_name, value, method_name=None):
-    """Sets the value of the input tensor.
-
-    Input tensor is identified by `input_name` in the SignatureDef identified
-    by `method_name`.
-    If the model has a single SignatureDef then you can pass None as
-    `method_name`.
-
-    Note this copies data in `value`.
-
-    Example,
-    ```
-    input_data = np.array([1.2, 1.4], np.float32)
-    signatures = interpreter._get_full_signature_list()
-    print(signatures)
-    # {
-    #   'add': {'inputs': {'x': 1, 'y': 0}, 'outputs': {'output_0': 4}}
-    # }
-    interpreter._set_input_tensor(input_name='x', value=input_data,
-    method_name='add_fn')
-    ```
-
-    Args:
-      input_name: Name of the output tensor in the SignatureDef.
-      value: Value of tensor to set as a numpy array.
-      method_name: The exported method name for the SignatureDef, it can be None
-        if and only if the model has a single SignatureDef. Default value is
-        None.
-
-    Raises:
-      ValueError: If the interpreter could not set the tensor. Or
-      if `method_name` is None and model doesn't have a single
-      Signature.
-    """
-    if method_name is None:
-      if len(self._signature_defs) != 1:
-        raise ValueError(
-            'SignatureDef method_name is None and model has {0} Signatures. '
-            'None is only allowed when the model has 1 SignatureDef'.format(
-                len(self._signature_defs)))
-      else:
-        method_name = next(iter(self._signature_defs))
-    self._interpreter.SetInputTensorFromSignatureDefName(
-        input_name, method_name, value)
-
-  def get_signature_runner(self, method_name=None):
+  def get_signature_runner(self, signature_key=None):
     """Gets callable for inference of specific SignatureDef.
 
     Example usage,
@@ -764,36 +811,36 @@ class Interpreter(object):
     # }
     ```
 
-    None can be passed for method_name if the model has a single Signature only.
+    None can be passed for signature_key if the model has a single Signature
+    only.
 
     All names used are this specific SignatureDef names.
 
 
     Args:
-      method_name: The exported method name for the SignatureDef, it can be None
-        if and only if the model has a single SignatureDef. Default value is
-        None.
+      signature_key: Signature key for the SignatureDef, it can be None if and
+        only if the model has a single SignatureDef. Default value is None.
 
     Returns:
       This returns a callable that can run inference for SignatureDef defined
-      by argument 'method_name'.
+      by argument 'signature_key'.
       The callable will take key arguments corresponding to the arguments of the
       SignatureDef, that should have numpy values.
       The callable will returns dictionary that maps from output names to numpy
       values of the computed results.
 
     Raises:
-      ValueError: If passed method_name is invalid.
+      ValueError: If passed signature_key is invalid.
     """
-    if method_name is None:
+    if signature_key is None:
       if len(self._signature_defs) != 1:
         raise ValueError(
-            'SignatureDef method_name is None and model has {0} Signatures. '
+            'SignatureDef signature_key is None and model has {0} Signatures. '
             'None is only allowed when the model has 1 SignatureDef'.format(
                 len(self._signature_defs)))
       else:
-        method_name = next(iter(self._signature_defs))
-    return SignatureRunner(interpreter=self, signature_def_name=method_name)
+        signature_key = next(iter(self._signature_defs))
+    return SignatureRunner(interpreter=self, signature_key=signature_key)
 
   def get_tensor(self, tensor_index):
     """Gets the value of the output tensor (get a copy).

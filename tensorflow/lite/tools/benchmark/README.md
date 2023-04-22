@@ -64,6 +64,15 @@ and the following optional parameters:
     will include allocated memory size of each tensor etc. Enabling this could
     help understand TfLite graph and memory usage, particularly when there are
     dynamic-shaped tensors in the graph.
+*  `report_peak_memory_footprint`: `bool` (default=false) \
+    Whether to report the peak memory footprint by periodically checking the
+    memory footprint. Internally, a separate thread will be spawned for this
+    periodic check. Therefore, the performance benchmark result could be
+    affected.
+*  `memory_footprint_check_interval_ms`: `int` (default=50) \
+   The interval in millisecond between two consecutive memory footprint checks.
+   This is only used when --report_peak_memory_footprint is set to true.
+
 *  `dry_run`: `bool` (default=false) \
     Whether to run the tool just with simply loading the model, allocating
     tensors etc. but without actually invoking any op kernels.

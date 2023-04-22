@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/test_op/simple_tflite_op.h"
 
 #include <cstring>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -29,62 +30,102 @@ namespace {
 class SimpleOpModel : public SingleOpModel {
  public:
   // Builds the op model and feeds in inputs, ready to invoke.
-  SimpleOpModel(const std::string& input, const int output2_size) {
+  SimpleOpModel(const std::vector<uint8_t>& op_options,
+                const std::vector<tflite::TensorType>& input_types,
+                const std::vector<std::vector<int>>& input_shapes,
+                const std::string& input0,
+                const std::vector<std::vector<int64_t>>& input1,
+                const std::vector<tflite::TensorType>& output_types) {
     // Define inputs.
-    const int input_idx = AddInput(tflite::TensorType_STRING);
+    std::vector<int> input_idx;
+    for (const auto input_type : input_types) {
+      input_idx.push_back(AddInput(input_type));
+    }
     // Define outputs.
-    output_1_idx_ = AddOutput(tflite::TensorType_INT32);
-    output_2_idx_ = AddOutput(tflite::TensorType_FLOAT32);
-    output_3_idx_ = AddOutput(tflite::TensorType_INT32);
-
+    for (const auto output_type : output_types) {
+      output_idx_.push_back(AddOutput(output_type));
+    }
     // Build the interpreter.
-    flexbuffers::Builder builder;
-    builder.Map([&]() { builder.Int("output2_size", output2_size); });
-    builder.Finish();
-    SetCustomOp(OpName_SIMPLE_OP(), builder.GetBuffer(), Register_SIMPLE_OP);
-    BuildInterpreter({{}});
-
+    SetCustomOp(OpName_SIMPLE_OP(), op_options, Register_SIMPLE_OP);
+    BuildInterpreter(input_shapes);
     // Populate inputs.
-    PopulateStringTensor(input_idx, {input});
+    PopulateStringTensor(input_idx[0], {input0});
+    for (int i = 0; i < input1.size(); ++i) {
+      PopulateTensor(input_idx[1 + i], input1[i]);
+    }
   }
 
-  std::tuple<std::vector<int>, std::vector<float>, std::vector<int>>
-  GetOutputs() {
-    return {ExtractVector<int>(output_1_idx_),
-            ExtractVector<float>(output_2_idx_),
-            ExtractVector<int>(output_3_idx_)};
+  template <typename T>
+  std::vector<T> GetOutput(const int i) {
+    return ExtractVector<T>(output_idx_[i]);
   }
 
+  std::vector<int> GetOutputShape(const int i) {
+    return GetTensorShape(output_idx_[i]);
+  }
+
+ protected:
   // Tensor indices
-  int output_1_idx_;
-  int output_2_idx_;
-  int output_3_idx_;
+  std::vector<int> output_idx_;
 };
 
-TEST(SimpleOpModel, OutputSize5) {
-  SimpleOpModel m(/*input=*/"abc", /*output2_size=*/5);
+TEST(SimpleOpModel, OutputSize_5_N_2) {
+  // Test input
+  flexbuffers::Builder builder;
+  builder.Map([&]() {
+    builder.Int("output1_size", 5);
+    builder.Int("N", 2);
+  });
+  builder.Finish();
+  std::vector<std::vector<int>> input_shapes = {{}, {}, {2}};
+  std::vector<tflite::TensorType> input_types = {tflite::TensorType_STRING,
+                                                 tflite::TensorType_INT64,
+                                                 tflite::TensorType_INT64};
+  std::vector<tflite::TensorType> output_types = {
+      tflite::TensorType_INT32, tflite::TensorType_FLOAT32,
+      tflite::TensorType_STRING, tflite::TensorType_INT64,
+      tflite::TensorType_INT64};
+  const std::string input0 = "abc";
+  const std::vector<std::vector<int64_t>> input1 = {{123}, {456, 789}};
+  // Run the op
+  SimpleOpModel m(/*op_options=*/builder.GetBuffer(), input_types, input_shapes,
+                  input0, input1, output_types);
   m.Invoke();
-  // When C++17 is available use structured binding
-  std::vector<int> output_1;
-  std::vector<float> output_2;
-  std::vector<int> output_3;
-  std::tie(output_1, output_2, output_3) = m.GetOutputs();
-  EXPECT_THAT(output_1, testing::ElementsAre(0, 1, 2, 3, 4));
-  EXPECT_THAT(output_2, testing::ElementsAre(0, 0.5, 1.0, 1.5, 2.0));
-  EXPECT_THAT(output_3, testing::ElementsAre(0, 1, 2));
+  // Assertions
+  EXPECT_THAT(m.GetOutput<int>(0), testing::ElementsAre(0, 1, 2, 3, 4));
+  EXPECT_THAT(m.GetOutput<float>(1),
+              testing::ElementsAre(0, 0.5, 1.0, 1.5, 2.0));
+  EXPECT_THAT(m.GetOutput<std::string>(2), testing::ElementsAre("0", "1", "2"));
+  EXPECT_THAT(m.GetOutput<int64_t>(3), testing::ElementsAre(124));
+  EXPECT_THAT(m.GetOutputShape(3), testing::ElementsAre());
+  EXPECT_THAT(m.GetOutput<int64_t>(4), testing::ElementsAre(457, 790));
+  EXPECT_THAT(m.GetOutputShape(4), testing::ElementsAre(2));
 }
 
-TEST(SimpleOpModel, OutputSize3) {
-  SimpleOpModel m(/*input=*/"dummy", /*output2_size=*/3);
+TEST(SimpleOpModel, OutputSize_3_N_0) {
+  // Test input
+  flexbuffers::Builder builder;
+  builder.Map([&]() {
+    builder.Int("output1_size", 3);
+    builder.Int("N", 0);
+  });
+  builder.Finish();
+  std::vector<std::vector<int>> input_shapes = {{}};
+  std::vector<tflite::TensorType> input_types = {tflite::TensorType_STRING};
+  std::vector<tflite::TensorType> output_types = {tflite::TensorType_INT32,
+                                                  tflite::TensorType_FLOAT32,
+                                                  tflite::TensorType_STRING};
+  const std::string input0 = "dummy";
+  const std::vector<std::vector<int64_t>> input1;
+  // Run the op
+  SimpleOpModel m(/*op_options=*/builder.GetBuffer(), input_types, input_shapes,
+                  input0, input1, output_types);
   m.Invoke();
-  // When C++17 is available use structured binding
-  std::vector<int> output_1;
-  std::vector<float> output_2;
-  std::vector<int> output_3;
-  std::tie(output_1, output_2, output_3) = m.GetOutputs();
-  EXPECT_THAT(output_1, testing::ElementsAre(0, 1, 2, 3, 4));
-  EXPECT_THAT(output_2, testing::ElementsAre(0, 0.5, 1.0));
-  EXPECT_THAT(output_3, testing::ElementsAre(0, 1, 2, 3, 4));
+  // Assertions
+  EXPECT_THAT(m.GetOutput<int>(0), testing::ElementsAre(0, 1, 2, 3, 4));
+  EXPECT_THAT(m.GetOutput<float>(1), testing::ElementsAre(0, 0.5, 1.0));
+  EXPECT_THAT(m.GetOutput<std::string>(2),
+              testing::ElementsAre("0", "1", "2", "3", "4"));
 }
 
 }  // namespace

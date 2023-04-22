@@ -83,6 +83,9 @@ class ValidatorRunner {
   // Get results for successfully completed validation runs. The caller can then
   // pick the best configuration based on timings.
   std::vector<const BenchmarkEvent*> GetSuccessfulResults();
+  // Get results for completed validation runs regardless whether it is
+  // successful or not.
+  int GetNumCompletedResults();
   // Get all relevant results for telemetry. Will contain:
   // - Start events if an incomplete test is found. Tests are considered
   // incomplete, if they started more than timeout_us ago and do not have

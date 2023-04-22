@@ -147,6 +147,23 @@ size_t TotalSize(const ObjectsAssignment<size_t>& assignment) {
                          assignment.object_sizes.end(), static_cast<size_t>(0));
 }
 
+// Checks if sub-buffer image 2D mapping is supported.
+bool CanUseSubBuffer(const GpuInfo& gpu_info) {
+  if (!gpu_info.IsCL11OrHigher()) {
+    return false;
+  }
+  if (gpu_info.IsPowerVR()) {
+    return false;
+  }
+  if (gpu_info.IsMali() &&
+      (gpu_info.mali_info.IsBifrost() || gpu_info.mali_info.IsMidgard())) {
+    // Known driver issue on some G72 (Bifrost), G76 (Bifrost), T830 (Midgard),
+    // and T880 (Midgard) devices.
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 absl::Status InferenceContext::InitFromGraph(
@@ -164,7 +181,8 @@ absl::Status InferenceContext::InitFromGraph(
   storage_type_ = create_info.storage_type;
   if (env->device().GetInfo().IsMali()) {
     need_flush_ = true;
-    need_manual_release_ = true;
+    need_manual_release_ =
+        env->device().GetInfo().mali_info.IsValhall() ? false : true;
 
     flush_periodically_ = true;
     flush_period_ = 24;
@@ -607,16 +625,19 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
 
   size_t base_align_bytes =
       std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
+  bool use_offset_assignment = false;
+
   OffsetsAssignment offset_assignment;
-  if (gpu_info.IsCL11OrHigher()) {
+  if (CanUseSubBuffer(gpu_info)) {
     RETURN_IF_ERROR(AssignOffsetsToTensors(
         buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
         &offset_assignment, base_align_bytes));
+    if (offset_assignment.total_size < TotalSize(buffer_assignment) &&
+        offset_assignment.total_size <= gpu_info.GetMaxBufferSize()) {
+      use_offset_assignment = true;
+    }
   }
 
-  bool use_offset_assignment =
-      gpu_info.IsCL11OrHigher() &&
-      offset_assignment.total_size < TotalSize(buffer_assignment);
   if (use_offset_assignment) {
     shared_buffers_.resize(offset_assignment.offsets.size());
     RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size, context,
@@ -789,11 +810,16 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
     total_memory += t.second.GetMemorySizeInBytes();
   }
   for (const auto& b : shared_buffers_) {
-    total_memory += b.GetMemorySizeInBytes();
+    // Sub-buffers do not allocate memory. Count the size of the parent buffer
+    // object instead.
+    if (!b.IsSubBuffer()) {
+      total_memory += b.GetMemorySizeInBytes();
+    }
   }
   for (const auto& t : variable_tensors_) {
     total_memory += t.second.GetMemorySizeInBytes();
   }
+  total_memory += shared_buffers_parent_.GetMemorySizeInBytes();
 
   return total_memory;
 }

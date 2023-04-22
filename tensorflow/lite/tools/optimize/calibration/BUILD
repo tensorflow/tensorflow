@@ -63,6 +63,7 @@ cc_library(
         ":logging_op",
         ":logging_op_resolver",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
@@ -83,6 +84,7 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite:testdata/multi_add.bin)",
     ],
     data = [
+        "//tensorflow/lite:testdata/call_once_mul.bin",
         "//tensorflow/lite:testdata/custom_lstm.bin",
         "//tensorflow/lite:testdata/lstm.bin",
         "//tensorflow/lite:testdata/multi_add.bin",

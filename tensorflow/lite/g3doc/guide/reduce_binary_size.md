@@ -69,10 +69,6 @@ cases:
 Note: This feature is currently experimental and available since version 2.4 and
 may change.
 
-## Known issues/limitations
-
-1.  Selective Build for C API and iOS version is not supported currently.
-
 ## Selectively build TensorFlow Lite with Bazel
 
 This section assumes that you have downloaded TensorFlow source codes and
@@ -97,7 +93,7 @@ Select TensorFlow ops. Note that this builds a "fat" AAR with several different
 architectures; if you don't need all of them, use the subset appropriate for
 your deployment environment.
 
-### Advanced Usage: Build with custom ops
+### Build with custom ops
 
 If you have developed Tensorflow Lite models with custom ops, you can build them
 by adding the following flags to the build command:
@@ -113,6 +109,261 @@ sh tensorflow/lite/tools/build_aar.sh \
 The `tflite_custom_ops_srcs` flag contains source files of your custom ops and
 the `tflite_custom_ops_deps` flag contains dependencies to build those source
 files. Note that these dependencies must exist in the TensorFlow repo.
+
+### Advanced Usages: Custom Bazel rules
+
+If your project is using Bazel and you would like to define custom TFLite
+dependencies for a given set of models, you can define following rule(s) in your
+project repository:
+
+For the models with the builtin ops only:
+
+```bazel
+load(
+    "@org_tensorflow//tensorflow/lite:build_def.bzl",
+    "tflite_custom_android_library",
+    "tflite_custom_c_library",
+    "tflite_custom_cc_library",
+)
+
+# A selectively built TFLite Android library.
+tflite_custom_android_library(
+    name = "selectively_built_android_lib",
+    models = [
+        ":model_one.tflite",
+        ":model_two.tflite",
+    ],
+)
+
+# A selectively built TFLite C library.
+tflite_custom_c_library(
+    name = "selectively_built_c_lib",
+    models = [
+        ":model_one.tflite",
+        ":model_two.tflite",
+    ],
+)
+
+# A selectively built TFLite C++ library.
+tflite_custom_cc_library(
+    name = "selectively_built_cc_lib",
+    models = [
+        ":model_one.tflite",
+        ":model_two.tflite",
+    ],
+)
+```
+
+For the models with the [Select TF ops](../guide/ops_select.md):
+
+```bazel
+load(
+    "@org_tensorflow//tensorflow/lite/delegates/flex:build_def.bzl",
+    "tflite_flex_android_library",
+    "tflite_flex_cc_library",
+)
+
+# A Select TF ops enabled selectively built TFLite Android library.
+tflite_flex_android_library(
+    name = "selective_built_tflite_flex_android_lib",
+    models = [
+        ":model_one.tflite",
+        ":model_two.tflite",
+    ],
+)
+
+# A Select TF ops enabled selectively built TFLite C++ library.
+tflite_flex_cc_library(
+    name = "selective_built_tflite_flex_cc_lib",
+    models = [
+        ":model_one.tflite",
+        ":model_two.tflite",
+    ],
+)
+```
+
+### Advanced Usages: Build custom C/C++ shared libraries
+
+If you would like to build your own custom TFLite C/C++ shared objects towards
+the given models, you can follow the below steps:
+
+Create a temporary BUILD file by running the following command at the root
+directory of the TensorFlow source code:
+
+```sh
+mkdir -p tmp && touch tmp/BUILD
+```
+
+#### Building custom C shared objects
+
+If you would like to build a custom TFLite C shared object, add the following to
+`tmp/BUILD` file:
+
+```bazel
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_custom_c_library",
+    "tflite_cc_shared_object",
+)
+
+tflite_custom_c_library(
+    name = "selectively_built_c_lib",
+    models = [
+        ":model_one.tflite",
+        ":model_two.tflite",
+    ],
+)
+
+# Generates a platform-specific shared library containing the TensorFlow Lite C
+# API implementation as define in `c_api.h`. The exact output library name
+# is platform dependent:
+#   - Linux/Android: `libtensorflowlite_c.so`
+#   - Mac: `libtensorflowlite_c.dylib`
+#   - Windows: `tensorflowlite_c.dll`
+tflite_cc_shared_object(
+    name = "tensorflowlite_c",
+    linkopts = select({
+        "//tensorflow:ios": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
+        ],
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-z defs",
+            "-Wl,--version-script,$(location //tensorflow/lite/c:version_script.lds)",
+        ],
+    }),
+    per_os_targets = True,
+    deps = [
+        ":selectively_built_c_lib",
+        "//tensorflow/lite/c:exported_symbols.lds",
+        "//tensorflow/lite/c:version_script.lds",
+    ],
+)
+```
+
+The newly added target can be built as follows:
+
+```sh
+bazel build -c opt --cxxopt=--std=c++14 \
+  //tmp:tensorflowlite_c
+```
+
+and for Android (replace `android_arm` with `android_arm64` for 64-bit):
+
+```sh
+bazel build -c opt --cxxopt=--std=c++14 --config=android_arm \
+  //tmp:tensorflowlite_c
+```
+
+#### Building custom C++ shared objects
+
+If you would like to build a custom TFLite C++ shared object, add the following
+to `tmp/BUILD` file:
+
+```bazel
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_custom_cc_library",
+    "tflite_cc_shared_object",
+)
+
+tflite_custom_cc_library(
+    name = "selectively_built_cc_lib",
+    models = [
+        ":model_one.tflite",
+        ":model_two.tflite",
+    ],
+)
+
+# Shared lib target for convenience, pulls in the core runtime and builtin ops.
+# Note: This target is not yet finalized, and the exact set of exported (C/C++)
+# APIs is subject to change. The output library name is platform dependent:
+#   - Linux/Android: `libtensorflowlite.so`
+#   - Mac: `libtensorflowlite.dylib`
+#   - Windows: `tensorflowlite.dll`
+tflite_cc_shared_object(
+    name = "tensorflowlite",
+    # Until we have more granular symbol export for the C++ API on Windows,
+    # export all symbols.
+    features = ["windows_export_all_symbols"],
+    linkopts = select({
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-Wl,-z,defs",
+            "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
+        ],
+    }),
+    per_os_targets = True,
+    deps = [
+        ":selectively_built_cc_lib",
+        "//tensorflow/lite:tflite_exported_symbols.lds",
+        "//tensorflow/lite:tflite_version_script.lds",
+    ],
+)
+```
+
+The newly added target can be built as follows:
+
+```sh
+bazel build -c opt  --cxxopt=--std=c++14 \
+  //tmp:tensorflowlite
+```
+
+and for Android (replace `android_arm` with `android_arm64` for 64-bit):
+
+```sh
+bazel build -c opt --cxxopt=--std=c++14 --config=android_arm \
+  //tmp:tensorflowlite
+```
+
+For the models with the Select TF ops, you also need to build the following
+shared library as well:
+
+```bazel
+load(
+    "@org_tensorflow//tensorflow/lite/delegates/flex:build_def.bzl",
+    "tflite_flex_shared_library"
+)
+
+# Shared lib target for convenience, pulls in the standard set of TensorFlow
+# ops and kernels. The output library name is platform dependent:
+#   - Linux/Android: `libtensorflowlite_flex.so`
+#   - Mac: `libtensorflowlite_flex.dylib`
+#   - Windows: `libtensorflowlite_flex.dll`
+tflite_flex_shared_library(
+  name = "tensorflowlite_flex",
+  models = [
+      ":model_one.tflite",
+      ":model_two.tflite",
+  ],
+)
+
+```
+
+The newly added target can be built as follows:
+
+```sh
+bazel build -c opt --cxxopt='--std=c++14' \
+      --config=monolithic \
+      --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+      //tmp:tensorflowlite_flex
+```
+
+and for Android (replace `android_arm` with `android_arm64` for 64-bit):
+
+```sh
+bazel build -c opt --cxxopt='--std=c++14' \
+      --config=android_arm \
+      --config=monolithic \
+      --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+      //tmp:tensorflowlite_flex
+```
 
 ## Selectively Build TensorFlow Lite with Docker
 
@@ -168,3 +419,11 @@ or by
 [publishing the custom AAR to your local Maven repository](https://www.tensorflow.org/lite/guide/build_android#install_aar_to_local_maven_repository).
 Note that you have to add the AAR files for `tensorflow-lite-select-tf-ops.aar`
 as well if you generate it.
+
+## Selective Build for iOS
+
+Please see the
+[Building locally section](../guide/build_ios.md#building_locally) to set up the
+build environment and configure TensorFlow workspace and then follow the
+[guide](../guide/build_ios.md#selectively_build_tflite_frameworks) to use the
+selective build script for iOS.

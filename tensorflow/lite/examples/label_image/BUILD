@@ -12,11 +12,47 @@ exports_files(glob([
     "testdata/*.bmp",
 ]))
 
+
+cc_library(
+    name = "label_image_lib",
+    srcs = [
+        "label_image.cc",
+        "get_top_n.h",
+        "npy.hpp",
+        "get_top_n_impl.h",
+    ],
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
+            "-Wl,-rpath=/data/local/tmp",  # for hexagon delegate
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":bitmap_helpers",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+        "//tensorflow/lite/tools/delegates:tflite_execution_providers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+
+
 cc_binary(
     name = "label_image",
     srcs = [
         "get_top_n.h",
         "get_top_n_impl.h",
+        "npy.hpp",
         "label_image.cc",
     ],
     linkopts = tflite_linkopts() + select({

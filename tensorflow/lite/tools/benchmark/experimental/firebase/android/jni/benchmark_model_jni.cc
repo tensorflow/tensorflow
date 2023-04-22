@@ -36,6 +36,20 @@ namespace benchmark {
 namespace {
 
 const char kOutputDir[] = "/sdcard/benchmark_output";
+const char kSerializeDir[] = "/sdcard/serialize";
+
+bool CreateDir(const char* path) {
+  struct stat st;
+  if (stat(path, &st) != 0) {
+    if (mkdir(path, 0777) != 0 && errno != EEXIST) {
+      return false;
+    }
+  } else if (!S_ISDIR(st.st_mode)) {
+    errno = ENOTDIR;
+    return false;
+  }
+  return true;
+}
 
 class FirebaseReportingListener : public BenchmarkListener {
  public:
@@ -120,7 +134,7 @@ class CsvExportingListener : public BenchmarkListener {
   explicit CsvExportingListener(std::string tag) : tag_(tag) {}
 
   void OnBenchmarkEnd(const BenchmarkResults& results) override {
-    if (!CreateOutputDir()) {
+    if (!CreateDir(kOutputDir)) {
 #ifdef __ANDROID__
       __android_log_print(ANDROID_LOG_ERROR, "tflite",
                           "Failed to create output directory %s.", kOutputDir);
@@ -133,19 +147,6 @@ class CsvExportingListener : public BenchmarkListener {
   }
 
  private:
-  bool CreateOutputDir() {
-    struct stat st;
-    if (stat(kOutputDir, &st) != 0) {
-      if (mkdir(kOutputDir, 0777) != 0 && errno != EEXIST) {
-        return false;
-      }
-    } else if (!S_ISDIR(st.st_mode)) {
-      errno = ENOTDIR;
-      return false;
-    }
-    return true;
-  }
-
   void WriteBenchmarkResultCsv(const BenchmarkResults& results) {
     auto init_us = results.startup_latency_us();
     auto warmup_us = results.warmup_time_us();
@@ -201,6 +202,14 @@ std::string GetScenarioConfig(const std::string& library_dir, int scenario,
             {"--use_gpu=true", "--gpu_precision_loss_allowed=true"}}},
           {9, {"dsp_hexagon", {"--use_hexagon=true"}}},
           {10, {"nnapi", {"--use_nnapi=true"}}},
+          {11,
+           {"gpu_default_with_serialization",
+            {"--use_gpu=true", "--gpu_precision_loss_allowed=false",
+             "--delegate_serialize_token=dummy_token"}}},
+          {12,
+           {"gpu_fp16_with_serialization",
+            {"--use_gpu=true", "--gpu_precision_loss_allowed=true",
+             "--delegate_serialize_token=dummy_token"}}},
       };
 
   std::string tag;
@@ -219,6 +228,23 @@ std::string GetScenarioConfig(const std::string& library_dir, int scenario,
     std::stringstream hexagon_lib_path;
     hexagon_lib_path << "--hexagon_lib_path=" << library_dir;
     args.push_back(hexagon_lib_path.str());
+  }
+
+  if (scenario == 11 || scenario == 12) {
+    if (CreateDir(kSerializeDir)) {
+      std::stringstream serialize_dir;
+      serialize_dir << "--delegate_serialize_dir=" << kSerializeDir;
+      args.push_back(serialize_dir.str());
+    } else {
+#ifdef __ANDROID__
+      __android_log_print(ANDROID_LOG_ERROR, "tflite",
+                          "Failed to create serialize directory %s.",
+                          kSerializeDir);
+#else
+      fprintf(stderr, "Failed to create serialize directory %s.",
+              kSerializeDir);
+#endif
+    }
   }
   return tag;
 }

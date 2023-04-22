@@ -29,6 +29,8 @@ bool Shape::operator==(const Shape& rhs) const {
   return true;
 }
 
+bool Shape::operator!=(const Shape& rhs) const { return !(*this == rhs); }
+
 bool Shape::Compatible(const Shape& rhs) const {
   if (!has_value() || !rhs.has_value()) return true;
   if (value_.size() != rhs.value_.size()) return false;

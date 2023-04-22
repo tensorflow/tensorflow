@@ -70,6 +70,19 @@ def make_depthwiseconv_tests(options):
           "quant_16x8": [False]
       },
       {
+          "input_shape": [[1, 3, 3, 3000]],
+          "filter_size": [[3, 3]],
+          "strides": [[1, 1, 1, 1]],
+          "dilations": [[1, 1, 1, 1]],
+          "channel_multiplier": [1],
+          "rate": [[1, 1]],
+          "padding": ["VALID"],
+          "data_format": ["NHWC"],
+          "constant_filter": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False]
+      },
+      {
           "input_shape": [[1, 3, 4, 3]],
           "filter_size": [[1, 2]],
           "strides": [[1, 3, 3, 1]],

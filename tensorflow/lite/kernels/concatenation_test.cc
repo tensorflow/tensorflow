@@ -469,5 +469,185 @@ TEST(ConcatenationOpTest, BoolTypeTwoInputs) {
                         false, true, true, true, true, true, true}));
 }
 
+enum class TestInputType {
+  kPersistentRo = 0,
+  kOnePersistentRo = 1,
+  kDefault = 2,
+};
+
+struct PersistentTestCase {
+  TestInputType test_type;
+  TensorType tensor_type;
+  bool is_quantized = false;
+};
+
+template <typename T>
+class PersistentConcatenationOpModel : public SingleOpModel {
+ public:
+  PersistentConcatenationOpModel(const std::vector<TensorData>& input_template,
+                                 int axis, const TensorData& output_template,
+                                 PersistentTestCase test_case,
+                                 std::vector<std::vector<T>> input_data_list)
+      : input_data_list_(input_data_list), test_case_(test_case) {
+    const int num_inputs = input_data_list.size();
+    std::vector<std::vector<int>> all_input_shapes;
+    CHECK_EQ(input_template.size(), num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      int id;
+      all_input_shapes.push_back(input_template[i].shape);
+      id = AddInput(input_template[i]);
+      concat_inputs_.push_back(id);
+    }
+    output_ = AddOutput(output_template);
+    SetBuiltinOp(
+        BuiltinOperator_CONCATENATION, BuiltinOptions_ConcatenationOptions,
+        CreateConcatenationOptions(builder_, axis, ActivationFunctionType_NONE)
+            .Union());
+    BuildInterpreter(all_input_shapes, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/false);
+
+    int num_persistent_inputs = 0;
+    if (test_case_.test_type == TestInputType::kPersistentRo) {
+      num_persistent_inputs = num_inputs;
+    } else if (test_case_.test_type == TestInputType::kOnePersistentRo) {
+      num_persistent_inputs = 1;
+    }
+
+    for (int i = 0; i < num_persistent_inputs; ++i) {
+      interpreter_->tensor(concat_inputs_[i])->allocation_type =
+          kTfLitePersistentRo;
+      std::vector<T>& input_data = input_data_list[i];
+      interpreter_->ResizeInputTensorStrict(concat_inputs_[i],
+                                            input_template[i].shape);
+      if (test_case.is_quantized) {
+        QuantizeAndPopulate<int8_t>(concat_inputs_[i], FloatVector(input_data));
+      } else {
+        PopulateTensor(concat_inputs_[i], input_data);
+      }
+    }
+    AllocateAndDelegate(true);
+  }
+
+  std::vector<float> FloatVector(std::vector<T> data) {
+    std::vector<float> ret;
+    for (T t : data) {
+      ret.push_back(static_cast<float>(t));
+    }
+    return ret;
+  }
+
+  void PopulateInputTensors() {
+    int start = -1;
+    if (test_case_.test_type == TestInputType::kDefault) {
+      start = 0;
+    } else if (test_case_.test_type == TestInputType::kOnePersistentRo) {
+      start = 1;
+    }
+    if (start < 0) {
+      return;
+    }
+    for (int i = start; i < input_data_list_.size(); ++i) {
+      if (test_case_.is_quantized) {
+        QuantizeAndPopulate<int8_t>(concat_inputs_[i],
+                                    FloatVector(input_data_list_[i]));
+      } else {
+        std::vector<T> v(input_data_list_[i]);
+        PopulateTensor(concat_inputs_[i], v);
+      }
+    }
+  }
+
+  bool IsPersistentOutput() {
+    const TfLiteTensor* tensor = interpreter_->tensor(output_);
+    return tensor->allocation_type == kTfLitePersistentRo;
+  }
+
+  std::vector<float> GetOutput() {
+    if (test_case_.is_quantized) {
+      return Dequantize<int8_t>(ExtractVector<int8_t>(output_),
+                                GetScale(output_), GetZeroPoint(output_));
+    }
+    return FloatVector(ExtractVector<T>(output_));
+  }
+
+ protected:
+  int output_;
+  std::vector<std::vector<T>> input_data_list_;
+  PersistentTestCase test_case_;
+  std::vector<int> concat_inputs_;
+};
+
+template <typename T>
+class ConcatenationOpPersistentModelTest : public ::testing::Test {
+ public:
+  static std::vector<PersistentTestCase> Range(bool is_quantized = false) {
+    TensorType tensor_type = TensorType_FLOAT32;
+    if (std::is_same<T, int32_t>::value) {
+      tensor_type = TensorType_INT32;
+    }
+    if (is_quantized) {
+      tensor_type = TensorType_INT8;
+    }
+    return {{TestInputType::kDefault, tensor_type, is_quantized},
+            {TestInputType::kPersistentRo, tensor_type, is_quantized}};
+  }
+};
+
+using DataTypes = ::testing::Types<float, int32_t>;
+TYPED_TEST_SUITE(ConcatenationOpPersistentModelTest, DataTypes);
+
+TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentTest) {
+  for (PersistentTestCase test_case :
+       ConcatenationOpPersistentModelTest<TypeParam>::Range()) {
+    std::vector<std::vector<TypeParam>> input_data_lists = {
+        {1, 2, 3, 4, 5, 6}, {7, 8, 9, 10, 11, 12}};
+    std::vector<TensorData> input_template = {{test_case.tensor_type, {2, 3}},
+                                              {test_case.tensor_type, {2, 3}}};
+    TensorData output_template = {test_case.tensor_type, {4, 3}};
+    PersistentConcatenationOpModel<TypeParam> m0(input_template, /*axis=*/0,
+                                                 output_template, test_case,
+                                                 input_data_lists);
+    m0.PopulateInputTensors();
+    m0.Invoke();
+    ASSERT_EQ(m0.IsPersistentOutput(),
+              test_case.test_type == TestInputType::kPersistentRo);
+    EXPECT_THAT(
+        m0.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0})));
+  }
+}
+
+TYPED_TEST(ConcatenationOpPersistentModelTest, QuantizedPersistentTest) {
+  const bool is_quantized = true;
+  for (PersistentTestCase test_case :
+       ConcatenationOpPersistentModelTest<TypeParam>::Range(is_quantized)) {
+    std::vector<std::vector<TypeParam>> input_data_lists = {
+        {1, 2, 3, 4, 5, 6}, {7, 8, 9, 10, 11, 12}};
+    float scale = 12.0 / 255.0;
+    int zero_point = -128;
+    std::vector<TensorData> input_template = {
+        {test_case.tensor_type, {2, 3}, 0.0, 12.0, scale, zero_point},
+        {test_case.tensor_type, {2, 3}, 0.0, 12.0, scale, zero_point},
+    };
+    TensorData output_template = {
+        test_case.tensor_type, {4, 3}, 0.0, 12.0, scale, zero_point};
+    PersistentConcatenationOpModel<TypeParam> m0(input_template, /*axis=*/0,
+                                                 output_template, test_case,
+                                                 input_data_lists);
+    m0.PopulateInputTensors();
+    m0.Invoke();
+    ASSERT_EQ(m0.IsPersistentOutput(),
+              test_case.test_type == TestInputType::kPersistentRo);
+    EXPECT_THAT(
+        m0.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0},
+            1e-1)));
+  }
+}
+
 }  // namespace
 }  // namespace tflite

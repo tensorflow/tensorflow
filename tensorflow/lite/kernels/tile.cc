@@ -260,6 +260,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
   }
+  if (GetTensorShape(output).FlatSize() == 0) {
+    return kTfLiteOk;
+  }
 
   switch (output->type) {
     case kTfLiteFloat32:

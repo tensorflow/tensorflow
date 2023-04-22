@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model.h"
@@ -38,6 +39,96 @@ namespace tflite {
 namespace optimize {
 
 namespace {
+
+// Bias tensors must be duplicated if it is used as a non-bias input in another
+// op (quantized to 8 bit), in order to quantize to 32 bit.
+TfLiteStatus DuplicateBiasesWithMultipleUses(ModelT* model,
+                                             ErrorReporter* error_reporter) {
+  std::set<int> input_uses;
+  // Get all input uses for constant tensors.
+  for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+      operator_property::OperatorProperty property =
+          operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
+      auto* op = subgraph->operators[op_idx].get();
+      for (const auto& idx_pair : property.inputs) {
+        const int idx = idx_pair.first;
+        if (op->inputs[idx] < 0 || idx >= op->inputs.size()) {
+          continue;
+        }
+        const TensorT* input_tensor = subgraph->tensors[op->inputs[idx]].get();
+        if (!input_tensor || (input_tensor->buffer < 0) ||
+            (input_tensor->buffer >= model->buffers.size())) {
+          continue;
+        }
+        const BufferT* buffer = model->buffers[input_tensor->buffer].get();
+        if (buffer && !buffer->data.empty()) {
+          input_uses.insert({op->inputs[idx]});
+        }
+      }
+    }
+  }
+
+  std::map<int, int> bias_uses;
+  for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+      operator_property::OperatorProperty property =
+          operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
+      OperatorT* op = subgraph->operators[op_idx].get();
+      for (const int bias_idx : property.biases) {
+        if (bias_idx >= op->inputs.size() || op->inputs[bias_idx] < 0) {
+          continue;
+        }
+        const TensorT* bias_tensor =
+            subgraph->tensors[op->inputs[bias_idx]].get();
+        if (!bias_tensor || (bias_tensor->buffer < 0) ||
+            (bias_tensor->buffer >= model->buffers.size())) {
+          continue;
+        }
+        const BufferT* bias_buffer = model->buffers[bias_tensor->buffer].get();
+        if (!bias_buffer || bias_buffer->data.empty()) {
+          continue;
+        }
+        if (input_uses.find(op->inputs[bias_idx]) != input_uses.end()) {
+          // If used as input, duplicate the tensor and insert into bias uses.
+          int bias_use_count = 1;
+          auto inserted =
+              bias_uses.insert({op->inputs[bias_idx], bias_use_count});
+          if (!inserted.second) {
+            bias_use_count = ++inserted.first->second;
+          }
+          std::unique_ptr<TensorT> new_tensor(new TensorT);
+          new_tensor->name =
+              absl::StrCat(bias_tensor->name, "_duplicate_", bias_use_count);
+          new_tensor->shape = bias_tensor->shape;
+          new_tensor->type = bias_tensor->type;
+          if (bias_tensor->quantization) {
+            new_tensor->quantization =
+                absl::make_unique<QuantizationParametersT>();
+            new_tensor->quantization->scale.assign(
+                bias_tensor->quantization->scale.begin(),
+                bias_tensor->quantization->scale.end());
+            new_tensor->quantization->zero_point.assign(
+                bias_tensor->quantization->zero_point.begin(),
+                bias_tensor->quantization->zero_point.end());
+          }
+          std::unique_ptr<BufferT> new_buffer(new BufferT);
+          new_buffer->data.assign(bias_buffer->data.begin(),
+                                  bias_buffer->data.end());
+          model->buffers.push_back(std::move(new_buffer));
+          new_tensor->buffer = model->buffers.size() - 1;
+          subgraph->tensors.push_back(std::move(new_tensor));
+          op->inputs[bias_idx] = subgraph->tensors.size() - 1;
+        }
+      }
+    }
+  }
+  return kTfLiteOk;
+}
 
 bool IsFloatTensor(const SubGraphT* subgraph, int32_t tensor_idx) {
   TensorT* tensor = subgraph->tensors[tensor_idx].get();
@@ -98,6 +189,9 @@ std::unordered_set<string> PopulateRealValueOpSet(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
@@ -397,7 +491,13 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
   for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
-
+    SignatureDefT* signature_def = nullptr;
+    for (const auto& sig_def : model->signature_defs) {
+      if (sig_def->subgraph_index == subgraph_idx) {
+        signature_def = sig_def.get();
+        break;
+      }
+    }
     for (int i = 0; i < subgraph->inputs.size(); ++i) {
       TensorT* tensor = subgraph->tensors[subgraph->inputs[i]].get();
       // TODO(suharshs): Add support for this case if it ever comes up.
@@ -413,6 +513,14 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
           model, subgraph, subgraph->inputs[i], input_type, activations_type);
       if (input_idx < 0) {
         continue;
+      }
+      if (signature_def != nullptr) {
+        for (const auto& input : signature_def->inputs) {
+          if (input->tensor_index == subgraph->inputs[i]) {
+            input->tensor_index = input_idx;
+            break;
+          }
+        }
       }
       subgraph->inputs[i] = input_idx;
     }
@@ -431,6 +539,14 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
           model, subgraph, subgraph->outputs[i], output_type, activations_type);
       if (output_idx < 0) {
         continue;
+      }
+      if (signature_def != nullptr) {
+        for (const auto& output : signature_def->outputs) {
+          if (output->tensor_index == subgraph->outputs[i]) {
+            output->tensor_index = output_idx;
+            break;
+          }
+        }
       }
       subgraph->outputs[i] = output_idx;
     }
@@ -452,6 +568,9 @@ TfLiteStatus ApplyConstraints(
     // Iterate backward to avoid messing with index.
     for (int op_idx = subgraph->operators.size() - 1; op_idx >= 0; op_idx--) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
@@ -625,15 +744,19 @@ TfLiteStatus QuantizeOpInput(
     return kTfLiteOk;
   }
   TensorT* tensor = subgraph->tensors[tensor_idx].get();
-  // Assumes op is quantized to int8.
+  // Assumes if tensor is quantized, then it is a weight and quantized to 8 bit.
   const bool is_input_quantized = utils::QuantizationParametersExist(tensor);
   if (property.quantizable && !is_input_quantized) {
     // The operation is quantizable, but the input isn't yet quantized.
     if (utils::HasBuffer(model, subgraph, tensor_idx)) {
       // TODO(suharshs): Look at consumers, throw error if one consumer is
       // per-channel and one per-layer.
-      bool quantize_const_input = property.quantize_input_as_activations &&
-                                  activations_type == TensorType_INT16;
+      bool quantize_const_input = false;
+      if (activations_type == TensorType_INT16 &&
+          (property.restrict_same_input_output_scale ||
+           property.quantize_input_as_activations)) {
+        quantize_const_input = true;
+      }
       if (tensor_property.number_of_bits == 8 && !quantize_const_input) {
         if (tensor_property.use_derived_scale) {
           // Currently 8bit tensors in input do not accept derived scale.
@@ -1033,7 +1156,12 @@ TfLiteStatus QuantizeWeightsInputOutput(
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           GetBuiltinCode(model->operator_codes[op->opcode_index].get());
-      const string operator_name = subgraph->tensors[op->outputs[0]]->name;
+      if (op->outputs.empty() && op_code != BuiltinOperator_ASSIGN_VARIABLE) {
+        continue;
+      }
+      const string operator_name = op_code != BuiltinOperator_ASSIGN_VARIABLE
+                                       ? subgraph->tensors[op->outputs[0]]->name
+                                       : subgraph->tensors[op->inputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,
           activations_type, disable_per_channel);
@@ -1099,6 +1227,9 @@ TfLiteStatus QuantizeBiases(ModelT* model,
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           GetBuiltinCode(model->operator_codes[op->opcode_index].get());
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,
@@ -1184,6 +1315,9 @@ TfLiteStatus FillQuantizationParams(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,
@@ -1295,6 +1429,9 @@ TfLiteStatus EnsureBiasScaleCompatibility(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,
@@ -1439,6 +1576,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ErrorReporter* error_reporter) {
   auto real_value_op_set =
       PopulateRealValueOpSet(model, operator_names, activations_type);
+  TF_LITE_ENSURE_STATUS(DuplicateBiasesWithMultipleUses(model, error_reporter));
   TF_LITE_ENSURE_STATUS(FillQuantizationParams(
       model, operator_names, real_value_op_set, activations_type,
       disable_per_channel, error_reporter));

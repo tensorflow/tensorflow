@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/tf_tensor_view.h"
 
+// This file contains the TF adapter. That is, it takes a `OpKernelShim`
+// class and provides a TF kernel out of it.
+
 namespace tflite {
 namespace shim {
 
@@ -52,6 +55,10 @@ class TfInvokeContext : public InvokeContext<TfInvokeContext> {
   ConstTensorViewOr GetInput(const int idx) const;
   // Get a mutable output tensor
   TensorViewOr GetOutput(const int idx, const Shape& shape) const;
+  // Number of input tensors
+  int NumInputs() const;
+  // Number of output tensors
+  int NumOutputs() const;
 
  private:
   ::tensorflow::OpKernelContext* context_;
@@ -69,6 +76,12 @@ class TfShapeInferenceContext
   absl::Status SetOutputShape(const int idx, const Shape& shape);
   // Read an input tensor during shape inference
   ConstTensorViewOr GetInputTensor(const int idx) const;
+  // Read a given attribute
+  absl::StatusOr<AttrValue> GetAttr(const std::string& attr_name) const;
+  // Number of input tensors
+  int NumInputs() const;
+  // Number of output tensors
+  int NumOutputs() const;
 
  private:
   ::tensorflow::shape_inference::InferenceContext* context_;
@@ -101,7 +114,6 @@ class TfOpKernel : public ::tensorflow::OpKernel {
   // Shape inference for the op.
   static tensorflow::Status ShapeInference(
       ::tensorflow::shape_inference::InferenceContext* c) {
-    TF_RETURN_IF_ERROR(ValidateInputRanks(c));
     TfShapeInferenceContext ctx(c);
     return FromAbslStatus(ImplType::ShapeInference(&ctx));
   }
@@ -110,9 +122,6 @@ class TfOpKernel : public ::tensorflow::OpKernel {
   static const char* OpName() { return ImplType::kOpName; }
 
  protected:
-  static tensorflow::Status ValidateInputRanks(
-      ::tensorflow::shape_inference::InferenceContext* c);
-
   std::unique_ptr<OpKernelShim<Impl, Runtime::kTf>> impl_;
 };
 
@@ -128,10 +137,9 @@ template <typename Kernel>
 ::tensorflow::register_op::OpDefBuilderWrapper CreateOpDefBuilderWrapper() {
   auto ret =
       ::tensorflow::register_op::OpDefBuilderWrapper(Kernel::ImplType::kOpName);
-  for (const auto& input : Kernel::ImplType::Inputs())
-    ret = ret.Input(std::string(input.name_type));
+  for (const auto& input : Kernel::ImplType::Inputs()) ret = ret.Input(input);
   for (const auto& output : Kernel::ImplType::Outputs())
-    ret = ret.Output(std::string(output.name_type));
+    ret = ret.Output(output);
   for (const auto& attr : Kernel::ImplType::Attrs()) ret = ret.Attr(attr);
   ret.SetShapeFn(Kernel::ShapeInference).Doc(Kernel::ImplType::kDoc);
   return ret;
@@ -146,42 +154,15 @@ struct ContextTypeForRuntime<Runtime::kTf> {
 
 // Macros for defining an op. These are taken from op.h because they need to be
 // slightly modified here.
-#define REGISTER_OP_SHIM_IMPL(ctr, name, op_kernel_cls)           \
-  static ::tensorflow::InitOnStartupMarker const register_op##ctr \
-      TF_ATTRIBUTE_UNUSED =                                       \
-          TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(name))         \
+#define REGISTER_OP_SHIM_IMPL(ctr, op_kernel_cls)                            \
+  static ::tensorflow::InitOnStartupMarker const register_op##ctr            \
+      TF_ATTRIBUTE_UNUSED =                                                  \
+          TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(op_kernel_cls::OpName())) \
           << ::tflite::shim::CreateOpDefBuilderWrapper<op_kernel_cls>()
 
-#define REGISTER_TF_OP_SHIM(name, op_kernel_cls) \
-  TF_ATTRIBUTE_ANNOTATE("tf:op")                 \
-  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, name, op_kernel_cls)
-
-////////////////////////////////////////////
-///////////////////////////// Implementation
-
-template <template <Runtime> typename Impl>
-tensorflow::Status TfOpKernel<Impl>::ValidateInputRanks(
-    ::tensorflow::shape_inference::InferenceContext* c) {
-  static const auto input_ranks = [&]() {
-    const auto input_decls = ImplType::Inputs();
-    auto ret = new std::vector<int>;
-    ret->reserve(input_decls.size());
-    for (const TensorDeclaration& input_decl : input_decls) {
-      if (input_decl.shape.has_value())
-        ret->emplace_back(input_decl.shape->size());
-      else
-        ret->emplace_back(-1);
-    }
-    return ret;
-  }();
-  ::tensorflow::shape_inference::ShapeHandle input_shape;
-  for (int i = 0; i < input_ranks->size(); ++i) {
-    const int input_rank_i = (*input_ranks)[i];
-    if (input_rank_i == -1) continue;
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), input_rank_i, &input_shape));
-  }
-  return ::tensorflow::Status::OK();
-}
+#define REGISTER_TF_OP_SHIM(op_kernel_cls) \
+  TF_ATTRIBUTE_ANNOTATE("tf:op")           \
+  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, op_kernel_cls)
 
 }  // namespace shim
 }  // namespace tflite

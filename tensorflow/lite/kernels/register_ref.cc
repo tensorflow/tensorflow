@@ -164,6 +164,7 @@ TfLiteRegistration* Register_REAL();
 TfLiteRegistration* Register_COMPLEX_ABS();
 TfLiteRegistration* Register_CONV_3D_TRANSPOSE_REF();
 TfLiteRegistration* Register_BROADCAST_ARGS();
+TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
 
 namespace {
 
@@ -336,7 +337,9 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_CAST, Register_CAST());
+  AddBuiltin(BuiltinOperator_CAST, Register_CAST(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE_REF(),
              /* min_version = */ 1,
              /* max_version = */ 4);
@@ -385,7 +388,9 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_SUM, Register_SUM_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD_REF());
+  AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD_REF(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -476,6 +481,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_CONV_3D_TRANSPOSE,
              Register_CONV_3D_TRANSPOSE_REF());
   AddBuiltin(BuiltinOperator_BROADCAST_ARGS, Register_BROADCAST_ARGS());
+  AddBuiltin(BuiltinOperator_RANDOM_STANDARD_NORMAL,
+             Register_RANDOM_STANDARD_NORMAL());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

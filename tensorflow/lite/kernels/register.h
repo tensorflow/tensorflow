@@ -27,8 +27,7 @@ namespace builtin {
 class BuiltinOpResolver : public MutableOpResolver {
  public:
   BuiltinOpResolver();
-  OpResolver::TfLiteDelegatePtrVector GetDelegates(
-      int num_threads) const override;
+  OpResolver::TfLiteDelegateCreators GetDelegateCreators() const override;
 };
 
 // TfLite interpreter could apply a TfLite delegate by default. To completely
@@ -37,7 +36,9 @@ class BuiltinOpResolver : public MutableOpResolver {
 class BuiltinOpResolverWithoutDefaultDelegates : public BuiltinOpResolver {
  public:
   BuiltinOpResolverWithoutDefaultDelegates() : BuiltinOpResolver() {}
-  OpResolver::TfLiteDelegatePtrVector GetDelegates(int num_threads) const final;
+  OpResolver::TfLiteDelegateCreators GetDelegateCreators() const final {
+    return {};
+  }
 };
 
 }  // namespace builtin

@@ -31,6 +31,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
@@ -1839,42 +1841,161 @@ TEST_F(TestCustomAllocation, ResizeAndAllocateForEveryInvoke) {
   EXPECT_EQ(tensor->data.f[0], expected_output[0]);
 }
 
+// Tests that AllocateTensors() correctly verifies custom allocations even if
+// graph is in Invokable state without any memory planning changes.
+TEST_F(TestCustomAllocation, ResizeAndAllocate_InvalidAllocAfterInvokable) {
+  AssignCustomAllocForTensor(interpreter_->inputs()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->inputs()[1],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->outputs()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->outputs()[1],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  VerifyInvoke();
+
+  // Now assign an insufficiently big buffer for output.
+  auto invalid_output_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[0], invalid_output_alloc),
+            kTfLiteOk);
+  // AllocateTensors should not pass.
+  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
+// Similar to test above, but one of the intermediate tensors is dynamic.
+TEST_F(TestCustomAllocation, ResizeAndAllocate_WithDynamicTensor) {
+  // Tensor 2 is output from op 0.
+  TfLiteTensor* intermediate_tensor = interpreter_->tensor(2);
+  intermediate_tensor->allocation_type = kTfLiteDynamic;
+  // AllocateTensors & VerifyInvoke should work as usual.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  VerifyInvoke();
+
+  // Resize inputs so that minimum alloc size for outputs is now 4 bytes.
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1, 1}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 1}),
+            kTfLiteOk);
+  // Assign smaller allocs for all I/O tensors.
+  auto input0_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[0], input0_alloc),
+            kTfLiteOk);
+  auto input1_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[1], input1_alloc),
+            kTfLiteOk);
+  auto output0_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[0], output0_alloc),
+            kTfLiteOk);
+  auto output1_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[1], output1_alloc),
+            kTfLiteOk);
+  // AllocateTensors works.
+  // Note that output allocs cannot be verified at this time, since all ops
+  // haven't been Prepared yet.
+  // Output allocs will be verified during Invoke.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> input = {2.0f};
+  std::vector<float> expected_output = {4.0f};
+  TfLiteTensor* tensor = interpreter_->tensor(interpreter_->outputs()[0]);
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), sizeof(float));
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  EXPECT_EQ(tensor->data.f[0], expected_output[0]);
+
+  // Now try with a smaller output alloc & verify AllocateTensors fails.
+  intermediate_tensor = interpreter_->tensor(2);
+  intermediate_tensor->allocation_type = kTfLiteDynamic;
+  auto invalid_output0_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 2, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[0], invalid_output0_alloc),
+            kTfLiteOk);
+  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
 // Tests related to lazy delegate providers that are primarily used for applying
 // TfLite delegates by default.
 class TestLazyDelegateProvider : public InterpreterTest {
  protected:
-  struct DummyLazyDelegateProvider : public TfLiteDelegate {
-    explicit DummyLazyDelegateProvider(int64_t support_flags) {
-      data_ = static_cast<void*>(this);
-      flags = support_flags;
-      Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
-        return kTfLiteOk;
-      };
+  class DummyLazyDelegateKernel : public SimpleDelegateKernelInterface {
+   public:
+    explicit DummyLazyDelegateKernel(bool prepare_error)
+        : prepare_error_(prepare_error) {}
+    TfLiteStatus Init(TfLiteContext* context,
+                      const TfLiteDelegateParams* params) override {
+      return kTfLiteOk;
     }
+
+    TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
+      return prepare_error_ ? kTfLiteError : kTfLiteOk;
+    }
+
+    TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
+      return kTfLiteOk;
+    }
+
+   private:
+    const bool prepare_error_;
   };
 
-  void InitWithLazyDelegate(int64_t delegate_flags,
-                            bool create_dyanmic_tensor = false,
+  class DummyLazyDelegate : public SimpleDelegateInterface {
+   public:
+    explicit DummyLazyDelegate(bool return_error)
+        : return_error_(return_error) {}
+    bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
+                                   const TfLiteNode* node,
+                                   TfLiteContext* context) const override {
+      return true;
+    }
+    TfLiteStatus Initialize(TfLiteContext* context) override {
+      return kTfLiteOk;
+    }
+    const char* Name() const override { return "DummyLazyDelegateForTest"; }
+    std::unique_ptr<SimpleDelegateKernelInterface>
+    CreateDelegateKernelInterface() override {
+      return std::unique_ptr<SimpleDelegateKernelInterface>(
+          new DummyLazyDelegateKernel(return_error_));
+    }
+    SimpleDelegateInterface::Options DelegateOptions() const override {
+      return SimpleDelegateInterface::Options();
+    }
+
+   private:
+    bool return_error_;
+  };
+
+  void InitWithLazyDelegate(bool create_dyanmic_tensor = false,
                             bool return_error = false) {
     TfLiteRegistration reg = {nullptr};
-    if (return_error) {
-      reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-        return kTfLiteError;
-      };
-    }
     ASSERT_EQ(interpreter_.AddTensors(2), kTfLiteOk);
     interpreter_.SetInputs({0});
     interpreter_.SetOutputs({1});
     interpreter_.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &reg);
 
     Interpreter::TfLiteDelegatePtr delegate(
-        new DummyLazyDelegateProvider(delegate_flags),
-        [](TfLiteDelegate* delegate) {
-          auto* dummy =
-              static_cast<DummyLazyDelegateProvider*>(delegate->data_);
-          delete dummy;
-        });
-    mutable_lazy_delegate_providers()->push_back(std::move(delegate));
+        TfLiteDelegateFactory::CreateSimpleDelegate(
+            std::unique_ptr<SimpleDelegateInterface>(
+                new DummyLazyDelegate(return_error))),
+        TfLiteDelegateFactory::DeleteSimpleDelegate);
+    mutable_lazy_delegate_providers()->push_back([=](int /*num_threads*/) {
+      return Interpreter::TfLiteDelegatePtr(
+          TfLiteDelegateFactory::CreateSimpleDelegate(
+              std::unique_ptr<SimpleDelegateInterface>(
+                  new DummyLazyDelegate(return_error))),
+          TfLiteDelegateFactory::DeleteSimpleDelegate);
+    });
 
     if (create_dyanmic_tensor) {
       // Mark the output as dynamic tensor.
@@ -1885,61 +2006,63 @@ class TestLazyDelegateProvider : public InterpreterTest {
 };
 
 TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
-  InitWithLazyDelegate(kTfLiteDelegateFlagsNone);
+  InitWithLazyDelegate();
   EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
   // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
   EXPECT_TRUE(HasDelegates());
+  EXPECT_TRUE(IsFullyDelegated());
 }
 
 TEST_F(TestLazyDelegateProvider, ApplicationFailure) {
-  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
-                       false /* create_dyanmic_tensor */,
+  InitWithLazyDelegate(false /* create_dyanmic_tensor */,
                        true /* return_error */);
-  EXPECT_EQ(kTfLiteError, interpreter_.AllocateTensors());
-  // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
+  // As the the lazy delegate fails to prepare, kTfLiteDelegateError is
+  // returned and Interpreter::lazy_delegate_providers_ is cleared anyway.
+  EXPECT_EQ(kTfLiteDelegateError, ApplyLazyDelegateProviders());
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+
+  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
   EXPECT_FALSE(HasDelegates());
+  EXPECT_FALSE(IsFullyDelegated());
 }
 
 TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {
-  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
-                       true /* create_dyanmic_tensor */);
+  InitWithLazyDelegate(true /* create_dyanmic_tensor */);
   EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
   // As the delegate doesn't allow dynamic tensor, the delegate won't be applied
   // and the interpreter doesn't have any delegate applied.
   EXPECT_FALSE(HasDelegates());
+  EXPECT_FALSE(IsFullyDelegated());
 }
 
 TEST_F(InterpreterTest, SingleSignature_get_signatures) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
-  BuildSignature(kMethodName, kSignatureDefKey, {{"Input1", 0}, {"Input2", 1}},
+  const char kSignatureKey[] = "test_method";
+  BuildSignature(kSignatureKey, {{"Input1", 0}, {"Input2", 1}},
                  {{"Output1", 5}});
-  auto results = interpreter_.signature_def_names();
+  auto results = interpreter_.signature_keys();
   ASSERT_EQ(1, results.size());
-  EXPECT_EQ(kMethodName, *results[0]);
+  EXPECT_EQ(kSignatureKey, *results[0]);
 }
 
 TEST_F(InterpreterTest, SingleSignature_get_inputs) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
+  const char kSignatureKey[] = "test_method";
   const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
-  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
-  EXPECT_THAT(interpreter_.signature_inputs(kMethodName), testing::Eq(inputs));
-  EXPECT_THAT(interpreter_.signature_outputs(kMethodName),
+  BuildSignature(kSignatureKey, inputs, outputs);
+  EXPECT_THAT(interpreter_.signature_inputs(kSignatureKey),
+              testing::Eq(inputs));
+  EXPECT_THAT(interpreter_.signature_outputs(kSignatureKey),
               testing::Eq(outputs));
 }
 
 TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
+  const char kSignatureKey[] = "test_method";
   const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
 
-  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
+  BuildSignature(kSignatureKey, inputs, outputs);
   ASSERT_EQ(interpreter_.AddTensors(6), kTfLiteOk);
   ASSERT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
   ASSERT_EQ(interpreter_.SetOutputs({5}), kTfLiteOk);
@@ -1955,25 +2078,23 @@ TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
             kTfLiteOk);
   ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
 
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input1", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input2", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.output_tensor_by_signature_name(
-                  "Output1", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input1", kSignatureKey) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input2", kSignatureKey) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.output_tensor_by_signature(
+                  "Output1", kSignatureKey) != nullptr);
 
   // Invalid tensor
-  EXPECT_EQ(interpreter_.input_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
-  EXPECT_EQ(interpreter_.output_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
   // Invalid method
-  EXPECT_EQ(
-      interpreter_.input_tensor_by_signature_name("Input1", "InvalidMethod"),
-      nullptr);
-  EXPECT_EQ(
-      interpreter_.output_tensor_by_signature_name("Output1", "InvalidMethod"),
-      nullptr);
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input1", "InvalidMethod"),
+            nullptr);
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Output1", "InvalidMethod"),
+            nullptr);
 }
 
 }  // namespace

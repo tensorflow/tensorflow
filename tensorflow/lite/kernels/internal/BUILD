@@ -52,7 +52,10 @@ cc_library(
 
 cc_library(
     name = "types",
-    hdrs = ["types.h"],
+    hdrs = [
+        "runtime_shape.h",
+        "types.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
@@ -512,6 +515,7 @@ cc_library(
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -555,7 +559,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -612,6 +616,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -637,13 +642,14 @@ cc_library(
         ":cppmath",
         ":legacy_types",
         ":quantization_util",
+        ":reference_base",
         ":strided_slice_logic",
         ":tensor",
+        ":tensor_utils",
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//third_party/eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
@@ -797,6 +803,7 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "portable_tensor_utils.h",
         "tensor_utils.h",
         "tensor_utils_common.h",
     ],
@@ -1110,6 +1117,17 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "per_channel_quantize_test",
+    srcs = ["per_channel_quantize_test.cc"],
+    deps = [
+        ":reference_base",
+        ":types",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 filegroup(
     name = "optimized_op_headers",
     srcs = glob([
@@ -1184,4 +1202,4 @@ genrule(
     visibility = ["//visibility:private"],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": ["//testing/base/public:gunit_main"]})
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]})

@@ -46,6 +46,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
+#include "./npy.hpp"
+
 namespace tflite {
 namespace label_image {
 
@@ -283,41 +285,144 @@ void RunInference(Settings* settings,
   int wanted_channels = dims->data[3];
 
   settings->input_type = interpreter->tensor(input)->type;
-  switch (settings->input_type) {
-    case kTfLiteFloat32:
-      resize<float>(interpreter->typed_tensor<float>(input), in.data(),
-                    image_height, image_width, image_channels, wanted_height,
-                    wanted_width, wanted_channels, settings);
-      break;
-    case kTfLiteInt8:
-      resize<int8_t>(interpreter->typed_tensor<int8_t>(input), in.data(),
-                     image_height, image_width, image_channels, wanted_height,
-                     wanted_width, wanted_channels, settings);
-      break;
-    case kTfLiteUInt8:
-      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
-                      image_height, image_width, image_channels, wanted_height,
-                      wanted_width, wanted_channels, settings);
-      break;
-    default:
-      LOG(ERROR) << "cannot handle input type "
-                 << interpreter->tensor(input)->type << " yet";
-      exit(-1);
-  }
+  // switch (settings->input_type) {
+  //   case kTfLiteFloat32:
+  //     resize<float>(interpreter->typed_tensor<float>(input), in.data(),
+  //                   image_height, image_width, image_channels, wanted_height,
+  //                   wanted_width, wanted_channels, settings);
+  //     break;
+  //   case kTfLiteInt8:
+  //     resize<int8_t>(interpreter->typed_tensor<int8_t>(input), in.data(),
+  //                    image_height, image_width, image_channels,
+  //                    wanted_height, wanted_width, wanted_channels, settings);
+  //     break;
+  //   case kTfLiteUInt8:
+  //     resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
+  //                     image_height, image_width, image_channels,
+  //                     wanted_height, wanted_width, wanted_channels,
+  //                     settings);
+  //     break;
+  //   default:
+  //     LOG(ERROR) << "cannot handle input type "
+  //                << interpreter->tensor(input)->type << " yet";
+  //     exit(-1);
+  // }
+
   auto profiler = absl::make_unique<profiling::Profiler>(
       settings->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
 
   if (settings->profiling) profiler->StartProfiling();
-  if (settings->loop_count > 1) {
-    for (int i = 0; i < settings->number_of_warmup_runs; i++) {
-      if (interpreter->Invoke() != kTfLiteOk) {
-        LOG(ERROR) << "Failed to invoke tflite!";
-        exit(-1);
-      }
-    }
-  }
+  // if (settings->loop_count > 1) {
+  //   for (int i = 0; i < settings->number_of_warmup_runs; i++) {
+  //     if (interpreter->Invoke() != kTfLiteOk) {
+  //       LOG(ERROR) << "Failed to invoke tflite!";
+  //       exit(-1);
+  //     }
+  //   }
+  // }
 
+  // // Manual Inputs
+  // const std::vector<int>& t_inputs = interpreter->inputs();
+  // TfLiteTensor* tensor = interpreter->tensor(t_inputs[0]);
+  // int input_size = tensor->dims->size;
+  // int batch_size = tensor->dims->data[0];
+  // int h = tensor->dims->data[1];
+  // int w = tensor->dims->data[2];
+  // int channels = tensor->dims->data[3];
+  // int input_len = batch_size * h * w * channels;
+
+  // std::vector<unsigned long> shape;
+  // bool fortran_order;
+  // shape.clear();
+
+  // if (tensor->type == 9) {
+  //   std::vector<float> indata;
+  //   indata.clear();
+  //   std::cout << "INT8  Loaded" << std::endl;
+  //   npy::LoadArrayFromNumpy("./tmp/grace_hopper_int8.npy", shape,
+  //   fortran_order,
+  //                           indata);
+  //   auto in_data = tensor->data.int8;
+  //   for (int i = 0; i < input_len; i++) in_data[i] = (int8_t)indata[i];
+  // } else if (tensor->type == 3) {
+  //   std::vector<float> indata;
+  //   indata.clear();
+  //   std::cout << "UINT8  Loaded" << std::endl;
+  //   npy::LoadArrayFromNumpy("./tmp/grace_hopper_uint8.npy", shape,
+  //                           fortran_order, indata);
+  //   auto in_data = tensor->data.uint8;
+  //   for (int i = 0; i < input_len; i++) in_data[i] = (uint8_t)indata[i];
+  // } else {
+  //   std::vector<float> indata;
+  //   indata.clear();
+  //   std::cout << "FLOAT  Loaded" << std::endl;
+  //   npy::LoadArrayFromNumpy("./tmp/grace_hopper.npy", shape, fortran_order,
+  //                           indata);
+  //   // npy::LoadArrayFromNumpy("./models/input_5_5_8.npy", shape,
+  //   fortran_order,
+  //   //                       indata);
+  //   auto in_data = tensor->data.f;
+  //   for (int i = 0; i < input_len; i++) in_data[i] = indata[i];
+  // }
+  // std::cout << "Input  Loaded" << std::endl;
+
+  //  Manual Inputs v2
+  const std::vector<int>& t_inputs = interpreter->inputs();
+  TfLiteTensor* tensor = interpreter->tensor(t_inputs[0]);
+  int input_size = tensor->dims->size;
+  int input_len = 1;
+  for (int i = 0; i < input_size; i++) input_len *= tensor->dims->data[i];
+
+  std::vector<unsigned long> shape;
+  bool fortran_order;
+  shape.clear();
+
+  if (tensor->type == 9) {
+    // std::vector<float> indata;
+    // indata.clear();
+    std::cout << "INT8  Loaded" << std::endl;
+    // npy::LoadArrayFromNumpy("./tmp/grace_hopper_int8.npy", shape,
+    // fortran_order,
+    //                         indata);
+    // npy::LoadArrayFromNumpy("./models/int8_input_16_32.npy", shape,
+    // fortran_order,
+    //                         indata);
+
+    std::vector<char> indata;
+    indata.clear();
+    npy::LoadArrayFromNumpy("./models/int8_input_384_512.npy", shape,
+                            fortran_order, indata);
+
+    auto in_data = tensor->data.int8;
+    for (int i = 0; i < input_len; i++) in_data[i] = (int8_t)indata[i];
+  } else if (tensor->type == 3) {
+    std::vector<float> indata;
+    indata.clear();
+    std::cout << "UINT8  Loaded" << std::endl;
+    npy::LoadArrayFromNumpy("./tmp/grace_hopper_uint8.npy", shape,
+                            fortran_order, indata);
+    auto in_data = tensor->data.uint8;
+    int data_len= shape[0] * shape[1] * shape[2] * shape[3];
+    input_len= data_len>input_len?input_len:data_len;
+    for (int i = 0; i < input_len; i++) in_data[i] = (uint8_t)indata[i];
+  } else {
+    std::vector<float> indata;
+    indata.clear();
+    std::cout << "FLOAT  Loaded" << std::endl;
+    npy::LoadArrayFromNumpy("./tmp/grace_hopper.npy", shape, fortran_order,
+                            indata);
+    // npy::LoadArrayFromNumpy("./models/input_5_5_8.npy", shape, fortran_order,
+    //                       indata);
+    auto in_data = tensor->data.f;
+    int data_len= shape[0] * shape[1] * shape[2] * shape[3];
+    input_len= data_len>input_len?input_len:data_len;
+    for (int i = 0; i < input_len; i++) in_data[i] = indata[i];
+  }
+  std::cout << "Input  Loaded" << std::endl;
+
+  // std::cout << "Press Enter to Go";
+  // std::cin.ignore();
   struct timeval start_time, stop_time;
   gettimeofday(&start_time, nullptr);
   for (int i = 0; i < settings->loop_count; i++) {
@@ -526,6 +631,10 @@ int Main(int argc, char** argv) {
         exit(-1);
     }
   }
+
+  // std::ofstream offile("a_Bert/mobile_bert/layer.txt");
+  // offile << "0" << std::endl;
+  // offile.close();
 
   delegate_providers.MergeSettingsIntoParams(s);
   RunInference(&s, delegate_providers);

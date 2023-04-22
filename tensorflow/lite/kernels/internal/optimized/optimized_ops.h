@@ -36,8 +36,6 @@ limitations under the License.
 #include <Accelerate/Accelerate.h>
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
@@ -55,6 +53,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/transpose_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if __aarch64__ && __clang__
 #define TFLITE_SOFTMAX_USE_UINT16_LUT
@@ -265,7 +265,7 @@ inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
       // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
       input2_data_reset = input2_data_ptr;
     }
-  } else {
+  } else if (input1_data_ptr != nullptr) {
     // Special case of y4 == 1, in which the innermost loop is a single
     // element and can be combined with the next (y3) as an inner broadcast.
     //
@@ -5228,23 +5228,37 @@ void Col2im(const T* col_data, const int depth, const int height,
   int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
   int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
   int h_pad = -pad_t;
+
+  int im_dex = 0;
+  int col_dex = 0;
   for (int h = 0; h < height_col; ++h) {
     int w_pad = -pad_l;
     for (int w = 0; w < width_col; ++w) {
       T* im_patch_data = im_data + (h_pad * width + w_pad) * depth;
+      im_dex = (h_pad * width + w_pad) * depth;
       for (int ih = h_pad; ih < h_pad + filter_h; ++ih) {
         for (int iw = w_pad; iw < w_pad + filter_w; ++iw) {
           if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
             // TODO(andydavis) Vectorize this loop (if compiler does not).
+            // std::cerr << "=====" << std::endl;
             for (int i = 0; i < depth; ++i) {
               im_patch_data[i] += col_data[i];
+              // std::cerr << " || out[" << im_dex << "]+=" << col_data[i]
+              //           << " , ";
+              // std::cerr << im_dex << ", ";
+              col_dex++;
+              // if(col_dex%32==0)std::cerr << std::endl;
+              im_dex++;
             }
+            // std::cerr << std::endl;
+            // std::cerr << "=====" << std::endl;
           }
           im_patch_data += depth;
           col_data += depth;
         }
         // Jump over remaining number of depth.
         im_patch_data += depth * (width - filter_w);
+        im_dex += depth * (width - filter_w);
       }
       w_pad += stride_w;
     }
@@ -5484,6 +5498,9 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   // Handle leftover values, one by one. This is very slow.
   for (; c < channel_size; c++) {
     for (int n = 0; n < rows; ++n) {
+      if (c == 1 && n == 1 && channel_size == 64) {
+        int k = 1;
+      }
       int loc = n * channel_size + c;
       int32 acc = scratch[loc];
       acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);

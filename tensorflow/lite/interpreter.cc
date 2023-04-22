@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -174,57 +175,10 @@ TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
 
 TfLiteStatus Interpreter::AllocateTensors() {
   // Apply the default delegate that TFLite will enable at this point to allow
-  // other user-level delegates to be applied first.
-  if (!lazy_delegate_providers_.empty()) {
-    // We only apply lazy delegate providers once.
-    std::vector<TfLiteDelegatePtr> delegate_providers;
-    delegate_providers.swap(lazy_delegate_providers_);
-
-    TFLITE_LOG(TFLITE_LOG_INFO,
-               "Applying %zu TensorFlow Lite delegate(s) lazily.",
-               delegate_providers.size());
-    // At the momement, XNNPACK delegate is the only one that might be applied
-    // by default, in which case, the execution will fall back to default
-    // implementation if the XNNPACK delegate fails to be applied. Therefore, we
-    // ignore the return status here and let it fall through the rest of the
-    // code.
-    for (size_t i = 0; i < delegate_providers.size(); ++i) {
-      auto status = ModifyGraphWithDelegate(std::move(delegate_providers[i]));
-      switch (status) {
-        case kTfLiteOk:
-          TFLITE_LOG(TFLITE_LOG_INFO,
-                     "Successfully applied the default TensorFlow Lite "
-                     "delegate indexed at %zu.",
-                     i);
-          break;
-        case kTfLiteError:
-          TF_LITE_REPORT_ERROR(error_reporter_,
-                               "Failed to apply the default TensorFlow Lite "
-                               "delegate indexed at %zu.",
-                               i);
-          return kTfLiteError;
-        case kTfLiteDelegateError:
-          TF_LITE_REPORT_ERROR(
-              error_reporter_,
-              "Error in applying the default TensorFlow Lite delegate indexed "
-              "at %zu, and all previously applied delegates are reverted.",
-              i);
-          break;
-        case kTfLiteApplicationError:
-          TF_LITE_REPORT_ERROR(error_reporter_,
-                               "Ignoring failed application of the default "
-                               "TensorFlow Lite delegate indexed at %zu.",
-                               i);
-          break;
-        default:
-          TF_LITE_REPORT_ERROR(error_reporter_,
-                               "Unknown status (%d) after applying the default "
-                               "TensorFlow Lite delegate indexed at %zu.",
-                               status, i);
-          return kTfLiteError;
-      }
-    }
-  }
+  // other user-level delegates to be applied first. Only returns error when
+  // the status is kTfLiteError. For other statuses, it will fall back to the
+  // default implementation.
+  if (ApplyLazyDelegateProviders() == kTfLiteError) return kTfLiteError;
 
   return primary_subgraph().AllocateTensors();
 }
@@ -351,6 +305,103 @@ TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
     if (c && c->Refresh) {
       c->Refresh(context_);
     }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
+  if (lazy_delegate_providers_.empty() || IsFullyDelegated()) return kTfLiteOk;
+
+  // We only apply lazy delegate providers once.
+  TfLiteDelegateCreators delegate_providers;
+  delegate_providers.swap(lazy_delegate_providers_);
+
+  TFLITE_LOG(TFLITE_LOG_INFO,
+             "Applying %zu TensorFlow Lite delegate(s) lazily.",
+             delegate_providers.size());
+  // At the momement, XNNPACK delegate is the only one that might be applied
+  // by default, in which case, the execution will fall back to default
+  // implementation if the XNNPACK delegate fails to be applied.
+  for (size_t i = 0; i < delegate_providers.size(); ++i) {
+    auto delegate_ptr =
+        delegate_providers[i](context_->recommended_num_threads);
+    // Note when XNNPACK-by-default is disabled, the corresponding creator (i.e.
+    // tflite::MaybeCreateXNNPACKDelegate(...)) will return a nullptr.
+    // Therefore, we simply continue with the next one.
+    if (delegate_ptr == nullptr) continue;
+    auto status = ModifyGraphWithDelegate(std::move(delegate_ptr));
+    switch (status) {
+      case kTfLiteOk:
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Successfully applied the default TensorFlow Lite "
+            "delegate indexed at %zu.\n *NOTE*: because a delegate has been "
+            "applied, the precision of computations should be unchanged, but "
+            "the exact output tensor values may have changed. If such output "
+            "values are checked in your code, like in your tests etc., please "
+            "consider increasing error tolerance for the check.",
+            i);
+        break;
+      case kTfLiteError:
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Failed to apply the default TensorFlow Lite "
+                             "delegate indexed at %zu.",
+                             i);
+        return kTfLiteError;
+      case kTfLiteDelegateError:
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Error in applying the default TensorFlow Lite delegate indexed "
+            "at %zu, and all previously applied delegates are reverted.",
+            i);
+        return kTfLiteDelegateError;
+      case kTfLiteApplicationError:
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Ignoring failed application of the default "
+                             "TensorFlow Lite delegate indexed at %zu.",
+                             i);
+        return kTfLiteApplicationError;
+      default:
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Unknown status (%d) after applying the default "
+                             "TensorFlow Lite delegate indexed at %zu.",
+                             status, i);
+        return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
+}
+
+SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
+  auto iter = signature_runner_map_.find(signature_key);
+  if (iter != signature_runner_map_.end()) {
+    return &(iter->second);
+  }
+
+  // Default delegates are applied once for all subgraphs. Only returns error
+  // when the status is kTfLiteError. For other statuses, it will fall back to
+  // the default implementation.
+  if (ApplyLazyDelegateProviders() == kTfLiteError) {
+    return nullptr;
+  }
+
+  for (const auto& signature : signature_defs_) {
+    if (signature.signature_key == signature_key) {
+      auto status = signature_runner_map_.insert(
+          {signature_key,
+           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
+      return &(status.first->second);
+    }
+  }
+  return nullptr;
+}
+
+TfLiteStatus Interpreter::SetMetadata(
+    const std::map<std::string, std::string>& metadata) {
+  metadata_ = metadata;
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(&metadata_));
   }
   return kTfLiteOk;
 }

@@ -116,6 +116,10 @@ class SubComponent(enum.Enum):
   CONVERT_SAVED_MODEL = SubComponentItem("CONVERT_SAVED_MODEL",
                                          Component.CONVERT_TF_TO_TFLITE_MODEL)
 
+  # Convert a Jax HLO to TFLite model.
+  CONVERT_JAX_HLO = SubComponentItem("CONVERT_JAX_HLO",
+                                     Component.CONVERT_TF_TO_TFLITE_MODEL)
+
   # Do quantization by the deprecated quantizer.
   QUANTIZE_USING_DEPRECATED_QUANTIZER = SubComponentItem(
       "QUANTIZE_USING_DEPRECATED_QUANTIZER", Component.OPTIMIZE_TFLITE_MODEL)

@@ -1,6 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_copts",
+)
 
 package(
     default_visibility = [
@@ -224,6 +228,7 @@ cc_library(
     srcs = ["operator_property.cc"],
     hdrs = ["operator_property.h"],
     compatible_with = get_compatible_with_cloud(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
@@ -272,6 +277,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@flatbuffers",
         "//tensorflow/lite:framework",
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
@@ -337,6 +343,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
 )

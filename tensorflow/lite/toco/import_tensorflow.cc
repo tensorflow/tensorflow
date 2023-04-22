@@ -87,7 +87,7 @@ const std::string& GetStringAttr(const NodeDef& node,
   return attr.s();
 }
 
-int64 GetIntAttr(const NodeDef& node, const std::string& attr_name) {
+int64_t GetIntAttr(const NodeDef& node, const std::string& attr_name) {
   CHECK(HasAttr(node, attr_name)) << attr_name << " not found in:\n"
                                   << node.DebugString();
   const auto& attr = node.attr().at(attr_name);
@@ -311,12 +311,13 @@ struct TensorTraits<uint32> {
 };
 
 template <>
-struct TensorTraits<int64> {
+struct TensorTraits<int64_t> {
   static int size(const TensorProto& p) { return p.int64_val_size(); }
-  static int64 get(const TensorProto& p, int i) { return p.int64_val(i); }
+  static int64_t get(const TensorProto& p, int i) { return p.int64_val(i); }
   static std::string accessor_name() { return "int64_val"; }
   static std::string type_name() { return "int64"; }
-  static void CopyFromContent(const TensorProto& p, std::vector<int64>* data) {
+  static void CopyFromContent(const TensorProto& p,
+                              std::vector<int64_t>* data) {
     toco::port::CopyToBuffer(p.tensor_content(),
                              reinterpret_cast<char*>(data->data()));
   }
@@ -477,8 +478,8 @@ tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
-  return ImportTensorData<int64>(input_tensor, input_flat_size,
-                                 &output_int_data);
+  return ImportTensorData<int64_t>(input_tensor, input_flat_size,
+                                   &output_int_data);
 }
 
 tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,

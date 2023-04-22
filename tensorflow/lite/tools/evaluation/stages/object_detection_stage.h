@@ -37,8 +37,9 @@ namespace evaluation {
 // MobileNet SSD model:
 // https://www.tensorflow.org/lite/models/object_detection/overview#output.
 // Input size/type & number of detections could be different.
-// TODO(b/133772912): Generalize support for other types of object detection
-// models.
+//
+// This class will be extended to support other types of detection models, if
+// required in the future.
 class ObjectDetectionStage : public EvaluationStage {
  public:
   explicit ObjectDetectionStage(const EvaluationStageConfig& config)

@@ -17,6 +17,7 @@ cc_library_with_tflite(
     testonly = 1,
     srcs = [
         "interpreter_test_jni.cc",
+        "nnapi_delegate_test_jni.cc",
         "supported_features_jni.cc",
         "test_init_jni.cc",
     ],
@@ -31,6 +32,8 @@ cc_library_with_tflite(
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
     alwayslink = 1,
 )

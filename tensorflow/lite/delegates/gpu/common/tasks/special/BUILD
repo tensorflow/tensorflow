@@ -4,6 +4,24 @@ package(
 )
 
 cc_library(
+    name = "conv_pointwise",
+    srcs = ["conv_pointwise.cc"],
+    hdrs = ["conv_pointwise.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "depthwise_conv_plus_1x1_conv",
     srcs = ["depthwise_conv_plus_1x1_conv.cc"],
     hdrs = ["depthwise_conv_plus_1x1_conv.h"],
@@ -19,6 +37,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common/tasks:relu",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -17,6 +17,7 @@ limitations under the License.
 #include <dlfcn.h>
 #include <signal.h>
 
+#include <cstddef>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #ifdef __ANDROID__
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_unit_test_entry_points.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #endif  // __ANDROID__
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 
@@ -37,70 +39,53 @@ namespace tflite {
 namespace acceleration {
 namespace {
 
-std::string GetTestTmpDir() {
-  const char* dir = getenv("TEST_TMPDIR");
-  if (!dir) {
-    dir = "/data/local/tmp";
-  }
-  return dir;
-}
-
 typedef int (*EntryPoint)(int, char**);
-
-void* LoadEntryPointModule() {
-  std::string path = GetTestTmpDir() + "/librunner_unit_test_entry_points.so";
-  void* module = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
-  EXPECT_TRUE(module) << dlerror();
-  return module;
-}
-
-EntryPoint Load(const char* name) {
-#ifdef __ANDROID__
-  void* module = LoadEntryPointModule();
-  if (!module) {
-    return nullptr;
-  }
-#else   // !__ANDROID__
-  auto module = RTLD_DEFAULT;
-#endif  // __ANDROID__
-  void* symbol = dlsym(module, name);
-  return reinterpret_cast<EntryPoint>(symbol);
-}
-
 struct RunnerTest : ::testing::Test {
  protected:
+  void* LoadEntryPointModule() {
+    void* module =
+        dlopen(entry_point_file.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
+    EXPECT_TRUE(module) << dlerror();
+    return module;
+  }
+
+  EntryPoint Load(const char* name) {
+#ifdef __ANDROID__
+    void* module = LoadEntryPointModule();
+    if (!module) {
+      return nullptr;
+    }
+#else   // !__ANDROID__
+    auto module = RTLD_DEFAULT;
+#endif  // __ANDROID__
+    void* symbol = dlsym(module, name);
+    return reinterpret_cast<EntryPoint>(symbol);
+  }
+
   void SetUp() override {
 #ifdef __ANDROID__
     // We extract the test files here as that's the only way to get the right
     // architecture when building tests for multiple architectures.
-    ASSERT_NO_FATAL_FAILURE(WriteFile(
+    entry_point_file = MiniBenchmarkTestHelper::DumpToTempFile(
         "librunner_unit_test_entry_points.so",
         g_tflite_acceleration_embedded_runner_unit_test_entry_points,
-        g_tflite_acceleration_embedded_runner_unit_test_entry_points_len));
+        g_tflite_acceleration_embedded_runner_unit_test_entry_points_len);
+    ASSERT_TRUE(!entry_point_file.empty());
 #endif  // __ANDROID__
   }
-  void WriteFile(const std::string& filename, const unsigned char* data,
-                 size_t length) {
-    std::string path = GetTestTmpDir() + "/" + filename;
-    (void)unlink(path.c_str());
-    std::string contents(reinterpret_cast<const char*>(data), length);
-    std::ofstream f(path, std::ios::binary);
-    ASSERT_TRUE(f.is_open());
-    f << contents;
-    f.close();
-    ASSERT_EQ(chmod(path.c_str(), 0500), 0);
-  }
+
   void Init(const char* symbol_name) {
     EntryPoint function = Load(symbol_name);
     ASSERT_TRUE(function);
-    runner =
-        std::make_unique<ProcessRunner>(GetTestTmpDir(), symbol_name, function);
+    runner = std::make_unique<ProcessRunner>(::testing::TempDir(), symbol_name,
+                                             function);
     ASSERT_EQ(runner->Init(), kMinibenchmarkSuccess);
   }
   int exitcode = 0;
   int signal = 0;
   std::string output;
   std::unique_ptr<ProcessRunner> runner;
+  std::string entry_point_file;
 };
 
 // These tests are only for Android. They are also disabled on 64-bit arm
@@ -198,7 +183,8 @@ TEST_F(RunnerTest, NullFunctionPointer) {
 
 #ifdef __ANDROID__
 TEST_F(RunnerTest, SymbolLookupFailed) {
-  ProcessRunner runner(GetTestTmpDir(), "FunctionInBinary", FunctionInBinary);
+  ProcessRunner runner(::testing::TempDir(), "FunctionInBinary",
+                       FunctionInBinary);
   EXPECT_EQ(runner.Init(), kMinibenchmarkSuccess);
   EXPECT_EQ(runner.Run({}, &output, &exitcode, &signal),
             kMinibenchmarkCommandFailed)

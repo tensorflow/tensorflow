@@ -20,7 +20,7 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/xnnpack/quantized_add_tester.h"
+#include "tensorflow/lite/delegates/xnnpack/quantized_binary_elementwise_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
@@ -44,13 +44,13 @@ TEST(SignedQuantizedAdd, 4DBy4D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy4DBroadcastChannels) {
@@ -71,21 +71,21 @@ TEST(SignedQuantizedAdd, 4DBy4DBroadcastChannels) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, 1, 1, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, 1, 1, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy4DBroadcastWidth) {
@@ -106,21 +106,21 @@ TEST(SignedQuantizedAdd, 4DBy4DBroadcastWidth) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, 1, width, 1})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, 1, width, 1})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy4DBroadcastHeight) {
@@ -141,21 +141,21 @@ TEST(SignedQuantizedAdd, 4DBy4DBroadcastHeight) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, height, 1, 1})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, height, 1, 1})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy4DBroadcastBatch) {
@@ -176,21 +176,21 @@ TEST(SignedQuantizedAdd, 4DBy4DBroadcastBatch) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, 1, 1, 1})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, 1, 1, 1})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy4DBroadcastHeightWidthChannels) {
@@ -211,21 +211,21 @@ TEST(SignedQuantizedAdd, 4DBy4DBroadcastHeightWidthChannels) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, height, width, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy3D) {
@@ -246,21 +246,21 @@ TEST(SignedQuantizedAdd, 4DBy3D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({height, width, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy2D) {
@@ -281,21 +281,21 @@ TEST(SignedQuantizedAdd, 4DBy2D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({width, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy1D) {
@@ -316,21 +316,21 @@ TEST(SignedQuantizedAdd, 4DBy1D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DBy0D) {
@@ -351,21 +351,21 @@ TEST(SignedQuantizedAdd, 4DBy0D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 2DBy2D) {
@@ -384,13 +384,13 @@ TEST(SignedQuantizedAdd, 2DBy2D) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, channels})
       .Input2Shape({batch, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 2DBy1D) {
@@ -409,21 +409,21 @@ TEST(SignedQuantizedAdd, 2DBy1D) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({channels})
       .Input2Shape({batch, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, channels})
       .Input2Shape({channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 2DBy0D) {
@@ -442,21 +442,21 @@ TEST(SignedQuantizedAdd, 2DBy0D) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({})
       .Input2Shape({batch, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, channels})
       .Input2Shape({})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic4D) {
@@ -477,23 +477,23 @@ TEST(SignedQuantizedAdd, 4DByStatic4D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastChannels) {
@@ -514,23 +514,23 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastChannels) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, 1, 1, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, 1, 1, channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastWidth) {
@@ -551,23 +551,23 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastWidth) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, 1, width, 1})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, 1, width, 1})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeight) {
@@ -588,23 +588,23 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeight) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, height, 1, 1})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, height, 1, 1})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastBatch) {
@@ -625,23 +625,23 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastBatch) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, 1, 1, 1})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, 1, 1, 1})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeightWidthChannels) {
@@ -662,23 +662,23 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeightWidthChannels) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, height, width, channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic3D) {
@@ -699,23 +699,23 @@ TEST(SignedQuantizedAdd, 4DByStatic3D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({height, width, channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic2D) {
@@ -736,23 +736,23 @@ TEST(SignedQuantizedAdd, 4DByStatic2D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({width, channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic1D) {
@@ -773,23 +773,23 @@ TEST(SignedQuantizedAdd, 4DByStatic1D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 4DByStatic0D) {
@@ -810,23 +810,23 @@ TEST(SignedQuantizedAdd, 4DByStatic0D) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 2DByStatic2D) {
@@ -845,23 +845,23 @@ TEST(SignedQuantizedAdd, 2DByStatic2D) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, channels})
       .Input2Shape({batch, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, channels})
       .Input2Shape({batch, channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 2DByStatic1D) {
@@ -880,23 +880,23 @@ TEST(SignedQuantizedAdd, 2DByStatic1D) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({channels})
       .Input2Shape({batch, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, channels})
       .Input2Shape({channels})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, 2DByStatic0D) {
@@ -915,23 +915,23 @@ TEST(SignedQuantizedAdd, 2DByStatic0D) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({})
       .Input2Shape({batch, channels})
       .Input1Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, channels})
       .Input2Shape({})
       .Input2Static(true)
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, ReluActivation) {
@@ -945,6 +945,13 @@ TEST(SignedQuantizedAdd, ReluActivation) {
                                       std::numeric_limits<int8_t>::min(),
                                       std::numeric_limits<int8_t>::max()),
                                   std::ref(rng));
+  // Avoid degenerate situation when
+  // output_min == output_max == std::numeric_limits<int8_t>::max()
+  auto output_zero_point_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(
+                    std::numeric_limits<int8_t>::min(),
+                    std::numeric_limits<int8_t>::max() - 1),
+                std::ref(rng));
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
@@ -952,14 +959,14 @@ TEST(SignedQuantizedAdd, ReluActivation) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(output_zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .ReluActivation()
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, Relu6Activation) {
@@ -973,6 +980,13 @@ TEST(SignedQuantizedAdd, Relu6Activation) {
                                       std::numeric_limits<int8_t>::min(),
                                       std::numeric_limits<int8_t>::max()),
                                   std::ref(rng));
+  // Avoid degenerate situation when
+  // output_min == output_max == std::numeric_limits<int8_t>::max()
+  auto output_zero_point_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(
+                    std::numeric_limits<int8_t>::min(),
+                    std::numeric_limits<int8_t>::max() - 1),
+                std::ref(rng));
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
@@ -980,14 +994,14 @@ TEST(SignedQuantizedAdd, Relu6Activation) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(output_zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Relu6Activation()
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, ReluMinus1To1Activation) {
@@ -1008,14 +1022,14 @@ TEST(SignedQuantizedAdd, ReluMinus1To1Activation) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .ReluMinus1To1Activation()
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 TEST(SignedQuantizedAdd, MultiThreading) {
@@ -1039,13 +1053,13 @@ TEST(SignedQuantizedAdd, MultiThreading) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedAddTester()
+  QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(xnnpack_delegate.get());
+      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

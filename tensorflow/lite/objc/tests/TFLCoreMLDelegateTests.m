@@ -31,11 +31,14 @@ static NSString* const kAddFloatModelResourceName = @"add";
 /** Model resource type. */
 static NSString* const kAddModelResourceType = @"bin";
 
-/** Size of input and output tensors */
-static const int kTensorSize = 8 * 8 * 3;
+/**
+ * @var kTensorSize
+ * Size of input and output tensors
+ * @var kTensorChannels
+ * Size of channel dimension of input and output tensors
+ */
 
-/** Size of channel dimension of input and output tensors */
-static const int kTensorChannels = 3;
+enum EnumType : int {kTensorSize = 8 * 8 * 3, kTensorChannels = 3};
 
 /** Accuracy used in comparing floating numbers. */
 static const float kTestAccuracy = 1E-5F;

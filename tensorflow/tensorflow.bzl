@@ -447,6 +447,16 @@ def tf_features_nomodules_if_android():
 def tf_features_nomodules_if_mobile():
     return if_mobile(["-use_header_modules"])
 
+# portable_tensorflow_lib_lite does not export the headers needed to
+# use it.  Thus anything that depends on it needs to disable layering
+# check.
+def tf_features_nolayering_check_if_android_or_ios():
+    return select({
+        clean_dep("//tensorflow:android"): ["-layering_check"],
+        clean_dep("//tensorflow:ios"): ["-layering_check"],
+        "//conditions:default": [],
+    })
+    
 def tf_opts_nortti_if_lite_protos():
     return tf_portable_full_lite_protos(
         full = [],

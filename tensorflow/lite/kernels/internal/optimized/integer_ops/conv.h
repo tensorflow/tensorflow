@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include <fstream>
+#include <iostream>
 
 namespace tflite {
 namespace optimized_integer_ops {
@@ -121,6 +123,7 @@ inline void ConvPerChannel(
   cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
                          dst_params, output_data, gemm_params,
                          cpu_backend_context);
+
 }
 
 }  // namespace optimized_integer_ops

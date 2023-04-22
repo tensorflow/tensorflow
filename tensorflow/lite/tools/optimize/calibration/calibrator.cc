@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -342,6 +343,30 @@ class Reader : public CalibrationReader {
   const TfLiteContext* context_;
 };
 
+bool HasInputs(BuiltinOperator code) {
+  switch (code) {
+    case BuiltinOperator_CALL_ONCE:
+    case BuiltinOperator_VAR_HANDLE:
+    // Custom ops, including Flex ops, might not have inputs.
+    case BuiltinOperator_CUSTOM:
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool HasOutputs(BuiltinOperator code) {
+  switch (code) {
+    case BuiltinOperator_ASSIGN_VARIABLE:
+    case BuiltinOperator_CALL_ONCE:
+    // Custom ops, including Flex ops, might not have outputs.
+    case BuiltinOperator_CUSTOM:
+      return false;
+    default:
+      return true;
+  }
+}
+
 }  // namespace
 
 TfLiteStatus BuildLoggingInterpreter(
@@ -395,9 +420,19 @@ TfLiteStatus BuildLoggingInterpreter(
 
       auto op_inputs = op->inputs();
       auto op_outputs = op->outputs();
-      op_info.inputs = std::vector<int>(op_inputs->begin(), op_inputs->end());
-      op_info.outputs =
-          std::vector<int>(op_outputs->begin(), op_outputs->end());
+      if (op_inputs) {
+        op_info.inputs = std::vector<int>(op_inputs->begin(), op_inputs->end());
+      } else if (HasInputs(op_info.builtin_op_code)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "Op %s missing inputs",
+                   op_info.name.c_str());
+      }
+      if (op_outputs) {
+        op_info.outputs =
+            std::vector<int>(op_outputs->begin(), op_outputs->end());
+      } else if (HasOutputs(op_info.builtin_op_code)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "Op %s missing outputs",
+                   op_info.name.c_str());
+      }
       op_info.loggable_inputs =
           GetLoggableTensorIndices(op_info.inputs, tensors, tensor_buffers);
       op_info.loggable_outputs =

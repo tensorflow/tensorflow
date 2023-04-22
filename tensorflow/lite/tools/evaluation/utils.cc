@@ -137,16 +137,16 @@ TfLiteDelegatePtr CreateGPUDelegate() {
 
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling) {
-#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
   TfLiteHexagonDelegateOptions options = {0};
   options.print_graph_profile = profiling;
   return CreateHexagonDelegate(&options, library_directory_path);
 #else
   return CreateNullDelegate();
-#endif  // defined(__ANDROID__)
+#endif  // TFLITE_ENABLE_HEXAGON
 }
 
-#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
 TfLiteDelegatePtr CreateHexagonDelegate(
     const TfLiteHexagonDelegateOptions* options,
     const std::string& library_directory_path) {

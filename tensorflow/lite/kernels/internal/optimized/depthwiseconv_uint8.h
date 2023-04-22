@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 
 #ifdef __AVX2__
-#include <x86intrin.h>
+#include <immintrin.h>
 #endif
 
 namespace tflite {

@@ -1,4 +1,4 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "verifier_internal_visibility_allowlist")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
@@ -198,6 +198,7 @@ cc_library(
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
     deps = [
+        ":verifier_internal",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
@@ -208,6 +209,19 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "verifier_internal",
+    srcs = ["verifier_internal.cc"],
+    hdrs = ["verifier_internal.h"],
+    visibility = verifier_internal_visibility_allowlist() + [
+        "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite/java/src/main/native:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -223,6 +237,25 @@ cc_test(
     ],
     deps = [
         ":verifier",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "verifier_internal_test",
+    size = "small",
+    srcs = ["verifier_internal_test.cc"],
+    deps = [
+        ":verifier_internal",
         "//tensorflow/core:framework_lite",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",

@@ -1,4 +1,10 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_android", "tf_opts_nortti_if_lite_protos")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_features_nolayering_check_if_android_or_ios",
+    "tf_opts_nortti_if_android",
+    "tf_opts_nortti_if_lite_protos",
+)
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
@@ -27,6 +33,7 @@ cc_library(
     srcs = ["buffer_map.cc"],
     hdrs = ["buffer_map.h"],
     copts = tf_opts_nortti_if_lite_protos(),
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":buffer_map_util",
         "//tensorflow/lite/c:common",
@@ -51,6 +58,7 @@ cc_library(
     srcs = ["buffer_map_util.cc"],
     hdrs = ["buffer_map_util.h"],
     copts = tf_opts_nortti_if_lite_protos(),
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":util",
         "//tensorflow/lite/c:common",
@@ -146,6 +154,7 @@ cc_library(
         "delegate.h",
     ],
     copts = tflite_copts() + tf_opts_nortti_if_android(),
+    features = tf_features_nolayering_check_if_android_or_ios(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -204,6 +213,7 @@ cc_library(
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
     copts = tf_opts_nortti_if_android(),
+    features = tf_features_nolayering_check_if_android_or_ios(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -257,6 +267,7 @@ tf_cc_test(
 cc_library(
     name = "subgraph_resource",
     hdrs = ["subgraph_resource.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         "//tensorflow/lite:cc_api",
     ] + select({
@@ -305,6 +316,7 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
@@ -345,6 +357,7 @@ cc_library(
         "allowlisted_flex_ops_internal.h",
     ],
     compatible_with = get_compatible_with_cloud(),
+    features = tf_features_nolayering_check_if_android_or_ios(),
     visibility = internal_visibility_allowlist(),
     deps = select({
         "//tensorflow:android": [
@@ -365,6 +378,7 @@ tf_cc_test(
     srcs = [
         "allowlisted_flex_ops_test.cc",
     ],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":delegate",
         ":allowlisted_flex_ops_lib",
@@ -398,6 +412,7 @@ cc_library(
     name = "tflite_subgraph_execute",
     srcs = ["tflite_subgraph_execute.cc"],
     copts = tf_opts_nortti_if_android(),
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":buffer_map_util",
         ":subgraph_resource",

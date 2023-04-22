@@ -77,8 +77,8 @@ void PortableAsymmetricQuantizeFloats(const float* values, const int size,
   const double qmin_double = kMinScale;
   const double qmax_double = kMaxScale;
   const auto minmax = std::minmax_element(values, values + size);
-  const double rmin = std::fmin(0, *minmax.first);
-  const double rmax = std::fmax(0, *minmax.second);
+  const double rmin = static_cast<double>(std::min(0.0f, *minmax.first));
+  const double rmax = static_cast<double>(std::max(0.0f, *minmax.second));
   if (rmin == rmax) {
     memset(quantized_values, 0, size * sizeof(int8_t));
     *scaling_factor = 1;
@@ -107,7 +107,7 @@ void PortableAsymmetricQuantizeFloats(const float* values, const int size,
     *scaling_factor = scale;
     *offset = nudged_zero_point;
   }
-  const float scaling_factor_inv = 1.0 / *scaling_factor;
+  const float scaling_factor_inv = 1.0f / *scaling_factor;
   for (int i = 0; i < size; ++i) {
     const int32_t quantized_value = static_cast<int32_t>(
         TfLiteRound(*offset + values[i] * scaling_factor_inv));
@@ -465,12 +465,11 @@ void PortableApplyLayerNormFloat(const int16_t* input,
                                  int16_t* output) {
   const int32_t int16_max = std::numeric_limits<int16_t>::max();
   const int32_t int16_min = std::numeric_limits<int16_t>::min();
-  // This is to surpress a lint warning.
-  const double two = 2.0;
   const float layer_norm_scale =
       layer_norm_scale_a *
-      std::pow(two, static_cast<double>(layer_norm_scale_b - 31));
-  const float bias_scale = std::pow(two, -10) * layer_norm_scale;
+      std::pow(2.0, static_cast<double>(layer_norm_scale_b - 31));
+  const float bias_scale =
+      static_cast<float>(std::pow(2.0, -10)) * layer_norm_scale;
 
   for (int batch = 0; batch < n_batch; ++batch) {
     float sum = 0.0f;
@@ -485,9 +484,9 @@ void PortableApplyLayerNormFloat(const int16_t* input,
     float stddev_inv = 0.0f;
     const float variance = sum_sq / n_input - mean * mean;
     if (variance == 0) {
-      stddev_inv = 1.0f / sqrt(1e-8);
+      stddev_inv = 1.0f / std::sqrt(1e-8f);
     } else {
-      stddev_inv = 1.0f / sqrt(variance);
+      stddev_inv = 1.0f / std::sqrt(variance);
     }
     for (int i = 0; i < n_input; ++i) {
       const int index = batch * n_input + i;
@@ -496,8 +495,8 @@ void PortableApplyLayerNormFloat(const int16_t* input,
       const float weighted_normalized_value =
           normalized_value * layer_norm_weights[i] * layer_norm_scale +
           bias[i] * bias_scale;
-      const int32_t quant_output = static_cast<int32_t>(
-          std::round(weighted_normalized_value * std::pow(2, 12)));
+      const int32_t quant_output = static_cast<int32_t>(round(
+          weighted_normalized_value * static_cast<float>(std::pow(2, 12))));
       output[index] = std::min(int16_max, std::max(int16_min, quant_output));
     }
   }
@@ -536,10 +535,11 @@ void PortableApplySigmoidFloat(const int16_t* input, int32_t n_batch,
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int i = 0; i < n_input; ++i) {
       const int index = batch * n_input + i;
-      const float float_input = input[index] * std::pow(2, -12);
+      const float float_input =
+          input[index] * static_cast<float>(std::pow(2, -12));
       const float float_output = 1.0f / (1.0f + std::exp(-float_input));
-      const int32_t quant_output =
-          static_cast<int32_t>(float_output * std::pow(2, 15));
+      const int32_t quant_output = static_cast<int32_t>(
+          float_output * static_cast<float>(std::pow(2, 15)));
       const int32_t quant_output_clamped =
           std::min(int16_max, std::max(int16_min, quant_output));
       output[index] = static_cast<int16_t>(quant_output_clamped);
@@ -595,8 +595,8 @@ void PortableApplyTanhFloat(const int16_t* input, int32_t n_batch,
       const float float_input =
           input[index] * std::pow(two, static_cast<double>(integer_bits));
       const float float_output = std::tanh(float_input);
-      const int32_t quant_output =
-          static_cast<int32_t>(float_output * std::pow(2, 15));
+      const int32_t quant_output = static_cast<int32_t>(
+          float_output * static_cast<float>(std::pow(2, 15)));
       const int32_t quant_output_clamped =
           std::min(int16_max, std::max(int16_min, quant_output));
       output[index] = static_cast<int16_t>(quant_output_clamped);

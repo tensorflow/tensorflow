@@ -54,6 +54,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLitePadParams",
                                       "TfLitePadV2Params",
                                       "TfLitePoolParams",
+                                      "TfLiteRandomParams",
                                       "TfLiteReducerParams",
                                       "TfLiteReshapeParams",
                                       "TfLiteResizeBilinearParams",
@@ -174,6 +175,7 @@ class OpOptionData {
     op_to_option_["MAXIMUM"] = "MaximumMinimumOptions";
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
     op_to_option_["CONV_3D_TRANSPOSE"] = "Conv3DOptions";
+    op_to_option_["RANDOM_STANDARD_NORMAL"] = "RandomOptions";
 
     // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.

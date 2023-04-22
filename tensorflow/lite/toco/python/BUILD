@@ -55,12 +55,14 @@ cc_library(
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",
         "//tensorflow/lite/toco:tooling_util",
+        "//tensorflow/lite/toco:types_proto_cc",
+        "//tensorflow/compiler/mlir/lite/python:flatbuffer_to_mlir",
         "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/python:jax_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector",
-        "//tensorflow/lite/toco:types_proto_cc",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.

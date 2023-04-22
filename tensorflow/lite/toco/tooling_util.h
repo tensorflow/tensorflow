@@ -267,8 +267,8 @@ std::string CreateInt32Array(Model* model, const std::string& param_name,
                              const std::vector<int>& value);
 
 bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
-                                int64* result);
-bool EstimateArithmeticOpsCount(const Model& model, int64* result);
+                                int64_t* result);
+bool EstimateArithmeticOpsCount(const Model& model, int64_t* result);
 std::string FormattedNumber(int64_t x);
 
 int AxesCount(AxesOrder axes_order);

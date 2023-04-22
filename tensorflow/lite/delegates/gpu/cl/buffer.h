@@ -71,7 +71,7 @@ class Buffer : public GPUObject {
   void Release();
 
   cl_mem buffer_ = nullptr;
-  size_t size_;
+  size_t size_ = 0;
   bool is_sub_buffer_ = false;
 };
 

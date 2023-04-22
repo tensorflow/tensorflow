@@ -19,6 +19,8 @@
 // Version 3: Move buffer data from Model.Subgraph.Tensors to Model.Buffers.
 // Version 3a: Add new builtin op code field. Has backward compatibility with
 //             version 3.
+// Version 3b: Rename fields in SignatureDef. Has backward compatibility with
+//             version 3 and 3a.
 
 namespace tflite;
 
@@ -377,6 +379,7 @@ enum BuiltinOperator : int32 {
   READ_VARIABLE = 143,
   ASSIGN_VARIABLE = 144,
   BROADCAST_ARGS = 145,
+  RANDOM_STANDARD_NORMAL = 146,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -495,6 +498,7 @@ union BuiltinOptions {
   VarHandleOptions,
   ReadVariableOptions,
   AssignVariableOptions,
+  RandomOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -1080,6 +1084,11 @@ table ReadVariableOptions {
 table AssignVariableOptions {
 }
 
+table RandomOptions {
+  seed: int;
+  seed2: int;
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -1195,13 +1204,13 @@ table SignatureDef {
   // Named outputs for this signature.
   outputs:[TensorMap];
 
-  // Exported method name for this signature.
-  method_name:string;
-
   // Key value which was in the Tensorflow SavedModel SignatureDef map.
-  key:string;
+  signature_key:string;
 
-  // Subgraph index of the exported method.
+  // Model tag, deprecated.
+  deprecated_tag:string (deprecated);
+
+  // Index of subgraphs that corresponds to the exported method.
   subgraph_index:uint;
 }
 

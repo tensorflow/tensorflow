@@ -15,6 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -27,7 +29,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <p>For example, if a model takes only one input and returns only one output:
  *
  * <pre>{@code
- * try (InterpreterApi interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ * try (InterpreterApi interpreter =
+ *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
  *   interpreter.run(input, output);
  * }
  * }</pre>
@@ -40,7 +43,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * FloatBuffer ith_output = FloatBuffer.allocateDirect(3 * 2 * 4);  // Float tensor, shape 3x2x4.
  * ith_output.order(ByteOrder.nativeOrder());
  * map_of_indices_to_outputs.put(i, ith_output);
- * try (InterpreterApi interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ * try (InterpreterApi interpreter =
+ *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
  * }
  * }</pre>
@@ -50,7 +54,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <pre>{@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
  * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
- * try (InterpreterApi interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ * try (InterpreterApi interpreter =
+ *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
  * }
  * }</pre>
@@ -73,24 +78,29 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
  * but is not guaranteed.
+ *
+ * @see InterpreterFactory
  */
 public interface InterpreterApi extends AutoCloseable {
 
   /** An options class for controlling runtime interpreter behavior. */
   public static class Options {
-    public Options() {}
+    public Options() {
+      this.delegates = new ArrayList<>();
+    }
 
     public Options(Options other) {
       this.numThreads = other.numThreads;
       this.useNNAPI = other.useNNAPI;
       this.allowCancellation = other.allowCancellation;
+      this.delegates = new ArrayList<>(other.delegates);
     }
 
     /**
      * Sets the number of threads to be used for ops that support multi-threading.
      *
-     * <p>{@code numThreads} should be >= -1. Setting {@code numThreads} to 0 has the effect to
-     * disable multithreading, which is equivalent to setting {@code numThreads} to 1. If
+     * <p>{@code numThreads} should be {@code >= -1}. Setting {@code numThreads} to 0 has the effect
+     * of disabling multithreading, which is equivalent to setting {@code numThreads} to 1. If
      * unspecified, or set to the value -1, the number of threads used will be
      * implementation-defined and platform-dependent.
      */
@@ -115,9 +125,18 @@ public interface InterpreterApi extends AutoCloseable {
       return this;
     }
 
+    /** Adds a {@link Delegate} to be applied during interpreter creation. */
+    public Options addDelegate(Delegate delegate) {
+      delegates.add(delegate);
+      return this;
+    }
+
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowCancellation;
+
+    // See InterpreterApi.Options#addDelegate(boolean).
+    final List<Delegate> delegates;
   }
 
   /**

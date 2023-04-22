@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -43,9 +44,31 @@ class Add : public NodeShader {
 
     const auto* hwc_tensor =
         absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+
     if (hwc_tensor) {
-      return absl::UnimplementedError(
-          "Add does not support HWC constant tensor");
+      *generated_code = {
+          /*parameters=*/{},
+          /*objects=*/
+          {{"hwc_buffer",
+            MakeReadonlyObject(
+                uint3(
+                    static_cast<int>(ctx.input_shapes[0][2]),
+                    static_cast<int>(ctx.input_shapes[0][1]),
+                    DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+                ConvertToPHWC4(
+                    absl::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
+          /*shared_variables=*/{},
+          // Declare workload explicitly because shader depends on gid.z.
+          /*workload=*/
+          uint3(static_cast<int>(ctx.input_shapes[0][2]),
+                static_cast<int>(ctx.input_shapes[0][1]),
+                DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+          /*workgroup=*/uint3(),
+          /*source_code=*/"value_0 += $hwc_buffer[gid.x, gid.y, gid.z]$;",
+          /*input=*/IOStructure::AUTO,
+          /*output=*/IOStructure::AUTO,
+      };
+      return absl::OkStatus();
     }
 
     if (!adds && !scalar) {
@@ -102,22 +125,22 @@ class Add : public NodeShader {
           /*input=*/IOStructure::AUTO,
           /*output=*/IOStructure::AUTO,
       };
-    } else {
-      *generated_code = {
-          /*parameters=*/{},
-          /*objects=*/{{"add_buffer", MakeReadonlyObject(adds->data)}},
-          /*shared_variables=*/{},
-          // Declare workload explicitly because shader depends on gid.z.
-          /*workload=*/
-          uint3(ctx.input_shapes[0][2], ctx.input_shapes[0][1],
-                DivideRoundUp(ctx.input_shapes[0][3], 4)),
-          /*workgroup=*/uint3(),
-          /*source_code=*/"value_0 += $add_buffer[gid.z]$;",
-          /*input=*/IOStructure::AUTO,
-          /*output=*/IOStructure::AUTO,
-      };
+      return absl::OkStatus();
     }
 
+    *generated_code = {
+        /*parameters=*/{},
+        /*objects=*/{{"add_buffer", MakeReadonlyObject(adds->data)}},
+        /*shared_variables=*/{},
+        // Declare workload explicitly because shader depends on gid.z.
+        /*workload=*/
+        uint3(ctx.input_shapes[0][2], ctx.input_shapes[0][1],
+              DivideRoundUp(ctx.input_shapes[0][3], 4)),
+        /*workgroup=*/uint3(),
+        /*source_code=*/"value_0 += $add_buffer[gid.z]$;",
+        /*input=*/IOStructure::AUTO,
+        /*output=*/IOStructure::AUTO,
+    };
     return absl::OkStatus();
   }
 };

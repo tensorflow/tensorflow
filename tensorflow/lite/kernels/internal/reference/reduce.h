@@ -23,6 +23,25 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
+// Check if the reduction at index is the first one along the dimensions given
+// in axis.
+inline bool IsFirstReduction(const int* index, const int num_axis,
+                             const int* axis) {
+  if (num_axis == 0) {
+    return true;
+  }
+
+  TFLITE_DCHECK(index != nullptr);
+  TFLITE_DCHECK(axis != nullptr);
+  for (int axis_idx = 0; axis_idx < num_axis; ++axis_idx) {
+    if (index[axis[axis_idx]] != 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 namespace tflite {
 
 namespace reference_ops {
@@ -35,8 +54,7 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                    const int* output_dims, const int input_num_dims,
                    const int output_num_dims, const int* axis,
                    const int num_axis, int* input_iter,
-                   Out reducer(const Out current, const In in),
-                   Out* output_data) {
+                   Out reducer(Out current, const In in), Out* output_data) {
   // Reset input iterator.
   for (int idx = 0; idx < input_num_dims; ++idx) {
     input_iter[idx] = 0;
@@ -49,6 +67,37 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                                                input_iter, num_axis, axis);
     output_data[output_offset] =
         reducer(output_data[output_offset], input_data[input_offset]);
+  } while (NextIndex(input_num_dims, input_dims, input_iter));
+  return true;
+}
+
+// Similar to above Reduce function but takes two reducer functions.
+// The 'reducer_first' is called with the first value of the reduction,
+// 'reducer_next' is then called for all the others.
+template <typename In, typename Out>
+inline bool Reduce(const In* input_data, const int* input_dims,
+                   const int* output_dims, const int input_num_dims,
+                   const int output_num_dims, const int* axis,
+                   const int num_axis, int* input_iter,
+                   const std::function<Out(In in)>& reducer_first,
+                   const std::function<Out(Out current, In in)>& reducer_next,
+                   Out* output_data) {
+  // Reset input iterator.
+  for (int idx = 0; idx < input_num_dims; ++idx) {
+    input_iter[idx] = 0;
+  }
+  // Iterate through input_data.
+  do {
+    size_t input_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, input_iter, 0, nullptr);
+    size_t output_offset = ReducedOutputOffset(input_num_dims, input_dims,
+                                               input_iter, num_axis, axis);
+    if (IsFirstReduction(input_iter, num_axis, axis)) {
+      output_data[output_offset] = reducer_first(input_data[input_offset]);
+    } else {
+      output_data[output_offset] =
+          reducer_next(output_data[output_offset], input_data[input_offset]);
+    }
   } while (NextIndex(input_num_dims, input_dims, input_iter));
   return true;
 }
@@ -111,7 +160,8 @@ inline bool InitTensorDataForReduce(const int* dims, const int num_dims,
   for (int idx = 0; idx < num_dims; ++idx) {
     size_t current = static_cast<size_t>(dims[idx]);
     // Overflow prevention.
-    if (num_elements > std::numeric_limits<size_t>::max() / current) {
+    if (current > 0 &&
+        num_elements > std::numeric_limits<size_t>::max() / current) {
       return false;
     }
     num_elements *= current;
@@ -132,15 +182,18 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
                           bool keep_dims, int* temp_index, int* resolved_axis,
                           T init_value,
                           T reducer(const T current, const T in)) {
-  // Return early when input shape has zero dim.
-  for (int i = 0; i < input_num_dims; ++i) {
-    if (input_dims[i] == 0) return true;
-  }
-
   // Reset output data.
   if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
                                output_data)) {
     return false;
+  }
+
+  // Return early when input shape has zero dim. This is done after initializing
+  // data for output tensor because there are cases that the input tensor is
+  // empty but output tensor is not. In that case, output tensor should be
+  // filled with init_value.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
   }
 
   // Resolve axis.
@@ -353,6 +406,14 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
     temp_sum[idx] = U();
   }
 
+  // Return early when input shape has zero dim. This is done after initializing
+  // data for output tensor because there are cases that the input tensor is
+  // empty but output tensor is not. In that case, output tensor should be
+  // filled with init_value.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
+  }
+
   // Resolve axis.
   int num_resolved_axis = 0;
   if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
@@ -402,6 +463,57 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
       }
     }
   }
+  return true;
+}
+
+template <typename T>
+inline bool QuantizedReduceProd(const T* input_data, int32_t input_zero_point,
+                                const RuntimeShape& input_shape, T* output_data,
+                                int32_t output_zero_point,
+                                const RuntimeShape& output_shape,
+                                const int* axis,
+                                const int64_t num_axis_dimensions,
+                                bool keep_dims, int* temp_index,
+                                int* resolved_axis, int32_t* temp_prod,
+                                int32_t scaling_multiplier, int scaling_shift) {
+  const int32_t kMinValue = std::numeric_limits<T>::min();
+  const int32_t kMaxValue = std::numeric_limits<T>::max();
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_shape.DimensionsCount(), axis, num_axis_dimensions,
+                   resolved_axis, &num_resolved_axis)) {
+    return false;
+  }
+
+  // Calculate the reduced product by rescaling each multiplication step to
+  // avoid an overflow.
+  auto reducer_first = [&](T in) -> int32_t { return in - input_zero_point; };
+
+  auto reducer_next = [&](int32_t current, T in) -> int32_t {
+    const int64_t result =
+        static_cast<int64_t>(current) * (in - input_zero_point);
+    return MultiplyByQuantizedMultiplier(result, scaling_multiplier,
+                                         scaling_shift);
+  };
+
+  if (!Reduce<T, int32_t>(
+          input_data, input_shape.DimsData(), output_shape.DimsData(),
+          input_shape.DimensionsCount(), output_shape.DimensionsCount(),
+          resolved_axis, num_resolved_axis, temp_index, reducer_first,
+          reducer_next, temp_prod)) {
+    return false;
+  }
+
+  for (int i = 0; i < output_shape.FlatSize(); i++) {
+    int32_t result =
+        MultiplyByQuantizedMultiplier(static_cast<int64_t>(temp_prod[i]),
+                                      scaling_multiplier, scaling_shift) +
+        output_zero_point;
+    result = std::min(std::max(result, kMinValue), kMaxValue);
+    output_data[i] = static_cast<T>(result);
+  }
+
   return true;
 }
 

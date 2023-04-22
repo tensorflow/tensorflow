@@ -30,8 +30,8 @@ namespace {
 
 tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
                                 const std::vector<int64_t>& dim) {
-  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
-      reinterpret_cast<const tensorflow::int64*>(dim.data()), dim.size()}};
+  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<int64_t>{
+      reinterpret_cast<const int64_t*>(dim.data()), dim.size()}};
   return {type, shape};
 }
 
@@ -231,7 +231,7 @@ string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
     case tensorflow::DT_UINT32:
       return TensorDataToCsvString<uint32_t>(tensor);
     case tensorflow::DT_INT64:
-      return TensorDataToCsvString<tensorflow::int64>(tensor);
+      return TensorDataToCsvString<int64_t>(tensor);
     case tensorflow::DT_UINT8:
       return TensorDataToCsvString<uint8_t>(tensor);
     case tensorflow::DT_STRING:

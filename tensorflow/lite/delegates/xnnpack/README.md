@@ -1,9 +1,9 @@
 # XNNPACK backend for TensorFlow Lite
 
-XNNPACK is a highly optimized library of floating-point neural network
-inference operators for ARM, x86, and WebAssembly architectures in Android, iOS,
-Windows, Linux, macOS, and Emscripten environments. This document describes how
-to use the XNNPACK library as an inference engine for TensorFlow Lite.
+XNNPACK is a highly optimized library of neural network inference operators for
+ARM, x86, and WebAssembly architectures in Android, iOS, Windows, Linux, macOS,
+and Emscripten environments. This document describes how to use the XNNPACK
+library as an inference engine for TensorFlow Lite.
 
 ## Using XNNPACK engine with TensorFlow Lite interpreter
 
@@ -143,31 +143,33 @@ operators. Unsupported operators will fall back to the default implementations,
 so models using a combination of supported and unsupported operators can still
 benefit from XNNPACK delegate.
 
-Below is the list of current operators and limitations:
+### Floating-Point Operators
 
-### `ABS`
+Below is the list of currently supported floating-point operators:
+
+#### `ABS`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `ADD`
+#### `ADD`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only addition with two inputs is supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `AVERAGE_POOL_2D`
+#### `AVERAGE_POOL_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `CEIL`
+#### `CEIL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `CONV_2D`
+#### `CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Bias is mandatory.
@@ -175,12 +177,12 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `DEPTH_TO_SPACE`
+#### `DEPTH_TO_SPACE`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Block size must be greater than 1.
 
-### `DEPTHWISE_CONV_2D`
+#### `DEPTHWISE_CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Bias is mandatory.
@@ -188,51 +190,51 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `DIV`
+#### `DIV`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `ELU`
+#### `ELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `FULLY_CONNECTED`
+#### `FULLY_CONNECTED`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `FLOOR`
+#### `FLOOR`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `HARD_SWISH`
+#### `HARD_SWISH`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `LEAKY_RELU`
+#### `LEAKY_RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `LOGISTIC`
+#### `LOGISTIC`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `MAX_POOL_2D`
+#### `MAX_POOL_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `MAXIMUM`
+#### `MAXIMUM`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `MEAN`
+#### `MEAN`
 
 * The first input and the output must be a 4D tensors in 32-bit
   floating-point format.
@@ -242,84 +244,172 @@ Below is the list of current operators and limitations:
   dimensions) is supported.
 * Only `keep_dims = True` parameter value is supported.
 
-### `MINIMUM`
+#### `MINIMUM`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `MUL`
+#### `MUL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-### `NEG`
+#### `NEG`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `PAD`
+#### `PAD`
 
 * The first input and the output must be in 32-bit floating-point format.
 * The second input (the input with the padding specification) must be static
   (use `kTfLiteMmapRo` allocation type).
 * The numbers of padding elements must be non-negative.
 
-### `PRELU`
+#### `PRELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Slope must be static (use `kTfLiteMmapRo` allocation type).
 * Slope must be either a 1D tensor, or have all its non-channel dimensions equal
   1.
 
-### `RELU`
+#### `RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `RELU6`
+#### `RELU6`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `RELU_N1_TO_1`
+#### `RELU_N1_TO_1`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `RESHAPE`
+#### `RESHAPE`
 
 * The first input and the output must be in 32-bit floating-point format.
 * The second input (the input with the new shape specification) must be either
   static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
   specified via `ReshapeOptions` table).
 
-### `RESIZE_BILINEAR`
+#### `RESIZE_BILINEAR`
 
 * The first input and the output must be 4D tensors in 32-bit floating-point
   format.
 * The second input (the input with the new shape specification) must be
   static (use `kTfLiteMmapRo` allocation type).
 
-### `ROUND`
+#### `ROUND`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `SOFTMAX`
+#### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
 
-### `SQRT`
+#### `SQRT`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `SQUARE`
+#### `SQUARE`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `SQUARED_DIFFERENCE`
+#### `SQUARED_DIFFERENCE`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-### `SUB`
+#### `SUB`
 
 * Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+### Quantized Operators
+
+By default, quantized inference in XNNPACK delegate is disabled, and XNNPACK is
+used only for floating-point models. Support for quantized inference in XNNPACK
+must be enabled by adding extra Bazel flags when building TensorFlow Lite.
+
+* `--define xnn_enable_qs8=true` flag enables XNNPACK inference for quantized
+operators using signed quantization schema. This schema is used by models
+produced by [Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
+through either post-training integer quantization or quantization-aware
+training. Post-training dynamic range quantization is not supported in XNNPACK.
+
+* `--define xnn_enable_qu8=true` flag enables XNNPACK inference for quantized
+operators using unsigned quantization schema, produced via the legacy TensorFlow
+1.X quantization tooling. This option is experimental and may perform
+suboptimally on mobile processors with NEON DOT product instructions.
+
+Below is the list of currently supported quantized operators:
+
+#### `ADD`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only addition with two inputs is supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `CONV_2D`
+
+* Inputs and outputs must be in 8-bit quantized format (bias must be in 32-bit
+  quantized format).
+* Bias is mandatory.
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type),
+  and can use either per-tensor or per-channel quantization parameters.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `DEPTHWISE_CONV_2D`
+
+* Inputs and outputs must be in 8-bit quantized format (bias must be in
+  32-bit quantized format).
+* Bias is mandatory.
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type),
+  and can use either per-tensor or per-channel quantization parameters.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `ELU`
+
+* Inputs and outputs must be in 8-bit signed quantized format.
+
+#### `FULLY_CONNECTED`
+
+* Inputs and outputs must be in 8-bit quantized format (bias, if present, must
+  be in 32-bit quantized format).
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `LOGISTIC`
+
+* Inputs and outputs must be in 8-bit quantized format.
+
+#### `MAX_POOL_2D`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* 1x1 pooling with non-unit stride is not supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `MUL`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `PAD`
+
+* The first input and the output must be in 8-bit quantized format.
+* The second input (the input with the padding specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* The numbers of padding elements must be non-negative.
+
+#### `SUB`
+
+* Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 

@@ -15,17 +15,21 @@ limitations under the License.
 #include "tensorflow/lite/delegates/serialization.h"
 
 #if defined(_WIN32)
+#include <fstream>
+#include <iostream>
 #else
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
+
+#include <cstring>
 #endif  // defined(_WIN32)
 
 #include <time.h>
 
+#include <algorithm>
 #include <cstdint>
-#include <fstream>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -37,6 +41,8 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace {
+
+static const char kDelegatedNodesSuffix[] = "_dnodes";
 
 // Farmhash Fingerprint
 inline uint64_t CombineFingerprints(uint64_t l, uint64_t h) {
@@ -118,8 +124,8 @@ TfLiteStatus SerializationEntry::SetData(TfLiteContext* context,
     ssize_t ret = write(fd, buf, size);
     if (ret <= 0) {
       close(fd);
-      TF_LITE_KERNEL_LOG(context, "Failed to write data to: %s, error: %d",
-                         temp_filepath.c_str(), errno);
+      TF_LITE_KERNEL_LOG(context, "Failed to write data to: %s, error: %s",
+                         temp_filepath.c_str(), std::strerror(errno));
       return kTfLiteDelegateDataWriteError;
     }
 
@@ -129,18 +135,18 @@ TfLiteStatus SerializationEntry::SetData(TfLiteContext* context,
   // Use fsync to ensure data is on disk before renaming temp file.
   if (fsync(fd) < 0) {
     close(fd);
-    TF_LITE_KERNEL_LOG(context, "Could not fsync: %s, error: %d",
-                       temp_filepath.c_str(), errno);
+    TF_LITE_KERNEL_LOG(context, "Could not fsync: %s, error: %s",
+                       temp_filepath.c_str(), std::strerror(errno));
     return kTfLiteDelegateDataWriteError;
   }
   if (close(fd) < 0) {
-    TF_LITE_KERNEL_LOG(context, "Could not close fd: %s, error: %d",
-                       temp_filepath.c_str(), errno);
+    TF_LITE_KERNEL_LOG(context, "Could not close fd: %s, error: %s",
+                       temp_filepath.c_str(), std::strerror(errno));
     return kTfLiteDelegateDataWriteError;
   }
   if (rename(temp_filepath.c_str(), filepath.c_str()) < 0) {
-    TF_LITE_KERNEL_LOG(context, "Failed to rename to %s, error: %d",
-                       filepath.c_str(), errno);
+    TF_LITE_KERNEL_LOG(context, "Failed to rename to %s, error: %s",
+                       filepath.c_str(), std::strerror(errno));
     return kTfLiteDelegateDataWriteError;
   }
 #endif  // defined(_WIN32)
@@ -156,7 +162,7 @@ TfLiteStatus SerializationEntry::GetData(TfLiteContext* context,
   if (!data) return kTfLiteError;
   auto filepath = GetFilePath(cache_dir_, model_token_, fingerprint_);
 
-  // TODO(b/188704640): Benchmark this file IO to optimize it further?
+#if defined(_WIN32)
   std::ifstream cache_stream(filepath,
                              std::ios_base::in | std::ios_base::binary);
   if (cache_stream.good()) {
@@ -168,6 +174,46 @@ TfLiteStatus SerializationEntry::GetData(TfLiteContext* context,
     cache_stream.read(&(*data)[0], cache_size);
     cache_stream.close();
   }
+#else   // !defined(_WIN32)
+  // This method only works on unix/POSIX systems, but is more optimized & has
+  // lower size overhead for Android binaries.
+  data->clear();
+  // O_CLOEXEC is needed for correctness, as another thread may call
+  // popen() and the callee inherit the lock if it's not O_CLOEXEC.
+  int fd = open(filepath.c_str(), O_RDONLY | O_CLOEXEC, 0600);
+  if (fd < 0) {
+    TF_LITE_KERNEL_LOG(context, "File %s couldn't be opened for reading: %s",
+                       filepath.c_str(), std::strerror(errno));
+    return kTfLiteDelegateDataNotFound;
+  }
+  int lock_status = flock(fd, LOCK_EX);
+  if (lock_status < 0) {
+    close(fd);
+    TF_LITE_KERNEL_LOG(context, "Could not flock %s: %s", filepath.c_str(),
+                       std::strerror(errno));
+    return kTfLiteDelegateDataReadError;
+  }
+  char buffer[512];
+  while (true) {
+    int bytes_read = read(fd, buffer, 512);
+    if (bytes_read == 0) {
+      // EOF
+      close(fd);
+      return kTfLiteOk;
+    } else if (bytes_read < 0) {
+      close(fd);
+      TF_LITE_KERNEL_LOG(context, "Error reading %s: %s", filepath.c_str(),
+                         std::strerror(errno));
+      return kTfLiteDelegateDataReadError;
+    } else {
+      data->append(buffer, bytes_read);
+    }
+  }
+#endif  // defined(_WIN32)
+
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                  "Found serialized data for model %s (%d B) at %s",
+                  model_token_.c_str(), data->size(), filepath.c_str());
 
   if (!data->empty()) {
     TFLITE_LOG(TFLITE_LOG_INFO, "Data found at %s: %d bytes", filepath.c_str(),
@@ -195,20 +241,19 @@ SerializationEntry Serialization::GetEntryImpl(
   fingerprint = CombineFingerprints(fingerprint, custom_str_fingerprint);
 
   // Incorporate context details, if provided.
-  // A quick heuristic that considers the number of tensors & execution plan
-  // to 'fingerprint' a tflite::Subgraph.
+  // A quick heuristic involving graph tensors to 'fingerprint' a
+  // tflite::Subgraph. We don't consider the execution plan, since it could be
+  // in flux if the delegate uses this method during
+  // ReplaceNodeSubsetsWithDelegateKernels (eg in kernel Init).
   if (context) {
     std::vector<int32_t> context_data;
-    TfLiteIntArray* execution_plan;
-    if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
-      TF_LITE_KERNEL_LOG(context, "Could not get execution plan from context");
-      return SerializationEntry(cache_dir_, model_token_, fingerprint);
-    }
-    context_data.reserve(execution_plan->size + 2);
+    // Number of tensors can be large.
+    const int tensors_to_consider = std::min<int>(context->tensors_size, 100);
+    context_data.reserve(1 + tensors_to_consider);
     context_data.push_back(context->tensors_size);
-    context_data.push_back(execution_plan->size);
-    context_data.insert(context_data.end(), execution_plan->data,
-                        execution_plan->data + execution_plan->size);
+    for (int i = 0; i < tensors_to_consider; ++i) {
+      context_data.push_back(context->tensors[i].bytes);
+    }
     const uint64_t context_fingerprint =
         ::util::Fingerprint64(reinterpret_cast<char*>(context_data.data()),
                                 context_data.size() * sizeof(int32_t));
@@ -244,6 +289,33 @@ SerializationEntry Serialization::GetEntryImpl(
   // Get a fingerprint-specific lock that is passed to the SerializationKey, to
   // ensure noone else gets access to an equivalent SerializationKey.
   return SerializationEntry(cache_dir_, model_token_, fingerprint);
+}
+
+TfLiteStatus SaveDelegatedNodes(TfLiteContext* context,
+                                Serialization* serialization,
+                                const std::string& delegate_id,
+                                const TfLiteIntArray* node_ids) {
+  if (!node_ids) return kTfLiteError;
+  std::string cache_key = delegate_id + kDelegatedNodesSuffix;
+  auto entry = serialization->GetEntryForDelegate(cache_key, context);
+  return entry.SetData(context, reinterpret_cast<const char*>(node_ids),
+                       (1 + node_ids->size) * sizeof(int));
+}
+
+TfLiteStatus GetDelegatedNodes(TfLiteContext* context,
+                               Serialization* serialization,
+                               const std::string& delegate_id,
+                               TfLiteIntArray** node_ids) {
+  if (!node_ids) return kTfLiteError;
+  std::string cache_key = delegate_id + kDelegatedNodesSuffix;
+  auto entry = serialization->GetEntryForDelegate(cache_key, context);
+
+  std::string read_buffer;
+  TF_LITE_ENSURE_STATUS(entry.GetData(context, &read_buffer));
+  if (read_buffer.empty()) return kTfLiteOk;
+  *node_ids = TfLiteIntArrayCopy(
+      reinterpret_cast<const TfLiteIntArray*>(read_buffer.data()));
+  return kTfLiteOk;
 }
 
 }  // namespace delegates

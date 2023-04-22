@@ -17,6 +17,9 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <fstream>
+#include <iostream>
+
 #include <algorithm>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -379,6 +382,83 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 #undef TF_LITE_ADD
   }
+
+  // int8* output_data = GetTensorData<int8>(output);
+  // RuntimeShape output_shape = GetTensorShape(output);
+
+  // const int8* input1_data = GetTensorData<const int8>(input1);
+  // RuntimeShape input1_shape = GetTensorShape(input1);
+
+  // const int8* input2_data = GetTensorData<const int8>(input2);
+  // RuntimeShape input2_shape = GetTensorShape(input2);
+
+  // bool rep = (strcmp(input2->name,
+  //                    "bert/embeddings/embedding_lookup_1;bert/embeddings/"
+  //                    "embedding_lookup_1/axis") == 0);
+
+  // bool rep = (strcmp(input1->name, "bert/embeddings/FakeLayerNorm/mul") == 0);
+  // if (rep) {
+  //   // std:: cout << "ADD Changed" << std::endl;
+  //   int orows = output_shape.Dims(1);
+  //   int ocols = output_shape.Dims(2);
+  //   int index = 0;
+  //   for (int c = 0; c < ocols; c++) {
+  //     for (int r = 0; r < orows; r++) {
+  //       output_data[index++] = 0;
+  //     }
+  //   }
+  // }
+
+  // using namespace std;
+  // cout << input2->name << endl;
+  // {
+  //   int rows = output_shape.Dims(1);
+  //   int cols = output_shape.Dims(2);
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/add_out_del.csv");
+  //   int8_t* res_pointer = output_data;
+  //   int index = 0;
+  //   for (int c = 0; c < cols; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < rows; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
+  // {
+  //   int rows = input1_shape.Dims(1);
+  //   int cols = input1_shape.Dims(2);
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/add_in1_del.csv");
+  //   const int8_t* res_pointer = input1_data;
+  //   int index = 0;
+  //   for (int c = 0; c < cols; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < rows; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
+  // {
+  //   int rows = input2_shape.Dims(1);
+  //   int cols = input2_shape.Dims(2);
+  //   ofstream myfile;
+  //   myfile.open("a_Bert/mobile_bert/add_in2_del.csv");
+  //   const int8_t* res_pointer = input2_data;
+  //   int index = 0;
+  //   for (int c = 0; c < cols; c++) {
+  //     myfile << endl;
+  //     for (int r = 0; r < rows; r++) {
+  //       myfile << (int)res_pointer[index] << ",";
+  //       index++;
+  //     }
+  //   }
+  //   myfile.close();
+  // }
 
   return kTfLiteOk;
 }

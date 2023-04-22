@@ -482,6 +482,7 @@ void EvalQuantized(TfLiteContext* context,
   }
 }
 
+// Replement this
 template <KernelType kernel_type>
 void EvalQuantizedPerChannel(
     TfLiteContext* context, const TfLiteTransposeConvParams* params,

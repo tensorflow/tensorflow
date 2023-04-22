@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/core/shims/jni/jni_utils.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "tensorflow/lite/java/src/main/native/jni_utils.h"
 
 namespace tflite {
 namespace jni {
@@ -42,6 +44,10 @@ void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
     free(message);
   }
   va_end(args);
+}
+
+bool CheckJniInitializedOrThrow(JNIEnv* env) {
+  return TfLiteCheckInitializedOrThrow(env);
 }
 
 BufferErrorReporter::BufferErrorReporter(JNIEnv* env, int limit) {
@@ -75,6 +81,63 @@ int BufferErrorReporter::Report(const char* format, va_list args) {
 }
 
 const char* BufferErrorReporter::CachedErrorMessage() { return buffer_; }
+
+jobjectArray CreateStringArray(const std::vector<const char*>& values,
+                               JNIEnv* env) {
+  jclass string_class = env->FindClass("java/lang/String");
+  if (string_class == nullptr) {
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                   "Internal error: Can not find java/lang/String class.");
+    return nullptr;
+  }
+
+  jobjectArray results =
+      env->NewObjectArray(values.size(), string_class, env->NewStringUTF(""));
+  int i = 0;
+  for (const char* value : values) {
+    env->SetObjectArrayElement(results, i++, env->NewStringUTF(value));
+  }
+  return results;
+}
+
+bool AreDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, const jintArray dims) {
+  int num_dims = static_cast<int>(env->GetArrayLength(dims));
+  jint* ptr = env->GetIntArrayElements(dims, nullptr);
+  if (ptr == nullptr) {
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Empty dimensions of input array.");
+    return true;
+  }
+  bool is_different = false;
+  if (tensor->dims->size != num_dims) {
+    is_different = true;
+  } else {
+    for (int i = 0; i < num_dims; ++i) {
+      if (ptr[i] != tensor->dims->data[i]) {
+        is_different = true;
+        break;
+      }
+    }
+  }
+  env->ReleaseIntArrayElements(dims, ptr, JNI_ABORT);
+  return is_different;
+}
+
+std::vector<int> ConvertJIntArrayToVector(JNIEnv* env, const jintArray inputs) {
+  int size = static_cast<int>(env->GetArrayLength(inputs));
+  std::vector<int> outputs(size, 0);
+  jint* ptr = env->GetIntArrayElements(inputs, nullptr);
+  if (ptr == nullptr) {
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Array has empty dimensions.");
+    return {};
+  }
+  for (int i = 0; i < size; ++i) {
+    outputs[i] = ptr[i];
+  }
+  env->ReleaseIntArrayElements(inputs, ptr, JNI_ABORT);
+  return outputs;
+}
 
 }  // namespace jni
 }  // namespace tflite

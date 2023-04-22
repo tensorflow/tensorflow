@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -128,6 +129,26 @@ bool RegisterCustomOpByName(const char* registerer_name,
   return true;
 }
 
+// Returns the dimension from the stored list in the PyObject. If the given
+// PyObject is not a list, it will return absl::optional and set the Python
+// error message to notify users.
+absl::optional<std::vector<int>> ConvertInputShapeToVector(
+    PyObject* input_shapes, size_t index) {
+  PyObject* shape = PyList_GetItem(input_shapes, index);
+  if (!shape || !PyList_Check(shape)) {
+    PyErr_Format(PyExc_ValueError,
+                 "Invalid %ld input shape: expected to be a list.", index);
+    return absl::nullopt;
+  }
+  size_t size = PyList_Size(shape);
+  std::vector<int> dims(size);
+  for (size_t dim_index = 0; dim_index < size; ++dim_index) {
+    PyObject* dim = PyList_GetItem(shape, dim_index);
+    dims[dim_index] = PyLong_AsLong(dim);
+  }
+  return dims;
+}
+
 }  // namespace
 
 PyObject* AddIntermediateTensors(PyObject* data) {
@@ -190,6 +211,61 @@ PyObject* CalibrationWrapper::Prepare() {
   Py_RETURN_NONE;
 }
 
+PyObject* CalibrationWrapper::Prepare(std::string signature_key) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  SignatureRunner* runner =
+      interpreter_->GetSignatureRunner(signature_key.c_str());
+  if (runner == nullptr) {
+    PyErr_Format(PyExc_ValueError, "Invalid signature key: %s",
+                 signature_key.c_str());
+    return nullptr;
+  }
+  TFLITE_PY_CHECK(runner->AllocateTensors());
+  TFLITE_PY_CHECK(interpreter_->ResetVariableTensors());
+  Py_RETURN_NONE;
+}
+
+PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes,
+                                      std::string signature_key) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  if (!PyList_Check(input_shapes)) {
+    PyErr_Format(PyExc_ValueError,
+                 "Invalid input shapes: expected shapes to be a list.");
+    return nullptr;
+  }
+  const int subgraph_index =
+      interpreter_->GetSubgraphIndexFromSignature(signature_key.c_str());
+  if (subgraph_index == -1) {
+    PyErr_Format(PyExc_ValueError, "Invalid signature key: %s",
+                 signature_key.c_str());
+    return nullptr;
+  }
+  auto* subgraph = interpreter_->subgraph(subgraph_index);
+
+  const size_t inputs_size = PyList_Size(input_shapes);
+  if (inputs_size != subgraph->inputs().size()) {
+    PyErr_Format(PyExc_ValueError,
+                 "Invalid input shapes: expected %ld items got %ld items.",
+                 subgraph->inputs().size(), inputs_size);
+    return nullptr;
+  }
+
+  for (size_t i = 0; i < inputs_size; ++i) {
+    absl::optional<std::vector<int>> dims =
+        ConvertInputShapeToVector(input_shapes, i);
+    if (!dims.has_value()) {
+      return nullptr;
+    }
+    int input_tensor_idx = subgraph->inputs()[i];
+    if (subgraph->ResizeInputTensor(input_tensor_idx, *dims) != kTfLiteOk) {
+      PyErr_Format(PyExc_ValueError, "Failed to resize %ld input tensor.", i);
+      return nullptr;
+    }
+  }
+
+  return Prepare(signature_key);
+}
+
 PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   if (!PyList_Check(input_shapes)) {
@@ -206,26 +282,60 @@ PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes) {
     return nullptr;
   }
 
-  for (size_t i = 0; i < inputs_size; i++) {
-    PyObject* shape = PyList_GetItem(input_shapes, i);
-    if (!shape || !PyList_Check(shape)) {
-      PyErr_Format(PyExc_ValueError,
-                   "Invalid %ld input shape: expected to be a list.", i);
+  for (size_t i = 0; i < inputs_size; ++i) {
+    absl::optional<std::vector<int>> dims =
+        ConvertInputShapeToVector(input_shapes, i);
+    if (!dims.has_value()) {
       return nullptr;
     }
-    std::vector<int> dims;
-    for (size_t dim_index = 0; dim_index < PyList_Size(shape); ++dim_index) {
-      PyObject* dim = PyList_GetItem(shape, dim_index);
-      dims.push_back(PyLong_AsLong(dim));
-    }
     int input_tensor_idx = interpreter_->inputs()[i];
-    if (interpreter_->ResizeInputTensor(input_tensor_idx, dims) != kTfLiteOk) {
+    if (interpreter_->ResizeInputTensor(input_tensor_idx, *dims) != kTfLiteOk) {
       PyErr_Format(PyExc_ValueError, "Failed to resize %ld input tensor.", i);
       return nullptr;
     }
   }
 
   return Prepare();
+}
+
+PyObject* CalibrationWrapper::FeedTensor(PyObject* input_value,
+                                         std::string signature_key) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  if (!PyList_Check(input_value)) {
+    PyErr_Format(PyExc_ValueError,
+                 "Invalid input type: expected input to be a list.");
+    return nullptr;
+  }
+  const int subgraph_index =
+      interpreter_->GetSubgraphIndexFromSignature(signature_key.c_str());
+  if (subgraph_index == -1) {
+    PyErr_Format(PyExc_ValueError, "Invalid signature key: %s",
+                 signature_key.c_str());
+    return nullptr;
+  }
+  const size_t inputs_size = PyList_Size(input_value);
+
+  auto* subgraph = interpreter_->subgraph(subgraph_index);
+  if (inputs_size != subgraph->inputs().size()) {
+    PyErr_Format(PyExc_ValueError,
+                 "Invalid input size: expected %ld items got %ld items.",
+                 subgraph->inputs().size(), inputs_size);
+    return nullptr;
+  }
+
+  for (size_t i = 0; i < inputs_size; ++i) {
+    PyObject* input = PyList_GetItem(input_value, i);
+    if (!input) {
+      return nullptr;
+    }
+    int input_tensor_idx = subgraph->inputs()[i];
+    if (!SetTensor(input_tensor_idx, input, signature_key)) {
+      return nullptr;
+    }
+  }
+
+  TFLITE_PY_CHECK(subgraph->Invoke());
+  Py_RETURN_NONE;
 }
 
 PyObject* CalibrationWrapper::FeedTensor(PyObject* input_value) {
@@ -245,7 +355,7 @@ PyObject* CalibrationWrapper::FeedTensor(PyObject* input_value) {
     return nullptr;
   }
 
-  for (size_t i = 0; i < inputs_size; i++) {
+  for (size_t i = 0; i < inputs_size; ++i) {
     PyObject* input = PyList_GetItem(input_value, i);
     if (!input) {
       return nullptr;
@@ -257,6 +367,95 @@ PyObject* CalibrationWrapper::FeedTensor(PyObject* input_value) {
   }
 
   TFLITE_PY_CHECK(interpreter_->Invoke());
+  Py_RETURN_NONE;
+}
+
+PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value,
+                                        std::string signature_key) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  std::unique_ptr<PyObject, PyDecrefDeleter> array_safe(
+      PyArray_FromAny(value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr));
+  if (!array_safe) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to convert value into readable tensor.");
+    return nullptr;
+  }
+
+  PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
+
+  const int subgraph_index =
+      interpreter_->GetSubgraphIndexFromSignature(signature_key.c_str());
+  if (subgraph_index == -1) {
+    PyErr_Format(PyExc_ValueError, "Invalid signature key: %s",
+                 signature_key.c_str());
+    return nullptr;
+  }
+  auto* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(index);
+
+  if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
+    PyErr_Format(PyExc_ValueError,
+                 "Cannot set tensor: "
+                 "Got value of type %s "
+                 "but expected type %s for input %d, name: %s ",
+                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(tensor->type), index, tensor->name);
+    return nullptr;
+  }
+
+  if (PyArray_NDIM(array) != tensor->dims->size) {
+    PyErr_Format(PyExc_ValueError,
+                 "Cannot set tensor: Dimension count mismatch, expected %d "
+                 "but found %d",
+                 tensor->dims->size, PyArray_NDIM(array));
+    return nullptr;
+  }
+
+  std::vector<int> dims(PyArray_NDIM(array));
+  bool has_unknown_dims = false;
+  for (int j = 0; j < PyArray_NDIM(array); ++j) {
+    // Ensure the calibration data input shape is the same as the model input
+    // shape unless the dimension is unknown.
+    if (tensor->dims_signature != nullptr &&
+        tensor->dims_signature->size == tensor->dims->size &&
+        tensor->dims_signature->data[j] == -1) {
+      has_unknown_dims = true;
+    } else if (tensor->dims->data[j] != PyArray_SHAPE(array)[j]) {
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor: Size mismatch, expected %d for dim "
+                   "%d but found %ld",
+                   tensor->dims->data[j], j, PyArray_SHAPE(array)[j]);
+      return nullptr;
+    }
+    dims[j] = PyArray_SHAPE(array)[j];
+  }
+
+  // Resize the input tensor if there are unknown dimensions.
+  if (has_unknown_dims) {
+    // Does strict checking on the `ResizeInputTensor` call.
+    TFLITE_PY_CHECK(subgraph->ResizeInputTensorStrict(index, dims));
+    TFLITE_PY_CHECK(subgraph->AllocateTensors());
+  }
+
+  // Re-read the updated tensor after the allocation is done.
+  tensor = subgraph->tensor(index);
+
+  size_t size = PyArray_NBYTES(array);
+
+  if (tensor->type == kTfLiteString) {
+    tflite::DynamicBuffer buffer;
+    buffer.AddString(reinterpret_cast<const char*>(PyArray_BYTES(array)), size);
+    buffer.WriteToTensor(subgraph->tensor(index), /*new_shape=*/nullptr);
+    Py_RETURN_NONE;
+  }
+
+  if (size != tensor->bytes) {
+    PyErr_Format(PyExc_ValueError,
+                 "numpy array had %zu bytes but expected %zu bytes.", size,
+                 tensor->bytes);
+    return nullptr;
+  }
+  memcpy(tensor->data.raw, PyArray_DATA(array), size);
   Py_RETURN_NONE;
 }
 
@@ -276,9 +475,9 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
 
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
-                 "Cannot set tensor:"
-                 " Got value of type %s"
-                 " but expected type %s for input %d, name: %s ",
+                 "Cannot set tensor: "
+                 "Got value of type %s "
+                 "but expected type %s for input %d, name: %s ",
                  TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
                  TfLiteTypeGetName(tensor->type), index, tensor->name);
     return nullptr;
@@ -294,7 +493,7 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
 
   std::vector<int> dims(PyArray_NDIM(array));
   bool has_unknown_dims = false;
-  for (int j = 0; j < PyArray_NDIM(array); j++) {
+  for (int j = 0; j < PyArray_NDIM(array); ++j) {
     // Ensure the calibration data input shape is the same as the model input
     // shape unless the dimension is unknown.
     if (tensor->dims_signature != nullptr &&
@@ -318,6 +517,7 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
     TFLITE_PY_CHECK(interpreter_->AllocateTensors());
   }
 
+  // Re-read the updated tensor after the allocation is done.
   tensor = interpreter_->tensor(index);
 
   size_t size = PyArray_NBYTES(array);

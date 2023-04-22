@@ -14,79 +14,91 @@
 # ==============================================================================
 """This tool analyzes a TensorFlow Lite graph."""
 
-import http.server
 import os
 
 # pylint: disable=g-import-not-at-top
 if not os.path.splitext(__file__)[0].endswith(
     os.path.join("tflite_runtime", "analyzer")):
   # This file is part of tensorflow package.
-  from tensorflow.lite.tools import visualize
+  from tensorflow.lite.python import wrap_toco
   from tensorflow.lite.python.analyzer_wrapper import _pywrap_analyzer_wrapper as _analyzer_wrapper
+  from tensorflow.python.util.tf_export import tf_export as _tf_export
 else:
   # This file is part of tflite_runtime package.
-  from tflite_runtime import visualize
   from tflite_runtime import _pywrap_analyzer_wrapper as _analyzer_wrapper
 
-
-def _handle_webserver(host_name, server_port, html_body):
-  """Start a HTTP server for the given html_body."""
-
-  class MyServer(http.server.BaseHTTPRequestHandler):
-
-    def do_GET(self):  # pylint: disable=invalid-name
-      self.send_response(200)
-      self.send_header("Content-type", "text/html")
-      self.end_headers()
-      self.wfile.write(bytes(html_body, "utf-8"))
-
-  web_server = http.server.HTTPServer((host_name, server_port), MyServer)
-  print("Server started http://%s:%s" % (host_name, server_port))
-  try:
-    web_server.serve_forever()
-  except KeyboardInterrupt:
-    pass
-  web_server.server_close()
+  def _tf_export(*x, **kwargs):
+    del x, kwargs
+    return lambda x: x
 
 
-class ModelAnalyzer:
-  """Provides a collection of TFLite model analyzer tools."""
+@_tf_export("lite.experimental.Analyzer")
+class ModelAnalyzer():
+  """Provides a collection of TFLite model analyzer tools.
+
+  Example:
+
+  ```python
+  model = tf.keras.applications.MobileNetV3Large()
+  fb_model = tf.lite.TFLiteConverterV2.from_keras_model(model).convert()
+  tf.lite.experimental.Analyzer.analyze(model_content=fb_model)
+  # === TFLite ModelAnalyzer ===
+  #
+  # Your TFLite model has ‘1’ subgraph(s). In the subgraph description below,
+  # T# represents the Tensor numbers. For example, in Subgraph#0, the MUL op
+  # takes tensor #0 and tensor #19 as input and produces tensor #136 as output.
+  #
+  # Subgraph#0 main(T#0) -> [T#263]
+  #   Op#0 MUL(T#0, T#19) -> [T#136]
+  #   Op#1 ADD(T#136, T#18) -> [T#137]
+  #   Op#2 CONV_2D(T#137, T#44, T#93) -> [T#138]
+  #   Op#3 HARD_SWISH(T#138) -> [T#139]
+  #   Op#4 DEPTHWISE_CONV_2D(T#139, T#94, T#24) -> [T#140]
+  #   ...
+  ```
+
+  WARNING: Experimental interface, subject to change.
+  """
 
   @staticmethod
   def analyze(model_path=None,
               model_content=None,
-              result_format="txt",
-              gpu_compatibility=False):
-    """Analyzes the given tflite_model.
+              gpu_compatibility=False,
+              **kwargs):
+    """Analyzes the given tflite_model with dumping model structure.
 
+    This tool provides a way to understand users' TFLite flatbuffer model by
+    dumping internal graph structure. It also provides additional features
+    like checking GPU delegate compatibility.
+
+    WARNING: Experimental interface, subject to change.
+    WARNING: The output format is not guaranteed to stay stable, so don't
+             write scripts to this.
     Args:
       model_path: TFLite flatbuffer model path.
       model_content: TFLite flatbuffer model object.
-      result_format: txt|mlir|html|webserver.
       gpu_compatibility: Whether to check GPU delegate compatibility.
-          It only works with 'txt' output for now.
+      **kwargs: Experimental keyword arguments to analyze API.
 
     Returns:
-      Analyzed report with the given result_format.
+      Print analyzed report via console output.
     """
     if not model_path and not model_content:
       raise ValueError("neither `model_path` nor `model_content` is provided")
     if model_path:
+      print(f"=== {model_path} ===\n")
       tflite_model = model_path
       input_is_filepath = True
     else:
+      print("=== TFLite ModelAnalyzer ===\n")
       tflite_model = model_content
       input_is_filepath = False
 
-    if result_format == "txt":
-      return _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,
-                                             gpu_compatibility)
-    elif result_format == "mlir":
-      return _analyzer_wrapper.FlatBufferToMlir(tflite_model, input_is_filepath)
-    elif result_format == "html":
-      return visualize.create_html(tflite_model, input_is_filepath)
-    elif result_format == "webserver":
-      html_body = visualize.create_html(tflite_model, input_is_filepath)
-      _handle_webserver("localhost", 8080, html_body)
+    if kwargs.get("experimental_use_mlir", False):
+      print(
+          wrap_toco.wrapped_flat_buffer_file_to_mlir(tflite_model,
+                                                     input_is_filepath))
     else:
-      raise ValueError(f"result_format '{result_format}' is not supported")
+      print(
+          _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,
+                                          gpu_compatibility))

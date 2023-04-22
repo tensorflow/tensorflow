@@ -415,8 +415,8 @@ add_library(tensorflow-lite
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
   ${TFLITE_PROFILER_SRCS}
+  ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
-  ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
 )
 target_include_directories(tensorflow-lite
   PUBLIC

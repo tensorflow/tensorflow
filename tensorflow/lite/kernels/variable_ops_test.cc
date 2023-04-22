@@ -108,6 +108,38 @@ class VariableOpsTest : public ::testing::Test {
     interpreter_->AddNodeWithParameters({1}, {2}, nullptr, 0, nullptr,
                                         read_registration_, &node_index);
   }
+
+  // Similar with `ConstructGraph`, but with static tensor shapes.
+  void ConstructGraphWithKnownShape() {
+    interpreter_.reset(new Interpreter);
+    // Construct a graph like this:
+    //   Input: %0
+    //   Output: %2
+    //   %1 = var_handle()
+    //   variable_assign(%1, %0)
+    //   %2 = read(%1)
+
+    int first_new_tensor_index;
+    ASSERT_EQ(interpreter_->AddTensors(3, &first_new_tensor_index), kTfLiteOk);
+    ASSERT_EQ(interpreter_->SetInputs({0}), kTfLiteOk);
+    ASSERT_EQ(interpreter_->SetOutputs({2}), kTfLiteOk);
+    interpreter_->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {2, 2},
+                                               TfLiteQuantization());
+    interpreter_->SetTensorParametersReadWrite(1, kTfLiteResource, "", 0,
+                                               nullptr, {}, false);
+    interpreter_->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {2, 2},
+                                               TfLiteQuantization());
+    int node_index;
+
+    TfLiteVarHandleParams* var_handle_params = GetVarHandleParams();
+    interpreter_->AddNodeWithParameters({}, {1}, nullptr, 0, var_handle_params,
+                                        var_handle_registration_, &node_index);
+    interpreter_->AddNodeWithParameters({1, 0}, {}, nullptr, 0, nullptr,
+                                        assign_registration_, &node_index);
+    interpreter_->AddNodeWithParameters({1}, {2}, nullptr, 0, nullptr,
+                                        read_registration_, &node_index);
+  }
+
   TfLiteRegistration* assign_registration_;
   TfLiteRegistration* read_registration_;
   TfLiteRegistration* var_handle_registration_;
@@ -124,6 +156,25 @@ TEST_F(VariableOpsTest, TestAssignThenReadVariable) {
   TfLiteTensor* output = interpreter_->tensor(2);
   ASSERT_EQ(output->dims->size, 0);
   EXPECT_EQ(GetTensorData<float>(output)[0], 1717);
+}
+
+TEST_F(VariableOpsTest, TestAssignThenReadVariableWithKnownShape) {
+  ConstructGraphWithKnownShape();
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  TfLiteTensor* input_data_index = interpreter_->tensor(0);
+  GetTensorData<float>(input_data_index)[0] = 1.0;
+  GetTensorData<float>(input_data_index)[1] = 2.0;
+  GetTensorData<float>(input_data_index)[2] = 3.0;
+  GetTensorData<float>(input_data_index)[3] = 4.0;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  // Verify output.
+  TfLiteTensor* output = interpreter_->tensor(2);
+  ASSERT_EQ(output->dims->size, 2);
+  EXPECT_EQ(GetTensorData<float>(output)[0], 1.0);
+  EXPECT_EQ(GetTensorData<float>(output)[1], 2.0);
+  EXPECT_EQ(GetTensorData<float>(output)[2], 3.0);
+  EXPECT_EQ(GetTensorData<float>(output)[3], 4.0);
 }
 
 TEST_F(VariableOpsTest, TestReadVariableBeforeAssign) {
