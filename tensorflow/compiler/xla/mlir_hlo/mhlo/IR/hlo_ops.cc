@@ -5040,21 +5040,21 @@ OpFoldResult ClampOp::fold(FoldAdaptor adaptor) {
   if (!operand || !min || !max) {
     return {};
   }
-  if (min.getType().getRank() == 0) {
-    min = DenseElementsAttr::get(operand.getType(),
+  if (min.getShapedType().getRank() == 0) {
+    min = DenseElementsAttr::get(operand.getShapedType(),
                                  min.getValues<Attribute>()[0]);
   }
-  if (max.getType().getRank() == 0) {
-    max = DenseElementsAttr::get(operand.getType(),
+  if (max.getShapedType().getRank() == 0) {
+    max = DenseElementsAttr::get(operand.getShapedType(),
                                  max.getValues<Attribute>()[0]);
   }
   Attribute result = {};
-  if (operand.getType().getElementType().isa<FloatType>()) {
+  if (operand.getShapedType().getElementType().isa<FloatType>()) {
     result = BinaryFolder<ClampOp, FloatType, APFloat, Max<APFloat>>(
         this, ArrayRef<Attribute>{min, operand});
     result = BinaryFolder<ClampOp, FloatType, APFloat, Min<APFloat>>(
         this, ArrayRef<Attribute>{max, result});
-  } else if (operand.getType().getElementType().isa<IntegerType>()) {
+  } else if (operand.getShapedType().getElementType().isa<IntegerType>()) {
     result = BinaryFolder<ClampOp, IntegerType, APInt, Max<APSInt>>(
         this, ArrayRef<Attribute>{min, operand});
     result = BinaryFolder<ClampOp, IntegerType, APInt, Min<APSInt>>(

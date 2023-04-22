@@ -2289,12 +2289,13 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
   if (!matchPattern(tfl_fill_op.getInput(), m_Constant(&value_elem)))
     return failure();
 
-  RankedTensorType fill_type = RankedTensorType::get(
-      ArrayRef<int64_t>(dims_vals), value_elem.getType().getElementType());
+  RankedTensorType fill_type =
+      RankedTensorType::get(ArrayRef<int64_t>(dims_vals),
+                            value_elem.getShapedType().getElementType());
   DenseArrayAttr fill_attr;
 
   // Convert to a compatible zero type.
-  if (value_elem.getType().getElementType().isa<FloatType>()) {
+  if (value_elem.getShapedType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
         total_size, value_elem.getValues<APFloat>()[0].convertToFloat());
     fill_attr =
@@ -3940,7 +3941,7 @@ LogicalResult ConvertTFLConstOp::matchAndRewrite(
   if (!output_type) return failure();
 
   ElementsAttr elements = tfl_const_op.getValue();
-  Type element_type = elements.getType().getElementType();
+  Type element_type = elements.getShapedType().getElementType();
   if (output_type.getElementType().isa<quant::QuantizedType>()) {
     output_type = RankedTensorType::get(output_type.getShape(), element_type);
   }

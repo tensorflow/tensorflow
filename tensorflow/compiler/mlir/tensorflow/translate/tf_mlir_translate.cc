@@ -280,7 +280,7 @@ GraphdefToSplattedMlirTranslateFunction(
         auto attr_id = mlir::StringAttr::get(context, "value");
         if (auto attr = inst.getAttrOfType<mlir::ElementsAttr>(attr_id)) {
           mlir::Attribute rand_val;
-          mlir::Type element_type = attr.getType().getElementType();
+          mlir::Type element_type = attr.getShapedType().getElementType();
           if (element_type.isa<mlir::IntegerType>()) {
             rand_val = mlir::IntegerAttr::get(element_type, std::rand());
           } else if (element_type.isF16() || element_type.isF32() ||

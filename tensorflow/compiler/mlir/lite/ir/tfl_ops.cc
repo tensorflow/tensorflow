@@ -1718,7 +1718,7 @@ struct ConvertShapeTo1D : public OpRewritePattern<ReshapeOp> {
       return failure();
     }
     // It is already a 1-D constant, no change.
-    auto old_shape = shape.getType().getShape();
+    auto old_shape = shape.getShapedType().getShape();
     if (old_shape.size() == 1) {
       return failure();
     }
@@ -1731,7 +1731,7 @@ struct ConvertShapeTo1D : public OpRewritePattern<ReshapeOp> {
       }
     }
     auto new_shape = shape.reshape(tensorflow::GetTypeFromTFTensorShape(
-        {*old_shape.rbegin()}, shape.getType().getElementType()));
+        {*old_shape.rbegin()}, shape.getShapedType().getElementType()));
     rewriter.replaceOpWithNewOp<TFL::ConstOp>(
         reshape.getShape().getDefiningOp(), new_shape);
     return success();
@@ -2928,7 +2928,7 @@ OpFoldResult RankOp::fold(FoldAdaptor adaptor) {
   assert(operands.size() == 1);
   auto result_type = getType().cast<ShapedType>();
   if (auto elements_attr = operands[0].dyn_cast_or_null<ElementsAttr>()) {
-    auto rank = static_cast<int32_t>(elements_attr.getType().getRank());
+    auto rank = static_cast<int32_t>(elements_attr.getShapedType().getRank());
     return DenseElementsAttr::get(result_type, {rank});
   }
 
@@ -3151,9 +3151,9 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   auto delta_tensor = operands[2].dyn_cast_or_null<ElementsAttr>();
   if (start_tensor && limit_tensor && delta_tensor) {
     // Operands should all be scalars
-    assert(start_tensor.getType().getRank() == 0 &&
-           limit_tensor.getType().getRank() == 0 &&
-           delta_tensor.getType().getRank() == 0);
+    assert(start_tensor.getShapedType().getRank() == 0 &&
+           limit_tensor.getShapedType().getRank() == 0 &&
+           delta_tensor.getShapedType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
     if (elem_type.isSignlessInteger()) {
       auto start_attr = start_tensor.getValues<IntegerAttr>()[0];
@@ -3375,11 +3375,11 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   if (!getType().cast<ShapedType>().getElementType().isSignlessIntOrFloat())
     return nullptr;
 
-  assert(perm_tensor.getType().getRank() == 1);
-  const int num_dimensions = input_tensor.getType().getRank();
-  assert(perm_tensor.getType().getNumElements() == num_dimensions);
+  assert(perm_tensor.getShapedType().getRank() == 1);
+  const int num_dimensions = input_tensor.getShapedType().getRank();
+  assert(perm_tensor.getShapedType().getNumElements() == num_dimensions);
 
-  ArrayRef<int64_t> input_shape = input_tensor.getType().getShape();
+  ArrayRef<int64_t> input_shape = input_tensor.getShapedType().getShape();
   auto output_type = getType().cast<ShapedType>();
 
   SmallVector<int32_t, 4> perm;
@@ -3394,7 +3394,7 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   }
 
   std::vector<Attribute> new_values;
-  new_values.reserve(input_tensor.getType().getNumElements());
+  new_values.reserve(input_tensor.getShapedType().getNumElements());
   std::vector<uint64_t> input_indices(num_dimensions);
   auto input_tensor_values = input_tensor.getValues<Attribute>();
   ComputePermutation(input_tensor_values, perm, output_shape, num_dimensions,
