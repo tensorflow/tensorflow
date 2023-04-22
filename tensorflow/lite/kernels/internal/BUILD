@@ -52,6 +52,17 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_shape",
+    srcs = ["runtime_shape.cc"],
+    hdrs = ["runtime_shape.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":compatibility",
+    ],
+)
+
+cc_library(
     name = "types",
     hdrs = [
         "runtime_shape.h",
@@ -61,6 +72,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":compatibility",
+        ":runtime_shape",
     ],
 )
 
