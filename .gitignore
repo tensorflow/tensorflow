@@ -48,4 +48,10 @@ Podfile.lock
 Pods
 xcuserdata
 
-/*
+
+models
+blog*
+aData
+*.csv
+*.code-workspace
+# /*
