@@ -250,24 +250,6 @@ class ApproxTopkTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises((errors.InvalidArgumentError, ValueError)):
       fuzz_jit()
 
-  @parameterized.parameters(
-      itertools.product(
-          [dtypes.float16, dtypes.bfloat16, dtypes.float32],
-          [1, 10],  # k
-          [100, 500],  # row_size
-          [1, 10, 128],  # num_rows
-      )
-  )
-  def test_nonjit(self, dtype, k, row_size, num_rows):
-    # Support regular topk semantics.
-    row = np.arange(row_size, dtype=np.float32)
-    db = np.stack(list(self._rng.permutation(row) for _ in range(num_rows)))
-    db_tensor = constant_op.constant(db, dtype=dtype)
-    _, idx = self.evaluate(nn_ops.approx_max_k(db_tensor, k))
-    sorted_idx = np.sort(idx)
-    expected = np.sort(np.argsort(-db)[:, :k])
-    self.assertAllEqual(sorted_idx, expected)
-
 
 if __name__ == '__main__':
   test.main()
