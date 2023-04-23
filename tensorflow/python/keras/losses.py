@@ -35,6 +35,7 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
@@ -1185,6 +1186,57 @@ class Huber(LossFunctionWrapper):
     """
     super().__init__(huber, name=name, reduction=reduction, delta=delta)
 
+
+@keras_export('keras.losses.LossIgnoreNaN')
+class LossIgnoreNaN(Loss):
+  """Computes the loss between labels and predictions while ignoring NaN.
+
+  Standalone usage:
+
+  >>> y_true = [[0., 1., numpy.nan], [0., 0., numpy.nan]]
+  >>> y_pred = [[1., 1., 0], [1., 0., 0.]]
+  >>> # Using 'auto'/'sum_over_batch_size' reduction type.
+  >>> loss_ignorenan = tf.keras.losses.LossIgnoreNaN(Loss)
+  >>> loss_ignorenan(y_true, y_pred).numpy()
+  0.5
+
+  >>> # Calling with 'sample_weight'.
+  >>> loss_ignorenan(y_true, y_pred, sample_weight=[0.7, 0.3]).numpy()
+  0.25
+
+  >>> # Using 'sum' reduction type.
+  >>> loss_ignorenan = tf.keras.losses.LossIgnoreNaN(
+  ...     reduction=tf.keras.losses.Reduction.SUM)
+  >>> loss_ignorenan(y_true, y_pred).numpy()
+  1.0
+
+  >>> # Using 'none' reduction type.
+  >>> loss_ignorenan = tf.keras.losses.LossIgnoreNaN(
+  ...     reduction=tf.keras.losses.Reduction.NONE)
+  >>> loss_ignorenan(y_true, y_pred).numpy()
+  array([0.5, 0.5], dtype=float32)
+
+  Usage with the `compile()` API:
+
+  ```python (example: using mse loss with ignore nan)
+  model.compile(optimizer='sgd', loss=tf.keras.losses.LossIgnoreNaN(keras.losses.MeanSquaredError))
+  ```
+  """
+  def __init__(self, loss, **kwargs):
+    super().__init__(name=f"{loss.name}_ignorenan", **kwargs)
+    self.loss_fn = loss
+
+  def call(self, y_true, y_pred, sample_weight=None):
+    y_true_non_nan, y_pred_non_nan = self.mask_nan_values(y_true, y_pred)
+    loss_value_non_nan = self.loss_fn(y_true_non_nan, y_pred_non_nan, sample_weight=sample_weight)
+    return loss_value_non_nan
+  
+  @staticmethod
+  def mask_nan_values(y_true, y_pred):
+    non_nan_mask = gen_math_ops.logical_not(gen_math_ops.is_nan(y_true))
+    y_true_non_nan = array_ops.boolean_mask(y_true, non_nan_mask)
+    y_pred_non_nan = array_ops.boolean_mask(y_pred, non_nan_mask)
+    return y_true_non_nan, y_pred_non_nan
 
 @keras_export('keras.metrics.mean_squared_error', 'keras.metrics.mse',
               'keras.metrics.MSE', 'keras.losses.mean_squared_error',
