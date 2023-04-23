@@ -423,7 +423,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/nccl:collective_communicator",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2054,6 +2053,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:device_profiler_session",
         "//tensorflow/core/profiler/lib:profiler_backends",

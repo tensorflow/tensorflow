@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -576,7 +577,8 @@ Status DirectSession::RunInternal(
     }
     if (!collective_executor_mgr_) {
       collective_executor_mgr_ = CreateProdLocalCollectiveExecutorMgr(
-          options_.config, device_mgr_.get());
+          options_.config, device_mgr_.get(),
+          MaybeCreateNcclCommunicator(options_.config));
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
