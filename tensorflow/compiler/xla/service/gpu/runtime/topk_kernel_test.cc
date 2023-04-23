@@ -71,15 +71,16 @@ PrimitiveType Get(Eigen::bfloat16) { return PrimitiveType::BF16; }
 //  - n_kb: number of elements in kilobytes.
 //  - k: number of elements to return.
 //  - batch_size
-using TopkTest = ::testing::TestWithParam<std::tuple<int, int, int>>;
+//  - offset
+using TopkTest = ::testing::TestWithParam<std::tuple<int, int, int, int>>;
 
 // In this test we only check that the TopK logic works with float. For the full
 // dtype coverage suite, please add them to topk_test.cc, where we can use XLA
 // utilities to simplify the test logic.
 TEST_P(TopkTest, TopKFloat) {
   using T = float;
-  const auto [n_kb, k, batch_size] = GetParam();
-  const size_t n = n_kb * 1024;
+  const auto [n_kb, k, batch_size, offset] = GetParam();
+  const size_t n = n_kb * 1024 + offset;
   T* input_buffer = AllocateGpuBuffer<T>(n * batch_size);
   auto source = RandomFill<T>(input_buffer, n * batch_size);
   T* output_values = AllocateGpuBuffer<T>(k * batch_size);
@@ -110,12 +111,14 @@ INSTANTIATE_TEST_SUITE_P(TopkTests, TopkTest,
                          Combine(
                              /*n_kb=*/Values(1, 8, 12, 64, 128),
                              /*k=*/Values(1, 2, 8, 16, 7, 12),
-                             /*batch_size=*/Values(1, 16, 64, 128)),
+                             /*batch_size=*/Values(1, 16, 64, 128),
+                             /*offset=*/Values(0, 7, 4)),
                          [](const auto& info) {
-                           return absl::Substitute("n$0KiB_k$1_batch_size$2",
-                                                   std::get<0>(info.param),
-                                                   std::get<1>(info.param),
-                                                   std::get<2>(info.param));
+                           return absl::Substitute(
+                               "n$0KiB_k$1_batch_size$2_offset$3",
+                               std::get<0>(info.param), std::get<1>(info.param),
+                               std::get<2>(info.param),
+                               std::get<3>(info.param));
                          });
 
 template <size_t K>

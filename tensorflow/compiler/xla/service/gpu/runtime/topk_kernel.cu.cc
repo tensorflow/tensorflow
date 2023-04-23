@@ -42,7 +42,7 @@ size_t NumThreads(size_t n, size_t k, size_t batch_size) {
   size_t threads_per_block =
       std::min(simultaneous_threads_per_block, kMaxThreadsPerBlock);
   // Minimum amount of data that each thread needs to receive for the algorithm.
-  size_t min_slice = n / absl::bit_ceil(k);
+  size_t min_slice = absl::bit_floor(n / absl::bit_ceil(k));
   return std::min(threads_per_block, min_slice);
 }
 
@@ -360,11 +360,14 @@ extern __device__ __shared__ int shmem[];
 
 template <size_t K, typename KT, typename VT>
 __launch_bounds__(kMaxThreadsPerBlock, 1) __global__
-    void Run(KT* data, int slice_size, KT* result, uint32_t* result_idxs,
-             int k) {
+    void Run(KT* data, int n, KT* result, uint32_t* result_idxs, int k) {
   TopK<K, KT, VT> top_k(shmem, k);
-  top_k.Run(&data[blockDim.x * slice_size * blockIdx.x], slice_size,
-            &result[k * blockIdx.x], &result_idxs[k * blockIdx.x]);
+  int slice_size = n / blockDim.x;
+  if (threadIdx.x < n % blockDim.x) {
+    slice_size++;
+  }
+  top_k.Run(&data[n * blockIdx.x], slice_size, &result[k * blockIdx.x],
+            &result_idxs[k * blockIdx.x]);
 }
 
 // Helper type for converting the untyped arguments of RunTopk to TypedTopk
@@ -426,14 +429,13 @@ absl::Status TypedTopK(TopkArgs<T> args) {
         "Invalid kernel pameters. This is likely a bug in the "
         "TopkSpecializer.");
   }
-  int slice_size = args.num_elements / num_threads;
   absl::StatusOr<void*> kernel = GetKernel<T>(args.num_elements, args.k);
   if (!kernel.ok()) return kernel.status();
   int blocks_per_grid = args.batch_size;
   constexpr size_t max_kv_size = sizeof(uint64_t);
   // Allocate shmem assuming we have a full reduction.
   int shmem_size = absl::bit_ceil(args.k) * max_kv_size * 32;
-  void* kernel_args[] = {&args.data, &slice_size, &args.top_elements,
+  void* kernel_args[] = {&args.data, &args.num_elements, &args.top_elements,
                          &args.top_indices, &args.k};
   cudaError_t launch_status =
       cudaLaunchKernel(*kernel, blocks_per_grid, num_threads, kernel_args,

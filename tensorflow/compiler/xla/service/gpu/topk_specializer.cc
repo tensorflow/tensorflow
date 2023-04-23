@@ -75,9 +75,6 @@ StatusOr<HloInstruction*> SmallBufferOptimization(
   if (n > max_n) {
     return InvalidArgument("Input too large (n=%d, min_n=%d)", n, max_n);
   }
-  if (n % 512) {
-    return InvalidArgument("Input must be divisible by 512");
-  }
   HloComputation* comp = topk->parent();
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
