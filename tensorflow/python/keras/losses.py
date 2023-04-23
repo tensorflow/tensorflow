@@ -1233,7 +1233,8 @@ class LossIgnoreNaN(Loss):
   
   @staticmethod
   def mask_nan_values(y_true, y_pred):
-    non_nan_mask = gen_math_ops.logical_not(gen_math_ops.is_nan(y_true))
+    nan_mask = gen_math_ops.logical_or(gen_math_ops.is_nan(y_true), gen_math_ops.is_nan(y_pred))
+    non_nan_mask = gen_math_ops.logical_not(nan_mask)
     y_true_non_nan = array_ops.boolean_mask(y_true, non_nan_mask)
     y_pred_non_nan = array_ops.boolean_mask(y_pred, non_nan_mask)
     return y_true_non_nan, y_pred_non_nan
