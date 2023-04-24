@@ -878,7 +878,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (c == nullptr) {
       c_dim = instr->shape().dimensions();
       PaddingConfig padding_config;
-      c_padded = ShapeUtil::Equal(pad_shape(padding_config, instr->shape()),
+      c_padded = !ShapeUtil::Equal(pad_shape(padding_config, instr->shape()),
                                   instr->shape());
       c = instr->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(c_type)));
