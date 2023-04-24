@@ -48,7 +48,8 @@ FailureOr<Operation *> tileUsingSCFForAndReplace(
     const scf::SCFTilingOptions &tilingOptions) {
   if (hasLabel(op, kTransformedLabel)) return failure();
 
-  auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, tilingOptions);
+  auto tilingResult = scf::tileUsingSCFForOp(
+      rewriter, cast<TilingInterface>(op), tilingOptions);
   if (failed(tilingResult) || tilingResult->loops.empty()) return failure();
 
   for (Operation *tiledOp : tilingResult->tiledOps)

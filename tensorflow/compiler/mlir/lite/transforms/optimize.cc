@@ -462,7 +462,7 @@ bool IsF32Value(Value value) {
 
 // Returns the number of elements in attr if it is a static shape, 1 otherwise,
 // as an unranked int32 Attribute.
-Attribute GetNumElementsOrOne(Type type) {
+TypedAttr GetNumElementsOrOne(Type type) {
   auto shaped_type = type.cast<ShapedType>();
   int32_t num_elements =
       shaped_type.hasStaticShape() ? shaped_type.getNumElements() : 1;
@@ -606,7 +606,7 @@ bool AllValuesAreZero(mlir::Value value) {
 // Converts an Attribute with a single value of float or integral type to an
 // Attribute holding a single value of float type. If attr has no elements, the
 // result is 0.0f.
-Attribute ConvertSingleElementAttrToFloatAttr(Attribute attr) {
+TypedAttr ConvertSingleElementAttrToFloatAttr(Attribute attr) {
   const auto dense_fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
   if (dense_fp_attr) {
     // Already float => return

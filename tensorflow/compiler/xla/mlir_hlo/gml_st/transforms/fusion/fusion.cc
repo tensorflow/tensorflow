@@ -588,7 +588,8 @@ FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
 FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op, const scf::SCFTilingOptions& opts,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, opts);
+  auto tilingResult =
+      scf::tileUsingSCFForOp(rewriter, cast<TilingInterface>(op), opts);
   if (failed(tilingResult)) return failure();
   rewriter.replaceOp(op, tilingResult->replacements);
 

@@ -294,8 +294,8 @@ GraphdefToSplattedMlirTranslateFunction(
                 << "an unsupported attribute type " << element_type;
             continue;
           }
-          auto new_attr =
-              mlir::DenseElementsAttr::get(attr.getType(), rand_val);
+          auto new_attr = mlir::DenseElementsAttr::get(
+              llvm::cast<mlir::ShapedType>(attr.getType()), rand_val);
           inst.setAttr(attr_id, new_attr);
         }
       }

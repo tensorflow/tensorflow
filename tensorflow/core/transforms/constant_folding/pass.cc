@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1892,7 +1893,8 @@ class MoveConstantsPastEnterOpBase
 
     FailureOr<TFOp> cloned_const_op = CreateConstantTensorOp(
         rewriter, op->getLoc(), TFOp(op).name(), *(input->result_type_begin()),
-        TFOp(op).controlRet(), input->getAttr("value"), input->getAttrs());
+        TFOp(op).controlRet(), cast<TypedAttr>(input->getAttr("value")),
+        input->getAttrs());
     if (failed(cloned_const_op)) return failure();
 
     (*cloned_const_op).setName(Twine(TFOp(op).name(), "/_enter"));
@@ -2019,7 +2021,8 @@ class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
     Operation *reduction_indices = op->getOperand(1).getDefiningOp();
     if (!reduction_indices) return failure();
 
-    ShapedType indices_type = *(reduction_indices->result_type_begin());
+    ShapedType indices_type =
+        cast<ShapedType>(*(reduction_indices->result_type_begin()));
     if (indices_type.hasStaticShape() && indices_type.getNumElements() == 0) {
       Operation *identity_op = ReplaceReductionWithIdentity(rewriter, op);
       if (!identity_op) return failure();

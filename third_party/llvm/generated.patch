@@ -34,3 +34,14 @@ diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstSimplify/is_fpclass.ll 
 -}
 -
 -declare <2 x i1> @llvm.is.fpclass.v2f16(<2 x half>, i32 immarg)
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -132,6 +132,7 @@
+     name = "__support_cpp_bit",
+     hdrs = ["src/__support/CPP/bit.h"],
+     deps = [
++        ":__support_cpp_type_traits",
+         ":__support_macros_config",
+         ":libc_root",
+     ],

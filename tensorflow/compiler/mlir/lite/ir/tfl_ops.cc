@@ -4067,7 +4067,7 @@ OpFoldResult EmbeddingLookupOp::fold(FoldAdaptor adaptor) {
 
   std::vector<int64_t> new_shape = value_attr.getType().getShape().vec();
   new_shape[0] = lookup_attr.getType().getShape()[0];
-  Type new_type = value_attr.getType().clone(new_shape);
+  auto new_type = value_attr.getType().clone(new_shape);
 
   return DenseElementsAttr::get(new_type, new_values);
 }
@@ -4224,7 +4224,7 @@ Operation* TFLDialect::materializeConstant(OpBuilder& builder, Attribute value,
        value.cast<ElementsAttr>().getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
   if (arith::ConstantOp::isBuildableWith(value, type))
-    return builder.create<arith::ConstantOp>(loc, type, value);
+    return builder.create<arith::ConstantOp>(loc, type, cast<TypedAttr>(value));
   if (NoValueOp::isBuildableWith(value, type))
     return builder.create<NoValueOp>(loc, type, value.cast<UnitAttr>());
   return nullptr;

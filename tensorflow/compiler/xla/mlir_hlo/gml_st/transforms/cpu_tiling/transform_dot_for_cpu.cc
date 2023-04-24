@@ -298,9 +298,10 @@ LogicalResult tileAndPeelReductionDim(
   return success();
 }
 
-SmallVector<int64_t> getTileSizesForDimsOfType(TilingInterface op,
+SmallVector<int64_t> getTileSizesForDimsOfType(Operation *iop,
                                                ArrayRef<int64_t> tileSizes,
                                                utils::IteratorType iterType) {
+  TilingInterface op = cast<TilingInterface>(iop);
   SmallVector<utils::IteratorType> iteratorTypes = op.getLoopIteratorTypes();
   SmallVector<int64_t> tileSizesOfType(iteratorTypes.size(), 0);
   assert(tileSizes.size() == iteratorTypes.size() &&
@@ -383,9 +384,9 @@ struct Conv2DNhwcHwcfOpPattern
   LogicalResult matchAndRewrite(linalg::Conv2DNhwcHwcfOp convOp,
                                 PatternRewriter &rewriter) const override {
     if (!isTransformableIntoMatmul(convOp)) return failure();
-    FailureOr<scf::SCFTilingResult> tilingResult =
-        scf::tileUsingSCFForOp(rewriter, convOp.getOperation(),
-                               getSCFTilingOptions({0, 0, 0, 0, 1, 0, 0}));
+    FailureOr<scf::SCFTilingResult> tilingResult = scf::tileUsingSCFForOp(
+        rewriter, cast<TilingInterface>(convOp.getOperation()),
+        getSCFTilingOptions({0, 0, 0, 0, 1, 0, 0}));
     if (failed(tilingResult)) return failure();
     rewriter.replaceOp(convOp, tilingResult->replacements);
 
