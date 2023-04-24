@@ -1,6 +1,10 @@
 # platform package
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_oss",
+)
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 
@@ -64,6 +68,10 @@ py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
     srcs_version = "PY3",
+    deps = if_oss([
+        ":build_info",
+        ":_pywrap_cpu_feature_guard",
+    ]),
 )
 
 py_strict_library(
@@ -106,8 +114,15 @@ py_strict_library(
         ":benchmark",
         ":flags",
         "//tensorflow/python/util:tf_export",
+    ] + if_oss([
+        ":tf_logging",
+        "@absl_py//absl:app",
         "@absl_py//absl/testing:absltest",
-    ],
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
+    ]),
 )
 
 tf_py_test(
@@ -329,7 +344,9 @@ py_strict_library(
         ":tf_logging",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
-    ],
+    ] + if_oss([
+        "@rules_python//python/runfiles",
+    ]),
 )
 
 tf_py_test(
