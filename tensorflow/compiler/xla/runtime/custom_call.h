@@ -1799,6 +1799,14 @@ class Dictionary {
 
   int64_t size() { return attrs_.size(); }
 
+  std::vector<std::string_view> keys() {
+    std::vector<std::string_view> attr_keys(attrs_.size());
+    for (int64_t i = 0; i < attrs_.size(); ++i) {
+      attr_keys[i] = attrs_[i].name;
+    }
+    return attr_keys;
+  }
+
   template <typename T, RuntimeChecks checks = RuntimeChecks::kDefault>
   ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T> get(std::string_view name) const {
     // TODO(ezhulenev): Use `std::binary_search` because it's guaranteed that
