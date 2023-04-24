@@ -195,6 +195,35 @@ func.func @float_matmul(
 
 // -----
 
+func.func @float_matmul_with_reshape(%arg0: tensor<1x10xf32>, %arg1: tensor<10x10xf32>) -> (tensor<*xf32>) {
+  %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32>
+  %cst_0 = "tf.Const"() {value = dense<[-1, 10]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tf.MatMul"(%arg0, %arg1) {
+    transpose_a = false, transpose_b = true
+  } : (tensor<1x10xf32>, tensor<10x10xf32>) -> tensor<*xf32>
+  %2 = "tf.Reshape"(%1, %cst_0) : (tensor<*xf32>, tensor<2xi32>) -> tensor<*xf32>
+  %3 = "tf.BiasAdd"(%2, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<10xf32>) -> tensor<*xf32>
+
+  func.return %3 : tensor<*xf32>
+
+
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<10xf32>}
+// CHECK-DAG: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[-1, 10]> : tensor<2xi32>}
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]], %[[SHAPE]])
+// CHECK-SAME: f = @composite_matmul_with_reshape_and_bias_fn_1}
+// CHECK: return %[[PARTITIONEDCALL_0]]
+// CHECK: }
+
+// CHECK-LABEL: private @composite_matmul_with_reshape_and_bias_fn_1
+// CHECK-NEXT: tf.MatMul"(%arg0, %arg1)
+// CHECK-SAME: attr_map = "0:transpose_a,1:transpose_b"
+// CHECK-NEXT: tf.Reshape
+// CHECK-NEXT: tf.BiasAdd
+// CHECK-NEXT: return
+}
+
+// -----
+
 // CHECK-LABEL: float_conv_no_bias
 func.func @float_conv_no_bias(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
   %0 = "tf.Conv2D"(%arg0, %arg1) {

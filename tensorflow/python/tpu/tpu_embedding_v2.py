@@ -22,8 +22,8 @@ from absl import logging
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
@@ -268,7 +268,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       ValueError: If optimizer is not one of tf.tpu.experimental.embedding.(SGD,
       Adam or Adagrad) or None when created under a TPUStrategy.
     """
-    self._strategy = distribution_strategy_context.get_strategy()
+    self._strategy = distribute_lib.get_strategy()
     self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
                                                   tpu_strategy.TPUStrategyV2))
     self._pipeline_execution_with_tensor_core = (

@@ -90,8 +90,10 @@ class ConvertConstantToSignless
 
     auto values = llvm::to_vector(
         adaptor.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
+    Type type = typeConverter->convertType(constantOp.getType());
+    auto shapedType = type.dyn_cast<ShapedType>();
     auto newValues = DenseIntElementsAttr::get(
-        typeConverter->convertType(constantOp.getType()), values);
+        shapedType, values);
 
     rewriter.replaceOpWithNewOp<arith::ConstantOp>(constantOp, newValues);
     return success();

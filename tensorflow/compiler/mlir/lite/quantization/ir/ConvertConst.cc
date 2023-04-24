@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -96,7 +97,7 @@ LogicalResult QuantizedConstRewrite::matchAndRewrite(
   auto fusedLoc = rewriter.getFusedLoc(
       {qbarrier.getArg().getDefiningOp()->getLoc(), qbarrier.getLoc()});
   auto newConstOp = rewriter.create<arith::ConstantOp>(
-      fusedLoc, newConstValueType, newConstValue);
+      fusedLoc, newConstValueType, cast<TypedAttr>(newConstValue));
   rewriter.replaceOpWithNewOp<StorageCastOp>(qbarrier, qbarrier.getType(),
                                              newConstOp);
   return success();

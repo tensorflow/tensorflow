@@ -716,7 +716,7 @@ absl::StatusCode OwnedProtoRunGraphResponse::status_code() const {
 
 void OwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(status.error_message());
+  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunGraphResponse* OwnedProtoRunGraphResponse::get_proto() { return &response_; }
@@ -788,7 +788,7 @@ absl::StatusCode NonOwnedProtoRunGraphResponse::status_code() const {
 
 void NonOwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(status.error_message());
+  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunGraphResponse* NonOwnedProtoRunGraphResponse::get_proto() {
@@ -896,7 +896,7 @@ absl::StatusCode OwnedProtoRunStepResponse::status_code() const {
 
 void OwnedProtoRunStepResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(status.error_message());
+  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunStepResponse* OwnedProtoRunStepResponse::get_proto() { return &response_; }
@@ -949,7 +949,7 @@ absl::StatusCode NonOwnedProtoRunStepResponse::status_code() const {
 
 void NonOwnedProtoRunStepResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(status.error_message());
+  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunStepResponse* NonOwnedProtoRunStepResponse::get_proto() { return response_; }

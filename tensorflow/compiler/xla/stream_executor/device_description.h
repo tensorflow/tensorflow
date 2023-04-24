@@ -326,8 +326,15 @@ class DeviceDescription {
   // partitioning between shared memory and L1 cache.
   int64_t shared_memory_per_core() const { return shared_memory_per_core_; }
 
-  // Returns the maximum amount of shared memory available for a single block.
+  // Returns the maximum amount of static shared memory
+  // available for a single block.
   int64_t shared_memory_per_block() const { return shared_memory_per_block_; }
+
+  // Returns the maximum amount of shared memory available for a single block
+  // including the dynamically allocated one.
+  int64_t shared_memory_per_block_optin() const {
+    return shared_memory_per_block_optin_;
+  }
 
   // TODO(leary): resident blocks per core will be useful.
 
@@ -377,6 +384,7 @@ class DeviceDescription {
   // Shared memory limits on a given device.
   int64_t shared_memory_per_core_;
   int64_t shared_memory_per_block_;
+  int64_t shared_memory_per_block_optin_;
 
   float clock_rate_ghz_;
 
@@ -469,6 +477,9 @@ class DeviceDescriptionBuilder {
   }
   void set_shared_memory_per_block(int64_t value) {
     device_description_->shared_memory_per_block_ = value;
+  }
+  void set_shared_memory_per_block_optin(int64_t value) {
+    device_description_->shared_memory_per_block_optin_ = value;
   }
 
   void set_clock_rate_ghz(float value) {

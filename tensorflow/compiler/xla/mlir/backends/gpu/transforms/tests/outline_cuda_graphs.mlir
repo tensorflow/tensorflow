@@ -508,3 +508,30 @@ module attributes {gpu.container_module} {
 // CHECK-NEXT: lmhlo_gpu.conv_forward
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: return
+
+// -----
+// Check that d2d memcpy are captured.
+
+module attributes {gpu.container_module} {
+
+  // CHECK: @func(%[[ARG0:.*]]: memref<100xi8>)
+  func.func @func(%arg0: memref<100xi8>) {
+    %c0 = arith.constant 0 : index
+    %dst = memref.view %arg0[%c0][] : memref<100xi8> to memref<10xf32>
+    %src = memref.view %arg0[%c0][] : memref<100xi8> to memref<10xf32>
+
+    // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+    gpu.memcpy %dst, %src : memref<10xf32>, memref<10xf32>
+    gpu.memcpy %dst, %src : memref<10xf32>, memref<10xf32>
+
+    // CHECK: return
+    return
+  }
+  func.func private @external()
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: gpu.memcpy
+// CHECK: gpu.memcpy
+// CHECK-NEXT: return

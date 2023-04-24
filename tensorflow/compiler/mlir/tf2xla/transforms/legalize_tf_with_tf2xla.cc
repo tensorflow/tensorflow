@@ -339,6 +339,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::FusedBatchNormGradOp>(),
     TypeID::get<TF::FusedBatchNormGradV2Op>(),
     TypeID::get<TF::FusedBatchNormV2Op>(),
+    TypeID::get<TF::_FusedConv2DOp>(),
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GatherV2Op>(),
     TypeID::get<TF::GreaterEqualOp>(),

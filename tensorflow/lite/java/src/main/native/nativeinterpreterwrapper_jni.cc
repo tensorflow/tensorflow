@@ -24,15 +24,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/core/shims/cc/create_op_resolver.h"
-#include "tensorflow/lite/core/shims/cc/interpreter.h"
-#include "tensorflow/lite/core/shims/cc/interpreter_builder.h"
-#include "tensorflow/lite/core/shims/cc/model_builder.h"
-#include "tensorflow/lite/core/shims/cc/tools/verifier_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/create_op_resolver.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/tools/verifier_internal.h"
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #else
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
@@ -42,15 +42,15 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
 
+using tflite::FlatBufferModel;
+using tflite::Interpreter;
+using tflite::InterpreterBuilder;
 using tflite::OpResolver;
 using tflite::jni::AreDimsDifferent;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::CastLongToPointer;
 using tflite::jni::ConvertJIntArrayToVector;
 using tflite::jni::ThrowException;
-using tflite_shims::FlatBufferModel;
-using tflite_shims::Interpreter;
-using tflite_shims::InterpreterBuilder;
 
 namespace {
 
@@ -87,7 +87,7 @@ int getDataType(TfLiteType data_type) {
 
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
 bool VerifyModel(const void* buf, size_t length) {
-  return tflite_shims::internal::VerifyFlatBufferAndGetModel(buf, length);
+  return tflite::internal::VerifyFlatBufferAndGetModel(buf, length);
 }
 
 // Verifies whether the model is a flatbuffer file.
@@ -463,7 +463,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
 
   std::unique_ptr<OpResolver> resolver =
       std::make_unique<tflite::jni::OpResolverLazyDelegateProxy>(
-          tflite_shims::CreateOpResolver(), useXnnpack != JNI_FALSE);
+          tflite::CreateOpResolver(), useXnnpack != JNI_FALSE);
 
   InterpreterBuilder interpreter_builder(*model, *resolver);
   interpreter_builder.SetNumThreads(static_cast<int>(num_threads));

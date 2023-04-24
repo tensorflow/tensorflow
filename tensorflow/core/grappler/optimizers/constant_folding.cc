@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -1994,7 +1995,7 @@ void ConstantFolding::ReplaceOperationWithNoOp(NodeDef* node,
                                                GraphProperties* properties,
                                                GraphDef* graph) {
   if (HasRegularOutputs(*node, *node_map_)) return;
-  node->set_op("NoOp");
+  ChangeToNoOp(node);
   EraseRegularNodeAttributes(node);
   EraseNodeOutputAttributes(node);
   // Erase attributes that describe output properties.

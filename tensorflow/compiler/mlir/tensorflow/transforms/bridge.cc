@@ -72,7 +72,7 @@ std::string GetMLIRModuleText(mlir::Operation *op,
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
 // bridge pipeline or non TPU bridge pipeline.
 tensorflow::Status RunTFXLABridge(
-    ModuleOp module, bool enable_logging,
+    ModuleOp module,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
     llvm::StringRef module_name = llvm::StringRef()) {
   // Explicitly check that the TensorFlow dialect can constant fold ops.
@@ -96,7 +96,7 @@ tensorflow::Status RunTFXLABridge(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
-  if (enable_logging || VLOG_IS_ON(1) ||
+  if (VLOG_IS_ON(1) ||
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
@@ -104,16 +104,15 @@ tensorflow::Status RunTFXLABridge(
         module, llvm::StringRef(), &bridge);
   }
 
-  if (enable_logging || VLOG_IS_ON(2) ||
-      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(),
-                                      kDebugGroupBridgePhase1)) {
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           module_name.str(), kDebugGroupBridgePhase1)) {
     EnableDetailedLogging(&bridge, module_name);
   }
 
   LogicalResult result = bridge.run(module);
   (void)result;
 
-  if (enable_logging || VLOG_IS_ON(1) ||
+  if (VLOG_IS_ON(1) ||
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
@@ -149,6 +148,7 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
+  pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(CreateTPUClusterFormationPass());
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
@@ -278,11 +278,10 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
       CreateConvertToLegacyCompileAndReplicateAttributesPass());
 }
 
-tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
-                             bool fallback_enabled,
+tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
   Status status = RunTFXLABridge(
-      module, enable_logging,
+      module,
       [module_name](OpPassManager &pm) {
         CreateTPUBridgePipeline(pm, module_name);
         // Add set of passes to lower back to graph
@@ -303,9 +302,8 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
       status);
   return status;
 }
-tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
-                                     bool fallback_enabled) {
-  Status status = RunTFXLABridge(module, enable_logging, [](OpPassManager &pm) {
+tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
+  Status status = RunTFXLABridge(module, [](OpPassManager &pm) {
     CreateTPUBridgePipelineV1(pm);
     // Add set of passes to lower back to graph (from tf_executor).
     TF::AddGraphExportLoweringPasses(pm);
@@ -462,10 +460,10 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
-tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging,
+tensorflow::Status RunTFXLABridge(ModuleOp module,
                                   llvm::StringRef module_name) {
   Status status = mlir::TFTPU::RunTFXLABridge(
-      module, enable_logging,
+      module,
       [](OpPassManager &pm) {
         CreateTFXLABridgePipeline(pm);
         // Add set of passes to lower back to graph (from tf_executor).

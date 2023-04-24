@@ -77,6 +77,7 @@ tool_names = [
     'flatbuffer_to_string',
     'flatbuffer_translate',
     'hlo_to_llvm_ir',
+    'ifrt-opt',
     'json_to_flatbuffer',
     'kernel-gen-opt',
     'lhlo-tfrt-opt',

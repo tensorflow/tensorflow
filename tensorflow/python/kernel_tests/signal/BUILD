@@ -32,7 +32,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/ops/signal:dct_ops",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

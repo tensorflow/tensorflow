@@ -1221,6 +1221,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       saved_model_path: str,
       has_bias: bool = False,
       activation_fn: Optional[ops.Operation] = None,
+      bias_size: Optional[int] = None,
+      use_biasadd: bool = True,
   ) -> module.Module:
     class MatmulModel(module.Module):
       """A simple model with a single matmul.
@@ -1231,21 +1233,32 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(
           self,
           weight_shape: Sequence[int],
-          has_bias: bool = False,
+          bias_size: Optional[int] = None,
           activation_fn: Optional[ops.Operation] = None,
+          use_biasadd: bool = True,
       ) -> None:
         """Initializes a MatmulModel.
 
         Args:
           weight_shape: Shape of the weight tensor.
-          has_bias: If True, creates and adds a bias term.
+          bias_size: If None, do not use bias. Else, use given size as bias.
           activation_fn: The activation function to be used. No activation
             function if None.
+          use_biasadd: If True, use BiasAdd for adding bias, else use AddV2.
         """
-        self.has_bias = has_bias
+        self.bias_size = bias_size
         self.activation_fn = activation_fn
+        self.use_biasadd = use_biasadd
         self.filters = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
-        self.bias = np.random.uniform(low=-1.0, high=1.0, size=weight_shape[-1])
+
+        if bias_size is not None:
+          self.bias = np.random.uniform(low=-1.0, high=1.0, size=bias_size)
+
+      def has_bias(self) -> bool:
+        return self.bias_size is not None
+
+      def has_reshape(self) -> bool:
+        return self.has_bias() and self.bias_size != self.filters.shape[-1]
 
       @def_function.function
       def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
@@ -1263,15 +1276,40 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         """
         out = math_ops.matmul(input_tensor, self.filters)
 
-        if self.has_bias:
-          out = nn_ops.bias_add(out, self.bias)
+        if self.has_reshape():
+          input_shape = input_tensor.shape
+          if len(input_shape) == 3:
+            reshape_shape = (input_shape[0], -1, self.bias_size)
+          else:
+            reshape_shape = (-1, self.bias_size)
+
+          out = array_ops.reshape(out, reshape_shape)
+
+        if self.has_bias():
+          if self.use_biasadd:
+            out = nn_ops.bias_add(out, self.bias)
+          else:
+            out = math_ops.add_v2(out, self.bias)
 
         if self.activation_fn is not None:
           out = self.activation_fn(out)
 
         return {'output': out}
 
-    model = MatmulModel(weight_shape, has_bias, activation_fn)
+    # If bias_size is not explictly given, it should default to width of weight.
+    if bias_size is None and has_bias:
+      bias_size = weight_shape[-1]
+
+    # Verify that when bias_size is not None, has_bias should be True.
+    # And if bias_size is None, has_bias should be False using XNOR
+    assert (not ((bias_size is not None) ^ has_bias))
+
+    # Verify that bias size is correct
+    if bias_size:
+      input_height = input_shape[0] if len(input_shape) == 2 else input_shape[1]
+      assert input_height * weight_shape[-1] % bias_size == 0
+
+    model = MatmulModel(weight_shape, bias_size, activation_fn)
     saved_model_save.save(
         model,
         saved_model_path,

@@ -696,6 +696,10 @@ class MklConvOp : public OpKernel {
           errors::InvalidArgument("filter must not have zero elements "
                                   "(i.e. all dimensions must be non-zero)"));
 
+      if (std::is_same<Tinput, float>::value) {
+        (void)SetFPMathMode();
+      }
+
       MklDnnShape src_mkl_shape, filter_mkl_shape;
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape, native_format);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape,

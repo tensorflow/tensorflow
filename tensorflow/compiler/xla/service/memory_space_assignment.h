@@ -721,6 +721,8 @@ class MemorySpaceAssignment {
     std::optional<int64_t> cross_program_prefetch_index_;
   };
 
+  // TODO(b/275905276): create a SlicedCopyAllocation
+
   // An allocation in the default memory space that mirrors another Allocation
   // object. This is useful to model an eviction that happens before a while op
   // so that we don't need to redundantly evict the buffer after the while op as
@@ -1494,6 +1496,9 @@ class AlternateMemoryBestFitHeap
     absl::Span<const int64_t> all_use_times;
   };
 
+  // TODO(b/275905276): create a SlicedAllocationRequest that contains the
+  // original AllocationRequest, plus slice times and sizes
+
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -1641,6 +1646,10 @@ class AlternateMemoryBestFitHeap
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
+  // TODO(b/275905276): change FindBestChunkCandidate() signature to take a
+  // SlicedAllocationRequest (which can indicate 0 slices), and return a
+  // vector of chunks
+
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
   // it is given.
@@ -1718,6 +1727,8 @@ class AlternateMemoryBestFitHeap
       MemorySpaceAssignment::AllocationSequence* allocations,
       AliasedOffset* aliased_offset, float resource,
       std::optional<int> cross_program_prefetch_index = std::nullopt);
+
+  // TODO(b/275905276): create AddAsyncSlicedCopy
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back

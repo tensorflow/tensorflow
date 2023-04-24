@@ -57,7 +57,9 @@ class PjRtExecutionUtilTest : public OpsTestBase {
  public:
   PjRtExecutionUtilTest() {
     // Set flag to use PJRT for device compilation and execution.
-    GetXlaOpsCommonFlags()->tf_xla_use_device_api = true;
+    auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+    rollout_config.enabled_for_xla_launch_ = true;
+    rollout_config.enabled_for_compile_on_demand_ = true;
 
     // Set flag to enable using XLA devices. PJRT currently is only supported
     // for XLA devices.
@@ -65,6 +67,9 @@ class PjRtExecutionUtilTest : public OpsTestBase {
 
     // Add and setup the XLA_CPU device.
     auto device_type = DeviceType(DEVICE_XLA_CPU);
+    rollout_config.AllowForDeviceInXlaLaunch(device_type);
+    rollout_config.AllowForDeviceInXlaCompileOnDemand(device_type);
+
     auto jit_device_type = DeviceType(DEVICE_CPU_XLA_JIT);
     auto device =
         DeviceFactory::NewDevice(device_type.type_string(), SessionOptions(),
@@ -327,6 +332,43 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputs) {
   test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
 }
 
+TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsDynamicShape) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  TF_EXPECT_OK(NodeDefBuilder("testWhere", "Where")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DT_FLOAT)
+                   .Device("/job:localhost/replica:0/task:0/device:XLA_CPU:0")
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+
+  // Add inputs.
+  Tensor* a =
+      CreateDeviceTensor<float>(TensorShape({2, 3}), {0., 1., 1., 0., 0., 0.});
+  inputs_.push_back({nullptr, a});
+
+  CreateContext();
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({2, 3});
+
+  const XlaCompiler::CompilationResult* result;
+  xla::PjRtLoadedExecutable* executable;
+  CompileToExecutable(args, &result, &executable);
+
+  std::vector<const Tensor*> inputs;
+  inputs.push_back(a);
+  TF_ASSERT_OK_AND_ASSIGN(auto execute_outputs,
+                          RunExecutable(inputs, {}, result, executable));
+
+  TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
+      inputs, {}, *result, execute_outputs, context_.get()));
+  // The expected output is indices of non-zero inputs.
+  Tensor* expected = CreateHostTensor<int64>(TensorShape({2, 2}), {0, 1, 0, 2});
+  test::ExpectTensorEqual<int64>(*expected, *GetOutput(0));
+}
+
 TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsVariableInputs) {
   XlaOpRegistry::RegisterCompilationKernels();
   TF_EXPECT_OK(NodeDefBuilder("AddV2", "AddV2")
@@ -433,10 +475,6 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
 
   Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 3}), {3, 4, 5});
   test::ExpectTensorEqual<int32>(*expected, *host_tensor);
-}
-
-TEST_F(PjRtExecutionUtilTest, GetDeviceOrdinal) {
-  EXPECT_EQ(GetDeviceOrdinal(device_), 0);
 }
 
 TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {

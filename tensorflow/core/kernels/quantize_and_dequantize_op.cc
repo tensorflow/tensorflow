@@ -97,6 +97,14 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
                                     " > input_max ", max_val));
       } else {
         OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
+                            " axis is specified"));
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
+                            " axis is specified"));
+        OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",
                             input_min_tensor.dim_size(0), " expected ", depth,
@@ -183,6 +191,14 @@ class QuantizeAndDequantizeV4GradientOp : public OpKernel {
                     "Input max tensor must have dimension 0 or 1. Received ",
                     input_max_tensor.dims(), "."));
     if (axis_ != -1) {
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+          InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
+                          " axis is specified"));
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+          InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
+                          " axis is specified"));
       OP_REQUIRES(ctx, input_min_tensor.dim_size(0) == depth,
                   InvalidArgument("min has incorrect size, expected ", depth,
                                   " was ", input_min_tensor.dim_size(0)));
@@ -282,6 +298,14 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
                     InvalidArgument("Invalid range: input_min ", min_val,
                                     " > input_max ", max_val));
       } else {
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
+                            " axis is specified"));
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
+                            " axis is specified"));
         OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",

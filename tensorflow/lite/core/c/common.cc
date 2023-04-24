@@ -98,6 +98,15 @@ TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
   return ret;
 }
 
+TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
+  if (!src) return nullptr;
+  TfLiteFloatArray* ret = TfLiteFloatArrayCreate(src->size);
+  if (ret) {
+    memcpy(ret->data, src->data, src->size * sizeof(float));
+  }
+  return ret;
+}
+
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {

@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
         "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:variable_utils",

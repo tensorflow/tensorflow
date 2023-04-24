@@ -950,6 +950,13 @@ embedded_binary(
     binary = "//tensorflow/lite/experimental/acceleration/mini_benchmark/models:mobilenet_v1_1.0_224_quant.tflite",
 )
 
+embedded_binary(
+    name = "embedded_simple_addition_model",
+    testonly = 1,
+    array_variable_name = "g_tflite_acceleration_embedded_simple_addition_model",
+    binary = "//tensorflow/lite:testdata/add.bin",
+)
+
 cc_test(
     name = "validator_test",
     srcs = ["validator_test.cc"],

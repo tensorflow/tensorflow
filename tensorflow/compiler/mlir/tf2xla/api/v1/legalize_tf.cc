@@ -181,10 +181,11 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   XlaCompilationResult compilation_result;
   // If there are no MLIR args, compile the given function in the library.
   if (ShouldFallbackToGraphCompiler(computation)) {
-    return tf2xla::v0::CompileTensorflowGraphToHlo(
+    TF_RETURN_IF_ERROR(tf2xla::v0::CompileTensorflowGraphToHlo(
         computation, metadata, use_tuple_args, shape_determination_fns,
         arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
-        &compilation_result);
+        &compilation_result));
+    return compilation_result;
   }
 
   // We could only end up here if the MLIR bridge was explicitly enabled or

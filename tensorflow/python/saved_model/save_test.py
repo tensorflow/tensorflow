@@ -19,10 +19,9 @@ import os
 from absl.testing import parameterized
 
 from google.protobuf import text_format
-
 from tensorflow.core.config import flags
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.framework import graph_pb2
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops

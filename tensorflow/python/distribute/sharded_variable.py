@@ -908,3 +908,30 @@ def embedding_lookup(params,
   return embedding_ops.embedding_lookup(params.variables, ids,
                                         partition_strategy, name,
                                         validate_indices, max_norm)
+
+
+# Separately override safe_embedding_lookup_sparse, to avoid conversion of
+# ShardedVariable to tensor.
+@dispatch.dispatch_for_api(embedding_ops.safe_embedding_lookup_sparse)
+def safe_embedding_lookup_sparse(
+    embedding_weights: ShardedVariable,
+    sparse_ids,
+    sparse_weights=None,
+    combiner='mean',
+    default_id=None,
+    name=None,
+    partition_strategy='div',
+    max_norm=None,
+    allow_fast_lookup=False,
+):
+  """Pass the individual shard variables as a list."""
+  return embedding_ops.safe_embedding_lookup_sparse(
+      embedding_weights.variables,
+      sparse_ids,
+      sparse_weights=sparse_weights,
+      combiner=combiner,
+      default_id=default_id,
+      name=name,
+      partition_strategy=partition_strategy,
+      max_norm=max_norm,
+      allow_fast_lookup=allow_fast_lookup)

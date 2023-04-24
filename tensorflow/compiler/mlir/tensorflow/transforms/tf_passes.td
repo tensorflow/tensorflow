@@ -393,6 +393,15 @@ def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir
   }];
 }
 
+def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> {
+  let summary = "Rewrite graph for embedding pipelining";
+  let constructor = "TFDevice::CreateEmbeddingPipeliningPass()";
+    let description = [{
+    For architectures that support accelerated embedding lookups, this pass will
+    rewrite the graph to use pipelining for better device utilization.
+  }];
+}
+
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";

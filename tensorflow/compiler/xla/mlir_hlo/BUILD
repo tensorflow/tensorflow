@@ -1253,6 +1253,7 @@ cc_library(
         ":deallocation",
         ":deallocation_passes",
         ":gml_st",
+        ":gml_st_bufferizable_op_interface",
         ":gml_st_passes",
         ":lhlo",
         ":mhlo_passes",
@@ -1767,6 +1768,20 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
+    ],
+)
+
+cc_library(
+    name = "gml_st_bufferizable_op_interface",
+    srcs = ["gml_st/interfaces/bufferizable_op_interface_impl.cc"],
+    hdrs = ["gml_st/interfaces/bufferizable_op_interface_impl.h"],
+    strip_include_prefix = ".",
+    deps = [
+        ":gml_st",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Support",
     ],
 )
 

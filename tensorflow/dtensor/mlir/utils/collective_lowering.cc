@@ -1301,8 +1301,7 @@ mlir::LogicalResult LowerAllToAllOp(mlir::TF::DTensorAllToAllOp all_to_all) {
   auto group_assignment_or =
       GetGroupAssignment(builder, src_layout, dims_to_gather);
   if (!group_assignment_or.ok()) {
-    return all_to_all.emitOpError()
-           << group_assignment_or.status().error_message();
+    return all_to_all.emitOpError() << group_assignment_or.status().message();
   }
   auto group_assignment = group_assignment_or.value();
   int32 group_size = group_assignment.getType().getShape()[1];
@@ -1310,8 +1309,7 @@ mlir::LogicalResult LowerAllToAllOp(mlir::TF::DTensorAllToAllOp all_to_all) {
   StatusOr<std::string> device_type_or_status =
       DeviceTypeFromMesh(src_layout.mesh());
   if (!device_type_or_status.ok())
-    return all_to_all.emitOpError()
-           << device_type_or_status.status().error_message();
+    return all_to_all.emitOpError() << device_type_or_status.status().message();
   const std::string device_type = device_type_or_status.value();
 
   // Find concat and split dimensions

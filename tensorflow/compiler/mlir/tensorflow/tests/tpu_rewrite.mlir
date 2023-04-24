@@ -1402,7 +1402,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK-NOT:"tf._TPUCompileMlirPlaceholderProgramKey"
       // CHECK:    "tf.E"(%[[COMPILE_OUTPUT]]#1
       %3 = "tf_device.parallel_execute"() ({
-        %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+         %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
         "tf.D"(%program) : (tensor<3x!tf_type.string>) -> ()
         tf_device.return
       }, {
@@ -2641,35 +2641,6 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
     "tf._XlaHostComputeMlir"(%0) {host_mlir_module = "", recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args"} : (tensor<?xi32>) -> ()
     %1 = "tf.C"() : () -> tensor<?xi32>
     return %1 : tensor<?xi32>
-  }
-}
-
-// -----
-
-// Check that a TPUCompileMlirPlaceholderProgramKey that is above the
-// parallel_execute is replaced.
-
-// CHECK-LABEL: func @compile_placeholder_outside_parallel_execute
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
-  func.func @compile_placeholder_outside_parallel_execute(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
-    // CHECK-NOT:"tf._TPUCompileMlirPlaceholderProgramKey"
-    %0:2 = tf_device.replicate([%arg0, %arg1] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
-      %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
-      %1 = "tf_device.parallel_execute"() ({
-        "tf.D"(%program) : (tensor<3x!tf_type.string>) -> ()
-        tf_device.return
-      }, {
-        %2 = "tf_device.cluster_func"(%ri_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-        tf_device.return %2 : tensor<?xi32>
-      }) : () -> (tensor<?xi32>)
-      tf_device.return %1 : tensor<?xi32>
-    }
-    func.return %0#1 : tensor<?xi32>
-  }
-
-  func.func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    func.return %0 : tensor<?xi32>
   }
 }
 

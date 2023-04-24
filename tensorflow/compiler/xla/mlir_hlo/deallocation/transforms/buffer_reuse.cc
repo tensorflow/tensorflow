@@ -239,7 +239,7 @@ bool doubleBuffer(Block& block) {
     }
 
     if (llvm::isa<scf::ForOp, scf::WhileOp>(op)) {
-      if (auto db = doubleBuffer(op); db != op) {
+      if (auto db = doubleBuffer(cast<RegionBranchOpInterface>(op)); db != op) {
         op = db;
         result = true;
       }

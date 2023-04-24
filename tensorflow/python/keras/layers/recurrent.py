@@ -21,7 +21,7 @@ import warnings
 
 import numpy as np
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -437,7 +437,7 @@ class RNN(Layer):
     self._num_constants = 0
 
     if stateful:
-      if ds_context.has_strategy():
+      if distribute_lib.has_strategy():
         raise ValueError('RNNs with stateful=True not yet supported with '
                          'tf.distribute.Strategy.')
 

@@ -5180,6 +5180,10 @@ bool HloParserImpl::ParseDimLevelTypes(
         lexer_.Lex();
         dim_level_type = DIM_SINGLETON;
         dim_level_type_valid = true;
+      } else if (lexer_.GetStrVal() == "H") {
+        lexer_.Lex();
+        dim_level_type = DIM_COMPRESSED_WITH_HI;
+        dim_level_type_valid = true;
       }
       if (dim_level_type_valid) {
         bool new_dim_unique = true;

@@ -27,7 +27,8 @@ Rewrite onesLike(op: Op, type: Type) -> Op [{
   }
 
   return rewriter.create<mlir::tosa::ConstOp>(
-      op->getLoc(), type, mlir::DenseElementsAttr::get(type, outputValue));
+      op->getLoc(), type,
+      mlir::DenseElementsAttr::get(cast<mlir::ShapedType>(type), outputValue));
 }];
 
 Rewrite positiveFloatInfinityLike(op: Op, type: Type) -> Op [{
@@ -40,7 +41,8 @@ Rewrite positiveFloatInfinityLike(op: Op, type: Type) -> Op [{
       elementType, llvm::APFloat::getInf(semantic, false)));
 
   return rewriter.create<mlir::tosa::ConstOp>(
-      op->getLoc(), type, mlir::DenseElementsAttr::get(type, outputValue));
+      op->getLoc(), type,
+      mlir::DenseElementsAttr::get(cast<mlir::ShapedType>(type), outputValue));
 }];
 
 // Nullary ops.

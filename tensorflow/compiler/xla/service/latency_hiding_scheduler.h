@@ -596,6 +596,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   struct ScheduleCandidate {
     HloGraphNode* node = nullptr;
     std::optional<std::pair<int64_t, int64_t>> pressure_change;
+    std::optional<HloGraphNode::TimeCost> estimated_connected_send_ready_time;
     std::optional<bool> resource_constrained;
   };
 

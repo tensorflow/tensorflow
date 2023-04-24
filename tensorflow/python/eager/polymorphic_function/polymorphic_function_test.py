@@ -22,7 +22,6 @@ import platform
 import re
 import sys
 import time
-import timeit
 import unittest
 import weakref
 
@@ -4602,6 +4601,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(RecursionError):
       recursive_fn(constant_op.constant(5))
 
+<<<<<<< HEAD
   @test_util.run_v2_only
   def test_grappler_optimization(self):
     @polymorphic_function.function
@@ -4701,6 +4701,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # is passed in a boolean tensor having > 1 element.
     self.assertAllEqual(func(x), x)
 
+=======
+>>>>>>> upstream/master
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
