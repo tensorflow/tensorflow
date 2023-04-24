@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_simple_addition_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 
@@ -96,6 +97,10 @@ class CApiTest : public ::testing::Test {
         "mobilenet_quant.tflite",
         g_tflite_acceleration_embedded_mobilenet_model,
         g_tflite_acceleration_embedded_mobilenet_model_len);
+
+    simple_addition_model_path_ = helper.DumpToTempFile(
+        "add.bin", g_tflite_acceleration_embedded_simple_addition_model,
+        g_tflite_acceleration_embedded_simple_addition_model_len);
   }
 
   flatbuffers::Offset<tflite::BenchmarkStoragePaths> CreateStoragePaths() {
@@ -133,6 +138,7 @@ class CApiTest : public ::testing::Test {
   flatbuffers::FlatBufferBuilder mini_benchmark_fbb_;
   std::string embedded_model_path_;
   std::string plain_model_path_;
+  std::string simple_addition_model_path_;
   bool should_perform_test_ = true;
 };
 
@@ -354,6 +360,93 @@ TEST_F(CApiTest, ReturnFailStatusWhenSettingsCorrupted) {
   EXPECT_THAT(
       TfLiteMiniBenchmarkResultInitStatus(result),
       tflite::acceleration::kMinibenchmarkCorruptSizePrefixedFlatbufferFile);
+  TfLiteMiniBenchmarkResultFree(result);
+  TfLiteMiniBenchmarkSettingsFree(settings);
+}
+
+TEST_F(CApiTest,
+       SucceedOnSimpleAdditionModelWithCustomValidationAndPassingRule) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  const int batch_size = 1;
+  size_t input_size[] = {batch_size * 8 * 8 * 3 * 4};
+  std::vector<uint8_t> custom_input_data(input_size[0]);
+
+  float test_input_float = 55.25f;
+  float test_output_float = test_input_float * 3;
+
+  uint8_t* test_input_bytes = reinterpret_cast<uint8_t*>(&test_input_float);
+  uint8_t* test_output_bytes = reinterpret_cast<uint8_t*>(&test_output_float);
+
+  for (int i = 0; i < input_size[0]; i += 4) {
+    custom_input_data[i] = test_input_bytes[0] & 0xff;
+    custom_input_data[i + 1] = test_input_bytes[1] & 0xff;
+    custom_input_data[i + 2] = test_input_bytes[2] & 0xff;
+    custom_input_data[i + 3] = test_input_bytes[3] & 0xff;
+  }
+
+  mini_benchmark_fbb_.Finish(tflite::CreateMinibenchmarkSettings(
+      mini_benchmark_fbb_, CreateTFLiteSettings(),
+      CreateModelFile(simple_addition_model_path_), CreateStoragePaths(),
+      CreateValidationSettings()));
+  MockResultEvaluator mock_evaluator;
+  EXPECT_CALL(mock_evaluator, HasPassedAccuracyCheck)
+      .Times(1)
+      .WillRepeatedly(testing::Return(true));
+
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
+  TfLiteMiniBenchmarkCustomValidationInfo* custom_validation =
+      TfLiteMiniBenchmarkSettingsCustomValidationInfo(settings);
+  TfLiteMiniBenchmarkCustomValidationInfoSetBuffer(custom_validation,
+                                                   /*batch_size=*/batch_size,
+                                                   custom_input_data.data(),
+                                                   /*buffer_dim=*/input_size,
+                                                   /*buffer_dim_size=*/1);
+  TfLiteMiniBenchmarkCustomValidationInfoSetAccuracyValidator(
+      custom_validation, &mock_evaluator, MockResultEvaluator::Invoke);
+
+  TfLiteMiniBenchmarkResult* result =
+      TfLiteBlockingValidatorRunnerTriggerValidation(settings);
+  std::vector<const tflite::BenchmarkEvent*> events =
+      ToBenchmarkEvents(TfLiteMiniBenchmarkResultFlatBufferData(result),
+                        TfLiteMiniBenchmarkResultFlatBufferDataSize(result));
+
+  EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
+              tflite::acceleration::kMinibenchmarkSuccess);
+
+  EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
+  for (auto& event : events) {
+    const tflite::BenchmarkResult* result = event->result();
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
+    EXPECT_TRUE(event->result()->ok());
+    EXPECT_THAT(event->result()->actual_output(),
+                testing::Pointee(testing::SizeIs(1)));
+
+    const flatbuffers::Vector<unsigned char>* inference_output =
+        event->result()->actual_output()->Get(0)->value();
+
+    EXPECT_EQ(inference_output->size(), input_size[0]);
+
+    for (int i = 0; i < inference_output->size(); i += 4) {
+      float f;
+      uint8_t b[] = {inference_output->Get(i), inference_output->Get(i + 1),
+                     inference_output->Get(i + 2),
+                     inference_output->Get(i + 3)};
+      memcpy(&f, &b, sizeof(f));
+      EXPECT_EQ(f, test_output_float);
+      EXPECT_EQ(b[0], test_output_bytes[0]);
+      EXPECT_EQ(b[1], test_output_bytes[1]);
+      EXPECT_EQ(b[2], test_output_bytes[2]);
+      EXPECT_EQ(b[3], test_output_bytes[3]);
+    }
+  }
   TfLiteMiniBenchmarkResultFree(result);
   TfLiteMiniBenchmarkSettingsFree(settings);
 }

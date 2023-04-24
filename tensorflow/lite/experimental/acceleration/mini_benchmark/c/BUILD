@@ -49,6 +49,7 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_simple_addition_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "@com_google_googletest//:gtest_main",
