@@ -1327,6 +1327,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "gpu_convert_async_collectives_to_sync",
+    srcs = ["gpu_convert_async_collectives_to_sync.cc"],
+    hdrs = ["gpu_convert_async_collectives_to_sync.h"],
+    deps = [
+        ":backend_configs_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:convert_async_collectives_to_sync",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_convert_async_collectives_to_sync_test",
+    srcs = ["gpu_convert_async_collectives_to_sync_test.cc"],
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_convert_async_collectives_to_sync",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "gpu_conv_algorithm_picker",
     srcs = ["gpu_conv_algorithm_picker.cc"],
     hdrs = ["gpu_conv_algorithm_picker.h"],
