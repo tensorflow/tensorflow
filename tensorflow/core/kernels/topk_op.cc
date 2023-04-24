@@ -41,7 +41,13 @@ template <typename Device, typename T, typename Tidx>
 class TopK : public OpKernel {
  public:
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("sorted", &sorted_));
+    // Allow "sorted" to be an optional attribute for use with ApproxTopK
+    // which has no such attribute.
+    auto status = context->GetAttr("sorted", &sorted_);
+    if (!status.ok()) {
+      sorted_ = true;  // Default to sorted, as required by ApproxTopK.
+    }
+
     if (num_inputs() < 2) {  // k is an attr (TopK).
       OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
     } else {  // k is an input (TopKV2), so we won't know it until Compute.
@@ -262,14 +268,26 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
   REGISTER_KERNELS_NAME(TopK, type, index_type);      \
   REGISTER_KERNELS_NAME(TopKV2, type, index_type);
 
-#define REGISTER_KERNELS(type)              \
-  REGISTER_KERNELS_WITH_INDEX(type, int16); \
-  REGISTER_KERNELS_WITH_INDEX(type, int32); \
-  REGISTER_KERNELS_WITH_INDEX(type, int64_t);
+#define REGISTER_APPROX_TOPK_KERNELS(type)                    \
+  REGISTER_KERNEL_BUILDER(                                    \
+      Name("ApproxTopK")                                      \
+          .Device(DEVICE_CPU)                                 \
+          .TypeConstraint<type>("T")                          \
+          .AttrConstraint<int64_t>("reduction_dimension", -1) \
+          .AttrConstraint<bool>("is_max_k", true),            \
+      TopK<CPUDevice, type, int32>);
+
+#define REGISTER_KERNELS(type)                \
+  REGISTER_KERNELS_WITH_INDEX(type, int16);   \
+  REGISTER_KERNELS_WITH_INDEX(type, int32);   \
+  REGISTER_KERNELS_WITH_INDEX(type, int64_t); \
+  REGISTER_APPROX_TOPK_KERNELS(type);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
-#undef REGISTER_KERNELS_NAME
-#undef REGISTER_KERNELS_WITH_INDEX
+
+#undef REGISTER_TOPK_KERNELS_NAME
+#undef REGISTER_TOPK_KERNELS_WITH_INDEX
+#undef REGISTER_APPROX_TOPK_KERNELS
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -294,12 +312,12 @@ TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
-#define REGISTER_KERNELS_WITH_INDEX(type, index_type)                    \
+#define REGISTER_TOPK_KERNELS_WITH_INDEX(type, index_type)               \
   REGISTER_KERNEL_BUILDER(Name("TopK")                                   \
                               .Device(DEVICE_GPU)                        \
                               .TypeConstraint<type>("T")                 \
                               .TypeConstraint<index_type>("index_type"), \
-                          TopK<GPUDevice, type, index_type>)             \
+                          TopK<GPUDevice, type, index_type>);            \
   REGISTER_KERNEL_BUILDER(Name("TopKV2")                                 \
                               .Device(DEVICE_GPU)                        \
                               .TypeConstraint<type>("T")                 \
@@ -307,12 +325,25 @@ TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
                               .HostMemory("k"),                          \
                           TopK<GPUDevice, type, index_type>)
 
-#define REGISTER_KERNELS(type) REGISTER_KERNELS_WITH_INDEX(type, int32)
+#define REGISTER_APPROX_TOPK_KERNELS(type)                    \
+  REGISTER_KERNEL_BUILDER(                                    \
+      Name("ApproxTopK")                                      \
+          .Device(DEVICE_GPU)                                 \
+          .TypeConstraint<type>("T")                          \
+          .AttrConstraint<int64_t>("reduction_dimension", -1) \
+          .AttrConstraint<bool>("is_max_k", true),            \
+      TopK<GPUDevice, type, int32>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
-TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
-#undef REGISTER_KERNELS
-#undef REGISTER_KERNELS_WITH_INDEX
+#define REGISTER_TOPK_KERNELS(type) \
+  REGISTER_TOPK_KERNELS_WITH_INDEX(type, int32)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_TOPK_KERNELS);
+TF_CALL_INTEGRAL_TYPES(REGISTER_TOPK_KERNELS);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_APPROX_TOPK_KERNELS);
+
+#undef REGISTER_TOPK_KERNELS
+#undef REGISTER_TOPK_KERNELS_WITH_INDEX
+#undef REGISTER_APPROX_TOPK_KERNELS
 
 #endif  // end GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
