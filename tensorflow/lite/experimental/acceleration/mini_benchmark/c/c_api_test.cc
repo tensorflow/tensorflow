@@ -223,6 +223,61 @@ TEST_F(CApiTest, SucceedWithCustomValidationAndPassingRule) {
   TfLiteMiniBenchmarkSettingsFree(settings);
 }
 
+TEST_F(CApiTest, SucceedWithMultipleTfliteSettings) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  const int batch_size = 5;
+  size_t input_size[] = {batch_size * 224 * 224 * 3};
+  std::vector<uint8_t> custom_input_data(input_size[0], 1);
+  mini_benchmark_fbb_.Finish(tflite::CreateMinibenchmarkSettings(
+      mini_benchmark_fbb_,
+      mini_benchmark_fbb_.CreateVector(
+          {tflite::CreateTFLiteSettings(mini_benchmark_fbb_),
+           tflite::CreateTFLiteSettings(mini_benchmark_fbb_),
+           tflite::CreateTFLiteSettings(mini_benchmark_fbb_)}),
+      CreateModelFile(plain_model_path_), CreateStoragePaths(),
+      CreateValidationSettings()));
+  MockResultEvaluator mock_evaluator;
+  EXPECT_CALL(mock_evaluator, HasPassedAccuracyCheck(_, _))
+      .Times(9)
+      .WillRepeatedly(testing::Return(true));
+
+  TfLiteMiniBenchmarkSettings* settings = TfLiteMiniBenchmarkSettingsCreate();
+  TfLiteMiniBenchmarkSettingsSetFlatBufferData(
+      settings, mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize());
+  TfLiteMiniBenchmarkCustomValidationInfo* custom_validation =
+      TfLiteMiniBenchmarkSettingsCustomValidationInfo(settings);
+  TfLiteMiniBenchmarkCustomValidationInfoSetBuffer(custom_validation,
+                                                   /*batch_size=*/batch_size,
+                                                   custom_input_data.data(),
+                                                   /*buffer_dim=*/input_size,
+                                                   /*buffer_dim_size=*/1);
+  TfLiteMiniBenchmarkCustomValidationInfoSetAccuracyValidator(
+      custom_validation, &mock_evaluator, MockResultEvaluator::Invoke);
+  for (int i = 0; i < 3; i++) {
+    TfLiteMiniBenchmarkResult* result =
+        TfLiteBlockingValidatorRunnerTriggerValidation(settings);
+    std::vector<const tflite::BenchmarkEvent*> events =
+        ToBenchmarkEvents(TfLiteMiniBenchmarkResultFlatBufferData(result),
+                          TfLiteMiniBenchmarkResultFlatBufferDataSize(result));
+
+    EXPECT_THAT(TfLiteMiniBenchmarkResultInitStatus(result),
+                tflite::acceleration::kMinibenchmarkSuccess);
+
+    EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
+    for (auto& event : events) {
+      EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
+      EXPECT_TRUE(event->result()->ok());
+    }
+    TfLiteMiniBenchmarkResultFree(result);
+  }
+  TfLiteMiniBenchmarkSettingsFree(settings);
+}
+
 TEST_F(CApiTest, ReturnNotOkWhenAccuracyCheckFail) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
