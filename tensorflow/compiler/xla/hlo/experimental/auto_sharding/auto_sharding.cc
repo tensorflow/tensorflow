@@ -148,6 +148,10 @@ std::vector<std::vector<double>> GenerateReshardingCostsForAllOperands(
         cur_input_sharding =
             GetInputSharding(ins, operand, k, output_sharding, call_graph);
       }
+      if (!cur_input_sharding.has_value() &&
+          ins->opcode() == HloOpcode::kGather && k == 0) {
+        cur_input_sharding = HloSharding::Replicate();
+      }
       CHECK(cur_input_sharding.has_value());
       auto operand_strategies = strategy_map.at(operand).get();
       auto operand_shape = operand->shape();
@@ -1323,7 +1327,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             std::vector<std::vector<double>> resharding_cost =
                 GenerateReshardingCostsForAllOperands(
                     ins, output_spec, strategy_map, cluster_env, call_graph,
-                    {input_spec, std::nullopt});
+                    {std::nullopt, input_spec});
 
             strategies->leaf_vector.push_back(
                 ShardingStrategy({name,
