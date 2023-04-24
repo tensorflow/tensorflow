@@ -56,9 +56,9 @@ class FingerprintingTest(test.TestCase):
   def test_read_nonexistent_fingerprint(self):
     export_dir = test.test_src_dir_path("cc/saved_model/testdata/AssetModule")
     with self.assertRaises(
-        pywrap_fingerprinting.FingerprintException) as excinfo:
+        pywrap_fingerprinting.FileNotFoundException) as excinfo:
       pywrap_fingerprinting.ReadSavedModelFingerprint(export_dir)
-    self.assertRegex(str(excinfo.exception), "Could not read fingerprint.")
+    self.assertRegex(str(excinfo.exception), "Could not find fingerprint.")
 
   def test_read_saved_model_singleprint(self):
     export_dir = test.test_src_dir_path(

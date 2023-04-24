@@ -1014,7 +1014,12 @@ def load_partial(export_dir, filters, tags=None, options=None):
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
   except FileNotFoundError:
-    logging.exception("Unable to load fingerprint when loading saved model.")
+    logging.info(
+        "Fingerprint not found. Saved model loading will continue.")
+    singleprint = ""
+  except RuntimeError:
+    logging.exception(
+        "Fingerprint was found, but there was an error when reading the proto.")
     singleprint = ""
   else:
     metrics.SetReadFingerprint(
