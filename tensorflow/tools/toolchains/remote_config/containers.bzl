@@ -7,7 +7,7 @@ container_digests = {
     # JAX manylinux2014 configs.
     "cuda11.1-cudnn8-ubuntu20.04-manylinux2014-multipython": "sha256:011034978c5f1e5dcecc816b3b964faafc42b243001d9cd09ff7cfe4a6a0f4b9",
     "cuda11.4-cudnn8.2-ubuntu20.04-manylinux2014-multipython": "sha256:d17894a1349a12baea1732cb133f65f08754ed97d0a6647efe23c916a9ab8f1c",
-    "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:a03a7818b2de4ee2afa133b2cfe4cac3d70054732ca155a6976f65523cb134ba",
+    "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:be5a7644b1fe786be01c9ba3593fa9e1c81775812df096ee8198b8ba9704c895",
     "cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython": "sha256:060cd88b557adca03b3e92e9029fe82d58679483dad207905df3b03486b8ccbd",
     # ROCM, probably not all of them still in use
     "rocm-ubuntu18.04-manylinux2010-multipython": "sha256:6e953a09b145df338bcb03e9e36f99b291140c29b72d0a048fb6c5905ccad5eb",
