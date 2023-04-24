@@ -123,7 +123,8 @@ esac
 # Apply the devtoolset patches to gcc.
 /rpm-patch.sh "gcc.spec"
 
-./contrib/download_prerequisites
+#./contrib/download_prerequisites
+/download_prerequisites
 
 mkdir -p "${TARGET}-build"
 cd "${TARGET}-build"
