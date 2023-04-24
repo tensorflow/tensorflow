@@ -426,21 +426,42 @@ xla_test(
     ],
     tags = ["nomac"],
     deps = [
-        ":gpu_device_info",
+        ":gpu_device_info_for_tests",
         ":ir_emitter_triton",
-        "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        ":launch_dimensions",
+        "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_test(
+    name = "ir_emitter_triton_parametrized_test",
+    srcs = if_cuda_is_configured(["ir_emitter_triton_parametrized_test.cc"]),
+    backend_tags = {"gpu": [
+        "requires-gpu-sm70",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    tags = ["nomac"],
+    deps = [
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "@com_google_absl//absl/strings",
     ],
 )
