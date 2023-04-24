@@ -215,6 +215,8 @@ class MatmulPlan {
   StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>> GetAlgorithms(
       se::Stream* stream) const;
 
+  bool IsF8MatmulTrivialMatrixBias() const;
+
  private:
   MatmulPlan(se::cuda::BlasLt::MatmulPlan plan, complex128 alpha, double beta,
              bool must_swap_operands)

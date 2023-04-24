@@ -738,15 +738,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // If a matrix bias was not fused, set C to a matrix of zeros.
-    if (!c) {
-      Literal c_literal = LiteralUtil::Zero(c_type);
-      HloInstruction *c_const = instr->AddInstruction(
-          HloInstruction::CreateConstant(c_literal.Clone()));
-      c = instr->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::ChangeElementType(instr->shape(), c_type), c_const, {}));
-    }
-
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
     absl::Span<const int64_t> a_contracting_dims =
@@ -843,38 +834,66 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Pad the non-batch dimensions of the operands to multiples of 16 as
     // required by cuBLASLt.
-    auto pad_operand = [&instr, &batch_dims](HloInstruction *&x) -> void {
-      PaddingConfig padding_config;
-      Shape padded_shape = x->shape();
-      for (int i = 0; i < x->shape().rank(); ++i) {
+    auto pad_shape = [&batch_dims](PaddingConfig &padding_config,
+                                   const Shape old_shape) {
+      Shape padded_shape = old_shape;
+      for (int i = 0; i < old_shape.rank(); ++i) {
         auto dimension = padding_config.add_dimensions();
         if (!absl::c_linear_search(batch_dims, i)) {
           int64_t padded_dimension =
-              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
+              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
           dimension->set_edge_padding_low(0);
           dimension->set_edge_padding_high(padded_dimension -
-                                           x->shape().dimensions(i));
+                                           old_shape.dimensions(i));
           dimension->set_interior_padding(0);
           padded_shape.set_dimensions(i, padded_dimension);
         }
       }
+      return padded_shape;
+    };
+
+    auto pad_operand = [&instr, &pad_shape](
+                           HloInstruction *&x,
+                           bool *is_padded = nullptr) -> void {                           
+      PaddingConfig padding_config;  
+      Shape padded_shape = pad_shape(padding_config, x->shape());
       if (!ShapeUtil::Equal(padded_shape, x->shape())) {
         HloInstruction *zero =
             instr->AddInstruction(HloInstruction::CreateConstant(
                 LiteralUtil::Zero(x->shape().element_type())));
         x = instr->AddInstruction(
             HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
+        if (is_padded) {
+          *is_padded = true;
+        }
       }
       return;
     };
+
     pad_operand(a);
     pad_operand(b);
-    pad_operand(c);
+    bool c_padded = false;
+    absl::Span<const int64_t> c_dim;
+#if CUDA_VERSION > 12000
+    if (c == nullptr) {
+      c_dim = instr->shape().dimensions();
+      PaddingConfig padding_config;
+      c_padded = ShapeUtil::Equal(pad_shape(padding_config, instr->shape()),
+                                  instr->shape());
+      c = instr->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::Zero(c_type)));
+    } else {
+#endif  // CUDA_VERSION > 12000
+      pad_operand(c, &c_padded);
+      c_dim = c->shape().dimensions();
+#if CUDA_VERSION > 12000
+    }
+#endif  // CUDA_VERSION > 12000
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
             ShapeUtil::MakeShapeWithDenseLayout(
-                instr->shape().element_type(), c->shape().dimensions(),
+                instr->shape().element_type(), c_dim,
                 instr->shape().layout().minor_to_major()),
             {a, b, c, scales_f32[0], scales_f32[1], one, one},
             kCublasLtMatmulF8CallTarget));
@@ -885,7 +904,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Slice the result of the GEMM if the operands were padded.
     HloInstruction *slice = nullptr;
-    if (c->shape().dimensions() != instr->shape().dimensions()) {
+    if (c_padded) {
       std::vector<int64_t> start_indices(instr->shape().rank(), 0);
       std::vector<int64_t> strides(instr->shape().rank(), 1);
       slice = instr->AddInstruction(HloInstruction::CreateSlice(
