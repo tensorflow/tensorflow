@@ -73,6 +73,9 @@ inline bool IsCompleteFlow(const TraceEventFlow& flow) {
          flow.back()->flow_entry_type() == TraceEvent::FLOW_END;
 }
 
+// Updates the timestamps of a Trace to ensure it includes the given Timespan.
+void ExpandTraceSpan(const Timespan& span, Trace* trace);
+
 // Nway-merge implementation.
 
 // Reorders the elements of the range [first, last) to restore the heap
