@@ -154,11 +154,13 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
-    const SessionOptions& options) {
-  const int32_t num_threads = NumInterOpThreadsFromSessionOptions(options);
-  VLOG(1) << "Session inter op parallelism threads: " << num_threads;
+    const SessionOptions& options, int32_t num_threads) {
+  const int32_t num_threads_real =
+      num_threads > 0 ? num_threads
+                      : NumInterOpThreadsFromSessionOptions(options);
+  VLOG(1) << "Session inter op parallelism threads: " << num_threads_real;
   return new thread::ThreadPool(
-      options.env, ThreadOptions(), "Compute", num_threads,
+      options.env, ThreadOptions(), "Compute", num_threads_real,
       !options.config.experimental().disable_thread_spinning(),
       /*allocator=*/nullptr);
 }

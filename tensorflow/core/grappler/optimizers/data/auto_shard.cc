@@ -786,7 +786,7 @@ Status ApplyAutoShard(const NodeDef& sink_node, int64_t num_workers,
         LOG(WARNING) << "AUTO sharding policy will apply DATA sharding policy "
                         "as it failed to apply FILE sharding policy because of "
                         "the following reason: "
-                     << s.error_message();
+                     << s.message();
         *policy_applied = AutoShardPolicy::DATA;
         return ShardByData(sink_node, num_workers, index, num_replicas, graph);
       }

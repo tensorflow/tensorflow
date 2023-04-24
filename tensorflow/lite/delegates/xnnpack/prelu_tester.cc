@@ -86,14 +86,13 @@ void PreluTester::Test(TfLiteDelegate* delegate) const {
   }
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data,
-                default_input_data + ComputeSize(InputShape()),
-                std::ref(input_rng));
+  std::generate_n(default_input_data, ComputeSize(InputShape()),
+                  std::ref(input_rng));
 
   float* xnnpack_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + ComputeSize(InputShape()),
-            xnnpack_input_data);
+  std::copy_n(default_input_data, ComputeSize(InputShape()),
+              xnnpack_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);

@@ -35,6 +35,10 @@ class DepthwiseConv2DTester {
     kTensorWiseQuantizedInt8,
     kChannelWiseQuantizedInt8,
   };
+  enum class BiasType {
+    kFP32,
+    kFP16,
+  };
 
   DepthwiseConv2DTester() = default;
   DepthwiseConv2DTester(const DepthwiseConv2DTester&) = delete;
@@ -162,16 +166,21 @@ class DepthwiseConv2DTester {
 
   inline DepthwiseConv2DTester& FP16Weights() {
     weights_type_ = WeightsType::kFP16;
+    bias_type_ = BiasType::kFP16;
     return *this;
   }
 
   inline DepthwiseConv2DTester& TensorWiseQuantizedInt8Weights() {
     weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
   inline DepthwiseConv2DTester& ChannelWiseQuantizedInt8Weights() {
     weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
@@ -230,6 +239,8 @@ class DepthwiseConv2DTester {
 
   inline WeightsType WeightsType() const { return weights_type_; }
 
+  inline BiasType BiasType() const { return bias_type_; }
+
   inline ::tflite::Padding Padding() const { return padding_; }
 
   inline ::tflite::ActivationFunctionType Activation() const {
@@ -248,6 +259,7 @@ class DepthwiseConv2DTester {
   int32_t dilation_height_ = 1;
   int32_t dilation_width_ = 1;
   enum WeightsType weights_type_ { WeightsType::kFP32 };
+  enum BiasType bias_type_ { BiasType::kFP32 };
   bool sparse_weights_ = false;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =

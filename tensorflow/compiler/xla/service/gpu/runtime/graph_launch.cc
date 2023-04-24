@@ -105,12 +105,37 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
     CustomCall::UserData user_data) {
+  // We capture graph on a borrowed stream because we do not want to
+  // accidentally record any concurrent kernel launches from other XLA
+  // executables.
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
   // Initialize (with memoization) BlasSupport here because cublasCreate fails
   // during cuda graph capturing.
-  // TODO(b/272559361): The initialization should be conditional.
-  if (!run_options->stream()->parent()->AsBlas()) {
-    return absl::InternalError("Failed to initialize BLAS support");
+  if (function_ref.RequiresBlas()) {
+    if (!executor->AsBlas()) {
+      return absl::InternalError("Failed to initialize BLAS support");
+    }
   }
+
+  StatusOr<StreamPool::Ptr> capture_stream =
+      run_options->BorrowStream(executor->device_ordinal());
+
+  if (!capture_stream.ok())
+    return absl::InternalError(
+        absl::StrFormat("Failed to borrow a stream for graph capture: %s",
+                        capture_stream.status().message()));
+
+  // TODO(ezhulenev): Pass graph capture context explicitly to the custom calls
+  // via UserData to be able to detect when executing custom call in graph
+  // capture mode. Currently we rely on the fact that we know for sure that
+  // operations in the graph capture function do not need anything except the
+  // main stream (we capture only kernel launches).
+  ExecutableRunOptions capture_run_options;
+  capture_run_options.set_stream(capture_stream->get());
+
+  const ServiceExecutableRunOptions capture_opts(capture_run_options);
+  user_data.insert(&capture_opts);
 
   std::string error;
   runtime::DiagnosticEngine diagnostic_engine;
@@ -151,7 +176,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   }
 
   // Create a graph from running the graph capture function.
-  auto captured = se::gpu::CaptureCudaGraph(run_options->stream(), [&]() {
+  auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
     return FromAbslStatus(function_ref(args, runtime::NoResultConverter{}, opts,
                                        /*verify_arguments=*/InDebugMode())
                               .status());

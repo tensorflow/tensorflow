@@ -197,7 +197,7 @@ TEST_F(FingerprintOpTest, SupportedMethods) {
 
   const Status status = RunOpKernel();
   EXPECT_FALSE(status.ok());
-  EXPECT_NE(status.error_message().find("unsupported_method"), string::npos);
+  EXPECT_NE(status.message().find("unsupported_method"), string::npos);
 }
 
 TEST_F(FingerprintOpTest, SupportedTypes) {

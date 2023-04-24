@@ -347,6 +347,15 @@ static LogicalResult Outline(unsigned ordinal,
       "xla.gpu.cuda.graph.capture",
       FunctionType::get(ctx, TypeRange(ValueRange(args)), TypeRange()));
 
+  for (auto op : seq) {
+    mlir::Operation* captured_op = op.first;
+    if (isa<lmhlo_gpu::GEMMOp>(captured_op)) {
+      func->setAttr(b.getStringAttr("xla.requires_blas"),
+                    BoolAttr::get(ctx, true));
+      break;
+    }
+  }
+
   // Add graph capture function to the module.
   sym_table.insert(func);
 

@@ -1090,7 +1090,7 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
     if (!status_or_shape.status().ok()) {
       return InvalidArgument(
           "%s Input scalar shapes may have been changed to non-scalar shapes.",
-          status_or_shape.status().error_message());
+          status_or_shape.status().message());
     }
 
     return AddOpWithShape(triop, status_or_shape.value(),

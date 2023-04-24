@@ -201,13 +201,30 @@ def connect_to_cluster(cluster_spec_or_resolver,
           service_leader=service_leader,
           enable_health_check=False)
 
+  default_session_config = copy.deepcopy(context.context().config)
+
+  for name in cluster_spec.jobs:
+    # assuming any of the non-local job is the worker jobs.
+    # should we use cluster_spec_or_resolver.get_job_name() instead when
+    # it is available?
+    # maybe consolicate this with the 'master' logic below
+    if name == job_name:
+      continue
+
+    default_session_config.experimental.collective_group_leader = (
+        f"/job:{name}/replica:0/task:0"
+    )
+
+  logging.info("default session config: %s", default_session_config)
+
   server_def = ServerDef(
       cluster=cluster_def,
       job_name=job_name,
       task_index=task_index,
       protocol=protocol,
-      default_session_config=context.context().config,
-      cluster_device_filters=cluster_device_filters)
+      default_session_config=default_session_config,
+      cluster_device_filters=cluster_device_filters,
+  )
 
   if is_server_def_changed:
     context.set_server_def(server_def)

@@ -95,10 +95,7 @@ TEST(CompileMlirUtil, CreatesPipeline) {
 TEST(CompileMlirUtil, HasLegalizationPass) {
   OpPassManager pass_manager;
   llvm::StringRef device_type = "XLA_CPU_JIT";
-  absl::string_view kLegalizeTfPass =
-      "xla-legalize-tf{allow-partial-conversion=false device-type=XLA_CPU_JIT "
-      "legalize-chlo=true prefer-tf2xla=true use-tf2xla-fallback=true "
-      "use-tf2xla-hlo-importer=false})";
+  absl::string_view kLegalizeTfPass = "xla-legalize-tf";
 
   CreateConvertMlirToXlaHloPipeline(pass_manager, device_type,
                                     /*enable_op_fallback=*/true,

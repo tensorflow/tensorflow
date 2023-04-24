@@ -82,6 +82,7 @@ py_library(
     srcs = [
         "distributed_save_op.py",
     ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/saved_model:nested_structure_coder",
@@ -100,7 +101,7 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -145,7 +146,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -343,12 +344,12 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -457,7 +458,7 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],

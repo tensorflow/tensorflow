@@ -30,7 +30,8 @@ absl::Status SpaceToDepthTensorShape1x2x2x3BlockSize2Test(
     TestExecutionEnvironment* env);
 absl::Status SpaceToDepthTensorShape1x4x4x1BlockSize2Test(
     TestExecutionEnvironment* env);
-
+absl::Status SpaceToDepthTensorShape1x6x6x1BlockSize3Test(
+    TestExecutionEnvironment* env);
 }  // namespace gpu
 }  // namespace tflite
 

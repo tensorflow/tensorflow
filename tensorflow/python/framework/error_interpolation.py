@@ -24,7 +24,7 @@ import re
 import site
 import traceback
 
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 
 _NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = fr"{{{{(?P<type>{_NAME_REGEX}) (?P<name>{_NAME_REGEX})}}}}"

@@ -165,7 +165,11 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     func::FuncOp callee =
         custom_calls_.GetOrCreate(b, op.getCallTargetName(), op);
-    callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
+    // Custom calls starting with the __gpu$ prefix are considered internal and
+    // statically linked (e.g. __gpu$TopK).
+    if (!op.getCallTargetName().starts_with("__gpu$")) {
+      callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
+    }
 
     // Forward backend config to the custom call implementation.
     auto dict = op.getBackendConfig()
@@ -539,26 +543,24 @@ class CollectiveUidGenerator {
 template <typename CollectiveOp>
 class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static StringRef Target(AllGatherOp) { return "xla.gpu.all_gather"; }
+  static StringRef Target(AllGatherStartOp) { return "xla.gpu.all_gather"; }
+
   static StringRef Target(AllReduceOp) { return "xla.gpu.all_reduce"; }
+  static StringRef Target(AllReduceStartOp) { return "xla.gpu.all_reduce"; }
+
   static StringRef Target(AllToAllOp) { return "xla.gpu.all_to_all"; }
+  static StringRef Target(AllToAllStartOp) { return "xla.gpu.all_to_all"; }
+
   static StringRef Target(ReduceScatterOp) { return "xla.gpu.reduce_scatter"; }
+  static StringRef Target(ReduceScatterStartOp) {
+    return "xla.gpu.reduce_scatter";
+  }
+
   static StringRef Target(CollectivePermuteOp) {
     return "xla.gpu.collective_permute";
   }
   static StringRef Target(CollectivePermuteStartOp) {
-    return "xla.gpu.collective_permute_start";
-  }
-  static StringRef Target(AllReduceStartOp) {
-    return "xla.gpu.all_reduce_start";
-  }
-  static StringRef Target(AllGatherStartOp) {
-    return "xla.gpu.all_gather_start";
-  }
-  static StringRef Target(ReduceScatterStartOp) {
-    return "xla.gpu.reduce_scatter_start";
-  }
-  static StringRef Target(AllToAllStartOp) {
-    return "xla.gpu.all_to_all_start";
+    return "xla.gpu.collective_permute";
   }
 
   template <typename ReduceOrGatherOp>
@@ -744,8 +746,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto source_target_pairs_or =
         ConvertNx2Attribute(op.getSourceTargetPairs());
     if (!source_target_pairs_or.ok()) {
-      return op.emitOpError()
-             << source_target_pairs_or.status().error_message();
+      return op.emitOpError() << source_target_pairs_or.status().message();
     }
 
     // Pass an array of pairs as two vectors.
@@ -819,7 +820,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     Status implementable_status =
         CheckImplementable(op, replica_count, num_partitions);
     if (!implementable_status.ok()) {
-      return op.emitOpError() << implementable_status.error_message();
+      return op.emitOpError() << implementable_status.message();
     }
 
     // Check that we have and assigned unique collective operation id.
@@ -875,6 +876,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto result = SetSpecificAttrs(b, op, call);
     if (failed(result)) return result;
 
+    bool is_async = false;
     // For asynchonous start operation we need to produce a fake token, that
     // will be later removed, because corresponding `done` operation doesn't
     // have a token argument. We rely on the `unrealized_conversion_cast`
@@ -883,11 +885,13 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
                          AllToAllStartOp, CollectivePermuteStartOp,
                          ReduceScatterStartOp>) {
+      is_async = true;
       Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
       token.replaceAllUsesWith(fake.getResult(0));
     }
+    call->setAttr(b.getStringAttr("is_async"), b.getBoolAttr(is_async));
 
     // Erase the original collective operation.
     rewriter.eraseOp(op);
@@ -924,17 +928,14 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
  public:
   AsyncDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
                       CustomCallDeclarations& custom_calls)
-      : OpRewritePattern<OpT>(ctx),
-        custom_call_target_(Derived::kCustomCallTarget),
-        uid_(uid),
-        custom_calls_(custom_calls) {}
+      : OpRewritePattern<OpT>(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(OpT op,
                                 PatternRewriter& rewriter) const override {
     // Get or create a custom call function declaration.
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    func::FuncOp callee = custom_calls_.GetOrCreate(b, custom_call_target_,
-                                                    TypeRange(), TypeRange());
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, "xla.gpu.collective_done", TypeRange(), TypeRange());
 
     // Get a unique collective operation id.
     FailureOr<int32_t> uid = uid_.AssignedUid(op);
@@ -942,7 +943,8 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
       return op.emitOpError("failed to get a unique collective operation id");
 
     llvm::SmallVector<NamedAttribute> custom_call_attributes = {
-        {b.getStringAttr("uid"), b.getI32IntegerAttr(*uid)}};
+        {b.getStringAttr("uid"), b.getI32IntegerAttr(*uid)},
+        {b.getStringAttr("done_type"), b.getStringAttr(Derived::kDoneType)}};
 
     // Convert AllReduceDone to a function call.
     auto call = rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(),
@@ -953,24 +955,22 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
   }
 
  private:
-  const char* custom_call_target_;
   CollectiveUidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
 };
 
-#define DEFINE_COLLECTIVE_DONE_OP_LOWERING(OP, custom_call)            \
+#define DEFINE_COLLECTIVE_DONE_OP_LOWERING(OP, done_type)              \
   struct OP##Lowering : public AsyncDoneOpLowering<OP, OP##Lowering> { \
-    static constexpr const char kCustomCallTarget[] = custom_call;     \
+    static constexpr const char kDoneType[] = done_type;               \
     using AsyncDoneOpLowering::AsyncDoneOpLowering;                    \
   }
 
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllGatherDoneOp, "xla.gpu.all_gather_done");
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllReduceDoneOp, "xla.gpu.all_reduce_done");
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllToAllDoneOp, "xla.gpu.all_to_all_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllGatherDoneOp, "all_gather_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllReduceDoneOp, "all_reduce_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllToAllDoneOp, "all_to_all_done");
 DEFINE_COLLECTIVE_DONE_OP_LOWERING(CollectivePermuteDoneOp,
-                                   "xla.gpu.collective_permute_done");
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(ReduceScatterDoneOp,
-                                   "xla.gpu.reduce_scatter_done");
+                                   "collective_permute_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(ReduceScatterDoneOp, "reduce_scatter_done");
 
 #undef DEFINE_COLLECTIVE_DONE_OP_LOWERING
 

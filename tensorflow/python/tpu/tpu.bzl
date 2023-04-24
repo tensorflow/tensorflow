@@ -56,6 +56,9 @@ def tpu_py_test(
         )
     )
 
+def tpu_py_strict_test(**kwargs):
+    tpu_py_test(**kwargs)
+
 def internal_create_sanitizer_settings():
     """Stub definition for an external rule."""
     pass

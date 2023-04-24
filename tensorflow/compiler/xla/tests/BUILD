@@ -392,6 +392,7 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
+        ":test_utils",
         ":verified_hlo_module",
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:literal",
@@ -402,8 +403,6 @@ xla_test(
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -675,17 +674,12 @@ xla_test(
     srcs = ["conditional_test.cc"],
     shard_count = 2,
     deps = [
+        ":client_library_test_base",
+        ":literal_test_util",
         ":test_macros_header",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:local_client",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -738,7 +732,10 @@ xla_test(
     name = "deallocation_test",
     srcs = ["deallocation_test.cc"],
     deps = [
+        ":client_library_test_base",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
@@ -746,8 +743,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -756,7 +751,9 @@ xla_test(
     name = "deconstruct_tuple_test",
     srcs = ["deconstruct_tuple_test.cc"],
     deps = [
+        ":client_library_test_base",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -767,8 +764,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/types:span",
     ],
@@ -866,7 +861,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":literal_test_util",
         ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
@@ -879,7 +873,6 @@ xla_test(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "@com_google_absl//absl/strings",
@@ -987,9 +980,9 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -1673,10 +1666,10 @@ xla_test(
     name = "reduce_hlo_test",
     srcs = ["reduce_hlo_test.cc"],
     deps = [
+        ":hlo_test_base",
         ":test_macros_header",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/platform:logging",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
     ],
@@ -1988,6 +1981,7 @@ xla_test(
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -2065,7 +2059,6 @@ xla_test(
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
@@ -2119,7 +2112,6 @@ xla_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/tsl/platform:test",
     ],

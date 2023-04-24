@@ -19882,7 +19882,7 @@ If two elements are equal, the lower-index element appears first.
 
   let arguments = (ins
     Arg<TF_IntOrFpTensor, [{1-D or higher with last dimension at least `k`.}]>:$input,
-    Arg<TF_Int32Tensor, [{0-D.  Number of top elements to look for along the last dimension (along each
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{0-D.  Number of top elements to look for along the last dimension (along each
 row for matrices).}]>:$k,
 
     DefaultValuedOptionalAttr<BoolAttr, "true">:$sorted
@@ -19890,10 +19890,12 @@ row for matrices).}]>:$k,
 
   let results = (outs
     Res<TF_IntOrFpTensor, [{The `k` largest elements along each last dimensional slice.}]>:$values,
-    Res<TF_Int32Tensor, [{The indices of `values` within the last dimension of `input`.}]>:$indices
+    Res<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{The indices of `values` within the last dimension of `input`.}]>:$indices
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tk = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr index_type = TF_DerivedResultTypeAttr<1>;
 
   let hasVerifier = 1;
 }
@@ -20250,6 +20252,8 @@ Same shape condition as scales.}]>:$zero_points,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [Pure]> {
@@ -22611,7 +22615,8 @@ A pseudo-op to represent host-side computation in an XLA program.
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$host_mlir_module
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$host_mlir_module,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$manual_sharding
   );
 
   let results = (outs

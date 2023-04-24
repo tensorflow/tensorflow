@@ -2015,7 +2015,7 @@ class HloInstruction {
   HloInstruction* fused_parameter(int64_t parameter_number) const;
 
   // Delegates to HloFusionInstruction::fused_parameters.
-  const std::vector<HloInstruction*>& fused_parameters() const;
+  const InstructionVector& fused_parameters() const;
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.

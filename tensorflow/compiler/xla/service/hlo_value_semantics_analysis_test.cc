@@ -355,5 +355,34 @@ ENTRY entry {
       IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.23"));
 }
 
+TEST_F(HloValueSemanticsAnalysisTest, ConvWithClamp) {
+  const std::string module_str = R"(
+HloModule ConvWithClamp
+
+ENTRY entry {
+  constant.123 = bf16[]{:T(256)} constant(127)
+  constant.127 = bf16[]{:T(256)} constant(-128)
+  arg_0 = bf16[128,14,14,1024]{3,0,2,1:T(8,128)(2,1)} parameter(0)
+  broadcast.819 = bf16[1,1,1024,512]{3,2,1,0:T(8,128)(2,1)} broadcast(constant.127), dimensions={}
+  arg_1 = bf16[1,1,1024,512]{3,2,1,0:T(8,128)(2,1)} parameter(1)
+  broadcast.818 = bf16[1,1,1024,512]{3,2,1,0:T(8,128)(2,1)} broadcast(constant.123), dimensions={}
+  clamp.42 = bf16[1,1,1024,512]{3,2,1,0:T(8,128)(2,1)} clamp(broadcast.819, arg_1, broadcast.818)
+  round-nearest-even.42 = bf16[1,1,1024,512]{3,2,1,0:T(8,128)(2,1)} round-nearest-even(clamp.42)
+  convert.219 = s8[1,1,1024,512]{3,2,1,0:T(8,128)(4,1)} convert(round-nearest-even.42)
+  ROOT convolution.43 = bf16[128,14,14,512]{3,0,2,1:T(8,128)(2,1)} convolution(arg_0, convert.219), window={size=1x1}, dim_labels=b01f_01io->b01f
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_str,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(
+      IsWeight(*hlo_value_semantics_analysis, module.get(), "convert.219"));
+}
+
 }  // namespace
 }  // namespace xla

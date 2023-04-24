@@ -64,7 +64,7 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
   llvm::StringRef tf2xla_fallback_device_type = "XLA_CPU_JIT";
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+  pm.addPass(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       tf2xla_fallback_device_type, /*prefer_tf2xla=*/false));
 

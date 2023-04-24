@@ -433,7 +433,8 @@ NodeExecStatsInterface* StepStatsCollector::CreateNodeExecStats(
   return new NodeExecStatsWrapper(node, this);
 }
 
-string StepStatsCollector::ReportAllocsOnResourceExhausted(const string& err) {
+string StepStatsCollector::ReportAllocsOnResourceExhausted(
+    const absl::string_view err) {
   mutex_lock l(mu_);
   if (err.find("OOM") == err.npos) {
     return "";

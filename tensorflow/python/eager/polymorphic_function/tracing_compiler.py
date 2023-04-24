@@ -25,6 +25,8 @@ from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
+from tensorflow.python.autograph.core import converter
+from tensorflow.python.autograph.impl import api
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import function_context
@@ -49,6 +51,45 @@ ag_ctx = lazy_loader.LazyLoader(
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
     "Time for tf.function to build a graph (us).")
+
+
+def _py_func_from_autograph(
+    python_func,
+    autograph_options=None,
+):
+  """Compile a python function using autograph, for use with FuncGraph.
+
+  Args:
+    python_func: the Python function to compile.
+    autograph_options: additional knobs to control when `autograph=True`.
+      See https://www.tensorflow.org/guide/autograph for more information.
+  Returns:
+    python_func, converted using autograph.
+  """
+  _, original_func = tf_decorator.unwrap(python_func)
+
+  def autograph_handler(*args, **kwargs):
+    """Calls a converted version of original_func."""
+    try:
+      return api.converted_call(
+          original_func,
+          args,
+          kwargs,
+          options=converter.ConversionOptions(
+              recursive=True,
+              optional_features=autograph_options,
+              user_requested=True,
+          ))
+    except Exception as e:  # pylint:disable=broad-except
+      if hasattr(e, "ag_error_metadata"):
+        raise e.ag_error_metadata.to_exception(e)
+      else:
+        raise
+
+  # Wrapping around a decorator allows checks like tf_inspect.getargspec
+  # to be accurate.
+  converted_func = tf_decorator.make_decorator(original_func, autograph_handler)
+  return tf_decorator.rewrap(python_func, original_func, converted_func)
 
 
 # TODO(fmuham): Revamp the API of this class to be 100% compiler-focused.
@@ -301,6 +342,10 @@ class TracingCompiler:
     else:
       arg_names = base_arg_names
 
+    if self._autograph:
+      self._python_function = _py_func_from_autograph(
+          self._python_function, self._autograph_options)
+
     concrete_function = monomorphic_function.ConcreteFunction(
         func_graph_module.func_graph_from_py_func(
             self._name,
@@ -309,8 +354,6 @@ class TracingCompiler:
             kwargs,
             None,
             func_graph=func_graph,
-            autograph=self._autograph,
-            autograph_options=self._autograph_options,
             arg_names=arg_names,
             capture_by_value=self._capture_by_value,
             create_placeholders=False),
@@ -402,7 +445,7 @@ class TracingCompiler:
               args, kwargs, func_graph)
 
           # TODO(b/263520817): Remove access to private attribute.
-          graph_capture_container = concrete_function.graph._function_captures  # pylint: disable=protected-access
+          graph_capture_container = concrete_function.graph.function_captures
           # Maintain the list of all captures
           self._func_captures.merge_by_ref_with(graph_capture_container)
           # Get current active captures snapshot

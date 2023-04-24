@@ -30,6 +30,7 @@ cuda_py_test(
         "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/compat",
+        "//tensorflow/python/util:compat",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -72,12 +73,12 @@ cuda_py_test(
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
+        "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -138,6 +139,7 @@ cuda_py_test(
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:executor",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )

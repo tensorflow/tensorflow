@@ -323,6 +323,12 @@ auto OptionalSlice(HloInstruction **optional_slice, Pattern pattern) {
                                   std::move(pattern));
 }
 
+template <typename Pattern>
+auto OptionalConvert(HloInstruction **optional_convert, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Convert(optional_convert, pattern),
+                                  std::move(pattern));
+}
+
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -492,6 +498,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
     HloInstruction *optional_slice = nullptr;
+    HloInstruction *optional_convert = nullptr;
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM,
     // including when slicing is applied to the result.
     if (Match(instr,
@@ -500,10 +507,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                       &optional_slice,
                       CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
-                  m::Broadcast(&bias, m::Op())))) {
-      TF_ASSIGN_OR_RETURN(
-          bool was_fused,
-          FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
+                  m::Broadcast(&bias,
+                               OptionalConvert(&optional_convert, m::Op()))))) {
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseVectorBiasAdd(instr, bias, existing_gemm,
+                                            optional_slice, optional_convert));
 
       if (was_fused) {
         return OkStatus();
@@ -921,19 +929,32 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const std::vector<HloInstruction *> gemm_users = existing_gemm->users();
     HloInstruction *reduce_damax = nullptr;
     if (gemm_users.size() == 2) {
+      // In the presence of a ReLU activation, the abs instruction is elided
+      // since abs(ReLU(x)) = ReLU(x).
+      TF_ASSIGN_OR_RETURN(auto config,
+                          existing_gemm->backend_config<GemmBackendConfig>());
       for (int i = 0; i < gemm_users.size(); ++i) {
-        if (gemm_users[i]->opcode() == HloOpcode::kAbs &&
-            gemm_users[i]->users().size() == 1 &&
-            gemm_users[i]->users()[0]->opcode() == HloOpcode::kReduce &&
-            gemm_users[i]->users()[0]->operands().size() == 2 &&
-            gemm_users[i]->users()[0]->operand(1)->opcode() ==
-                HloOpcode::kConstant &&
-            ShapeUtil::IsScalar(
-                gemm_users[i]->users()[0]->operand(1)->shape())) {
-          HloInstruction *reduce = gemm_users[i]->users()[0];
+        HloInstruction *maybe_reduce = nullptr;
+        if (gemm_users[i]->opcode() == HloOpcode::kAbs) {
+          if (gemm_users[i]->users().size() != 1) continue;
+          maybe_reduce = gemm_users[i]->users()[0];
+        } else {
+          // If there is no Abs instruction, relu is required as epilogue to
+          // ensure all values are nonnegative.
+          if (config.epilogue() != GemmBackendConfig::BIAS_RELU &&
+              config.epilogue() != GemmBackendConfig::RELU)
+            continue;
+          maybe_reduce = gemm_users[i];
+        }
+
+        if (maybe_reduce->opcode() == HloOpcode::kReduce &&
+            maybe_reduce->operands().size() == 2 &&
+            maybe_reduce->operand(1)->opcode() == HloOpcode::kConstant &&
+            ShapeUtil::IsScalar(maybe_reduce->operand(1)->shape())) {
+          HloInstruction *reduce = maybe_reduce;
           HloComputation *reduce_comp = reduce->to_apply();
           HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
-          if (reduce->operand(1)->literal().Get<float>({}) <= 0. &&
+          if (reduce->operand(1)->literal().GetAsDouble({}) <= 0. &&
               reduce_comp_root->opcode() == HloOpcode::kMaximum &&
               reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
               reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
@@ -1125,7 +1146,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
                                    HloInstruction *broadcast,
                                    HloInstruction *gemm,
-                                   HloInstruction *slice = nullptr) {
+                                   HloInstruction *slice = nullptr,
+                                   HloInstruction *convert = nullptr) {
     TF_RET_CHECK(ShapeUtil::Compatible(
         broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
 
@@ -1176,6 +1198,41 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
         config.beta() != 0.0) {
       return true;
+    }
+
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+        bias->shape().element_type() == F32) {
+      if (convert == nullptr) {
+        return false;
+      }
+
+      HloInstruction *bias_f16_or_bf16 = convert->mutable_operand(0);
+      auto compatible_bias_type = [](const PrimitiveType bias_type,
+                                     const PrimitiveType output_type) {
+        if (bias_type == BF16) {
+          return output_type == F8E4M3FN || output_type == F8E5M2 ||
+                 output_type == F32 || output_type == BF16;
+        } else if (bias_type == F16) {
+          return output_type == F16 || output_type == F8E4M3FN ||
+                 output_type == F8E5M2;
+        }
+        return false;
+      };
+
+      // cuBLAS LT does not support FP32 biases on matmuls with FP8 inputs,
+      // even if the matmul output is FP32. We do not unconditionally convert
+      // the bias to a supported precision (F16 or BF16) because this lowers
+      // precision. Instead, we only fuse the bias if the bias itself is a
+      // convert from F16 or BF16, fusing the input of the convert instruction
+      // to the matmul.
+      if (compatible_bias_type(bias_f16_or_bf16->shape().element_type(),
+                               gemm->shape().element_type())) {
+        bias = bias_f16_or_bf16;
+      } else {
+        VLOG(1) << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
+                   "currently not supported. See the cublasLT support matrix.";
+        return false;
+      }
     }
 
     // Replace add(gemm, broadcast) with fused new_gemm.

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,12 +48,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
-
 namespace {
-struct CanonicalAsyncOp {
-  HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute
-};
+bool IsNopInstruction(const HloInstruction& hlo) {
+  HloOpcode op = hlo.opcode();
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         hlo.IsEffectiveBitcast();
+}
+}  // namespace
 
 CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
@@ -76,7 +79,14 @@ CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-}  // namespace
+/*static*/ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
+                                              const HloGraphNode& target) {
+  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
+  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
+  return from_op.outer == HloOpcode::kAsyncStart &&
+         target_op.outer == HloOpcode::kAsyncDone &&
+         from_op.inner == target_op.inner;
+}
 
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
@@ -84,11 +94,7 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
   // fusion/convolution with 1 async op or 5 loop fusions with an async op.
   static constexpr TimeCost kLowLatency = 1.0;
   static constexpr TimeCost kHighLatency = 5000.0;
-  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
-  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
-  if (from_op.outer == HloOpcode::kAsyncStart &&
-      target_op.outer == HloOpcode::kAsyncDone &&
-      from_op.inner == target_op.inner) {
+  if (IsAsyncPair(from, target)) {
     return kHighLatency;
   }
   // Every other instruction we consider synchronous, which means the
@@ -121,6 +127,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
         return true;
       default:
         return false;
@@ -142,6 +149,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
         return true;
       default:
         return false;
@@ -163,6 +171,8 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
         return ResourceType::kAllToAll;
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
+      case HloOpcode::kReduceScatter:
+        return ResourceType::kReduceScatter;
       default:
         return ResourceType::kNoResource;
     }
@@ -302,6 +312,8 @@ void AsyncTracker::SetConcurrentResourceLimits(
       config_.all_gather_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllReduce)] =
       config_.all_reduce_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kReduceScatter)] =
+      config_.reduce_scatter_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendRecv)] =
       config_.send_recv_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendHost)] =
@@ -670,8 +682,8 @@ class ReadySetLt {
     // discovering the closest "done" to every instruction and prioritize
     // those that are closer rather than ones that are further away.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            ShouldScheduleAsyncDone(*a.node), a,
-            ShouldScheduleAsyncDone(*b.node), b, "kScheduleDone")) {
+            ShouldScheduleAsyncDone(a), a, ShouldScheduleAsyncDone(b), b,
+            "kScheduleDone")) {
       return *value;
     }
 
@@ -834,9 +846,7 @@ class ReadySetLt {
     return ready_nodes_if_scheduled;
   }
   static bool IsNop(const HloGraphNode& gn) {
-    return gn.GetInstr().opcode() == HloOpcode::kGetTupleElement ||
-           gn.GetInstr().opcode() == HloOpcode::kBitcast ||
-           gn.GetInstr().IsEffectiveBitcast();
+    return IsNopInstruction(gn.GetInstr());
   }
   bool IsResourceConstrained(
       DefaultSchedulerCore::ScheduleCandidate& cand) const {
@@ -862,13 +872,16 @@ class ReadySetLt {
     }
     return *cand.resource_constrained;
   }
-  bool ShouldScheduleAsyncDone(const HloGraphNode& gn) const {
-    if (!gn.DoesOccupyAnyResource()) {
+  bool ShouldScheduleAsyncDone(
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand) const {
+    if (!gn_cand.node->DoesOccupyAnyResource()) {
       return false;
     }
-    return !ShouldDelaySendHostDone(gn);
+    return !ShouldDelaySendHostDone(gn_cand);
   }
-  bool ShouldDelaySendHostDone(const HloGraphNode& gn) const {
+  bool ShouldDelaySendHostDone(
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand) const {
+    const HloGraphNode& gn = *gn_cand.node;
     if (!gn.UsesResourceType(ResourceType::kSendHost).has_value() ||
         gn.GetInstr().opcode() != HloOpcode::kSendDone) {
       return false;
@@ -879,7 +892,26 @@ class ReadySetLt {
         sched_state_.sched_graph.GetNode(gn.GetInstr().operand(0));
     const LatencyEstimator::TimeCost latency =
         sched_state_.latency_estimator->GetLatencyBetween(start, gn);
-    if (start.GetReadyTime() - sched_state_.current_time <= latency) {
+    if (!gn_cand.estimated_connected_send_ready_time.has_value()) {
+      HloGraphNode::TimeCost start_ready_time = 0;
+      for (const auto& succ : start.GetSuccessors()) {
+        // If any successor is not ready skip this logic. We detect this by
+        // checking that ready time is set to max. This should never happen
+        // because sends always have 1 or 2 successors that should be scheduled
+        // or ready already, but in case somebody comes up with different
+        // patterns lets keep this check here.
+        if (succ.Target().GetReadyTime() >=
+            std::numeric_limits<HloGraphNode::TimeCost>::max()) {
+          return false;
+        }
+        start_ready_time = std::max(
+            start_ready_time, succ.Latency() + succ.Target().GetReadyTime());
+      }
+      gn_cand.estimated_connected_send_ready_time = start_ready_time;
+    }
+    if (*gn_cand.estimated_connected_send_ready_time -
+            sched_state_.current_time <=
+        latency) {
       return false;
     }
     return true;

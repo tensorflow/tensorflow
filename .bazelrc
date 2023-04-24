@@ -223,7 +223,9 @@ build:monolithic --define framework_shared_object=false
 build:monolithic --define tsl_protobuf_header_only=false
 build:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
-# Please note that MKL on MacOS or windows is still not supported.
+build:linux --define=build_with_onednn_v2=true
+
+# Please note that MKL on MacOS is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
@@ -555,8 +557,8 @@ build:rbe_linux_py3_base --python_path="/usr/local/bin/python3.9"
 build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_02232023:toolchain"
-build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_02232023:cc-toolchain-x64_windows"
+build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_04192023:toolchain"
+build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_04192023:cc-toolchain-x64_windows"
 build:rbe_win --extra_execution_platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --host_platform="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"

@@ -325,7 +325,7 @@ TEST_F(CustomCallTest, WithStatusFailed) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
   auto status = Execute(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed"));
 }
 
 //===----------------------------------------------------------------------===//
@@ -384,8 +384,8 @@ TEST_F(CustomCallTest, ExportedAlwaysFail) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = Execute(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  VLOG(0) << status.error_message();
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Uh oh, too bad"));
+  VLOG(0) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, too bad"));
 }
 
 TEST_F(CustomCallTest, ExportedMemcpy) {
@@ -466,8 +466,8 @@ TEST_F(CustomCallTest, ExportedFfiAlwaysFail) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = Execute(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  VLOG(0) << status.error_message();
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Uh oh, too bad"));
+  VLOG(0) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, too bad"));
 }
 
 TEST_F(CustomCallTest, ExportedFfiMemcpy) {

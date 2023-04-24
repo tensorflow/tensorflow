@@ -183,6 +183,7 @@ class PyArray : public pybind11::object {
 
   pybind11::object arrays();
   Status set_arrays(pybind11::object obj);
+  StatusOr<PyArray> FullyReplicatedShard();
 
   int num_shards() const {
     ifrt::Array* ifrt_array_ptr = ifrt_array();

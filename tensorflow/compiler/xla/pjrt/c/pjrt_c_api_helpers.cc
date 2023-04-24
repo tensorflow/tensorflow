@@ -101,15 +101,17 @@ xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   return status;
 }
 
-PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api) {
-  return [api](PJRT_DeviceTopology* topology) -> void {
-    PJRT_DeviceTopology_Destroy_Args destroy_args;
-    destroy_args.struct_size = PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE;
+PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
+    const PJRT_Api* api) {
+  return [api](PJRT_TopologyDescription* topology) -> void {
+    PJRT_TopologyDescription_Destroy_Args destroy_args;
+    destroy_args.struct_size =
+        PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
     destroy_args.priv = nullptr;
     destroy_args.topology = topology;
 
-    pjrt::LogFatalIfPjrtError(api->PJRT_DeviceTopology_Destroy(&destroy_args),
-                              api);
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_TopologyDescription_Destroy(&destroy_args), api);
   };
 }
 
@@ -190,7 +192,7 @@ void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {
       error, MakeErrorDeleter(api));
   xla::Status _status = PjrtErrorToStatus(_error.get(), api);
   if (!_status.ok()) {
-    LOG(FATAL) << "Unexpected error status " << _status.error_message();
+    LOG(FATAL) << "Unexpected error status " << _status.message();
   }
 }
 

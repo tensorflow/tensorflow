@@ -2285,8 +2285,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
   // Fused root instruction and fused parameters must all be owned by the
   // fusion computation.
   bool root_owned = false;
-  const std::vector<HloInstruction*>& fused_parameters =
-      fusion->fused_parameters();
+  const auto& fused_parameters = fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
   for (auto* instruction : fused_computation->instructions()) {
@@ -2625,10 +2624,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       Status status =
           instruction->sharding().Validate(instruction->shape(), num_devices_);
       if (!status.ok()) {
-        return Status(status.code(),
-                      absl::StrCat("Invalid sharding for instruction: ",
-                                   instruction->ToString(), ": ",
-                                   status.error_message()));
+        return Status(
+            status.code(),
+            absl::StrCat("Invalid sharding for instruction: ",
+                         instruction->ToString(), ": ", status.message()));
       }
     }
 
@@ -2682,19 +2681,23 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   static Status VerifyS4U4Usage(HloInstruction* instruction) {
-    bool has_s4u4_operand =
-        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
-        });
     // TODO(b/259306620): Support S4/U4 operands in all instructions that
     // support inputs of other integer dtypes. Currently only aim to use it in
     // matmul and convolution op.
-    if (has_s4u4_operand && instruction->opcode() != HloOpcode::kDot &&
+    if (instruction->opcode() != HloOpcode::kDot &&
         instruction->opcode() != HloOpcode::kConvolution &&
         instruction->opcode() != HloOpcode::kConvert &&
         instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kBitcast) {
+        instruction->opcode() != HloOpcode::kBitcast &&
+        instruction->opcode() != HloOpcode::kCopy &&
+        instruction->opcode() != HloOpcode::kCopyStart &&
+        instruction->opcode() != HloOpcode::kCopyDone &&
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTuple &&
+        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
+          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
+                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
+        })) {
       return InvalidArgument(
           "S4/U4 is currently only supported in matmul and convolution, but "
           "got instruction with S4/U4 input: %s",
@@ -2763,8 +2766,8 @@ StatusOr<bool> HloVerifier::Run(
     return status_or_changed.value();
   }
   return Status(status_or_changed.status().code(),
-                absl::StrCat("during context [", context_, "]: ",
-                             status_or_changed.status().error_message()));
+                absl::StrCat("during context [", context_,
+                             "]: ", status_or_changed.status().message()));
 }
 
 MetadataTracker::MetadataTracker(absl::string_view prefix) : prefix_(prefix) {}

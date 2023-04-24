@@ -32,6 +32,9 @@ ABSL_FLAG(bool, next_pluggable_device_use_pjrt, true,
           "Use PjRtClient for data transfer and compile on demand op in next "
           "pluggable device.");
 
+ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
+          "Use PjRtAllocator in next pluggable device.");
+
 namespace tensorflow {
 
 // TODO(chuanhao): implement an API to query device memory, and make
@@ -46,20 +49,34 @@ static DeviceAttributes BuildNextPluggableDeviceAttributes(
 
 NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
                                          const Options& options)
-    : LocalDevice(session_options,
-                  BuildNextPluggableDeviceAttributes(options.device_name_prefix,
-                                                     options.device_name,
-                                                     options.device_ordinal)),
-      device_ordinal_(options.device_ordinal),
-      compilation_device_type_(options.compilation_device_name) {
-  allocator_ = std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
+    : PjRtBaseDevice(
+          session_options,
+          PjRtBaseDevice::Options(options.device_name_prefix,
+                                  options.device_name, options.device_ordinal,
+                                  options.compilation_device_name,
+                                  options.shape_determination_fns)),
+      device_ordinal_(options.device_ordinal) {
+  if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt_allocator)) {
+    pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
+    allocator_ = pjrt_allocator_.get();
+  } else {
+    tfnpd_allocator_ =
+        std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
+    allocator_ = tfnpd_allocator_.get();
+  }
+
   if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
     // TODO(b/262472386) Support shape_determination_fns through
     // TFNPD_XlaShapeToDeviceShapeRepresentation.
-    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
-        UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
-    device_context_ = core::RefCountPtr<DeviceContext>(
-        new PjRtDeviceContext(shape_representation_fns));
+    if (!options.shape_determination_fns.empty()) {
+      device_context_ = core::RefCountPtr<DeviceContext>(
+          new PjRtDeviceContext(options.shape_determination_fns[0]));
+    } else {
+      XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+          UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+      device_context_ = core::RefCountPtr<DeviceContext>(
+          new PjRtDeviceContext(shape_determination_fns));
+    }
   } else {
     device_context_ = core::RefCountPtr<DeviceContext>(
         new NextPluggableDeviceContext(device_ordinal_));
@@ -80,7 +97,7 @@ Allocator* NextPluggableDevice::GetAllocator(AllocatorAttributes attr) {
   if (attr.on_host()) {
     return cpu_allocator();
   }
-  return allocator_.get();
+  return allocator_;
 }
 
 void NextPluggableDevice::Compute(OpKernel* op_kernel,
@@ -102,7 +119,7 @@ void NextPluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
 Status NextPluggableDevice::Sync() { return OkStatus(); }
 
 // TODO(chuanhao): implement NextPluggableDevice::Sync().
-void NextPluggableDevice::Sync(const DoneCallback& done) {}
+void NextPluggableDevice::Sync(const DoneCallback& done) { done(Sync()); }
 
 Status NextPluggableDevice::TryGetDeviceContext(DeviceContext** out_context) {
   *out_context = device_context_.get();

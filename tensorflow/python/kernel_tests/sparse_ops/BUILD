@@ -219,7 +219,6 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
@@ -238,6 +237,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )

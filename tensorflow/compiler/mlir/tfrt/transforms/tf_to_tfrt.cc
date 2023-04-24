@@ -454,7 +454,7 @@ class FallbackConstOpConversion
 
     tensorflow::TensorProto tensor_proto;
     auto status = ConvertToTensorProto(op.getValue(), &tensor_proto);
-    if (!status.ok()) return op.emitError(status.error_message());
+    if (!status.ok()) return op.emitError(tsl::NullTerminatedMessage(status));
 
     rewriter.replaceOpWithNewOp<tfrt::fallback_async::ConstTensorProtoOp>(
         op, rewriter.getType<tfrt::fallback::TFTensorType>(),
@@ -816,7 +816,7 @@ class CoreRTConstStringTensorOpConversion
           llvm::StringRef(element.data(), element.size())));
 
     // Create the shape attribute from the tensor shape.
-    ArrayRef<int64_t> shape = op.getValue().getType().getShape();
+    ArrayRef<int64_t> shape = op.getValue().getShapedType().getShape();
     llvm::SmallVector<mlir::Attribute, 4> dims;
     dims.reserve(shape.size());
     auto i64_type = rewriter.getIntegerType(64);

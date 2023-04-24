@@ -2,12 +2,13 @@
 #   Host-platform specific StreamExecutor support code.
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = set_external_visibility([":friends"]),
     licenses = ["notice"],
 )
 

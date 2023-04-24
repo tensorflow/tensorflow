@@ -463,20 +463,20 @@ class PjRtCApiCompiler : public PjRtCompiler {
 
   StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
-      const PjRtDeviceTopology& topology, PjRtClient* client) override;
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
-      const PjRtDeviceTopology& topology, PjRtClient* client) override;
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
  private:
   const PJRT_Api* c_api_;
 };
 
-class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
+class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
  public:
-  PjRtCApiDeviceTopology(const PJRT_Api* c_api,
-                         PJRT_DeviceTopology* c_topology);
+  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
+                              PJRT_TopologyDescription* c_topology);
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";
@@ -490,12 +490,20 @@ class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
     return compiler_.get();
   }
 
-  const PJRT_DeviceTopology* c_topology() const { return c_topology_.get(); }
+  const PJRT_TopologyDescription* c_topology() const {
+    return c_topology_.get();
+  }
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const {
+    LOG(FATAL) << "PJRT C API DeviceDescription not implemented.";
+  }
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
-  std::unique_ptr<PJRT_DeviceTopology, ::pjrt::PJRT_DeviceTopologyDeleter>
+  std::unique_ptr<PJRT_TopologyDescription,
+                  ::pjrt::PJRT_TopologyDescriptionDeleter>
       c_topology_;
 };
 
@@ -515,7 +523,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
-StatusOr<std::unique_ptr<PjRtDeviceTopology>> GetCApiTopology(
+StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type);
 
 }  // namespace xla

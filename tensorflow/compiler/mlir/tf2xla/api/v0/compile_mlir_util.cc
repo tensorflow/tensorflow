@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -80,7 +81,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-
 constexpr absl::string_view kGroupSizeAttrName =
     "tf2xla.collective_info.group_size";
 constexpr absl::string_view kGroupKeyAttrName =
@@ -335,9 +335,15 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
   // in VerifyTFXLALegalization that full conversion happened.
   // TODO(b/188389290): Cleanup allow_partial_conversion as a legalization
   // parameter.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+  pm.addPass(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, legalize_chlo,
       /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
+
+  // Legalizing with tf2xla creates functions that contain MHLO. Inline those
+  // right away to speed up compilation time for downstream passes.
+  if (enable_op_fallback) {
+    pm.addPass(mlir::createInlinerPass());
+  }
 
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -520,18 +526,27 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
   CreateConvertMlirToXlaHloPipeline(tf2xla, device_type, enable_op_fallback,
                                     custom_legalization_passes);
 
-  if (SHOULD_DUMP(module_name.str()) || VLOG_IS_ON(1)) {
+  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain) ||
+      VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "legalize_hlo_before"), module_op,
-        "", &tf2xla);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "legalize_hlo_before"),
+        module_op, "", &tf2xla);
   }
 
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           module_name.str(), kDebugGroupBridgePhase2)) {
     // Print the whole module after each pass which requires disabling
     // multi-threading as well.
     module_op.getContext()->disableMultithreading();
-    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
-        /*print_module_scope=*/true));
+    tf2xla.enableIRPrinting(
+        std::make_unique<::tensorflow::DataDumperLoggerConfig>(
+            [module_name](const std::string& pass_tag_name) {
+              return DEBUG_DATA_DUMPER()->GetDumpFilename(
+                  module_name.str(), kDebugGroupBridgePhase2, pass_tag_name);
+            },
+            "",
+            /*print_module_scope=*/true));
   }
 
   // Make sure we catch any error reported by MLIR and forward it to the TF
@@ -547,10 +562,12 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
     return error_handler.Combine(status);
   }
 
-  if (SHOULD_DUMP(module_name.str()) || VLOG_IS_ON(1)) {
+  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain) ||
+      VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "legalize_hlo_after"), module_op,
-        "", &tf2xla);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "legalize_hlo_after"),
+        module_op, "", &tf2xla);
   }
 
   Status status = error_handler.ConsumeStatus();

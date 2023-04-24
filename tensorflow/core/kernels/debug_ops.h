@@ -189,7 +189,7 @@ class BaseDebugOp : public OpKernel {
                    << debug_watch_key_->debug_node_name
                    << " failed to publish debug tensor data to all URLs "
                    << str_util::Join(debug_urls_, ", ")
-                   << ", due to: " << status.error_message();
+                   << ", due to: " << status.message();
       }
       return status;
     }

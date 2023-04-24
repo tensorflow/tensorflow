@@ -268,6 +268,9 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
     std::unique_ptr<BufferAssignment> buffer_assignment,
     XlaFrameworkMapping xla_framework_mapping,
     runtime::JitExecutable::Options opts) {
+  VLOG(1) << "Load serialized Cpu executable from object file: module="
+          << hlo_module->name();
+
   runtime::DialectRegistry dialects;
   opts.compiler.register_dialects(dialects);
   auto threading = mlir::MLIRContext::Threading::DISABLED;

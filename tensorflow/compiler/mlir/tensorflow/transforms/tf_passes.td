@@ -393,6 +393,15 @@ def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir
   }];
 }
 
+def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> {
+  let summary = "Rewrite graph for embedding pipelining";
+  let constructor = "TFDevice::CreateEmbeddingPipeliningPass()";
+    let description = [{
+    For architectures that support accelerated embedding lookups, this pass will
+    rewrite the graph to use pipelining for better device utilization.
+  }];
+}
+
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
@@ -1115,6 +1124,13 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateClusterOutliningPass()";
+
+  let options = [
+    Option<"globally_unique_func_names_", "globally-unique-func-names", "bool",
+           /*default=*/"true",
+           "If true, the pass adds extra identifiers to make function names "
+           "globally unique within a process, not just within a module.">
+  ];
 }
 
 def ConvertTfControlFlowToScfPass : Pass<"convert-tf-control-flow-to-scf", "ModuleOp"> {
@@ -1168,6 +1184,13 @@ def LaunchOutliningPass : Pass<"tf-device-launch-outlining", "ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateLaunchOutliningPass()";
+
+  let options = [
+    Option<"globally_unique_func_names_", "globally-unique-func-names", "bool",
+           /*default=*/"true",
+           "If true, the pass adds extra identifiers to make function names "
+           "globally unique within a process, not just within a module.">
+  ];
 }
 
 def ConvertLaunchFuncToTFCallPass : Pass<"tf-device-convert-launch-func-to-tf-call", "ModuleOp"> {
@@ -1575,7 +1598,7 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
 
     ```mlir
     func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
-      %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
+      %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST_0 = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
         %1:2 = "tf_device.launch"() ( {
           %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
           tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
@@ -1815,6 +1838,12 @@ def ReplicateInvariantOpHoistingPass : Pass<"tf-replicate-invariant-op-hoisting"
     if possible. This currently updates or replaces `tf.Shape` ops of replicated
     arguments, either tensors or resources.
 
+    The primary benefit of the pass is to hoist `num_replicas` `_TPUCompile`s
+    into a single `_TPUCompile`.
+
+    This pass assumes that when a `tf.Shape` directly inputs from `replicate`
+    params, then it is the same shape across replicas.
+
     For example, the following
 
     ```mlir
@@ -1903,7 +1932,7 @@ def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch",
         "tf_device.launch"() {
           "tf.B"() {_xla_outside_compilation = "cluster1"}
           tf_device.return
-        } {device = "TPU_REPLICATED_HOST"} : () -> ()
+        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
         "tf.C"()
         tf_device.return
       }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}

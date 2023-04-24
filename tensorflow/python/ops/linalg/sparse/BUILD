@@ -17,21 +17,6 @@ tf_gen_op_wrapper_py(
     deps = ["//tensorflow/core:sparse_csr_matrix_ops_op_lib"],
 )
 
-py_library(
-    name = "sparse",
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    deps = [
-        ":__init__",
-        ":conjugate_gradient",
-        ":sparse_csr_matrix_grad",
-        ":sparse_csr_matrix_ops",
-        ":sparse_py",
-        "//tensorflow/python/framework:composite_tensor",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_strict_library(
     name = "sparse_py",
     srcs = ["sparse.py"],

@@ -278,6 +278,9 @@ Status CompileModuleToLlvmIrImpl(
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
                                       "_gpu_", kAfterOptimizationsDumpName));
 
+  VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
+          << ": " << hlo_module->GetFingerprint128();
+
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   mlir::DialectRegistry registry;
   IrEmitterUnnested::GetDependentDialects(registry);

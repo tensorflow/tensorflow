@@ -43,14 +43,6 @@ bool IsGlobalNcclConfig() {
   return global_nccl_config;
 }
 
-bool IsNcclLaunchModeParallel() {
-  static const bool is_launch_mode_parallel = []() {
-    const char* launch_mode = std::getenv("NCCL_LAUNCH_MODE");
-    return launch_mode && std::string_view(launch_mode) == "PARALLEL";
-  }();
-  return is_launch_mode_parallel;
-}
-
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {

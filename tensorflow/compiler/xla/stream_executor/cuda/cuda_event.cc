@@ -27,7 +27,7 @@ Event::Status GpuEvent::PollForStatus() {
       GpuDriver::QueryEvent(parent_->gpu_context(), gpu_event_);
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "
-               << status.status().error_message();
+               << status.status().message();
     return Event::Status::kError;
   }
 

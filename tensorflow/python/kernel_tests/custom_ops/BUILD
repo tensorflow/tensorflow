@@ -26,7 +26,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -48,7 +48,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -70,6 +70,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )

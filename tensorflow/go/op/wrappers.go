@@ -43536,7 +43536,8 @@ func SetSizeValidateIndices(value bool) SetSizeAttr {
 // allowed but ignored.
 //
 // If `validate_indices` is `True`, this op validates the order and range of `set`
-// indices.
+// indices. Setting is to `False` while passing invalid arguments results in
+// undefined behavior.
 //
 // Arguments:
 //
@@ -54008,6 +54009,14 @@ type TopKV2Attr func(optionalAttr)
 func TopKV2Sorted(value bool) TopKV2Attr {
 	return func(m optionalAttr) {
 		m["sorted"] = value
+	}
+}
+
+// TopKV2IndexType sets the optional index_type attribute to value.
+// If not specified, defaults to DT_INT32
+func TopKV2IndexType(value tf.DataType) TopKV2Attr {
+	return func(m optionalAttr) {
+		m["index_type"] = value
 	}
 }
 

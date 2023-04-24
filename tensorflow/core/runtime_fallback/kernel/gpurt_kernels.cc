@@ -80,8 +80,7 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferToDevice(
   Devices devices;
   Status status = GetDevices(exec_ctx, &devices);
   if (!status.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(
-        absl::InternalError(status.error_message()));
+    return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
   }
   return TransferTensor(exec_ctx, tensor, devices.cpu_device,
                         devices.gpu_device);
@@ -94,8 +93,7 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferFromDevice(
   Devices devices;
   Status status = GetDevices(exec_ctx, &devices);
   if (!status.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(
-        absl::InternalError(status.error_message()));
+    return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
   }
   return TransferTensor(exec_ctx, tensor, devices.gpu_device,
                         devices.cpu_device);
@@ -122,8 +120,7 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> MaybeTransferVariable(
   Devices devices;
   Status status = GetDevices(exec_ctx, &devices);
   if (!status.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(
-        absl::InternalError(status.error_message()));
+    return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
   }
   auto device_variable = TransferTensor(exec_ctx, variable, devices.cpu_device,
                                         devices.gpu_device);

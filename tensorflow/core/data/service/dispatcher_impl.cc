@@ -88,7 +88,7 @@ constexpr char kDatasetsDir[] = "datasets";
 constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
 constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
 constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(2);
-constexpr absl::Duration kDefaultWorkerTimeout = absl::Minutes(1);
+constexpr absl::Duration kDefaultWorkerTimeout = absl::Minutes(10);
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -1194,8 +1194,7 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
         LOG(WARNING) << "Error garbage collecting old iterations: " << s;
       }
     }
-    // TODO(b/250921378): Once leases are supported, periodically handle failed
-    // or missing workers by calling MaintainSnapshotWorkers().
+    DetectMissingWorkers();
     next_check_micros =
         env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
   }
@@ -1220,14 +1219,7 @@ Status DataServiceDispatcherImpl::ReleaseMissingClients()
   return OkStatus();
 }
 
-void DataServiceDispatcherImpl::MaintainSnapshotWorkers()
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  for (const auto& [ignore, snapshot_manager] : snapshots_) {
-    snapshot_manager->UpdateStreams();
-  }
-  DetectMissingWorkers();
-}
-
+// TODO(b/250921378): Once snapshots have leases, inform snapshot managers.
 void DataServiceDispatcherImpl::DetectMissingWorkers()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64_t now = env_->NowMicros();
@@ -1235,9 +1227,6 @@ void DataServiceDispatcherImpl::DetectMissingWorkers()
        it != latest_worker_heartbeats_time_.end();) {
     if (absl::FromUnixMicros(now) >
         it->second + absl::Milliseconds(config_.worker_timeout_ms())) {
-      for (const auto& [ignore, snapshot_manager] : snapshots_) {
-        snapshot_manager->HandleMissingWorker(it->first);
-      }
       LOG(INFO) << "Lost worker " << it->first << " due to timeout";
       latest_worker_heartbeats_time_.erase(it++);
     } else {
@@ -1252,7 +1241,10 @@ Status DataServiceDispatcherImpl::GcOldIterations()
       state_.ListIterations();
   int64_t now = env_->NowMicros();
   for (const auto& iteration : iterations) {
-    if (iteration->finished || iteration->num_clients > 0 ||
+    if (iteration->job->processing_mode.sharding_policy() ==
+            ProcessingModeDef::DYNAMIC ||  // To preserve visitation guarantees.
+        iteration->finished ||
+        iteration->num_clients > 0 ||
         iteration->last_client_released_micros < 0 ||
         now < iteration->last_client_released_micros +
                   (config_.job_gc_timeout_ms() * 1000)) {

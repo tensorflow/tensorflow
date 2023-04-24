@@ -806,7 +806,7 @@ def tsl_cc_test(
     )
 
 def tf_portable_proto_lib():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return ["//tensorflow/core:protos_all_cc_impl", "//tensorflow/tsl/protobuf:protos_all_cc_impl"]
 
 def tf_protobuf_compiler_deps():
     return if_static(

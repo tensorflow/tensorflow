@@ -89,12 +89,8 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
-    # TODO(b/239052279): replace with external dependency on JAX repo once JAX
-    # no longer relies on TF.
-    'jax >= 0.3.15',
     'libclang >= 13.0.0',
-    # TODO(b/263178356): numpy 1.24 breaks TF's tests
-    'numpy >= 1.22, <1.24',
+    'numpy >= 1.22',
     'opt_einsum >= 2.3.2',
     'packaging',
     'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',

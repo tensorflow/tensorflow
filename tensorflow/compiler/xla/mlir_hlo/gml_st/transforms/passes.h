@@ -71,18 +71,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
     bool enableAVX2 = true);
 
-/// Pass to rewrite linalg.dot as linalg.reduce(linalg.map).
-std::unique_ptr<Pass> createRewriteDotAsReducePass();
-
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
-
-/// Pass to transform a conv op for CPU backend.
-std::unique_ptr<OperationPass<func::FuncOp>> createTransformConvForCpuPass();
-
-/// Pass to transform a batch_matmul op for CPU backend.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createTransformBatchMatmulForCpuPass();
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
@@ -123,6 +113,10 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> createFusionOutliningPass();
 /// Pass to inline fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createInlineFusionClustersPass();
+
+/// Pass with canonicalization patterns for linalg ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createOptimizeLinalgOpsPass();
 
 /// Pass to rewrite tensor.from_elements into tensor.insert.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -233,7 +227,8 @@ struct GmlStCPUTilingOptions
 
   Option<int64_t> statsDetailLevel{
       *this, "stats-detail-level",
-      llvm::cl::desc("Vector size for a 1D reduction."), llvm::cl::init(0)};
+      llvm::cl::desc("Detail level for collecting IR statistics."),
+      llvm::cl::init(0)};
 
   Option<bool> fuseDegenerateReshapes{
       *this, "fuse-degenerate-reshapes",

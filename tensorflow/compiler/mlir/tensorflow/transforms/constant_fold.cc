@@ -33,13 +33,14 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
 namespace mlir {
 namespace TF {
 
 static bool IsOk(const tensorflow::Status& s) {
   if (s.ok()) return true;
-  VLOG(2) << s.error_message();
+  VLOG(2) << s.message();
   return false;
 }
 
@@ -146,10 +147,11 @@ static mlir::LogicalResult EvaluateOperation(
   // attribute of the MLIR op. The assigned device might be remote, not
   // available during compilation or compilation only device for on demand
   // execution which may create a recursion if used for constant folding.
-  constexpr char kHostCpu[] = "/job:localhost/replica:0/task:0/CPU:0";
+  auto host_cpu = tensorflow::DeviceNameUtils::FullName(
+      /*job=*/"localhost", /*replica=*/0, /*task=*/0, /*type=*/"CPU", /*id=*/0);
 
   auto statusor_runner = tensorflow::tfrt_stub::OpKernelRunner::Create(
-      node_def->op(), node_def->name(), kHostCpu, operands.size(),
+      node_def->op(), node_def->name(), host_cpu, operands.size(),
       [&](tensorflow::AttrValueMap* attr_value_map) {
         *attr_value_map = node_def->attr();
         return tensorflow::OkStatus();

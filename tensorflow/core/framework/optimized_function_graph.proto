@@ -24,8 +24,7 @@ message OptimizedFunctionGraph {
   // Number of return nodes. This is an output of graph preprocessing.
   uint32 num_return_nodes = 5;
 
-  // Time spent on running the graph optimization passes for this function.
-  optional uint64 optimization_time_secs = 6;
+  reserved 6;
 
   // Enum for distinguishing the origin where the proto is created.
   //
@@ -42,4 +41,8 @@ message OptimizedFunctionGraph {
 
   // Indicates the source environment where this proto is generated.
   optional OptimizationSource source = 7;
+
+  // Time (in microseconds) spent on running the graph optimization passes for
+  // this function.
+  optional uint64 optimization_time_usecs = 8;
 }

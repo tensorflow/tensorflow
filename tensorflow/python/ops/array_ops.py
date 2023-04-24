@@ -19,7 +19,7 @@ import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -6862,7 +6862,7 @@ def stop_gradient(input, name=None):  # pylint: disable=redefined-builtin
   # since the backward function doesn't run in the forward pass. Pausing the
   # tape around this op instructs any tf.GradientTapes to ignore the
   # forward-pass output of StopGradient, which may be much more efficient.
-  with tape.stop_recording():
+  with record.stop_recording():
     return gen_array_ops.stop_gradient(input, name=name)
 
 

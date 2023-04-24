@@ -35,9 +35,11 @@ constexpr char kMaxInflightBatchesAttr[] = "_max_inflight_batches";
 constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
 // Default thread count in the per-process batching thread pool.
 // The value is the same as the TF batch kernel BatchKernel.
-constexpr int64_t kBatchThreadPoolSize = 128;
 
-int32 NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {
+}  // namespace
+
+int32 BatchFunctionFallbackKernelBase::
+    NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {
   int32_t num;
   const char* val = std::getenv("TF_NUM_BATCH_THREADS");
 
@@ -45,9 +47,8 @@ int32 NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {
                                                    : default_num_batch_threads;
 }
 
-}  // namespace
-
-thread::ThreadPool* GetOrCreateBatchThreadsPool() {
+thread::ThreadPool*
+BatchFunctionFallbackKernelBase::GetOrCreateBatchThreadsPool() {
   static thread::ThreadPool* shared_thread_pool = [&]() -> thread::ThreadPool* {
     serving::BoundedExecutor::Options options;
 
@@ -194,7 +195,7 @@ void BatchFunctionFallbackKernelBase::SetAdaptiveBatchSchedulerOptions(
   // valid.
   // Note`GetOrCreateBatchThreadsPool` creates the thread pool once and
   // re-uses the thread-pool instance afterwards.
-  thread::ThreadPool* thread_pool = tfrt_stub::GetOrCreateBatchThreadsPool();
+  thread::ThreadPool* thread_pool = GetOrCreateBatchThreadsPool();
   OP_REQUIRES(
       c, thread_pool != nullptr,
       errors::FailedPrecondition("Failed to create batch threads pool"));

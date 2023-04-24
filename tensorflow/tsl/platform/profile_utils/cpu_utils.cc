@@ -120,13 +120,31 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
          "CPU frequency";
   return INVALID_FREQUENCY;
 #elif defined(__APPLE__)
-  int64 freq_hz = 0;
-  size_t freq_size = sizeof(freq_hz);
+  int64_t freq_hz = 0;
+  size_t freq_hz_size = sizeof(freq_hz);
   int retval =
-      sysctlbyname("hw.cpufrequency_max", &freq_hz, &freq_size, NULL, 0);
+      sysctlbyname("hw.cpufrequency_max", &freq_hz, &freq_hz_size, NULL, 0);
   if (retval != 0 || freq_hz < 1e6) {
-    LOG(WARNING) << "Failed to get CPU frequency: " << freq_hz << " Hz";
-    return INVALID_FREQUENCY;
+    // Apple M1/M2 do not have hw.cpufrequency.* values, but instead rely on
+    // a base clock rate hw.tbfrequency and multiplier kern.clockrate.hz.
+    int64_t tbfrequency = 0;
+    size_t tbfrequency_size = sizeof(tbfrequency);
+    retval = sysctlbyname("hw.tbfrequency", &tbfrequency, &tbfrequency_size,
+                          NULL, 0);
+    if (retval == 0) {
+      clockinfo clock_info;
+      size_t clock_info_size = sizeof(clock_info);
+      retval = sysctlbyname("kern.clockrate", &clock_info, &clock_info_size,
+                            NULL, 0);
+      if (retval == 0) {
+        freq_hz = clock_info.hz * tbfrequency;
+      }
+    }
+
+    if (retval != 0 || freq_hz < 1e6) {
+      LOG(WARNING) << "Failed to get CPU frequency: " << freq_hz << " Hz";
+      return INVALID_FREQUENCY;
+    }
   }
   return freq_hz;
 #elif defined(_WIN32)

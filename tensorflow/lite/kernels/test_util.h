@@ -1220,7 +1220,7 @@ class DimsAreMatcher {
 
   // Required method to implement for matcher objects. We overload on
   // both `TfLiteTensor*` and `TfLiteIntArray` for flexibility.
-  bool MatchAndExplain(TfLiteIntArray* arg,
+  bool MatchAndExplain(const TfLiteIntArray* arg,
                        testing::MatchResultListener* result_listener) const {
     if (arg == nullptr) {
       *result_listener << "dims are null";
@@ -1233,7 +1233,7 @@ class DimsAreMatcher {
     return false;
   }
 
-  bool MatchAndExplain(TfLiteTensor* arg,
+  bool MatchAndExplain(const TfLiteTensor* arg,
                        testing::MatchResultListener* result_listener) const {
     return MatchAndExplain(arg->dims, result_listener);
   }

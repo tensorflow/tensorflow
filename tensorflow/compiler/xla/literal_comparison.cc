@@ -144,6 +144,24 @@ Status MakeErrorStatus(NativeT lhs, NativeT rhs,
 }
 
 template <>
+Status MakeErrorStatus(s4 lhs, s4 rhs, absl::Span<const int64_t> multi_index) {
+  return InvalidArgument(
+      "first mismatch at array index %s:\n  expected value: %s\n  actual "
+      "value:   %s",
+      LiteralUtil::MultiIndexAsString(multi_index),
+      StrCat(static_cast<int8_t>(lhs)), StrCat(static_cast<int8_t>(rhs)));
+}
+
+template <>
+Status MakeErrorStatus(u4 lhs, u4 rhs, absl::Span<const int64_t> multi_index) {
+  return InvalidArgument(
+      "first mismatch at array index %s:\n  expected value: %s\n  actual "
+      "value:   %s",
+      LiteralUtil::MultiIndexAsString(multi_index),
+      StrCat(static_cast<uint8_t>(lhs)), StrCat(static_cast<uint8_t>(rhs)));
+}
+
+template <>
 Status MakeErrorStatus(tsl::float8_e5m2 lhs, tsl::float8_e5m2 rhs,
                        absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<tsl::float8_e5m2, uint8_t>(lhs, rhs,
@@ -782,6 +800,9 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       case PRED:
         result = Equal<bool>(expected, actual, index, 0, miscompared_ptr);
         break;
+      case S4:
+        result = Equal<s4>(expected, actual, index, 0, miscompared_ptr);
+        break;
       case S8:
         result = Equal<int8_t>(expected, actual, index, 0, miscompared_ptr);
         break;
@@ -793,6 +814,9 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case S64:
         result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
+        break;
+      case U4:
+        result = Equal<u4>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U8:
         result = Equal<uint8_t>(expected, actual, index, 0, miscompared_ptr);
@@ -874,14 +898,13 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
           NearHelper(expected_element, actual_element, element_index, error,
                      detailed_message, miscompare_callback);
       if (!element_result.ok()) {
-        element_result = InvalidArgument("Array at shape index %s, %s",
-                                         element_index.ToString(),
-                                         element_result.error_message());
+        element_result =
+            InvalidArgument("Array at shape index %s, %s",
+                            element_index.ToString(), element_result.message());
         if (return_status.ok()) {
           return_status = element_result;
         } else {
-          return_status =
-              AppendStatus(return_status, element_result.error_message());
+          return_status = AppendStatus(return_status, element_result.message());
         }
       }
     }
@@ -892,7 +915,7 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       return_status =
           InvalidArgument("\nMismatches in shape %s (%d elements):\n%s",
                           ShapeUtil::HumanString(actual.shape()),
-                          total_elements, return_status.error_message());
+                          total_elements, return_status.message());
     }
     return return_status;
   }
@@ -1062,7 +1085,7 @@ Status EmitLiteralsInErrorMessage(const Status& result,
     return result;
   }
   return InvalidArgument("%s\n\nExpected literal:\n%s\n\nActual literal:\n%s",
-                         result.error_message(), ToStringTruncated(expected),
+                         result.message(), ToStringTruncated(expected),
                          ToStringTruncated(actual));
 }
 

@@ -7,6 +7,7 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
+    "//learning/brain/python/platform:__subpackages__",
 ]
 
 package(
@@ -47,9 +48,11 @@ py_library(
         ":build_info",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:util",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
@@ -345,7 +348,6 @@ tf_py_test(
     deps = [
         ":build_info",
         ":client_testlib",
-        ":platform",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
     ],
 )

@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
@@ -62,8 +63,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/casts.h"
@@ -126,6 +130,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       module_name_(params.module_name),
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
+      enable_persistent_temp_buffers_(params.enable_persistent_temp_buffers),
       debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
       verbose_buffer_assignment_string_dumper_(
           params.verbose_buffer_assignment_string_dumper),
@@ -140,6 +145,14 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
 GpuExecutable::~GpuExecutable() {
   if (has_module()) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
+  }
+
+  // Deallocate all persistent buffers.
+  for (auto& [executor, map] : persistent_temp_buffers_) {
+    for (const auto& alloc_buffer : map) {
+      se::DeviceMemoryBase buffer = alloc_buffer.second;
+      executor->UnifiedMemoryDeallocate(buffer.opaque());
+    }
   }
 }
 
@@ -233,7 +246,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s",
-          stream_to_sync, block_status.error_message());
+          stream_to_sync, block_status.message());
     }
   }
 
@@ -382,7 +395,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
       StatusOr<se::OwningDeviceMemory> buffer =
           memory_allocator->Allocate(device_ordinal, buffer_size);
       if (!buffer.ok()) {
-        return ResourceExhausted("%s\n%s\n", buffer.status().error_message(),
+        return ResourceExhausted("%s\n%s\n", buffer.status().message(),
                                  verbose_buffer_assignment_string_dumper_());
       }
       buffer_address = buffer->Release();
@@ -415,7 +428,8 @@ static Status CheckAlignment(const BufferAllocation& allocation,
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal) {
+    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+    const BufferAllocToDeviceMemoryMap& buffer_alloc_to_persistent_memory_map) {
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
@@ -425,10 +439,16 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
   buffers.reserve(num_buffers);
   for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = allocations_[i];
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase buffer,
-        BufferForAllocation(arguments, globals, allocation, memory_allocator,
-                            device_ordinal, i));
+    // Check if the buffer is already stored as a persistent buffer.
+    se::DeviceMemoryBase buffer;
+    if (buffer_alloc_to_persistent_memory_map.contains(allocation.index())) {
+      buffer = buffer_alloc_to_persistent_memory_map.at(allocation.index());
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          buffer, BufferForAllocation(arguments, globals, allocation,
+                                      memory_allocator, device_ordinal, i));
+    }
+
     buffers.push_back(buffer);
     TF_RETURN_IF_ERROR(CheckAlignment(allocation, buffer, i));
   }
@@ -485,17 +505,59 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       block_host_until_done ? run_options->stream() : nullptr);
 }
 
+Status GpuExecutable::PopulatePersistentTempBuffers(
+    se::StreamExecutor* executor) {
+  auto search = persistent_temp_buffers_.find(executor);
+  if (search != persistent_temp_buffers_.end()) {
+    return OkStatus();
+  }
+
+  // Allocate persistent temp buffers.
+  BufferAllocToDeviceMemoryMap buffer_alloc_to_device_memory_map;
+  for (const BufferAllocation& allocation : allocations_) {
+    if (!allocation.IsPreallocatedTempBuffer()) {
+      continue;
+    }
+
+    const int64_t buffer_size = allocation.size();
+    void* ptr = executor->UnifiedMemoryAllocate(buffer_size);
+    if (ptr) {
+      se::DeviceMemoryBase buffer(ptr, buffer_size);
+      buffer_alloc_to_device_memory_map[allocation.index()] = buffer;
+    }
+  }
+
+  persistent_temp_buffers_[executor] = buffer_alloc_to_device_memory_map;
+  return OkStatus();
+}
+
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
     VariantArguments arguments) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // If persistent buffers are enabled, the executable cannot execute
+  // concurrently, therefore performance can suffer under contention.
+  absl::MutexLockMaybe lock(
+      enable_persistent_temp_buffers_ ? &persistent_temp_buffers_mu_ : nullptr);
+
+  // Map from buffer allocation to persistent temp buffers. It is empty if
+  // persistent temp buffer is not enabled.
+  BufferAllocToDeviceMemoryMap persistent_buffers_map = {};
+
+  if (enable_persistent_temp_buffers_) {
+    persistent_temp_buffers_mu_.AssertHeld();
+    TF_RETURN_IF_ERROR(PopulatePersistentTempBuffers(executor));
+    persistent_buffers_map = persistent_temp_buffers_[executor];
+  }
+
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
 
-  se::StreamExecutor* executor = run_options->stream()->parent();
 
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
@@ -518,7 +580,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   TF_ASSIGN_OR_RETURN(
       BufferAllocations buffer_allocations,
       GenerateBufferAllocations(arguments, globals, memory_allocator,
-                                device_ordinal));
+                                device_ordinal, persistent_buffers_map));
   VLOG(2) << buffer_allocations.ToString();
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
@@ -602,7 +664,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             memory_allocator->Allocate(device_ordinal, allocation_size);
         if (!allocated_buffer.ok()) {
           return ResourceExhausted("%s\n%s\n",
-                                   allocated_buffer.status().error_message(),
+                                   allocated_buffer.status().message(),
                                    verbose_buffer_assignment_string_dumper_());
         }
         result_buffer = allocated_buffer->Release();
@@ -635,8 +697,14 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       run_options, buffer_allocations, block_host_until_done, gpu_lock));
 
   // Free all temporary allocations.
-  TF_RETURN_IF_ERROR(
-      buffer_allocations.TearDown(buffers_in_result, allocations_));
+  std::vector<BufferAllocation> non_persistent_allocations;
+  for (const BufferAllocation& allocation : allocations_) {
+    if (!persistent_buffers_map.contains(allocation.index())) {
+      non_persistent_allocations.push_back(allocation);
+    }
+  }
+  TF_RETURN_IF_ERROR(buffer_allocations.TearDown(buffers_in_result,
+                                                 non_persistent_allocations));
 
   // Free allocations for arguments.
   if (auto args = std::get_if<absl::Span<ExecutionInput>>(&arguments)) {

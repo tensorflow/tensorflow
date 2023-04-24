@@ -2163,9 +2163,11 @@ ENTRY AddDependency {
 R"(HloModule MinMaxValues, entry_computation_layout={()->c128[2]{0}}
 
 ENTRY MinMaxValues {
+  x.s4 = s4[2]{0} constant({-8, 7})
   x.s8 = s8[2]{0} constant({-128, 127})
   x.s16 = s16[2]{0} constant({-32768, 32767})
   x.s32 = s32[2]{0} constant({-2147483648, 2147483647})
+  x.u4 = u4[2]{0} constant({0, 15})
   x.u8 = u8[2]{0} constant({0, 255})
   x.u16 = u16[2]{0} constant({0, 65535})
   x.u32 = u32[2]{0} constant({0, 4294967295})
@@ -2638,7 +2640,7 @@ ENTRY %some_2x3 () -> f32[2,3] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(), "unexpected '}' token");
+  ExpectHasSubstr(result.status().message(), "unexpected '}' token");
 }
 
 TEST_F(HloParserTest, LiteralDimensionsMismatch_1) {
@@ -2651,7 +2653,7 @@ ENTRY %some_2 () -> f32[2] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "expects nested array in rank 1, but sees larger");
 }
 
@@ -2665,7 +2667,7 @@ ENTRY %some_2x3 () -> f32[2,3] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "expects nested array in rank 2, but sees 1");
 }
 
@@ -2679,7 +2681,7 @@ ENTRY %some_2x3x2 () -> f32[2,3,2] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "expects 3 elements in the [0]th element");
 }
 
@@ -2694,7 +2696,7 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "is out of range for literal's primitive type F16");
 }
 
@@ -2715,9 +2717,56 @@ TEST_F(HloParserTest, ConstantBf16Overflow) {
   ENTRY test {
     ROOT c = bf16[] constant(1e100)
   })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "out of range");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "out of range");
+}
+
+TEST_F(HloParserTest, ConstantU4Underflow) {
+  const std::string original = R"(
+      HloModule ConstantU4Underflow_module
+      ENTRY %ConstantU4Underflow () -> u4[] {
+        ROOT %constant = u4[] constant(-1)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "is out of range for literal's primitive type U4");
+}
+
+TEST_F(HloParserTest, ConstantU4Overflow) {
+  const std::string original = R"(
+      HloModule ConstantU4Overflow_module
+      ENTRY %ConstantU4Overflow () -> u4[] {
+        ROOT %constant = u4[] constant(16)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "is out of range for literal's primitive type U4");
+}
+
+TEST_F(HloParserTest, ConstantS4Underflow) {
+  const std::string original = R"(
+      HloModule ConstantS4Underflow_module
+      ENTRY %ConstantS4Underflow () -> s4[] {
+        ROOT %constant = s4[] constant(-9)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "is out of range for literal's primitive type S4");
+}
+
+TEST_F(HloParserTest, ConstantS4Overflow) {
+  const std::string original = R"(
+      HloModule ConstantS4Overflow_module
+      ENTRY %ConstantS4Overflow () -> s4[] {
+        ROOT %constant = s4[] constant(8)
+      })";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "is out of range for literal's primitive type S4");
 }
 
 TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
@@ -2738,7 +2787,7 @@ TEST_F(HloParserTest, ConstantUnsignedOverflow) {
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(OkStatus(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "is out of range for literal's primitive type U32");
 }
 
@@ -2858,9 +2907,8 @@ ENTRY %NanPayload () -> bf16[1] {
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "tries to set NaN payload 0x3ff");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "tries to set NaN payload 0x3ff");
 }
 
 TEST_F(HloParserTest, InvalidNanPayloadF8e4m3fn) {
@@ -2872,9 +2920,8 @@ ENTRY %NanPayload () -> f8e4m3fn[1] {
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "tries to set NaN payload 0x1");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "tries to set NaN payload 0x1");
 }
 
 TEST_F(HloParserTest, AttributesAnyOrder) {
@@ -2907,19 +2954,19 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
                       absl::StrCat(prefix, ",dim_labels=00_01->10", suffix))
                       .status()
-                      .error_message(),
+                      .message(),
                   "expects unique");
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
                       absl::StrCat(prefix, ",dim_labels=012_0123->210", suffix))
                       .status()
-                      .error_message(),
+                      .message(),
                   "must have same number of spatial dimensions");
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
                       absl::StrCat(prefix, ",dim_labels=013_0123->210", suffix))
                       .status()
-                      .error_message(),
+                      .message(),
                   "expects [0-2bf?]");
 }
 
@@ -2936,9 +2983,8 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "unexpected attribute \"calls\"");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "unexpected attribute \"calls\"");
 }
 
 TEST_F(HloParserTest, MissingAttribute) {
@@ -2954,9 +3000,8 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "attribute channel_id is expected but not seen");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "attribute channel_id is expected but not seen");
 }
 
 TEST_F(HloParserTest, PredecessorUndefined) {
@@ -2972,9 +3017,8 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "'done' is not defined");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "'done' is not defined");
 }
 
 TEST_F(HloParserTest, SliceAllowOmitStride1) {
@@ -3000,9 +3044,8 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "expects padding_low and padding_high separated by '_'");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects padding_low and padding_high separated by '_'");
 }
 
 TEST_F(HloParserTest, CommaBetweenSubAttributes) {
@@ -3023,10 +3066,9 @@ ENTRY %CustomCall () -> f32[1] {
   %constant = f32[1]{0} constant({12345})
   ROOT %foo = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar"
 })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Shape of computation CustomCall, f32[1], is not compatible "
-      "with that of its root instruction foo, f32[1,2,3]");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "Shape of computation CustomCall, f32[1], is not compatible "
+                  "with that of its root instruction foo, f32[1,2,3]");
 }
 
 TEST_F(HloParserTest, EntryComputationWithLayout) {
@@ -3127,9 +3169,8 @@ ENTRY c1 {
 })";
   // Verify that the error message points to the beginning of the unterminated
   // comment.
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "/* unterminated\n^");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "/* unterminated\n^");
 }
 
 TEST_F(HloParserTest, SlashSlashComments) {
@@ -3167,9 +3208,8 @@ ENTRY c1 {
 ENTRY c2 {
   const2 = f32[1]{0} constant({67890})
 })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "expects only one ENTRY");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects only one ENTRY");
 }
 
 TEST_F(HloParserTest, SimpleAliasing) {
@@ -3230,9 +3270,8 @@ ENTRY entry {
   ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
 }
   )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Expects '}' at the end of ShapeIndex");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "Expects '}' at the end of ShapeIndex");
 }
 
 TEST_F(HloParserTest, AliasingShapeIndexNotNumerical) {
@@ -3246,9 +3285,8 @@ ENTRY entry {
   ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
 }
   )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "expects integer");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects integer");
 }
 
 TEST_F(HloParserTest, AliasingWrongFormatNoColon) {
@@ -3262,9 +3300,8 @@ ENTRY entry {
   ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
 }
   )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Expects '{' at the start of ShapeIndex");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "Expects '{' at the start of ShapeIndex");
 }
 
 TEST_F(HloParserTest, AliasingWrongFormatTwoColons) {
@@ -3278,9 +3315,8 @@ ENTRY entry {
   ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
 }
   )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Expects '}' at the end of aliasing description");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "Expects '}' at the end of aliasing description");
 }
 
 TEST_F(HloParserTest, AliasingWrongFormatAlphaParam) {
@@ -3294,9 +3330,8 @@ ENTRY entry {
   ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
 }
   )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "expects integer");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects integer");
 }
 
 TEST_F(HloParserTest, MultipleRoots) {
@@ -3305,9 +3340,8 @@ ENTRY consts {
   ROOT const1 = f32[1]{0} constant({12345})
   ROOT const2 = f32[1]{0} constant({12345})
 })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "one computation should have only one ROOT");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "one computation should have only one ROOT");
 }
 
 TEST_F(HloParserTest, ComputationExists) {
@@ -3318,9 +3352,8 @@ comp {
 comp {
   const2 = f32[1]{0} constant({67890})
 })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      R"(was parsing 2:1: error: computation previously defined here
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  R"(was parsing 2:1: error: computation previously defined here
 comp {
 ^)");
 }
@@ -3342,7 +3375,7 @@ ENTRY entry {
   ROOT call1 = s32[] call(param), to_apply=tcallb
 })";
   ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      ParseAndReturnUnverifiedModule(original).status().message(),
       "was parsing 8:39: error: instruction does not exist: aparam");
 }
 
@@ -3462,9 +3495,8 @@ ENTRY nontuple_infeed {
   token0 = token[] after-all()
   ROOT infeed = pred[] infeed(token0)
 })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "infeed must have a non-empty tuple shape");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "infeed must have a non-empty tuple shape");
 }
 
 TEST(HloParserSingleOpTest, SingleOp) {
@@ -3610,7 +3642,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_DoesNotExist) {
 })";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("does not exist: x"));
+  EXPECT_THAT(status.message(), HasSubstr("does not exist: x"));
 }
 
 TEST(HloParserSingleOpTest, SingleOpWithNested_NoLhs) {
@@ -3621,7 +3653,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_NoLhs) {
 })";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("expects name"));
+  EXPECT_THAT(status.message(), HasSubstr("expects name"));
 }
 
 TEST(HloParserSingleOpTest, SingleOpWithNested_NoOperandName) {
@@ -3632,7 +3664,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_NoOperandName) {
 })";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("expects name"));
+  EXPECT_THAT(status.message(), HasSubstr("expects name"));
 }
 
 TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
@@ -3655,7 +3687,7 @@ TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
   )";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("Expected eof"));
+  EXPECT_THAT(status.message(), HasSubstr("Expected eof"));
 }
 
 TEST_F(HloParserTest, IsScheduledIsFalse) {
@@ -3756,9 +3788,8 @@ ENTRY %CustomCallWrongNumberofOperandConstraints (p0: f32[42,2,3], p1: f32[123,4
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Expected 2 operand layout constraints, 1 given");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "Expected 2 operand layout constraints, 1 given");
 }
 
 TEST_F(HloParserTest, CustomCallIncompatibleOperandConstraints) {
@@ -3772,9 +3803,8 @@ ENTRY %CustomCallIncompatibleOperandConstraints (p0: f32[42,2,3], p1: f32[123,4]
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "operand 1 is not compatible with operand shape");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "operand 1 is not compatible with operand shape");
 }
 
 TEST_F(HloParserTest, CustomCallWithNonexistentVersion) {
@@ -3786,9 +3816,8 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Unknown API version");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "Unknown API version");
 }
 
 TEST_F(HloParserTest, CustomCallWithUnspecifiedVersion) {
@@ -3800,9 +3829,8 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 }
 
 )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid API version");
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "Invalid API version");
 }
 
 TEST_F(HloParserTest, AllowShapeWhitespace) {
@@ -3827,7 +3855,7 @@ ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
 }
 )";
 
-  ExpectHasSubstr(ParseAndReturnUnverifiedModule(text).status().error_message(),
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(text).status().message(),
                   "The declared operand shape f32[2,5]{1,0} is not compatible"
                   " with the shape of the operand instruction f32[2,2]{1,0}.");
 }
@@ -3909,7 +3937,7 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // Wrong minor_to_major.
   shape_string = "f32[123,456,789]{1:T(2, * , 128)}";
   auto result = ParseShape(shape_string);
-  ExpectHasSubstr(result.status().error_message(),
+  ExpectHasSubstr(result.status().message(),
                   "Dimensions size is 3, but minor to major size is 1.");
 }
 
@@ -4014,7 +4042,7 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
   const std::string hlo_string = "par0 = f32[3,5] parameter(-1)";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   ASSERT_FALSE(result.status().ok());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               HasSubstr("parameter number must be >= 0"));
 }
 
@@ -4024,7 +4052,7 @@ TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
       "parameter_replication={true,false,true}";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   ASSERT_FALSE(result.status().ok());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               HasSubstr("parameter has 2 leaf buffers, but "
                         "parameter_replication has 3 elements"));
 }
@@ -4052,7 +4080,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               HasSubstr("The first operand must be a scalar"));
 }
 
@@ -4079,7 +4107,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               HasSubstr("The first operand must be a scalar of PRED or S32"));
 }
 
@@ -4107,7 +4135,7 @@ TEST_F(HloParserTest,
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               HasSubstr("unexpected attribute \"branch_computations\""));
 }
 
@@ -4270,7 +4298,7 @@ ENTRY test {
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(), HasSubstr("dimensions"));
+  EXPECT_THAT(result.status().message(), HasSubstr("dimensions"));
 }
 
 TEST_F(HloParserTest, InvalidDimLevelType) {

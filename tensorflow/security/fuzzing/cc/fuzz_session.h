@@ -132,7 +132,7 @@ class FuzzSession {
       // within a session.  Failure to create the session means we
       // can't send any data to the op.
       LOG(FATAL) << "Could not create session: "  // Crash OK
-                 << status.error_message();
+                 << status.message();
     }
     return status;
   }
@@ -157,7 +157,7 @@ class FuzzSession {
   void Fuzz(const T&... args) {
     Status status = InitIfNeeded();
     TF_CHECK_OK(status) << "Fuzzer graph initialization failed: "
-                        << status.error_message();
+                        << status.message();
     // No return value from fuzzing:  Success is defined as "did not
     // crash".  The actual application results are irrelevant.
     FuzzImpl(args...);

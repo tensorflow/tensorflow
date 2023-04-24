@@ -480,6 +480,7 @@ tf_cc_test_mkl(
     linkstatic = 1,
     deps = [
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
     ] + MKL_TEST_DEPS,
 )

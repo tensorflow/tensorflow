@@ -12,7 +12,7 @@ exports_files(
         "builtin_op_kernels.h",
         "register.h",
     ],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 cc_test(

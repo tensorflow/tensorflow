@@ -86,7 +86,7 @@ tf_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )
@@ -99,7 +99,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )
@@ -150,6 +150,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -190,7 +191,6 @@ cuda_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -249,7 +249,6 @@ cuda_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
     ],
 )
 

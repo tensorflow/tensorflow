@@ -186,7 +186,7 @@ void MakeTfObjectType(PyObject** py_type) {
   };
 
   type->tp_dealloc = [](PyObject* self) {
-    VLOG(1) << "Destroy: " << T::kTypeName;
+    VLOG(3) << "Destroy: " << T::kTypeName;
     PyTypeObject* tp = Py_TYPE(self);
     T* o = reinterpret_cast<T*>(self);
     if (o->weakrefs) {
@@ -199,7 +199,7 @@ void MakeTfObjectType(PyObject** py_type) {
   };
 
   type->tp_traverse = [](PyObject* self, visitproc visit, void* arg) {
-    VLOG(2) << "Visit: " << T::kTypeName;
+    VLOG(3) << "Visit: " << T::kTypeName;
     T* o = reinterpret_cast<T*>(self);
     Py_VISIT(Py_TYPE(self));
     Py_VISIT(o->dict);
@@ -207,7 +207,7 @@ void MakeTfObjectType(PyObject** py_type) {
   };
 
   type->tp_clear = [](PyObject* self) {
-    VLOG(1) << "Clear: " << T::kTypeName;
+    VLOG(3) << "Clear: " << T::kTypeName;
     T* o = reinterpret_cast<T*>(self);
     Py_CLEAR(o->dict);
     o->Clear();

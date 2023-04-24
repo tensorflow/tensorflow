@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
         "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:variable_utils",
@@ -123,7 +124,6 @@ py_test(
         # TODO(b/145618471): Remove this transitive dependency.
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
-        "//tensorflow/python/ops/signal",
     ],
 )
 

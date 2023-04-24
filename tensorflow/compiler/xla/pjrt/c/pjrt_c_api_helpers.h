@@ -82,11 +82,13 @@ using PJRT_SerializedExecutableDeleter =
 PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
     const PJRT_Api* api);
 
-using PJRT_DeviceTopologyDeleter = std::function<void(PJRT_DeviceTopology*)>;
+using PJRT_TopologyDescriptionDeleter =
+    std::function<void(PJRT_TopologyDescription*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.
 // The lifetime of the Api pointed to must be longer than the client.
-PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api);
+PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
+    const PJRT_Api* api);
 
 // Fatal error logging if status is not success. This terminates the process
 // and frees the PJRT_Error passed in.

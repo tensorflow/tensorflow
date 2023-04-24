@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
@@ -165,6 +166,15 @@ class KernelFallbackCompatRequestState {
     client_graph_resource_context_ = client_graph_resource_context;
   }
 
+  void set_model_config(
+      const tensorflow::tfrt_stub::ModelConfig* model_config) {
+    model_config_ = model_config;
+  }
+
+  const tensorflow::tfrt_stub::ModelConfig* model_config() const {
+    return model_config_;
+  }
+
  private:
   int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
@@ -204,6 +214,8 @@ class KernelFallbackCompatRequestState {
   tensorflow::tfrt_stub::CostRecorder* cost_recorder_ = nullptr;
 
   tfrt::ResourceContext* client_graph_resource_context_ = nullptr;
+
+  const tensorflow::tfrt_stub::ModelConfig* model_config_ = nullptr;
 };
 
 // Set up fallback context with common tensorflow states such as devices,

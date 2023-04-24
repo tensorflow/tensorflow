@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -67,7 +68,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
-  options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
+  options.setFunctionBoundaryTypeConversion(LayoutMapOption::IdentityLayoutMap);
   options.createDeallocs = !new_deallocator;
   options.unknownTypeConverterFn = [](mlir::Value value,
                                       mlir::Attribute memorySpace,
@@ -181,6 +182,8 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::gml_st::createOptimizeLinalgOpsPass());
   if (options.enable_tiling_and_fusion) {
     mlir::gml_st::GmlStCPUTilingOptions opts =
         mlir::gml_st::getDefaultCPUPipelineOptions(options.cpu_name);
@@ -309,6 +312,7 @@ void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
   mlir::arith::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       dialects);
+  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerTilingInterfaceExternalModels(dialects);
   mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);
@@ -327,7 +331,7 @@ static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
       Status status = CreateHloXlaPipeline(pm, options);
       if (!status.ok()) {
         LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                   << status.error_message();
+                   << status.message();
       }
     });
 

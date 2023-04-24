@@ -70,10 +70,10 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:no_contrib",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python:training",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:loader",
         "@six_archive//:six",
     ],
@@ -93,6 +93,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":freeze_graph_lib",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -114,7 +115,6 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python/summary:summary_py",
     ],
 )
@@ -155,8 +155,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:platform",
         "//tensorflow/python:py_checkpoint_reader",
+        "//tensorflow/python/platform:flags",
     ],
 )
 
@@ -167,7 +167,7 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -185,7 +185,6 @@ py_binary(
     deps = [
         ":strip_unused_lib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
         "@six_archive//:six",
     ],
 )
@@ -218,7 +217,8 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -242,7 +242,7 @@ py_library(
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:gfile",
         "@six_archive//:six",
     ],
 )
@@ -275,7 +275,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_kernel_registry",
     ],
 )
@@ -296,7 +297,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":selective_registration_header_lib",
-        "//tensorflow/python:platform",
     ],
 )
 
@@ -308,7 +308,7 @@ py_test(
     deps = [
         ":selective_registration_header_lib",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -335,6 +335,7 @@ py_library(
         "//tensorflow/python",
         "//tensorflow/python/client:session",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
+        "//tensorflow/python/platform:tf_logging",
     ] + if_google([
         "//tensorflow/core/tfrt/tfrt_session",
         "//tensorflow_text:tensorflow_text",
@@ -348,6 +349,9 @@ py_library(
     deps = [
         "//tensorflow/python",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:tf_logging",
     ] + if_xla_available(
         ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
     ),
@@ -365,6 +369,7 @@ py_test(
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -378,7 +383,6 @@ py_binary(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model",
         "@absl_py//absl:app",

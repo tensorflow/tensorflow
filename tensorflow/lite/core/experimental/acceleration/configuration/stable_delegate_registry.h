@@ -15,43 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_STABLE_DELEGATE_REGISTRY_H_
 #define TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_STABLE_DELEGATE_REGISTRY_H_
 
-#include <string>
-#include <unordered_map>
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-#include "absl/synchronization/mutex.h"
-#include "tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h"
+#include "tensorflow/lite/core/acceleration/configuration/stable_delegate_registry.h"  // IWYU pragma: export
 
-namespace tflite {
-namespace delegates {
-
-// A dedicated singleton registry for TfLiteStableDelegate.
-// Note that there is also a non-stable delegate registry
-// (third_party/tensorflow/lite/core/experimental/acceleration/configuration/
-// delegate_registry.h)
-// but it does not serve very well for TfLiteStableDelegate as it could not
-// register all the information of TfLiteStableDelegate and it uses concrete
-// types.
-class StableDelegateRegistry {
- public:
-  // Registers a TfLiteStableDelegate pointer to the registry.
-  static void RegisterStableDelegate(const TfLiteStableDelegate* delegate);
-  // Retrieves the pointer to the corresponding TfLiteStableDelegate from the
-  // registry given a delegate name. Returns nullptr if no registration found.
-  static const TfLiteStableDelegate* RetrieveStableDelegate(
-      const std::string& name);
-
- private:
-  static StableDelegateRegistry* GetSingleton();
-  void RegisterStableDelegateImpl(const TfLiteStableDelegate* delegate);
-  const TfLiteStableDelegate* RetrieveStableDelegateImpl(
-      const std::string& name);
-
-  absl::Mutex mutex_;
-  std::unordered_map<std::string, const TfLiteStableDelegate*> registry_
-      ABSL_GUARDED_BY(mutex_);
-};
-
-}  // namespace delegates
-}  // namespace tflite
+// IWYU pragma: private, include "third_party/tensorflow/lite/core/acceleration/configuration/stable_delegate_registry.h"
 
 #endif  // TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_STABLE_DELEGATE_REGISTRY_H_

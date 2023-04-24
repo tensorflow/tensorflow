@@ -114,6 +114,14 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
+      // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
+      property.version = 2;
+      break;
     case BuiltinOperator_SPACE_TO_DEPTH:
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
       property.inputs = {{0, tensor_property_default}};

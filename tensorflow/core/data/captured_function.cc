@@ -60,7 +60,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return new SimpleNodeExecStats(this);
   }
 
-  string ReportAllocsOnResourceExhausted(const string& err) override {
+  string ReportAllocsOnResourceExhausted(absl::string_view err) override {
     return "";
   }
 
@@ -177,7 +177,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
   auto cleanup = gtl::MakeCleanup([ctx, fn_handle]() {
     Status s = ctx->function_library()->ReleaseHandle(fn_handle);
     if (!s.ok()) {
-      LOG(WARNING) << "Failed to release handle: " << s.error_message();
+      LOG(WARNING) << "Failed to release handle: " << s.message();
     }
   });
 

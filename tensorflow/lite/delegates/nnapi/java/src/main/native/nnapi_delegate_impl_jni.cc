@@ -20,8 +20,8 @@ limitations under the License.
 
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/nnapi_plugin.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #else
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"

@@ -102,6 +102,7 @@ tf_py_test(
         ":test_base",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -121,6 +122,7 @@ tf_py_test(
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -136,7 +138,6 @@ py_library(
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
@@ -147,6 +148,7 @@ py_library(
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/training:saver",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
@@ -586,6 +588,7 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -662,6 +665,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/platform:tf_logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -835,6 +839,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

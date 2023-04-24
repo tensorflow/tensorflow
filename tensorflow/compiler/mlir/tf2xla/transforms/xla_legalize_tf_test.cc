@@ -73,7 +73,7 @@ bool BuildAndRunPipeline(absl::string_view module_string,
 
 std::function<void(PassManager*)> legalizeTFPasses() {
   return [](PassManager* pm) {
-    pm->addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+    pm->addPass(mlir::mhlo::createLegalizeTFPass(
         /* allow_partial_conversion=*/false, /* legalize_chlo=*/true,
         llvm::StringRef("gpu/xpu"), /* prefer_tf2xla=*/false));
   };

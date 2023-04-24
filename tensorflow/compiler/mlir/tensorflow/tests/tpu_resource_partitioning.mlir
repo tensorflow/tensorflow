@@ -190,7 +190,7 @@ func.func @with_host_process(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg
     "tf_device.launch"() ({
       "tf.OpA"(%1) : (tensor<i32>) -> ()
       tf_device.return
-    }) {device = "TPU_REPLICATED_HOST"} : () -> ()
+    }) {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     tf_device.return
   }, {
     %3 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
@@ -231,7 +231,7 @@ func.func @non_replicated_sharding(%arg0: tensor<!tf_type.resource<tensor<i32>>>
     "tf_device.launch"() ({
       "tf.OpA"(%1) : (tensor<i32>) -> ()
       tf_device.return
-    }) {device = "TPU_REPLICATED_HOST"} : () -> ()
+    }) {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     tf_device.return
   }, {
     %3 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
@@ -251,7 +251,7 @@ func.func @packed_replicated(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf.d
     "tf_device.launch"() ({
       "tf.OpA"(%1) : (tensor<i32>) -> ()
       tf_device.return
-    }) {device = "TPU_REPLICATED_HOST"} : () -> ()
+    }) {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     tf_device.return
   }, {
     %3 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>

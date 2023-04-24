@@ -206,6 +206,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -1177,7 +1178,9 @@ filegroup(
         "runlit.cfg.py",
         "runlit.site.cfg.py",
     ],
-    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler/xla:__subpackages__",  # Scheuklappen: keep
+    ],
 )
 
 # -----------------------------------------------------------------------------

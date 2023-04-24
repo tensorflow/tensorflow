@@ -18,6 +18,9 @@
        modifying H5 files saved by Keras under a `.keras` extension.
        If this breaks you, simply add `save_format="h5"` to your `.save()` call
        to revert back to the prior behavior.
+    *  Added `keras.utils.TimedThread` utility to run a timed thread every x
+       seconds. It can be used to run a threaded function alongside model
+       training or any other snippet of code.
 
 * The LMDB kernels have been changed to return an error. This is in preparation
   for completely removing them from TensorFlow. The LMDB dependency that these
@@ -40,6 +43,8 @@
         clustering.
     *   Add int16x8 support for the built-in op `exp`
     *   Add int16x8 support for the built-in op `mirror_pad`
+    *   Add int16x8 support for the built-in ops `space_to_batch_nd` and
+        `batch_to_space_nd`
     *   Add 16-bit int type support for built-in op `less`, `greater_than`,
         `equal`
     *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
@@ -50,6 +55,7 @@
     *   Add reference implementation for 16-bit int unquantized `add`.
     *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.
     *   `add_op` supports broadcasting up to 6 dimensions.
+    *   Add 16-bit support for `top_k`.
 
 *   `tf.keras`
 
@@ -114,6 +120,12 @@
     *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
         `Dataset.zip(a, b, c)`.
 
+*   `tf.math`
+
+    * `tf.nn.top_k` now supports specifying the output index type via parameter
+       `index_type`.  Supported types are `tf.int16`, `tf.int32`
+       (default), and `tf.int64`.
+
 *   `tf.SavedModel`
 
     *   Introduce class method
@@ -128,6 +140,13 @@
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+*   `tf.Variable`
+
+    *   Changed resource variables to inherit from `tf.compat.v2.Variable`
+        instead of `tf.compat.v1.Variable`. Some checks for 
+        `isinstance(v, tf.compat.v1.Variable)` that previously returned True
+        may now return False.
 
 *   `tf.distribute`
 

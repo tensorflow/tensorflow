@@ -33,6 +33,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "function_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "graph_def_versions"
     mtype: "<type \'property\'>"
   }

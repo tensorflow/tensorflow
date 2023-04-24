@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -35,43 +36,6 @@ limitations under the License.
 
 namespace mlir {
 namespace {
-
-class DataDumperLoggerConfig : public ::tensorflow::BridgeLoggerConfig {
- public:
-  explicit DataDumperLoggerConfig(llvm::StringRef module_name,
-                                  bool print_module_scope = false,
-                                  bool print_after_only_on_change = true)
-      : ::tensorflow::BridgeLoggerConfig(print_module_scope,
-                                         print_after_only_on_change),
-        module_name_(module_name.str()) {}
-
-  void printBeforeIfEnabled(mlir::Pass *pass, mlir::Operation *op,
-                            PrintCallbackFn print_callback) {
-    std::string pass_name = pass->getName().str();
-
-    if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name_)) {
-      ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(module_name_, "mlir_bridge_before_" + pass_name),
-          op, llvm::StringRef());
-    }
-  }
-
-  void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *op,
-                           PrintCallbackFn print_callback) {
-    std::string pass_name = pass->getName().str();
-
-    if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name_)) {
-      ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(module_name_, "mlir_bridge_after_" + pass_name), op,
-          llvm::StringRef());
-    }
-  }
-
- private:
-  // The name of the module. This is used to in the MLIR dump file name.
-  const std::string module_name_;
-};
-
 // Add logger to bridge passmanager.
 // Enable timing statistics per pass for the bridge passmanager.
 void EnableDetailedLogging(PassManager *pm,
@@ -79,9 +43,13 @@ void EnableDetailedLogging(PassManager *pm,
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
-  pm->enableIRPrinting(
-      std::make_unique<DataDumperLoggerConfig>(module_name,
-                                               /*print_module_scope=*/true));
+  pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
+      [module_name](const std::string &pass_tag_name) {
+        return DEBUG_DATA_DUMPER()->GetDumpFilename(
+            module_name.str(), kDebugGroupBridgePhase1, pass_tag_name);
+      },
+      "",
+      /*print_module_scope=*/true));
   pm->enableTiming();
 }
 }  // namespace
@@ -104,7 +72,7 @@ std::string GetMLIRModuleText(mlir::Operation *op,
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
 // bridge pipeline or non TPU bridge pipeline.
 tensorflow::Status RunTFXLABridge(
-    ModuleOp module, bool enable_logging,
+    ModuleOp module,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
     llvm::StringRef module_name = llvm::StringRef()) {
   // Explicitly check that the TensorFlow dialect can constant fold ops.
@@ -128,23 +96,28 @@ tensorflow::Status RunTFXLABridge(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
-  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name.str())) {
+  if (VLOG_IS_ON(1) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "tf_xla_bridge_before"), module,
-        llvm::StringRef(), &bridge);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "tf_xla_bridge_before"),
+        module, llvm::StringRef(), &bridge);
   }
 
-  if (enable_logging || VLOG_IS_ON(2) || SHOULD_DUMP(module_name.str())) {
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           module_name.str(), kDebugGroupBridgePhase1)) {
     EnableDetailedLogging(&bridge, module_name);
   }
 
   LogicalResult result = bridge.run(module);
   (void)result;
 
-  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name.str())) {
+  if (VLOG_IS_ON(1) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "tf_xla_bridge_after"), module,
-        llvm::StringRef(), &bridge);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "tf_xla_bridge_after"),
+        module, llvm::StringRef(), &bridge);
   }
 
   return diag_handler.ConsumeStatus();
@@ -175,6 +148,7 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
+  pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(CreateTPUClusterFormationPass());
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
@@ -304,11 +278,10 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
       CreateConvertToLegacyCompileAndReplicateAttributesPass());
 }
 
-tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
-                             bool fallback_enabled,
+tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
   Status status = RunTFXLABridge(
-      module, enable_logging,
+      module,
       [module_name](OpPassManager &pm) {
         CreateTPUBridgePipeline(pm, module_name);
         // Add set of passes to lower back to graph
@@ -329,9 +302,8 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
       status);
   return status;
 }
-tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
-                                     bool fallback_enabled) {
-  Status status = RunTFXLABridge(module, enable_logging, [](OpPassManager &pm) {
+tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
+  Status status = RunTFXLABridge(module, [](OpPassManager &pm) {
     CreateTPUBridgePipelineV1(pm);
     // Add set of passes to lower back to graph (from tf_executor).
     TF::AddGraphExportLoweringPasses(pm);
@@ -488,10 +460,10 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
-tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging,
+tensorflow::Status RunTFXLABridge(ModuleOp module,
                                   llvm::StringRef module_name) {
   Status status = mlir::TFTPU::RunTFXLABridge(
-      module, enable_logging,
+      module,
       [](OpPassManager &pm) {
         CreateTFXLABridgePipeline(pm);
         // Add set of passes to lower back to graph (from tf_executor).

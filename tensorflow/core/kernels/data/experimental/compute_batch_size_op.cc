@@ -129,8 +129,8 @@ class ComputeBatchSizeOp : public OpKernel {
     auto s = GetScalarConstNodeValue(*batch_size_node, &batch_size);
     if (!s.ok()) {
       VLOG(1) << "Could not compute static batch size. Found batching dataset ("
-              << node.name() << "), but failed to get its input batch size: "
-              << s.error_message();
+              << node.name()
+              << "), but failed to get its input batch size: " << s.message();
       return -1;
     }
     return batch_size;

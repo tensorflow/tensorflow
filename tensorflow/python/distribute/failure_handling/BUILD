@@ -29,7 +29,8 @@ py_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
@@ -43,6 +44,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -86,8 +88,9 @@ tf_py_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/module",
-        "//tensorflow/python/platform",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -108,6 +111,9 @@ tf_py_test(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 

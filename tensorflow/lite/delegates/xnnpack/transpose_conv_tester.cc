@@ -83,13 +83,11 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
   const int input_data_size =
       BatchSize() * InputHeight() * InputWidth() * InputChannels();
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data, default_input_data + input_data_size,
-                std::ref(f32rng));
+  std::generate_n(default_input_data, input_data_size, std::ref(f32rng));
 
   float* xnnpack_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + input_data_size,
-            xnnpack_input_data);
+  std::copy_n(default_input_data, input_data_size, xnnpack_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -264,18 +262,17 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
   }
   tflite::TensorType quantized_bias_type = TensorType_FLOAT32;
   int bias_buffer_id = 0, quantized_bias_buffer_id = 0;
-  switch (WeightsType()) {
-    case WeightsType::kFP32:
-    case WeightsType::kTensorWiseQuantizedInt8:
-    case WeightsType::kChannelWiseQuantizedInt8:
-      // Bias is stored in FP32 even when filter is quantized to INT8
+  switch (BiasType()) {
+    case BiasType::kNone:
+      break;
+    case BiasType::kFP32:
       bias_buffer_id = buffers.size();
       buffers.emplace_back(CreateBuffer(
           builder, builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(bias_data.data()),
                        sizeof(float) * bias_data.size())));
       break;
-    case WeightsType::kFP16: {
+    case BiasType::kFP16: {
       std::vector<uint16_t> quantized_bias_data(bias_data.size());
       std::transform(bias_data.begin(), bias_data.end(),
                      quantized_bias_data.begin(), fp16_ieee_from_fp32_value);

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/bfc_allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/strcat.h"
@@ -160,8 +161,8 @@ Allocator* GPUProcessState::GetGPUAllocator(
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
-  se::DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
-                                         tf_device_id);
+  tsl::CheckValidTfDeviceId(
+      DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
 
   if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     gpu_allocators_.resize(tf_device_id.value() + 1);
@@ -269,8 +270,8 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
   DCHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  se::DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
-                                         tf_device_id);
+  tsl::CheckValidTfDeviceId(
+      DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
   mutex_lock l(mu_);
   if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     LOG(ERROR) << "Asked for counter for GPU allocator " << tf_device_id.value()
@@ -348,7 +349,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
         tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                  1LL << 17 /*2^17 MB == 128GB*/, &limit_mb);
     if (!status.ok()) {
-      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
+      LOG(ERROR) << "GetGpuHostAllocator: " << status.message();
     }
     mem_limit_bytes = limit_mb * (1LL << 20);
   }

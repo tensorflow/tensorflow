@@ -95,11 +95,6 @@ class Tf2XlaRewriterTestPeer {
                          /*is_module_pass=*/false,
                          /*use_tf2xla_hlo_importer=*/true) {}
 
-  StatusOr<mlir::OwningOpRef<ModuleOp>> GetModuleFromXlaComputation(
-      XlaComputation& computation) {
-    return tf2xla_rewriter_.CreateModuleFromXlaComputation(computation);
-  }
-
   StatusOr<FuncOp> ImportXlaComputationIntoModule(XlaComputation& computation) {
     return tf2xla_rewriter_.ImportXlaComputation(computation);
   }
@@ -172,16 +167,6 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return main_func.getBody().front().front();
   }
 
-  StatusOr<mlir::OwningOpRef<ModuleOp>> GetModuleFromXlaComputation(
-      XlaComputation& computation) {
-    SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
-
-    mlir::Operation& first_op = GetFirstOpFromMain();
-
-    Tf2XlaRewriterTestPeer test_peer(&first_op);
-    return test_peer.GetModuleFromXlaComputation(computation);
-  }
-
   StatusOr<FuncOp> ImportXlaComputationIntoModule(XlaComputation& computation) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
@@ -205,15 +190,16 @@ TEST_F(Tf2XlaRewriterTest, LegalizesOpWithTf2xlaHloImporter) {
   TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/true));
 }
 
-TEST_F(Tf2XlaRewriterTest, CreatesModuleFromXla) {
+TEST_F(Tf2XlaRewriterTest, ImportsXlaComputationIntoModule) {
   TF_ASSERT_OK(CreateMlirModule());
 
   XlaComputation computation = GetTestXlaComputation();
 
-  TF_ASSERT_OK_AND_ASSIGN(OwningOpRef<ModuleOp> generated_module,
-                          GetModuleFromXlaComputation(computation));
+  TF_ASSERT_OK_AND_ASSIGN(FuncOp translated_function,
+                          ImportXlaComputationIntoModule(computation));
 
-  EXPECT_TRUE(generated_module->lookupSymbol(computation.name()));
+  EXPECT_TRUE(module_->lookupSymbol(computation.name()));
+  EXPECT_EQ(translated_function.getName(), computation.name());
 }
 
 TEST_F(Tf2XlaRewriterTest, ReturnsMultipleValues) {
@@ -251,14 +237,15 @@ TEST_F(Tf2XlaRewriterTest, ImportsSingleComputation) {
   EXPECT_EQ(computation.proto().computations_size(), 2);
 
   TF_ASSERT_OK(CreateMlirModule());
-  TF_ASSERT_OK_AND_ASSIGN(OwningOpRef<ModuleOp> generated_module,
-                          GetModuleFromXlaComputation(computation));
+  TF_ASSERT_OK_AND_ASSIGN(FuncOp translated_function,
+                          ImportXlaComputationIntoModule(computation));
+  EXPECT_TRUE(translated_function);
 
   int num_func_ops = 0;
-  generated_module->walk(
-      [&num_func_ops](func::FuncOp func_op) { num_func_ops++; });
+  module_->walk([&num_func_ops](func::FuncOp func_op) { num_func_ops++; });
 
-  EXPECT_EQ(num_func_ops, 1);
+  // 2 because we have one from the existing module_ and one that's inserted.
+  EXPECT_EQ(num_func_ops, 2);
 }
 
 TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {

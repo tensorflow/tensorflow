@@ -3,7 +3,6 @@ tf_class {
   is_instance: "<class \'tensorflow.dtensor.python.d_variable.DVariable\'>"
   is_instance: "<class \'tensorflow.python.ops.resource_variable_ops.ResourceVariable\'>"
   is_instance: "<class \'tensorflow.python.ops.resource_variable_ops.BaseResourceVariable\'>"
-  is_instance: "<class \'tensorflow.python.ops.variables.VariableV1\'>"
   is_instance: "<class \'tensorflow.python.ops.variables.Variable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"

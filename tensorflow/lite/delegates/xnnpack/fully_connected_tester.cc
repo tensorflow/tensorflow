@@ -79,8 +79,12 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_TRUE(delegate_interpreter);
   ASSERT_TRUE(default_interpreter);
 
-  ASSERT_EQ(delegate_interpreter->inputs().size(), 1);
-  ASSERT_EQ(default_interpreter->inputs().size(), 1);
+  ASSERT_EQ(delegate_interpreter->inputs().size(),
+            1 + static_cast<int>(WeightsType() == WeightsType::kDynamic) +
+                static_cast<int>(BiasType() == BiasType::kDynamic));
+  ASSERT_EQ(default_interpreter->inputs().size(),
+            1 + static_cast<int>(WeightsType() == WeightsType::kDynamic) +
+                static_cast<int>(BiasType() == BiasType::kDynamic));
 
   ASSERT_EQ(delegate_interpreter->outputs().size(), 1);
   ASSERT_EQ(default_interpreter->outputs().size(), 1);
@@ -95,13 +99,32 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
   }
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data, default_input_data + InputSize(),
-                std::ref(input_rng));
+  std::generate_n(default_input_data, InputSize(), std::ref(input_rng));
 
   float* delegate_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + InputSize(),
-            delegate_input_data);
+  std::copy_n(default_input_data, InputSize(), delegate_input_data);
+
+  if (WeightsType() == WeightsType::kDynamic) {
+    float* default_kernel_data =
+        default_interpreter->typed_input_tensor<float>(1);
+    std::generate_n(default_kernel_data, InputChannels() * OutputChannels(),
+                    std::ref(input_rng));
+
+    float* delegate_kernel_data =
+        delegate_interpreter->typed_input_tensor<float>(1);
+    std::copy_n(default_kernel_data, InputChannels() * OutputChannels(),
+                delegate_kernel_data);
+  }
+  if (BiasType() == BiasType::kDynamic) {
+    float* default_bias_data = default_interpreter->typed_tensor<float>(
+        default_interpreter->inputs().back());
+    std::generate_n(default_bias_data, OutputChannels(), std::ref(input_rng));
+
+    float* delegate_bias_data = delegate_interpreter->typed_tensor<float>(
+        delegate_interpreter->inputs().back());
+    std::copy_n(default_bias_data, OutputChannels(), delegate_bias_data);
+  }
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -114,7 +137,7 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
   for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
     ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
                 std::numeric_limits<float>::epsilon() *
-                    std::max(std::abs(default_output_data[i]) * 10.0f, 1.0f));
+                    std::max(std::abs(default_output_data[i]) * 20.0f, 1.0f));
   }
 }
 
@@ -131,6 +154,7 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
   int dequantize_operator_code = -1;
   switch (WeightsType()) {
     case WeightsType::kFP32:
+    case WeightsType::kDynamic:
       break;
     case WeightsType::kFP16:
     case WeightsType::kTensorWiseQuantizedInt8:
@@ -234,36 +258,36 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
           /*details=*/0, filter_quantized_dimension);
       break;
     }
+    case WeightsType::kDynamic:
+      break;
   }
   tflite::TensorType quantized_bias_type = TensorType_FLOAT32;
   int bias_buffer_id = 0, quantized_bias_buffer_id = 0;
-  if (HasBias()) {
-    switch (WeightsType()) {
-      case WeightsType::kFP32:
-      case WeightsType::kTensorWiseQuantizedInt8:
-      case WeightsType::kChannelWiseQuantizedInt8:
-        // Bias is stored in FP32 even when filter is quantized to INT8
-        bias_buffer_id = buffers.size();
-        buffers.emplace_back(CreateBuffer(
-            builder, builder.CreateVector(
-                         reinterpret_cast<const uint8_t*>(bias_data.data()),
-                         sizeof(float) * bias_data.size())));
-        break;
-      case WeightsType::kFP16: {
-        std::vector<uint16_t> quantized_bias_data(bias_data.size());
-        std::transform(bias_data.begin(), bias_data.end(),
-                       quantized_bias_data.begin(), fp16_ieee_from_fp32_value);
+  switch (BiasType()) {
+    case BiasType::kNone:
+    case BiasType::kDynamic:
+      break;
+    case BiasType::kFP32:
+      bias_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(float) * bias_data.size())));
+      break;
+    case BiasType::kFP16: {
+      std::vector<uint16_t> quantized_bias_data(bias_data.size());
+      std::transform(bias_data.begin(), bias_data.end(),
+                     quantized_bias_data.begin(), fp16_ieee_from_fp32_value);
 
-        quantized_bias_buffer_id = buffers.size();
-        buffers.emplace_back(CreateBuffer(
-            builder,
-            builder.CreateVector(
-                reinterpret_cast<const uint8_t*>(quantized_bias_data.data()),
-                sizeof(uint16_t) * quantized_bias_data.size())));
+      quantized_bias_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_bias_data.data()),
+              sizeof(uint16_t) * quantized_bias_data.size())));
 
-        quantized_bias_type = TensorType_FLOAT16;
-        break;
-      }
+      quantized_bias_type = TensorType_FLOAT16;
+      break;
     }
   }
 
@@ -359,7 +383,13 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
       BuiltinOptions_FullyConnectedOptions, fully_connected_options.Union()));
 
   /****************************** Define subgraph *****************************/
-  const std::array<int32_t, 1> subgraph_inputs{{input_tensor_id}};
+  std::vector<int32_t> subgraph_inputs{input_tensor_id};
+  if (WeightsType() == WeightsType::kDynamic) {
+    subgraph_inputs.push_back(filter_tensor_id);
+  }
+  if (BiasType() == BiasType::kDynamic) {
+    subgraph_inputs.push_back(bias_tensor_id);
+  }
   const std::array<int32_t, 1> subgraph_outputs{{output_tensor_id}};
   const flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
       builder, builder.CreateVector(tensors.data(), tensors.size()),

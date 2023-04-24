@@ -47,7 +47,7 @@ You can download the Docker file
 <a href="https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/lite/tools/tflite-android.Dockerfile">here</a>
 {% dynamic else %} You must acknowledge the terms of service to download the
 file.
-<a class="button button-blue devsite-acknowledgement-link" data-globally-unique-wall-id="tflite-android-tos">Acknowledge</a>
+<button class="button-blue devsite-acknowledgement-link" data-globally-unique-wall-id="tflite-android-tos">Acknowledge</button>
 {% dynamic endif %}
 <!-- mdformat on -->
 

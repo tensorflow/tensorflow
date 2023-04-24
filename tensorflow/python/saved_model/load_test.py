@@ -524,6 +524,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
 
+  def test_function_with_defaults_input(self, cycles, use_cpp_bindings):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+    def func(x=constant_op.constant(5.0)):
+      return x
+
+    root = autotrackable.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(5.0, root.f())
+    self.assertAllEqual(7.0, root.f(7.0))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    self.assertEqual(5.0, imported.f().numpy())
+    self.assertEqual(7.0, imported.f(constant_op.constant(7.0)).numpy())
+
+    # imported.signatures with defaults are not supported.
+    # TODO(b/277814477) support defaults in loaded.signatures
+    # self.assertEqual(
+    #     {"output_0": 5.0},
+    #     self.evaluate(
+    #         imported.signatures["serving_default"]()
+    #     ),
+    # )
+
   def test_function_with_default_none_input(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
@@ -558,6 +587,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(concrete_functions, 4)
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 4)
 
     self.assertAllEqual(
         [0.0, 0.0, 0.0],
@@ -598,6 +630,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(concrete_functions, 3)
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 3)
 
     self.assertAllEqual(b"ab", imported.f("a", "b"))
     self.assertAllEqual(b"ab", imported.f("a", constant_op.constant("b")))
@@ -1215,6 +1250,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
 
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 1)
+
     with self.assertRaisesRegex(
         TypeError, "Binding inputs to tf.function `f` failed"
     ):
@@ -1738,11 +1776,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     exported = ObjWithFunction()
 
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       imported = cycle(exported, cycles, use_cpp_bindings=use_cpp_bindings)
 
     expected_message = (
-        "WARNING:absl:Function `foo` contains input name(s) A-b, A/D with "
+        "INFO:absl:Function `foo` contains input name(s) A-b, A/D with "
         "unsupported characters which will be renamed to a_b, a_d in the "
         "SavedModel."
     )

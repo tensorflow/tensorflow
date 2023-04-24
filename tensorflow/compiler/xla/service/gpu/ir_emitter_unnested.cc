@@ -1816,7 +1816,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
       TritonWrapper(impl_fn_name, hlo_computation,
                     ir_emitter_context_->cuda_compute_capability(),
                     ir_emitter_context_->gpu_device_info(), config, module_,
-                    &MatMul));
+                    &MatMul, *ir_emitter_context_->mlir_context()));
   llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
   TF_RET_CHECK(impl_fn);
 

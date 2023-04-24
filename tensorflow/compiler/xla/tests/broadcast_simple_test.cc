@@ -739,7 +739,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidBinaryAndDegenerateBroadcasting) {
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().error_message(),
+  EXPECT_THAT(result_status.status().message(),
               HasSubstr("dimension 0 mismatch"));
 }
 
@@ -752,7 +752,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidInDimensionBroadcasting) {
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().error_message(),
+  EXPECT_THAT(result_status.status().message(),
               HasSubstr("op add with incompatible shapes"));
 }
 
@@ -765,7 +765,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().error_message(),
+  EXPECT_THAT(result_status.status().message(),
               HasSubstr("op add with incompatible shapes"));
 }
 

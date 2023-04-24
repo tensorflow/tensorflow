@@ -170,9 +170,9 @@ TEST(ExecuteTest, SimpleFunctionInt32BadFullType) {
   int num_retvals = retvals.size();
   Status status = EagerExecute(op.get(), retvals.data(), &num_retvals);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "TFT_TENSOR has 0 args instead of 1"))
-      << "Actual: " << status.error_message();
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "TFT_TENSOR has 0 args instead of 1"))
+      << "Actual: " << status.message();
   // Since an error occured before the function ran, retval[0] was never
   // assigned.
   ASSERT_EQ(retvals[0], nullptr);

@@ -46,8 +46,8 @@ StatusOr<T> AppendTpuEmbeddingErrorPayload(StatusOr<T> obj) {
   if (obj.ok()) {
     return std::move(obj.value());
   } else {
-    const std::string error_message = absl::StrCat(
-        kTpuEmbeddingErrorMessage, ". ", obj.status().error_message());
+    const std::string error_message =
+        absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.status().message());
     Status status(obj.status().code(), error_message);
     TPUEmbeddingError error_payload;
     status.SetPayload(kTpuEmbeddingErrorUrl,

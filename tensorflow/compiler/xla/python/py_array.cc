@@ -28,6 +28,9 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
+#include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
@@ -443,6 +446,26 @@ Status PyArray::set_arrays(py::object obj) {
   return OkStatus();
 }
 
+StatusOr<PyArray> PyArray::FullyReplicatedShard() {
+  if (ifrt_array() == nullptr) {
+    return InvalidArgument(
+        "FullyReplicatedShard() called on deleted or donated buffer");
+  }
+
+  auto* client = llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleClient>(
+      ifrt_array()->client());
+  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array());
+  if (arr == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  auto fully_replicated_ifrt_shard =
+      ifrt::PjRtArray::Create(client, std::move(arr->pjrt_buffers().front()));
+  return MakeFromSingleDeviceArray(py_client(), traceback(),
+                                   *fully_replicated_ifrt_shard, weak_type(),
+                                   committed());
+}
+
 Status PyArray::BlockUntilReady() const {
   pybind11::gil_scoped_release gil_release;
   if (ifrt_array() == nullptr) {
@@ -637,6 +660,11 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
                      "%zu and be nonzero",
                      dst_devices.size(), xs.size()));
   }
+  for (ClientAndPtr<PjRtDevice>& device : dst_devices) {
+    if (device.get_client() == nullptr) {
+      return InvalidArgument("Cannot copy to unattached devices.");
+    }
+  }
   auto transfer_guard_formatter = [&aval, &sharding] {
     return absl::StrCat(
         "aval=", py::cast<std::string>(py::repr(aval)),
@@ -670,7 +698,7 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
           jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
     }
     TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
-                        DevicePut(x, dst_devices[i].client->ifrt_client(),
+                        DevicePut(x, dst_devices[i].get_client()->ifrt_client(),
                                   dst_devices[i].get(), options));
     ifrt_arrays.push_back(std::move(on_device.ifrt_array));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
@@ -696,7 +724,7 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
           xla::ifrt::ArrayCopySemantics::kReuseInput));
 
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
-                 dst_devices[0].client, Traceback::Get(), ifrt_array,
+                 dst_devices[0].client(), Traceback::Get(), ifrt_array,
                  committed);
 }
 
@@ -788,6 +816,11 @@ Status PyArray::RegisterTypes(py::module& m) {
       jax::property(&PyArray::arrays, [](PyArray& self, py::object obj) {
         xla::ThrowIfError(self.set_arrays(obj));
       });
+  type.attr("_fully_replicated_shard") = py::cpp_function(
+      [](PyArray self) {
+        return xla::ValueOrThrow(self.FullyReplicatedShard());
+      },
+      py::is_method(type));
   type.attr("_npy_value") =
       jax::property(&PyArray::npy_value, &PyArray::set_npy_value);
   type.attr("_committed") = jax::property_readonly(&PyArray::committed);
