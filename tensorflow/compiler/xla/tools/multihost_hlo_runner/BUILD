@@ -20,11 +20,7 @@ build_test(
     name = "hlo_runner_main_build_test",
     tags = [
         "gpu",
-<<<<<<< HEAD
-        "no_rocm"
-=======
         "no_rocm",
->>>>>>> upstream/master
     ],
     targets = [
         ":hlo_runner_main",
