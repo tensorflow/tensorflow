@@ -193,16 +193,22 @@ def _api_gen_rule_impl(ctx):
     flags = [ctx.expand_make_variables("tf_api_version", flag, variables) for flag in flags]
     loading = ctx.expand_make_variables("TF_API_INIT_LOADING", ctx.attr.loading_value, {})
     output_paths = [f.path for f in ctx.outputs.outs]
-    cmd = _make_cmd(api_gen_binary_target, flags, loading, output_paths)
 
+    # Generate file containing the list of outputs
+    # Without this, the command will be too long (even when executed in a shell script)
+    params = ctx.actions.declare_file(ctx.attr.name + ".params")
+    ctx.actions.write(params, ";".join(output_paths))
+
+    cmd = _make_cmd(api_gen_binary_target, flags, loading, [params.path])
     ctx.actions.run_shell(
-        inputs = ctx.files.srcs,
+        inputs = ctx.files.srcs + [params],
         outputs = ctx.outputs.outs,
         tools = [api_gen_binary_target],
         use_default_shell_env = True,
         command = cmd,
     )
 
+# Note: if only one output_paths is provided, api_gen_binary_target assumes it is a file to be read
 def _make_cmd(api_gen_binary_target, flags, loading, output_paths):
     binary = api_gen_binary_target.path
     flags = flags + ["--loading=" + loading]
