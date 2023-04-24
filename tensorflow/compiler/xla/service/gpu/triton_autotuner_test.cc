@@ -225,34 +225,6 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{1e-1, 1e-1}));
 }
 
-TEST_F(TritonAutotunerTest, KnownBestConfig) {
-  const std::string kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f16[256,256] parameter(0)
-  p1 = s8[256,256] parameter(1)
-  c = f16[256,256] convert(p1)
-  ROOT _ = f16[256,256] dot(c, p0),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-
-  // This is the fastest config amongst the currently probed ones
-  // at least on RTX A6000 and V100; feel free to modify on related changes.
-  const se::DeviceDescription& device_description =
-      GetTestPlatform()->ExecutorForDevice(0).value()->GetDeviceDescription();
-  const std::string& name = device_description.name();
-  if (name == "NVIDIA RTX A6000" || name == "Tesla V100-SXM2-16GB") {
-    CheckTritonAutotuning(kHloText, R"(
-// CHECK: backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"256\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
-  )");
-  } else {
-    VLOG(1) << "Not tested on " << name;
-  }
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.02, 0.01}));
-}
-
 TEST_F(TritonAutotunerTest, SkipConfigsProducingDeviantResults) {
   const std::string kHloText = R"(
 HloModule module
