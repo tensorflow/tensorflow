@@ -289,15 +289,44 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             padding_value=7,
             padding_low=[2, 1],
             padding_high=[1, 2],
-            padding_interior=[1, 0])
+            padding_interior=[1, 0],
+        )
 
       self._assertOpOutputMatchesExpected(
           pad_fn,
           args=(np.arange(4, dtype=np.int32).astype(dtype).reshape([2, 2]),),
           expected=np.array(
-              [[7, 7, 7, 7, 7], [7, 7, 7, 7, 7], [7, 0, 1, 7, 7],
-               [7, 7, 7, 7, 7], [7, 2, 3, 7, 7], [7, 7, 7, 7, 7]],
-              dtype=dtype))
+              [
+                  [7, 7, 7, 7, 7],
+                  [7, 7, 7, 7, 7],
+                  [7, 0, 1, 7, 7],
+                  [7, 7, 7, 7, 7],
+                  [7, 2, 3, 7, 7],
+                  [7, 7, 7, 7, 7],
+              ],
+              dtype=dtype,
+          ),
+      )
+
+  def testSetDynamicDimensionSize(self):
+    dynamic_size = 7
+
+    # XLA doesn't support this for bfloat16.
+    for dtype in set(self.numeric_types).intersection(
+        set([np.int32, np.float32, np.float64, np.complex64])):
+
+      def xla_set_dynamic_dimension_size_fn(x):
+        # Tell XLA to cut the array to size=dynamic_size.
+        return gen_xla_ops.xla_set_dynamic_dimension_size(
+            x, dim_index=0, size=dynamic_size
+        )
+
+      a = np.arange(10, dtype=np.int32).astype(dtype)
+      expected = a[:dynamic_size]
+
+      self._assertOpOutputMatchesExpected(
+          xla_set_dynamic_dimension_size_fn, args=(a,), expected=expected
+      )
 
   def testPadNegative(self):
     for dtype in self.numeric_types:
