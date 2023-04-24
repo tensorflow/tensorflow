@@ -476,6 +476,13 @@ func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %bounded : tensor<i32>
 }
 
+// CHECK-LABEL: @XlaScatterOpNotSupported
+func.func @XlaScatterOpNotSupported(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<8xi32> {
+  // CHECK: tf.XlaScatter
+  %0 = "tf.XlaScatter"(%arg0, %arg1, %arg2) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", indices_are_sorted = false, update_computation = @no_reducer} : (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }
