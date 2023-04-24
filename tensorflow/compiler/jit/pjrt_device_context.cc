@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -41,11 +42,15 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
                       shape_determination_fns.shape_representation_fn(
                           cpu_tensor->shape(), cpu_tensor->dtype(),
                           /*fast_mem=*/false, layout_preference));
-
   const xla::Layout* device_layout = &(shape.layout());
+  // The device id should matche the local_hardware_id in
+  // tensorflow/compiler/xla/pjrt/pjrt_client.h.
   TF_ASSIGN_OR_RETURN(
-      xla::PjRtDevice * pjrt_device,
-      pjrt_client->LookupAddressableDevice(device->parsed_name().id));
+      const int pjrt_device_id,
+      tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name(),
+                                           DeviceType(device->device_type())));
+  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
+                      pjrt_client->LookupAddressableDevice(pjrt_device_id));
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,

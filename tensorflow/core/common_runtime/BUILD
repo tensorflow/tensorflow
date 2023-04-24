@@ -2614,6 +2614,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime/eager:rendezvous_cache",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",

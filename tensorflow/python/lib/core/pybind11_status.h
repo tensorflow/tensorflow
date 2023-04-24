@@ -77,11 +77,11 @@ inline void MaybeRaiseFromStatus(const Status& status) {
 }
 
 inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
-  PyErr_SetObject(tensorflow::PyExceptionRegistry::Lookup(status.raw_code()),
-                  pybind11::make_tuple(pybind11::none(), pybind11::none(),
-                                       status.error_message(),
-                                       internal::StatusPayloadToDict(status))
-                      .ptr());
+  PyErr_SetObject(
+      tensorflow::PyExceptionRegistry::Lookup(status.raw_code()),
+      pybind11::make_tuple(pybind11::none(), pybind11::none(), status.message(),
+                           internal::StatusPayloadToDict(status))
+          .ptr());
 }
 
 inline void SetRegisteredErrFromTFStatus(TF_Status* status) {

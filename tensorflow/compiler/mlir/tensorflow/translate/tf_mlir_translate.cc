@@ -34,12 +34,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
@@ -280,7 +280,7 @@ GraphdefToSplattedMlirTranslateFunction(
         auto attr_id = mlir::StringAttr::get(context, "value");
         if (auto attr = inst.getAttrOfType<mlir::ElementsAttr>(attr_id)) {
           mlir::Attribute rand_val;
-          mlir::Type element_type = attr.getType().getElementType();
+          mlir::Type element_type = attr.getShapedType().getElementType();
           if (element_type.isa<mlir::IntegerType>()) {
             rand_val = mlir::IntegerAttr::get(element_type, std::rand());
           } else if (element_type.isF16() || element_type.isF32() ||

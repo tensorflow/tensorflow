@@ -25,12 +25,12 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver_internal.h"
-#include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/core/shims/cc/model_builder.h"
+#include "tensorflow/lite/model_builder.h"
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #else
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"

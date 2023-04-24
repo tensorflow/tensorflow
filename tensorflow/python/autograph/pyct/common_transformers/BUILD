@@ -27,6 +27,7 @@ py_test(
     srcs_version = "PY3",
     tags = ["no_oss"],
     deps = [
+        ":common_transformers",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct:loader",
         "//tensorflow/python/autograph/pyct:parser",

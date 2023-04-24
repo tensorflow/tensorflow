@@ -4,6 +4,9 @@
 // multiple threads creates non-deterministic function call names.
 // NOTE: Order of test execution can change the translated call name, but its
 // syntactic sugar and not an indiciation that the test failed.
+// This test checks the setup logic around using tf2xla, not the actual
+// legalizations themselves. Use legalize-tf-with-tf2xla-hlo-importer-and-inline
+// for semantic transformation tests.
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: binary_op

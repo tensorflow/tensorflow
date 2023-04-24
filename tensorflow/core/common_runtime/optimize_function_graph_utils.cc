@@ -204,20 +204,13 @@ StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(const string& file_name,
   return optimized_function_graph_info_restored;
 }
 
-// Retrieve the plain function name without the UUID suffix.
-// Example:
-// input: "_inference_train_fn_1234"
-// output: "_inference_train_fn"
-string GetPlainFunctionName(const string& function_name) {
-  string plain_func_name = function_name;
-  // Remove the random UUID in the function name.
-  if (absl::StrContains(function_name, "_")) {
-    std::vector<string> func_name_tokens = absl::StrSplit(function_name, '_');
-    func_name_tokens.pop_back();
-    plain_func_name = absl::StrJoin(func_name_tokens, "_");
-  }
-
-  return plain_func_name;
+// Gets the full path name of the file cache.
+// TODO(b/276813768) Include more runtime specific info like env/flag
+// values, or line number. An alternative is to use the fingerprint of the
+// graph once graph building cache is enabled.
+string GetFileCacheName(const string& dir_name, const string& function_name) {
+  return absl::StrCat(dir_name, "/", tsl::port::JobName(), "_",
+                      tsl::port::TaskId(), "_", function_name);
 }
 }  // namespace
 
@@ -628,12 +621,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
                                  OptimizedFunctionGraph::JIT);
   }
 
-  const string plain_func_name = GetPlainFunctionName(function_name);
-  // Make the file name as the cache key.
-  // TODO(b/276813768) Include more runtime specific info like env/flag
-  // values, or line number.
-  const string file_name =
-      absl::StrCat(dir_name, "/", tsl::port::JobName(), "_", plain_func_name);
+  const string file_name = GetFileCacheName(dir_name, function_name);
 
   // Scenario (2): File cache exists for this function; restore from the cache.
   if (env->FileExists(file_name).ok()) {

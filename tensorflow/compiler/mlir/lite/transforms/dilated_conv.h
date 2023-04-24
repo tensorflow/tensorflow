@@ -368,7 +368,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
         "SpaceToBatchND op's padding doesn't have same shape/type with "
         "BatchToSpaceND op's crops");
   }
-  int64_t m = stb_paddings_attr.getType().getDimSize(0);
+  int64_t m = stb_paddings_attr.getShapedType().getDimSize(0);
   // padding - crop.
   for (uint64_t i = 0; i < m; ++i) {
     for (uint64_t j = 0; j < 2; ++j) {

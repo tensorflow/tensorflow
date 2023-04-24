@@ -475,10 +475,9 @@ StatusOr<LaunchDimensions> MatMul(
   const int required_shmem_size = (block_m * lhs_ty.getIntOrFloatBitWidth() +
                                    block_n * rhs_ty.getIntOrFloatBitWidth()) *
                                   block_k * config.num_stages() / 8;
-  // TODO(b/266857785): Add dynamic shared memory size.
   if (required_shmem_size > shmem_budget) {
-    return ResourceExhausted("Requires too much shared memory: %d",
-                             required_shmem_size);
+    return ResourceExhausted("Requires too much shared memory: %d > %d",
+                             required_shmem_size, shmem_budget);
   }
 
   // TODO(b/266862493): Accumulator can be integer too.
@@ -731,9 +730,10 @@ StatusOr<LaunchDimensions> TritonWrapper(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      generator(b, xla::Cast<HloDotInstruction>(root), fn,
-                                config, device_info.shared_memory_per_block));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      generator(b, xla::Cast<HloDotInstruction>(root), fn, config,
+                device_info.shared_memory_per_block_optin));
 
   b.create<mlir::func::ReturnOp>(loc);
   CHECK(mlir::succeeded(mlir::verify(triton_module)));
@@ -784,8 +784,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
       triton_module->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  // TODO(b/266857785): Add dynamic shared memory size.
-  if (shared_mem_bytes > device_info.shared_memory_per_block) {
+  if (shared_mem_bytes > device_info.shared_memory_per_block_optin) {
     return ResourceExhausted("Shared memory size limit exceeded.");
   }
   launch_dimensions.SetSharedMemBytes(shared_mem_bytes);

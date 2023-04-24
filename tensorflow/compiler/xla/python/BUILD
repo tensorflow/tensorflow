@@ -15,6 +15,7 @@ load(
     "if_cuda_or_rocm",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_library")
 
@@ -329,7 +330,9 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
+    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
@@ -378,6 +381,8 @@ cc_library(
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 

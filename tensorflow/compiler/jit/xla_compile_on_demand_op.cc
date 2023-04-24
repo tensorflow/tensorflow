@@ -232,7 +232,11 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   std::vector<int> variable_indices =
       GetResourceVariableIndicesFromContext(ctx);
 
-  if (UsePjRtForSingleDeviceCompilation()) {
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()
+          ->tf_xla_use_device_api.IsEnabledInXlaCompileOnDemandForDevice(
+              platform_info_.device_type());
+  if (use_pjrt) {
     std::vector<VariableInfo> variables;
     std::vector<XlaCompiler::Argument> args;
     // Lock variables for the whole duration of compile + execute.

@@ -77,18 +77,12 @@ class RuntimeShape {
                0;
   }
 
-  ~RuntimeShape() {
-    if (size_ > kMaxSmallSize) {
-      delete[] dims_pointer_;
-    }
-  }
+  ~RuntimeShape();
 
   inline int32_t DimensionsCount() const { return size_; }
-  inline int32_t Dims(int i) const {
-    TFLITE_DCHECK_GE(i, 0);
-    TFLITE_DCHECK_LT(i, size_);
-    return size_ > kMaxSmallSize ? dims_pointer_[i] : dims_[i];
-  }
+
+  int32_t Dims(int i) const;
+
   inline void SetDim(int i, int32_t val) {
     TFLITE_DCHECK_GE(i, 0);
     TFLITE_DCHECK_LT(i, size_);
@@ -111,30 +105,30 @@ class RuntimeShape {
   inline void Resize(int dimensions_count) {
     const int32_t old_size = size_;
     size_ = dimensions_count;
-    if ((old_size <= kMaxSmallSize && dimensions_count <= kMaxSmallSize) ||
-        (old_size > kMaxSmallSize && dimensions_count > kMaxSmallSize &&
-         dimensions_count <= old_size)) {
-      return;
-    } else if (old_size <= kMaxSmallSize) {  // Small to big.
-      int32_t old_small_data[kMaxSmallSize];
-      memcpy(old_small_data, dims_, sizeof(int32_t) * old_size);
-      dims_pointer_ = new int32_t[dimensions_count];
-      memcpy(dims_pointer_, old_small_data, sizeof(int32_t) * old_size);
-    } else if (dimensions_count <= old_size) {  // Big to small.
+
+    if (old_size <= kMaxSmallSize) {
+      if (dimensions_count <= kMaxSmallSize) {
+        return;
+      } else {  // Small to big.
+        int32_t* new_big_data = new int32_t[dimensions_count];
+        memcpy(new_big_data, dims_, sizeof(int32_t) * old_size);
+        dims_pointer_ = new_big_data;
+      }
+    } else {
+      if (dimensions_count > kMaxSmallSize && dimensions_count <= old_size) {
+        return;
+      }
       std::unique_ptr<int32_t[]> old_data(dims_pointer_);
-      memcpy(dims_, old_data.get(), sizeof(int32_t) * dimensions_count);
-    } else {  // Big to bigger.
-      std::unique_ptr<int32_t[]> old_data(dims_pointer_);
-      dims_pointer_ = new int32_t[dimensions_count];
-      memcpy(dims_pointer_, old_data.get(), sizeof(int32_t) * old_size);
+      if (dimensions_count <= old_size) {  // Big to small.
+        memcpy(dims_, old_data.get(), sizeof(int32_t) * dimensions_count);
+      } else {  // Big to bigger.
+        dims_pointer_ = new int32_t[dimensions_count];
+        memcpy(dims_pointer_, old_data.get(), sizeof(int32_t) * old_size);
+      }
     }
   }
 
-  inline void ReplaceWith(int dimensions_count, const int32_t* dims_data) {
-    Resize(dimensions_count);
-    int32_t* dst_dims = DimsData();
-    std::memcpy(dst_dims, dims_data, dimensions_count * sizeof(int32_t));
-  }
+  void ReplaceWith(int dimensions_count, const int32_t* dims_data);
 
   template <typename T>
   inline void BuildFrom(const T& src_iterable) {
@@ -164,14 +158,7 @@ class RuntimeShape {
 
   // Returns the total count of elements, that is the size when flattened into a
   // vector.
-  inline int FlatSize() const {
-    int buffer_size = 1;
-    const int* dims_data = reinterpret_cast<const int*>(DimsData());
-    for (int i = 0; i < size_; i++) {
-      buffer_size *= dims_data[i];
-    }
-    return buffer_size;
-  }
+  int FlatSize() const;
 
   bool operator!=(const RuntimeShape& comp) const { return !((*this) == comp); }
 

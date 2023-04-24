@@ -1203,6 +1203,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::ELU:
       case OperationType::EXP:
       case OperationType::FLOOR:
+      case OperationType::GELU:
       case OperationType::LOG:
       case OperationType::NEG:
       case OperationType::RSQRT:
@@ -3120,6 +3121,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinGather:
       return std::make_unique<GatherOperationParser>();
+    case kTfLiteBuiltinGelu:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::GELU);
     case kTfLiteBuiltinGreater:
       return std::make_unique<ElementwiseOperationParser>(
           OperationType::GREATER);

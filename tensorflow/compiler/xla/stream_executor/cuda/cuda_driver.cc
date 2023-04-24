@@ -471,13 +471,18 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z;
   RETURN_IF_CUDA_RES_ERROR(
+      cuFuncSetAttribute(function,
+                         CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                         shared_mem_bytes),
+      "Failed to set shared memory size");
+  RETURN_IF_CUDA_RES_ERROR(
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
                      kernel_params, extra),
       "Failed to launch CUDA kernel: ", kernel_name,
       " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
       block_dim_z, " and grid dimensions: ", grid_dim_x, "x", grid_dim_y, "x",
-      grid_dim_z);
+      grid_dim_z, " and shared memory size: ", shared_mem_bytes);
   return ::tsl::OkStatus();
 }
 
@@ -485,8 +490,9 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                               const char* cubin_bytes,
                                               CUmodule* module) {
   ScopedActivateContext activation(context);
-  RETURN_IF_CUDA_RES_ERROR(cuModuleLoadFatBinary(module, cubin_bytes),
-                           "Failed to load in-memory CUBIN");
+  RETURN_IF_CUDA_RES_ERROR(
+      cuModuleLoadFatBinary(module, cubin_bytes),
+      "Failed to load in-memory CUBIN (compiled for a different GPU?).");
   return ::tsl::OkStatus();
 }
 
@@ -1483,6 +1489,12 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
+}
+
+tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
+    CUdevice device) {
+  return GetSimpleAttribute<int64_t>(
+      device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
 }
 
 /* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(

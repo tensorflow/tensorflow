@@ -7,6 +7,7 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
+    "//learning/brain/python/platform:__subpackages__",
 ]
 
 package(
@@ -347,7 +348,6 @@ tf_py_test(
     deps = [
         ":build_info",
         ":client_testlib",
-        ":platform",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
     ],
 )

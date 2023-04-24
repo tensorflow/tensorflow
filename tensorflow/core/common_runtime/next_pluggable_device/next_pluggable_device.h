@@ -43,7 +43,7 @@ class NextPluggableDevice : public PjRtBaseDevice {
     // The name of the compilation device (e.g., "XLA_TPU_JIT");
     string compilation_device_name;
 
-    // The number of the device.
+    // The TfDeviceId.
     int device_ordinal = -1;
 
     // A vector of ShapeDeterminationFn (i.e., a bundle of LayoutSelectionFn,
@@ -75,7 +75,7 @@ class NextPluggableDevice : public PjRtBaseDevice {
   Status TryGetDeviceContext(DeviceContext** out_context) override;
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
+                             AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
   int GetDeviceOrdinal() const { return device_ordinal_; }

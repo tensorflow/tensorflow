@@ -253,7 +253,7 @@ py_strict_library(
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:object_identity",
     ],
 )

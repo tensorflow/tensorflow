@@ -176,8 +176,9 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 struct LhloLegalizeToGpuPass
     : public impl::LhloLegalizeToGpuPassBase<LhloLegalizeToGpuPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
-                    memref::MemRefDialect, scf::SCFDialect>();
+    registry
+        .insert<affine::AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
+                memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {

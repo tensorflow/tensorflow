@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #define EIGEN_USE_THREADS
 
@@ -191,4 +191,4 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3 && ENABLE_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

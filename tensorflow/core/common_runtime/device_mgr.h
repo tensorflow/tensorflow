@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -77,42 +78,6 @@ class DeviceMgr {
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceMgr);
 };
 
-// Represents a static set of devices.
-class StaticDeviceMgr : public DeviceMgr {
- public:
-  // Constructs a StaticDeviceMgr from a list of devices.
-  explicit StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices);
-
-  // Constructs a StaticDeviceMgr managing a single device.
-  explicit StaticDeviceMgr(std::unique_ptr<Device> device);
-
-  ~StaticDeviceMgr() override;
-
-  void ListDeviceAttributes(
-      std::vector<DeviceAttributes>* devices) const override;
-  std::vector<Device*> ListDevices() const override;
-  string DebugString() const override;
-  string DeviceMappingString() const override;
-  Status LookupDevice(StringPiece name, Device** device) const override;
-  bool ContainsDevice(int64_t device_incarnation) const override;
-  void ClearContainers(gtl::ArraySlice<string> containers) const override;
-  int NumDeviceType(const string& type) const override;
-  int NumDevices() const override;
-  Device* HostCPU() const override;
-
- private:
-  const std::vector<std::unique_ptr<Device>> devices_;
-
-  StringPiece CopyToBackingStore(StringPiece s);
-
-  absl::flat_hash_set<int64_t> device_incarnation_set_;
-  std::unordered_map<StringPiece, Device*, StringPieceHasher> device_map_;
-  core::Arena name_backing_store_;  // Storage for keys in device_map_
-  std::unordered_map<string, int> device_type_counts_;
-  Device* cpu_device_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(StaticDeviceMgr);
-};
 
 // Size of stale device buffer for temporary storage of removed devices.
 static const size_t kStaleDeviceBufferSize = 8192;
@@ -124,8 +89,8 @@ class DynamicDeviceMgr : public DeviceMgr {
   DynamicDeviceMgr();
 
   // Constructs a DynamicDeviceMgr from a list of devices.
-  // TODO(b/183966398): Remove StaticDeviceMgr since there's no usage.
-  explicit DynamicDeviceMgr(std::vector<std::unique_ptr<Device>> devices);
+  explicit DynamicDeviceMgr(std::vector<std::unique_ptr<Device>>&& devices);
+  explicit DynamicDeviceMgr(std::unique_ptr<Device>&& device);
 
   ~DynamicDeviceMgr() override;
 
@@ -157,8 +122,17 @@ class DynamicDeviceMgr : public DeviceMgr {
  private:
   mutable mutex devices_mu_;
 
-  std::vector<std::unique_ptr<Device>> dynamic_devices_
-      TF_GUARDED_BY(devices_mu_);
+  // Using an ordered map to ensure deterministic ordering of devices.
+  // Not a set, because we need to do find(Device*) and own the devices
+  // at the same time.
+  // We still have to override C++'s default pointer ordering.
+  struct DereferenceDevicePtrLess {
+    bool operator()(const Device* a, const Device* b) const {
+      return Device::LessByParsedName(*a, *b);
+    }
+  };
+  std::map<Device*, std::unique_ptr<Device>, DereferenceDevicePtrLess>
+      dynamic_devices_ TF_GUARDED_BY(devices_mu_);
 
   absl::flat_hash_set<int64_t> device_incarnation_set_
       TF_GUARDED_BY(devices_mu_);
@@ -193,6 +167,10 @@ class DynamicDeviceMgr : public DeviceMgr {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DynamicDeviceMgr);
 };
+
+// TODO(b/183966398): Remove StaticDeviceMgr since there's no usage.
+using StaticDeviceMgr = DynamicDeviceMgr;
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_

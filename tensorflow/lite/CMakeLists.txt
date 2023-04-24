@@ -252,6 +252,7 @@ else()
 endif()
 
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
+populate_tflite_source_vars("core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
 populate_tflite_source_vars("core/async/c" TFLITE_CORE_ASYNC_C_SRCS)
@@ -519,6 +520,7 @@ endif()
 
 # TFLite library
 set(_ALL_TFLITE_SRCS
+  ${TFLITE_CORE_ACCELERATION_SRCS}
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_C_SRCS}
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}

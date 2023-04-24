@@ -887,8 +887,7 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64_t step_id)
-        : step_id(step_id), cleanup_rendezvous_after_run(false) {}
+    explicit Options(const int64_t step_id) : step_id(step_id) {}
 
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
@@ -897,18 +896,13 @@ class FunctionLibraryRuntime {
     // always 0, so a negative random step ID should suffice.
     const int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
 
-    // Whether to clean up rendezvous after run.
-    // If the function is a remote component of a cross-process function, a
-    // higher level component should determine the end of a step, and cleanup
-    // the rendezvous.
-    const bool cleanup_rendezvous_after_run = true;
-
     // op_id of the function running in eager mode. Set when we want to copy
     // remote outputs lazily. All components of a remote multi-device function
     // should use the same op_id, in order to correctly map remote output
     // tensors to the remote TensorHandles in the default device.
     absl::optional<int64_t> op_id = absl::nullopt;
 
+    // Not owned. Caller makes sure that the rendezvous outlives this Options.
     RendezvousInterface* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;

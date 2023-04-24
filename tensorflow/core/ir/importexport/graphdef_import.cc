@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 using tensorflow::DataType;
 using tensorflow::DataTypeVector;

@@ -71,8 +71,6 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
                                        absl::Span<const int64_t> row_dims,
                                        absl::Span<const int64_t> col_dims) {
   TF_RET_CHECK(shape.has_layout());
-  TF_RET_CHECK(!row_dims.empty());
-  TF_RET_CHECK(!col_dims.empty());
 
   std::vector<int64_t> minor_to_major;
   for (size_t i = 0; i < shape.rank();) {
@@ -83,16 +81,16 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
         if (*it != shape.layout().minor_to_major()[i++])
-          return InvalidArgument("dims not physically sequential");
+          return InvalidArgument("dims not physically_sequential");
       }
       return OkStatus();
     };
 
     int64_t dim = shape.layout().minor_to_major()[i];
-    if (dim == row_dims.back()) {
+    if (!row_dims.empty() && dim == row_dims.back()) {
       minor_to_major.push_back(1);
       TF_RETURN_IF_ERROR(check_physically_sequential(row_dims));
-    } else if (dim == col_dims.back()) {
+    } else if (!col_dims.empty() && dim == col_dims.back()) {
       minor_to_major.push_back(2);
       TF_RETURN_IF_ERROR(check_physically_sequential(col_dims));
     } else if (!batch_dims.empty() && (dim == batch_dims.back())) {
@@ -103,6 +101,8 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
     }
   }
 
+  if (col_dims.empty()) minor_to_major.push_back(2);
+  if (row_dims.empty()) minor_to_major.push_back(1);
   if (batch_dims.empty()) minor_to_major.push_back(0);
 
   auto dim_size = [&](absl::Span<const int64_t> dims) {
@@ -195,6 +195,21 @@ void MatrixLayout::Transpose() {
   order = (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
 }
 
+namespace {
+// Returns the relative order of 'dims' as indices from 0 to dims.size() - 1.
+// Let 'indices' be the returned vector, then it holds that
+// dims[indices[i - 1]] < dims[indices[i]] for 0 < i < dims.size()
+std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
+  // Remap the dimensions to values between 0 and dims.size() - 1, keeping their
+  // relative order the same.
+  std::vector<int64_t> indices(dims.size());
+  absl::c_iota(indices, 0);
+  absl::c_sort(indices,
+               [&](int64_t a, int64_t b) { return dims[a] < dims[b]; });
+  return indices;
+}
+}  // namespace
+
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
@@ -223,11 +238,20 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(transpose.shape(), batch_dims, contracting_dims));
 
+  // TransposeFolding assumes that folding the transpose into the dot operand
+  // doesn't change the dot shape. This means that the non-contracting
+  // dimensions of the dot operand need to keep their relative order.
+  auto transposed_non_contracting_dims = transposed(non_contracting_dims);
+  if (NormalizedRelativeOrder(non_contracting_dims) !=
+      NormalizedRelativeOrder(transposed_non_contracting_dims)) {
+    return false;
+  }
+
   // If we're able to construct a valid `MatrixLayout` for the transposed
   // dimensions, then GeMM can support folding the transpose.
   return MatrixLayout::For(transpose.operand(0)->shape(),
                            transposed(batch_dims), transposed(contracting_dims),
-                           transposed(non_contracting_dims))
+                           transposed_non_contracting_dims)
       .ok();
 }
 

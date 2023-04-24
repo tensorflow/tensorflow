@@ -202,7 +202,7 @@ namespace {
 void LoadMLIRDialects(mlir::MLIRContext& context) {
   context.loadDialect<mlir::arith::ArithDialect, mlir::linalg::LinalgDialect,
                       mlir::scf::SCFDialect, mlir::vector::VectorDialect,
-                      mlir::func::FuncDialect, mlir::AffineDialect,
+                      mlir::func::FuncDialect, mlir::affine::AffineDialect,
                       mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
   mlir::registerBuiltinDialectTranslation(context);
@@ -355,7 +355,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                 << status.error_message();
+                 << status.message();
     }
     runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
 

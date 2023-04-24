@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -311,6 +312,7 @@ void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
   mlir::arith::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       dialects);
+  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerTilingInterfaceExternalModels(dialects);
   mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);

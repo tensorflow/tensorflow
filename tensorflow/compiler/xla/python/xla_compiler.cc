@@ -942,6 +942,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   hlo_sharding
       .def_static("from_proto",
                   xla::ValueOrThrowWrapper(xla::HloSharding::FromProto))
+      .def_static("from_string", xla::ValueOrThrowWrapper(xla::ParseSharding))
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",

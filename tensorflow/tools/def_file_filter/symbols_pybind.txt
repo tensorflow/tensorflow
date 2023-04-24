@@ -37,6 +37,9 @@ tensorflow::IsX86Available
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 
+[//tensorflow/compiler/tf2xla:tf2xla_opset] # tf2xla_opset
+tensorflow::GetRegisteredXlaOpsForDevice
+
 [//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl] # stat_summarizer
 stream_executor::StreamExecutor::EnablePeerAccessTo
 stream_executor::StreamExecutor::CanEnablePeerAccessTo

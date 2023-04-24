@@ -368,3 +368,13 @@ func.func @xla_gather_known_output_shape(%arg0: tensor<5xi32>, %arg1: tensor<1xi
 // CHECK: %[[slice:.*]] = "tf.Slice"(%arg0, %[[tensor_scatter_update]], %[[arg2_i64]]) : (tensor<5xi32>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xi32>
 // CHECK: %[[reshape:.*]] = "tf.Reshape"(%[[slice]], %[[cst_1]]) : (tensor<1xi32>, tensor<0xi64>) -> tensor<i32>
 // CHECK: return %[[reshape]] : tensor<i32>
+
+// -----
+
+func.func @replace_checknumerics_to_identity(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.CheckNumerics"(%arg0) {device = "", message = "transformer"} : (tensor<*xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// CHECK: func @replace_checknumerics_to_identity
+// CHECK: %[[out:.*]] = "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>

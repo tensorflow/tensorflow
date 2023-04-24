@@ -69,8 +69,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":extract_object_files",
-        "//tensorflow/python/platform",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
         "@absl_py//absl/testing:parameterized",
     ],
 )

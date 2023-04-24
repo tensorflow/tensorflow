@@ -865,11 +865,12 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
     return failure();
 
   RankedTensorType fill_type = tensorflow::GetTypeFromTFTensorShape(
-      ArrayRef<int64_t>(dims_vals), value_elem.getType().getElementType());
+      ArrayRef<int64_t>(dims_vals),
+      value_elem.getShapedType().getElementType());
   DenseArrayAttr fill_attr;
 
   // Convert to a compatible zero type
-  if (value_elem.getType().getElementType().isa<FloatType>()) {
+  if (value_elem.getShapedType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
         total_size,
         value_elem.getValues<FloatAttr>()[0].getValue().convertToFloat());

@@ -21,10 +21,9 @@ import socket
 import threading
 import uuid
 
-
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils

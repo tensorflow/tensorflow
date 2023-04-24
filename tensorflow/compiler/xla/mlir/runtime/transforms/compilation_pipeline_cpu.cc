@@ -63,13 +63,14 @@ namespace runtime {
 
 void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the compiled executables.
-  dialects->insert<
-      mlir::AffineDialect, mlir::arith::ArithDialect, mlir::async::AsyncDialect,
-      mlir::cf::ControlFlowDialect, mlir::linalg::LinalgDialect,
-      mlir::math::MathDialect, mlir::memref::MemRefDialect,
-      mlir::scf::SCFDialect, mlir::func::FuncDialect,
-      mlir::sparse_tensor::SparseTensorDialect, mlir::tensor::TensorDialect,
-      mlir::vector::VectorDialect, RuntimeDialect>();
+  dialects->insert<mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+                   mlir::async::AsyncDialect, mlir::cf::ControlFlowDialect,
+                   mlir::linalg::LinalgDialect, mlir::math::MathDialect,
+                   mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
+                   mlir::func::FuncDialect,
+                   mlir::sparse_tensor::SparseTensorDialect,
+                   mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
+                   RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
 #ifdef TF_LLVM_AARCH64_AVAILABLE

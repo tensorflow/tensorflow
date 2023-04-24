@@ -165,7 +165,11 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     func::FuncOp callee =
         custom_calls_.GetOrCreate(b, op.getCallTargetName(), op);
-    callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
+    // Custom calls starting with the __gpu$ prefix are considered internal and
+    // statically linked (e.g. __gpu$TopK).
+    if (!op.getCallTargetName().starts_with("__gpu$")) {
+      callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
+    }
 
     // Forward backend config to the custom call implementation.
     auto dict = op.getBackendConfig()
@@ -924,9 +928,7 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
  public:
   AsyncDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
                       CustomCallDeclarations& custom_calls)
-      : OpRewritePattern<OpT>(ctx),
-        uid_(uid),
-        custom_calls_(custom_calls) {}
+      : OpRewritePattern<OpT>(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(OpT op,
                                 PatternRewriter& rewriter) const override {

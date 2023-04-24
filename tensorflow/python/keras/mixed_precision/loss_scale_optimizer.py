@@ -15,7 +15,7 @@
 """Contains the loss scaling optimizer class."""
 
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
@@ -233,9 +233,9 @@ class _DynamicLossScaleState(trackable.Trackable):
         step.
     """
     grads = nest.flatten(grads)
-    if distribution_strategy_context.has_strategy(
-    ) and distribution_strategy_context.in_cross_replica_context():
-      distribution = distribution_strategy_context.get_strategy()
+    if distribute_lib.has_strategy(
+    ) and distribute_lib.in_cross_replica_context():
+      distribution = distribute_lib.get_strategy()
       is_finite_per_replica = distribution.extended.call_for_each_replica(
           _is_all_finite, args=(grads,))
       # Each replica computed the same `is_finite` value, since `grads` is
@@ -604,7 +604,7 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
                       grads_and_vars,
                       name=None,
                       experimental_aggregate_gradients=True):
-    if distribution_strategy_context.in_cross_replica_context():
+    if distribute_lib.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
     # We check for the strategy here despite already checking in the constructor
     # as frequently the optimizer is created outside the strategy's scope.
@@ -670,7 +670,7 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
         maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
                                                do_not_apply_fn)
         return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
-      return distribution_strategy_context.get_replica_context().merge_call(
+      return distribute_lib.get_replica_context().merge_call(
           _apply_gradients_cross_replica,
           args=(grads, wrapped_vars, name))
 
@@ -725,7 +725,7 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
 
   def _raise_if_strategy_unsupported(self):
     if not strategy_supports_loss_scaling():
-      strategy = distribution_strategy_context.get_strategy()
+      strategy = distribute_lib.get_strategy()
       if isinstance(strategy,
                     (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
                      tpu_strategy.TPUStrategyV2)):
@@ -1119,9 +1119,9 @@ def _multiply_gradient(gradient, scale):
 
 def strategy_supports_loss_scaling():
   """Returns True if the current Strategy supports loss scaling."""
-  if not distribution_strategy_context.has_strategy():
+  if not distribute_lib.has_strategy():
     return True
-  strategy = distribution_strategy_context.get_strategy()
+  strategy = distribute_lib.get_strategy()
   # Strategies are supported if either there is only one replica or if variables
   # are replicated per device. Otherwise, the current model.fit() implementation
   # and most custom training loops incorrectly unscale the gradients. Currently,

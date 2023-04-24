@@ -347,6 +347,15 @@ static LogicalResult Outline(unsigned ordinal,
       "xla.gpu.cuda.graph.capture",
       FunctionType::get(ctx, TypeRange(ValueRange(args)), TypeRange()));
 
+  for (auto op : seq) {
+    mlir::Operation* captured_op = op.first;
+    if (isa<lmhlo_gpu::GEMMOp>(captured_op)) {
+      func->setAttr(b.getStringAttr("xla.requires_blas"),
+                    BoolAttr::get(ctx, true));
+      break;
+    }
+  }
+
   // Add graph capture function to the module.
   sym_table.insert(func);
 
@@ -415,11 +424,10 @@ void OutlineCudaGraphsPass::runOnOperation() {
 
   if (cuda_graph_level_ >= 1) {
     // Enable capturing fusions and memcpies.
-    // TOOD(b/277766474): Memcpies are temporarily disabled since they cause
-    // cupti to deadlock. Re-enable after it is fixed.
     patterns.emplace_back(new LaunchFuncOpCapture());
     patterns.emplace_back(new ConstantOpCapture());
     patterns.emplace_back(new ViewOpCapture());
+    patterns.emplace_back(new MemcpyOpCapture());
   }
 
   if (cuda_graph_level_ >= 2) {

@@ -816,7 +816,7 @@ class CoreRTConstStringTensorOpConversion
           llvm::StringRef(element.data(), element.size())));
 
     // Create the shape attribute from the tensor shape.
-    ArrayRef<int64_t> shape = op.getValue().getType().getShape();
+    ArrayRef<int64_t> shape = op.getValue().getShapedType().getShape();
     llvm::SmallVector<mlir::Attribute, 4> dims;
     dims.reserve(shape.size());
     auto i64_type = rewriter.getIntegerType(64);

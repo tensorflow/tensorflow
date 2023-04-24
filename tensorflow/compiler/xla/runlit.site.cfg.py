@@ -44,6 +44,7 @@ mlir_tf_tools_dirs = [
     'mlir/tools/mlir_bisect',
     'mlir_hlo',
     'mlir_hlo/tosa',
+    'python/ifrt/ir/tests',
     'service/gpu/tests',
     'service/mlir_gpu',
     'translate',
