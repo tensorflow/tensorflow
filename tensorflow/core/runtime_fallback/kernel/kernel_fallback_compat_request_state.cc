@@ -96,8 +96,10 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
   DCHECK(runner_table_);
   DCHECK(resource_array_);
   DCHECK(rendezvous_);
+  DCHECK(pflr_);
 
   cpu_device_ = device_manager_->HostCPU();
+  cpu_function_library_runtime_ = pflr_->GetFLR(cpu_device_->name());
   if (user_intra_op_threadpool != nullptr) {
     custom_cpu_device_ = tensorflow::RenamedDevice::NewRenamedDevice(
         cpu_device_->name(), cpu_device_, /*owns_underlying=*/false,
