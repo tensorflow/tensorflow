@@ -100,7 +100,6 @@ py_library(
         ":debugger_cli_common",
         ":tensor_format",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/lib:common",
         "//tensorflow/python/platform:gfile",
@@ -149,7 +148,6 @@ py_library(
     srcs = ["debugger_cli_common.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
@@ -171,7 +169,6 @@ py_library(
     deps = [
         ":analyzer_cli",
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:platform",
         "//tensorflow/python/debug/lib:debug_data",
     ],
 )
@@ -192,7 +189,6 @@ py_test(
         ":debugger_cli_common",
         ":tensor_format",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
@@ -212,7 +208,6 @@ py_test(
         ":readline_ui",
         ":ui_factory",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/platform:gfile",
     ],
@@ -227,7 +222,6 @@ py_test(
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python/platform:gfile",
@@ -244,7 +238,6 @@ py_test(
     deps = [
         ":cli_config",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform:gfile",
