@@ -59,7 +59,7 @@ build:rocm --copt="-Wno-error=unused-result"
 
 # Test-related settings below this point.
 test:cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
-test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so
+test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so --test_sharding_strategy=disabled
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 # Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
 test --test_timeout=920,2400,7200,9600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
@@ -178,7 +178,12 @@ build:rbe --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.13_config_nccl"
 build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.13_config_python"
 
 # For continuous builds
-test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
-test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
+test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
 test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+test:pycpp_large_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
+test:pycpp_large_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
+test:pycpp_large_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium,large
+test:pycpp_large --config=pycpp_large_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...

@@ -1,0 +1,264 @@
+#! /bin/sh
+#! -*- coding:utf-8; mode:shell-script; -*-
+
+# Download some prerequisites needed by GCC.
+# Run this from the top level of the GCC source tree and the GCC build will do
+# the right thing.  Run it with the `--help` option for more information.
+#
+# (C) 2010-2016 Free Software Foundation
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see http://www.gnu.org/licenses/.
+
+program='download_prerequisites'
+version='(unversioned)'
+
+# MAINTAINERS: If you update the package versions below, please
+# remember to also update the files `contrib/prerequisites.sha512` and
+# `contrib/prerequisites.md5` with the new checksums.
+
+gmp='gmp-6.1.0.tar.bz2'
+mpfr='mpfr-3.1.4.tar.bz2'
+mpc='mpc-1.0.3.tar.gz'
+isl='isl-0.18.tar.bz2'
+
+base_url='https://gcc.gnu.org/pub/gcc/infrastructure/'
+
+echo_archives() {
+    echo "${gmp}"
+    echo "${mpfr}"
+    echo "${mpc}"
+    if [ ${graphite} -gt 0 ]; then echo "${isl}"; fi
+}
+
+graphite=1
+verify=1
+force=0
+OS=$(uname)
+
+case $OS in
+  "Darwin"|"FreeBSD"|"DragonFly")
+    chksum='shasum -a 512 --check'
+  ;;
+  *)
+    chksum='sha512sum -c'
+  ;;
+esac
+
+if type wget > /dev/null ; then
+  fetch='wget'
+else
+  fetch='curl -LO -u anonymous:'
+fi
+chksum_extension='sha512'
+directory='.'
+
+helptext="usage: ${program} [OPTION...]
+
+Downloads some prerequisites needed by GCC.  Run this from the top level of the
+GCC source tree and the GCC build will do the right thing.
+
+The following options are available:
+
+ --directory=DIR  download and unpack packages into DIR instead of '.'
+ --force          download again overwriting existing packages
+ --no-force       do not download existing packages again (default)
+ --isl            download ISL, needed for Graphite loop optimizations (default)
+ --graphite       same as --isl
+ --no-isl         don't download ISL
+ --no-graphite    same as --no-isl
+ --verify         verify package integrity after download (default)
+ --no-verify      don't verify package integrity
+ --sha512         use SHA512 checksum to verify package integrity (default)
+ --md5            use MD5 checksum to verify package integrity
+ --help           show this text and exit
+ --version        show version information and exit
+"
+
+versiontext="${program} ${version}
+Copyright (C) 2016 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+
+die() {
+    echo "error: $@" >&2
+    exit 1
+}
+
+for arg in "$@"
+do
+    case "${arg}" in
+        --help)
+            echo "${helptext}"
+            exit
+            ;;
+        --version)
+            echo "${versiontext}"
+            exit
+            ;;
+    esac
+done
+unset arg
+
+# Emulate Linux's 'md5 --check' on macOS
+md5_check() {
+  # Store the standard input: a line from contrib/prerequisites.md5:
+  md5_checksum_line=$(cat -)
+  # Grab the text before the first space
+  md5_checksum_expected="${md5_checksum_line%% *}"
+  # Grab the text after the first space
+  file_to_check="${md5_checksum_line##* }"
+  # Calculate the md5 checksum for the downloaded file
+  md5_checksum_output=$(md5 -r "${file_to_check}")
+  # Grab the text before the first space
+  md5_checksum_detected="${md5_checksum_output%% *}"
+  [ "${md5_checksum_expected}" == "${md5_checksum_detected}" ] \
+    || die "Cannot verify integrity of possibly corrupted file ${file_to_check}"
+  echo "${file_to_check}: OK"
+}
+
+
+argnext=
+for arg in "$@"
+do
+    if [ "x${argnext}" = x ]
+    then
+        case "${arg}" in
+            --directory)
+                argnext='directory'
+                ;;
+            --directory=*)
+                directory="${arg#--directory=}"
+                ;;
+            --force)
+                force=1
+                ;;
+            --no-force)
+                force=0
+                ;;
+            --isl|--graphite)
+                graphite=1
+                ;;
+            --no-isl|--no-graphite)
+                graphite=0
+                ;;
+            --verify)
+                verify=1
+                ;;
+            --no-verify)
+                verify=0
+                ;;
+            --sha512)
+                case $OS in
+                  "Darwin")
+                    chksum='shasum -a 512 --check'
+                  ;;
+                  *)
+                    chksum='sha512sum --check'
+                  ;;
+                esac
+                chksum_extension='sha512'
+                verify=1
+                ;;
+            --md5)
+                case $OS in
+                  "Darwin")
+                    chksum='md5_check'
+                  ;;
+                  *)
+                    chksum='md5 --check'
+                  ;;
+                esac
+                chksum_extension='md5'
+                verify=1
+                ;;
+            -*)
+                die "unknown option: ${arg}"
+                ;;
+            *)
+                die "too many arguments"
+                ;;
+        esac
+    else
+        case "${arg}" in
+            -*)
+                die "Missing argument for option --${argnext}"
+                ;;
+        esac
+        case "${argnext}" in
+            directory)
+                directory="${arg}"
+                ;;
+            *)
+                die "The impossible has happened"
+                ;;
+        esac
+        argnext=
+    fi
+done
+[ "x${argnext}" = x ] || die "Missing argument for option --${argnext}"
+unset arg argnext
+
+[ -e ./gcc/BASE-VER ]                                                         \
+    || die "You must run this script in the top-level GCC source directory"
+
+[ -d "${directory}" ]                                                         \
+    || die "No such directory: ${directory}"
+
+for ar in $(echo_archives)
+do
+    if [ ${force} -gt 0 ]; then rm -f "${directory}/${ar}"; fi
+    [ -e "${directory}/${ar}" ]                                               \
+        || ${fetch} --no-verbose -O "${directory}/${ar}" "${base_url}${ar}"       \
+        || die "Cannot download ${ar} from ${base_url}"
+done
+unset ar
+
+if [ ${verify} -gt 0 ]
+then
+    chksumfile="contrib/prerequisites.${chksum_extension}"
+    [ -r "${chksumfile}" ] || die "No checksums available"
+    for ar in $(echo_archives)
+    do
+        grep "${ar}" "${chksumfile}"                                          \
+            | ( cd "${directory}" && ${chksum} )                              \
+            || die "Cannot verify integrity of possibly corrupted file ${ar}"
+    done
+    unset chksumfile
+fi
+unset ar
+
+for ar in $(echo_archives)
+do
+    package="${ar%.tar*}"
+    if [ ${force} -gt 0 ]; then rm -rf "${directory}/${package}"; fi
+    [ -e "${directory}/${package}" ]                                          \
+        || ( cd "${directory}" && tar -xf "${ar}" )                           \
+        || die "Cannot extract package from ${ar}"
+    unset package
+done
+unset ar
+
+for ar in $(echo_archives)
+do
+    target="${directory}/${ar%.tar*}/"
+    linkname="${ar%-*}"
+    if [ ${force} -gt 0 ]; then rm -f "${linkname}"; fi
+    [ -e "${linkname}" ]                                                      \
+        || ln -s "${target}" "${linkname}"                                    \
+        || die "Cannot create symbolic link ${linkname} --> ${target}"
+    unset target linkname
+done
+unset ar
+
+echo "All prerequisites downloaded successfully."
