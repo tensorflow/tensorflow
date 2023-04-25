@@ -234,6 +234,7 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   bool GetConvolveAlgorithms(
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   tsl::Status GetConvolveRunners(
@@ -246,6 +247,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners)
       override;
 
@@ -273,10 +275,12 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   bool GetConvolveBackwardDataAlgorithms(
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
@@ -785,6 +789,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
+      const NumericOptions& numeric_options,
       ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
       int* ctc_loss_algo_id) override;
 

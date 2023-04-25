@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/types/span.h"
@@ -217,6 +218,7 @@ class CudnnSupport : public dnn::DnnSupport {
 
   bool GetConvolveAlgorithms(
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   tsl::Status GetConvolveRunners(
@@ -229,6 +231,7 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans)
       override;
 
@@ -251,6 +254,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
       override;
 
@@ -260,6 +264,7 @@ class CudnnSupport : public dnn::DnnSupport {
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
       int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans) override;
 
@@ -329,10 +334,12 @@ class CudnnSupport : public dnn::DnnSupport {
 
   bool GetConvolveBackwardDataAlgorithms(
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
@@ -539,8 +546,28 @@ class CudnnSupport : public dnn::DnnSupport {
                             DeviceMemoryBase output_data,
                             ScratchAllocator* workspace_allocator) override;
 
+  tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+                            const dnn::PoolingDescriptor& pooling_dimensions,
+                            const NumericOptions& numeric_options,
+                            const dnn::BatchDescriptor& input_dimensions,
+                            DeviceMemoryBase input_data,
+                            const dnn::BatchDescriptor& output_dimensions,
+                            DeviceMemoryBase output_data,
+                            ScratchAllocator* workspace_allocator) override;
+
   tsl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             DeviceMemoryBase input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemoryBase output_data,
+                             DeviceMemoryBase input_diff_data,
+                             DeviceMemoryBase output_diff_data,
+                             ScratchAllocator* workspace_allocator) override;
+
+  tsl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const NumericOptions& numeric_options,
                              const dnn::BatchDescriptor& input_dimensions,
                              DeviceMemoryBase input_data,
                              const dnn::BatchDescriptor& output_dimensions,
@@ -735,6 +762,7 @@ class CudnnSupport : public dnn::DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
+      const NumericOptions& numeric_options,
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) override;
 

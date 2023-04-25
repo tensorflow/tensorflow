@@ -17,6 +17,7 @@ limitations under the License.
 
 // This include can't be in the conv_ops_fused_impl.h headers. See b/62899350.
 #if GOOGLE_CUDA
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #endif  // GOOGLE_CUDA
 #include "tensorflow/core/kernels/autotune_conv_impl.h"
@@ -583,7 +584,8 @@ void operator()(
         use_cudnn_frontend, se::dnn::ConvolutionKind::FORWARD, type, bias_type,
         type, conv_scale, side_input_scale, /*leakyrelu_alpha=*/0.0, stream,
         conv_input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-        /*use_fallback=*/false, dnn_activation_mode, &runners));
+        /*use_fallback=*/false, dnn_activation_mode, GetNumericOptions(),
+        &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -628,10 +630,11 @@ void operator()(
           fallback_runners;
       TF_CHECK_OK(stream->parent()->GetFusedConvolveRunners(
           use_cudnn_frontend, se::dnn::ConvolutionKind::FORWARD, type,
-          bias_type, type, conv_scale, side_input_scale,
-          leakyrelu_alpha, stream, conv_input_desc, filter_desc,
-          bias_desc, output_desc, conv_desc,
-          /*use_fallback=*/true, dnn_activation_mode, &fallback_runners));
+          bias_type, type, conv_scale, side_input_scale, leakyrelu_alpha,
+          stream, conv_input_desc, filter_desc, bias_desc, output_desc,
+          conv_desc,
+          /*use_fallback=*/true, dnn_activation_mode, GetNumericOptions(),
+          &fallback_runners));
 
       auto fallback_results_or = internal::AutotuneConvImpl(
           ctx, fallback_runners, cudnn_use_autotune, launch_func,

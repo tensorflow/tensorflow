@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_memory_manager.h"
@@ -609,6 +610,23 @@ class Stream {
   }
 
   template <typename ElementType>
+  tsl::Status ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                              const NumericOptions &numeric_options,
+                              const dnn::BatchDescriptor &input_dimensions,
+                              const DeviceMemory<ElementType> &input_data,
+                              const dnn::BatchDescriptor &output_dimensions,
+                              DeviceMemory<ElementType> *output_data,
+                              ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
+                                pooling_dimensions, numeric_options,
+                                input_dimensions, input_data, output_dimensions,
+                                *output_data, workspace_allocator);
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  template <typename ElementType>
   tsl::Status ThenPoolBackward(
       const dnn::PoolingDescriptor &pooling_dimensions,
       const dnn::BatchDescriptor &input_dimensions,
@@ -623,6 +641,26 @@ class Stream {
           dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
           input_dimensions, input_data, output_dimensions, output_data,
           input_diff_data, *output_diff_data, workspace_allocator);
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  template <typename ElementType>
+  tsl::Status ThenPoolBackward(
+      const dnn::PoolingDescriptor &pooling_dimensions,
+      const NumericOptions &numeric_options,
+      const dnn::BatchDescriptor &input_dimensions,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      const DeviceMemory<ElementType> &output_data,
+      const DeviceMemory<ElementType> &input_diff_data,
+      DeviceMemory<ElementType> *output_diff_data,
+      ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolBackward(
+          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
+          numeric_options, input_dimensions, input_data, output_dimensions,
+          output_data, input_diff_data, *output_diff_data, workspace_allocator);
     }
     return tsl::errors::Unimplemented("DNN library is not found.");
   }
@@ -1497,6 +1535,7 @@ class Stream {
                       absl::Span<const int> labels_data,
                       absl::Span<const int> labels_lengths_data,
                       absl::Span<const int> input_lengths_data,
+                      const NumericOptions &numeric_options,
                       DeviceMemory<float> *costs_data,
                       const dnn::RnnStateTensorDescriptor &grads_desc,
                       DeviceMemory<float> *grads_data,
