@@ -726,7 +726,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // fusion of the scaling and conversion of D into the Custom Call. Fusing
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
-
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
@@ -834,29 +833,23 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Pad the non-batch dimensions of the operands to multiples of 16 as
     // required by cuBLASLt.
-    auto pad_shape = [&batch_dims](PaddingConfig &padding_config,
-                                   const Shape old_shape) {
-      Shape padded_shape = old_shape;
-      for (int i = 0; i < old_shape.rank(); ++i) {
+    auto pad_operand = [&instr, &batch_dims](
+                           HloInstruction *&x,
+                           bool *is_padded = nullptr) -> void {
+      PaddingConfig padding_config;
+      Shape padded_shape = x->shape();
+      for (int i = 0; i < x->shape().rank(); ++i) {
         auto dimension = padding_config.add_dimensions();
         if (!absl::c_linear_search(batch_dims, i)) {
           int64_t padded_dimension =
-              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
+              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
           dimension->set_edge_padding_low(0);
           dimension->set_edge_padding_high(padded_dimension -
-                                           old_shape.dimensions(i));
+                                           x->shape().dimensions(i));
           dimension->set_interior_padding(0);
           padded_shape.set_dimensions(i, padded_dimension);
         }
       }
-      return padded_shape;
-    };
-
-    auto pad_operand = [&instr, &pad_shape](
-                           HloInstruction *&x,
-                           bool *is_padded = nullptr) -> void {                           
-      PaddingConfig padding_config;  
-      Shape padded_shape = pad_shape(padding_config, x->shape());
       if (!ShapeUtil::Equal(padded_shape, x->shape())) {
         HloInstruction *zero =
             instr->AddInstruction(HloInstruction::CreateConstant(
@@ -869,26 +862,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
       return;
     };
-
     pad_operand(a);
     pad_operand(b);
     bool c_padded = false;
     absl::Span<const int64_t> c_dim;
-#if CUDA_VERSION > 12000
+#if CUDA_VERSION >= 12000
     if (c == nullptr) {
       c_dim = instr->shape().dimensions();
-      PaddingConfig padding_config;
-      c_padded = !ShapeUtil::Equal(pad_shape(padding_config, instr->shape()),
-                                  instr->shape());
       c = instr->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(c_type)));
     } else {
-#endif  // CUDA_VERSION > 12000
+#endif  // CUDA_VERSION >= 12000
       pad_operand(c, &c_padded);
       c_dim = c->shape().dimensions();
-#if CUDA_VERSION > 12000
+#if CUDA_VERSION >= 12000
     }
-#endif  // CUDA_VERSION > 12000
+#endif  // CUDA_VERSION >= 12000
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
