@@ -3790,13 +3790,11 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
       result_mark(Result::kFailOutOfMemory, result);
       continue;
     }
-    int64_t estimated_prefetch_end_time =
-        options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
-            shape, alternate_mem_interval.start, prefetch_end_time);
     VLOG(4) << "Trying alternate memory allocation ("
             << alternate_mem_interval.start << ", " << request.end_time
             << "), estimated prefetch end time = "
-            << estimated_prefetch_end_time;
+            << options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
+                   shape, alternate_mem_interval.start, prefetch_end_time);
     float prefetch_resource =
         options_.cost_analysis
             ? options_.cost_analysis->GetAsyncCopyElapsed(shape)
