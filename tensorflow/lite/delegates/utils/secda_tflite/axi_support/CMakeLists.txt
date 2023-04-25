@@ -1,0 +1,12 @@
+include_directories(${acc_testing_SOURCE_DIR}/secda_tflite/)
+
+if(BUILD_ARM)
+    use_cross_compiler()
+    add_library(api_v2 STATIC axi_api_v2.cc)
+else()
+    use_host_compiler()
+    add_library(api_sysc_v2 STATIC axi_api_sysc_v2.cc)
+    target_include_directories(api_sysc_v2 PUBLIC ${SYSC_INCLUDES})
+    target_link_libraries(api_sysc_v2 PUBLIC profiler ${SYSC_LIBRARIES})
+    target_compile_options(api_sysc_v2 PRIVATE -fPIC -DSYSC)
+endif()

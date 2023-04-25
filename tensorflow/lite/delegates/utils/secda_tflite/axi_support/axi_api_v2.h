@@ -2,7 +2,7 @@
 #define AXI_API_V2_H
 
 #ifdef SYSC
-#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_integrator/axi4s_engine.sc.h"
+#include "../sysc_integrator/axi4s_engine.sc.h"
 #endif
 
 #include <fcntl.h>

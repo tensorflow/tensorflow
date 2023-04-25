@@ -1,9 +1,9 @@
 #ifndef AXI4MM_ENGINE_H
 #define AXI4MM_ENGINE_H
 
-#include <systemc.h>
-#include "../ap_sysc/AXI4_if.h"
 #include "sysc_types.h"
+#include "../ap_sysc/AXI4_if.h"
+
 
 template <typename dtype>
 SC_MODULE(AXI4MM_ENGINE) {

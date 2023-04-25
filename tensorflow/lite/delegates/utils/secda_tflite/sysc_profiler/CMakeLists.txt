@@ -1,0 +1,1 @@
+add_library(profiler STATIC profiler.cc)

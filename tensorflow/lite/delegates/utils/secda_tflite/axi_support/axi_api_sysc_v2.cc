@@ -87,7 +87,7 @@ void stream_dma::dma_init(unsigned int _dma_addr, unsigned int _input,
 
 void stream_dma::writeMappedReg(uint32_t offset, unsigned int val) {}
 
-unsigned int stream_dma::readMappedReg(uint32_t offset) {}
+unsigned int stream_dma::readMappedReg(uint32_t offset) { return 0; }
 
 void stream_dma::dma_mm2s_sync() {}
 
@@ -199,7 +199,7 @@ void multi_dma::multi_dma_wait_recv() {
       if (dmas[i].dmad->recv) dmas[i].dma_wait_recv();
       loop = loop || dmas[i].dmad->recv;
       bool e = dmas[i].dmad->recv;
-      int k=0;
+      int k = 0;
     }
   }
 }
