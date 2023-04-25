@@ -212,6 +212,7 @@ filegroup(
         "//tensorflow/compiler/xla:cpu_runtime_hdrs",
         "//tensorflow/compiler/xla/service:custom_call_status_hdrs",
         "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
+        "//tensorflow/compiler/xla/service/cpu:xla_runtime_runner_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "//tensorflow/tsl/framework:xla_cpu_runtime_hdrs",
@@ -228,6 +229,7 @@ filegroup(
         "//tensorflow/compiler/xla:cpu_runtime_srcs",
         "//tensorflow/compiler/xla/service:custom_call_status_srcs",
         "//tensorflow/compiler/xla/service/cpu:runtime_srcs",
+        "//tensorflow/compiler/xla/service/cpu:xla_runtime_runner_srcs",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "//tensorflow/tsl/platform:xla_cpu_runtime_srcs",
@@ -374,6 +376,7 @@ cc_library(
         # binary produced by tfcompile.
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
     ],
 )

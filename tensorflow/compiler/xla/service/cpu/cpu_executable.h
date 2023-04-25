@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/buffer_desc.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
@@ -45,18 +46,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
-// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
-class BufferDesc {
- public:
-  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
-  void* data() const { return data_; }
-  size_t size() const { return size_; }
-
- private:
-  void* data_;
-  size_t size_;
-};
 
 class XlaRuntimeCpuExecutable {
   using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
@@ -167,8 +156,9 @@ class CpuExecutable : public Executable {
 
   bool IsXlaRuntime() const { return xla_runtime_executable_ != nullptr; }
 
-  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table,
-                           const ExecutableRunOptions* run_options = nullptr) {
+  Status ExecuteXlaRuntime(
+      const std::vector<BufferDesc>& descriptor_table,
+      const ExecutableRunOptions* run_options = nullptr) const {
     return xla_runtime_executable_->Execute(descriptor_table, run_options);
   }
 

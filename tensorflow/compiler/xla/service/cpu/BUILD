@@ -112,6 +112,20 @@ filegroup(
     visibility = [":friends"],
 )
 
+filegroup(
+    name = "xla_runtime_runner_hdrs",
+    srcs = [
+        "buffer_desc.h",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "xla_runtime_runner_srcs",
+    srcs = [],
+    visibility = [":friends"],
+)
+
 cc_library(
     name = "cpu_xfeed",
     srcs = ["cpu_xfeed.cc"],
@@ -506,10 +520,16 @@ cc_library(
 )
 
 cc_library(
+    name = "buffer_desc",
+    hdrs = ["buffer_desc.h"],
+)
+
+cc_library(
     name = "cpu_executable",
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
     deps = [
+        ":buffer_desc",
         ":simple_orc_jit",
         ":xla_framework",
         "//tensorflow/compiler/xla:shape_tree",
