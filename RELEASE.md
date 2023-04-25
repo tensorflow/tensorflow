@@ -97,6 +97,8 @@
     *   Added support for `class_weight` for 3+ dimensional targets (e.g.
         image segmentation masks) in `Model.fit`.
     *   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
+    *   Remove the `tf.keras.dtensor.experimental.layout_map_scope()`. You can
+        user the `tf.keras.dtensor.experimental.LayoutMap.scope()` instead.
 
 *   `tf.function`:
 
