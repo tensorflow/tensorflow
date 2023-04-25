@@ -86,8 +86,11 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
     profiling::memory::MemoryUsage overall_mem_usage =
         results.overall_mem_usage();
 
-    AddMetric(/*name=*/"model_size_megabyte",
-              /*value=*/results.model_size_mb());
+    if (results.model_size_mb() > 0) {
+      // Ignores invalid model sizes to avoid confusions.
+      AddMetric(/*name=*/"model_size_megabyte",
+                /*value=*/results.model_size_mb());
+    }
     AddMetric(/*name=*/"initialization_latency_us",
               /*value=*/results.startup_latency_us());
     AddMetric(/*name=*/"warmup_latency_average_us", /*value=*/warmup_us.avg());
