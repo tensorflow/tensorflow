@@ -750,20 +750,28 @@ StatusOr<LaunchDimensions> TritonWrapper(
         absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
                      ".triton-passes.log");
     std::string outputs_dir;
-    tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
-    std::string path = tsl::io::JoinPath(outputs_dir, basename);
-    std::error_code err;
-    log_stream.emplace(path, err, llvm::sys::fs::OF_None);
-    if (err) {
-      log_stream.reset();
+    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
+      outputs_dir = hlo_module->config().debug_options().xla_dump_to();
     }
-    auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
-    auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
-    pm.getContext()->disableMultithreading();
-    pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
-                        /*printAfterOnlyOnChange=*/true,
-                        /*printAfterOnlyOnFailure=*/false, *log_stream,
-                        /*opPrintingFlags=*/{});
+    if (!outputs_dir.empty()) {
+      std::string path = tsl::io::JoinPath(outputs_dir, basename);
+      std::error_code err;
+      log_stream.emplace(path, err, llvm::sys::fs::OF_None);
+      if (err) {
+        log_stream.reset();
+      }
+      auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
+      auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
+      pm.getContext()->disableMultithreading();
+      pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
+                          /*printAfterOnlyOnChange=*/true,
+                          /*printAfterOnlyOnFailure=*/false, *log_stream,
+                          /*opPrintingFlags=*/{});
+    } else {
+      LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
+                 << "variable TEST_UNDECLARED_OUTPUTS_DIR nor the flag "
+                 << "--xla_dump_to is set, so the llvm dumps are disabled.";
+    }
   }
 
   CreateTritonPipeline(pm, cc, config.num_warps(), config.num_stages());
