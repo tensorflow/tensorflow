@@ -543,6 +543,7 @@ uint64 Mesh::GlobalFingerprint() const {
   std::string mesh_str;
   // Add mesh dimensions
   absl::InlinedVector<std::string, 4> mesh_dim_lst;
+  mesh_dim_lst.reserve(mesh_dims_.size());
   for (const auto& dim : mesh_dims_)
     mesh_dim_lst.push_back(absl::StrCat(dim.name, "=", dim.size));
   mesh_str += absl::StrJoin(mesh_dim_lst, ",") + "|";
