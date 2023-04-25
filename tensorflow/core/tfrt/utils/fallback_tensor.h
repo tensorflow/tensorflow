@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -61,6 +62,7 @@ class FallbackTensor {
 
   FallbackTensor(const FallbackTensor& other) { *this = other; }
   FallbackTensor& operator=(const FallbackTensor& other) {
+    tsl::profiler::TraceMe trace_me("FallbackTensor::Copy");
     if (!other.is_immutable()) {
       // Create a new TensorBuffer which contains a new atomic counter for each
       // result, to avoid downstream threads contending the original atomic
