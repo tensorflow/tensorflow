@@ -422,7 +422,7 @@ class DTensorDevice {
       TFE_Context* context, const TranslatedFunction* function_ptr,
       const Mesh& target_mesh,
       const parallel_device::ParallelDevice* parallel_device,
-      const std::vector<parallel_device::ParallelTensor*>& parallel_inputs,
+      const std::vector<std::vector<TFE_TensorHandle*>>& parallel_inputs,
       const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status);
 
   // Execute regular operation with ParallelExecutor
@@ -753,15 +753,9 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
       }
       return TensorWithLayoutTf::Wrap(std::move(single_tensor),
                                       *single_device_layout, status);
+    } else {
+      return TensorWithLayoutTf::Broadcast(context, input, mesh, status);
     }
-    StatusOr<const parallel_device::ParallelDevice*> parallel_device =
-        GetParallelDevice(mesh, /*strict=*/true);
-    if (!parallel_device.ok()) {
-      Set_TF_Status_from_Status(status, parallel_device.status());
-      return nullptr;
-    }
-    return TensorWithLayoutTf::Broadcast(context, input, mesh,
-                                         **parallel_device, status);
   }
 
   TF_Tensor* tf_tensor = TFE_TensorHandleResolve(input, status);
@@ -1063,11 +1057,6 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
     VerifyPackTensorShapeAndDtype(components, &component_shape, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
 
-    std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
-        parallel_device::ParallelTensor::FromTensorHandles(
-            **parallel_device, std::move(components), status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-
     if (target_layout->rank() != component_shape.size()) {
       TF_SetStatus(
           status, TF_INVALID_ARGUMENT,
@@ -1082,7 +1071,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
     }
 
     packed_tensor =
-        CreateTensorWithLayout(std::move(parallel_tensor), *target_layout);
+        CreateTensorWithLayout(std::move(components), *target_layout);
   }
 
   if (!packed_tensor.ok()) {
@@ -1743,7 +1732,7 @@ void DTensorDevice::ExecuteFunctionAndWait(
     TFE_Context* context, const TranslatedFunction* function_ptr,
     const Mesh& target_mesh,
     const parallel_device::ParallelDevice* parallel_device,
-    const std::vector<parallel_device::ParallelTensor*>& parallel_inputs,
+    const std::vector<std::vector<TFE_TensorHandle*>>& parallel_inputs,
     const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status) {
   const std::string mesh_str = function_ptr->function_mesh.ToString();
   VLOG(4) << "Launching computation for mesh : " << mesh_str;
@@ -1889,7 +1878,7 @@ void DTensorDevice::ExecuteEPUFunctions(
   if (load_embedding_ptr != nullptr) {
     Mesh mesh = load_embedding_ptr->function_mesh;
 
-    StatusOr<std::vector<parallel_device::ParallelTensor*>> parallel_inputs =
+    StatusOr<std::vector<std::vector<TFE_TensorHandle*>>> parallel_inputs =
         PrepareEmbeddingInputs(inputs);
 
     if (!parallel_inputs.ok()) {
@@ -1995,17 +1984,20 @@ void DTensorDevice::ExecuteRegularOperation(
 
   // Extract the global parallel inputs and flatten SparseTensors
   // into the three component tensors.
-  std::vector<parallel_device::ParallelTensor*> global_parallel_inputs;
-  std::vector<parallel_device::ParallelTensor*> global_parallel_sparse_inputs;
+  std::vector<std::vector<TFE_TensorHandle*>> global_parallel_inputs;
+  std::vector<std::vector<TFE_TensorHandle*>> global_parallel_sparse_inputs;
   absl::flat_hash_set<int> global_sparse_input_indices;
   for (auto input : inputs_tf) {
     if (auto* sparse_input = llvm::dyn_cast<SparseTensorWithLayout>(input);
         sparse_input) {
-      global_parallel_sparse_inputs.push_back(sparse_input->indices());
-      global_parallel_sparse_inputs.push_back(sparse_input->dense_shapes());
-      global_parallel_sparse_inputs.push_back(sparse_input->values());
+      global_parallel_sparse_inputs.emplace_back(
+          sparse_input->indices()->tensors());
+      global_parallel_sparse_inputs.emplace_back(
+          sparse_input->dense_shapes()->tensors());
+      global_parallel_sparse_inputs.emplace_back(
+          sparse_input->values()->tensors());
     } else {
-      global_parallel_inputs.push_back(input->tensor());
+      global_parallel_inputs.push_back(input->tensors());
     }
   }
   // Insert SparseTensor components to the end, this is because
@@ -2042,7 +2034,7 @@ void DTensorDevice::ExecuteRegularOperation(
         GetParallelDevice(mesh, /*strict=*/false), status);
 
     // Gather the local inputs for this function.
-    std::vector<parallel_device::ParallelTensor*> parallel_inputs;
+    std::vector<std::vector<TFE_TensorHandle*>> parallel_inputs;
     parallel_inputs.reserve(inputs.size() + 1);
     auto input_mapping = function.input_index_map;
 
@@ -2060,9 +2052,9 @@ void DTensorDevice::ExecuteRegularOperation(
         parallel_device::ParallelTensor* device_ids =
             GetDeviceIDs(context, status, mesh, parallel_device);
         if (TF_GetCode(status) != TF_OK) return;
-        parallel_inputs.push_back(device_ids);
+        parallel_inputs.emplace_back(device_ids->tensors());
       } else {
-        parallel_inputs.push_back(global_parallel_inputs[input_index]);
+        parallel_inputs.emplace_back(global_parallel_inputs[input_index]);
       }
     }
 
@@ -2144,11 +2136,19 @@ void DTensorDevice::ExecuteRegularOperation(
 
       if (TF_GetCode(status) == TF_OK) {
         for (int i = 0; i < result->size(); ++i) {
+          auto& result_tensor = (*result)[i];
+          const std::vector<int64_t>* result_tensor_shape;
+          Status shape_status = result_tensor->Shape(&result_tensor_shape);
+          if (!shape_status.ok()) {
+            Set_TF_Status_from_Status(status, shape_status);
+            return;
+          }
+
           ASSIGN_OR_RETURN_C_STATUS(
               auto local_output,
-              CreateTensorWithLayout(std::move((*result)[i]),
-
-                                     function.output_layouts[i]),
+              CreateTensorWithLayout(result_tensor->release_tensors(),
+                                     function.output_layouts[i],
+                                     *result_tensor_shape),
               status);
           output_with_layout.push_back(std::move(local_output));
         }
@@ -2396,14 +2396,17 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
             operation_name != std::string("Relayout") &&
             operation_name != std::string("RelayoutGrad")) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
-      std::vector<int64_t> tensor_shape(TensorShapeAsVector(input, status));
-      if (TF_GetCode(status) != TF_OK) return;
+      StatusOr<std::vector<int64_t>> shape = GetTensorShapeAsVector(input);
+      if (!shape.ok()) {
+        Set_TF_Status_from_Status(status, shape.status());
+        return;
+      }
       RETURN_STATUS(
           status, TF_UNIMPLEMENTED,
           absl::StrCat(
               "The op/function ", operation_name,
               " got a regular tensor for input ", single_device_input_index,
-              " (shape ", ShapeToDebugString(tensor_shape),
+              " (shape ", ShapeToDebugString(*shape),
               ") but was expecting a DTensor. Currently only scalars and "
               "small integer/string tensors are auto-broadcast to "
               "DTensors. For other tensors, please use copy_to_mesh to "

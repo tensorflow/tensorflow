@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -117,6 +118,13 @@ class ParallelDevice {
                     CancellationManager& cancellation_manager,
                     std::optional<int64_t> step_id = std::nullopt) const;
 
+  void StartExecute(TFE_Context* context,
+                    const std::vector<std::vector<TFE_TensorHandle*>>& inputs,
+                    const char* operation_name, const TFE_OpAttrs* attributes,
+                    int expected_max_outputs,
+                    CancellationManager& cancellation_manager,
+                    std::optional<int64_t> step_id = std::nullopt) const;
+
   // Blocks until the previous `StartExecute` has run `TFE_Execute` on each
   // device. If is_async=false (constructor argument) this means the ops have
   // run and have results. If is_async=true it means that all of the
@@ -195,6 +203,17 @@ class ParallelTensor {
   // component device.
   Status SummarizeValue(std::string& summary);
 
+  std::vector<TensorHandlePtr> release_tensors() { return std::move(tensors_); }
+
+  std::vector<TFE_TensorHandle*> tensors() const {
+    std::vector<TFE_TensorHandle*> result;
+    result.reserve(tensors_.size());
+    for (const TensorHandlePtr& tensor : tensors_) {
+      result.emplace_back(tensor.get());
+    }
+    return result;
+  }
+
  private:
   ParallelTensor(const ParallelDevice& device,
                  std::vector<TensorHandlePtr> tensors,
@@ -211,7 +230,7 @@ class ParallelTensor {
         dtype_(dtype) {}
 
   const ParallelDevice& device_;
-  const std::vector<TensorHandlePtr> tensors_;
+  std::vector<TensorHandlePtr> tensors_;
   // Parallel tensors are immutable but compute their shape lazily unless it is
   // provided on construction. The optional has a value if the lazy computation
   // has been completed or the shape was provided on construction.
