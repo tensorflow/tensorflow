@@ -690,6 +690,11 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   //   ||   |  |               |  |       |
   //   |+-a-+  +-------b-------+  +---c---+
   //   ----------------------------------------> time
+  //
+  // MakeFreeChunks imposes the following additional constraints on its output:
+  // - The chunks in the result will start on alignment_ boundaries.
+  // - A free chunk will not be returned if it does not have enough space to fit
+  //   max_colocation_size.
   FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
                             int64_t max_colocation_size) const;
 
