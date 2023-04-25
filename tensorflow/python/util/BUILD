@@ -855,7 +855,9 @@ py_strict_library(
 py_strict_library(
     name = "serialization",
     srcs = ["serialization.py"],
-    visibility = util_subpackage_visibility,
+    visibility = util_subpackage_visibility + [
+        "//tensorflow_kfac/python/kernel_tests:__subpackages__",
+    ],
     deps = [
         ":compat",
         "//tensorflow/python/framework:dtypes",
