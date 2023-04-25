@@ -433,6 +433,10 @@ typedef enum {
   PJRT_Buffer_Type_C64,
   // Paired F64 (real, imag), as in std::complex<double>.
   PJRT_Buffer_Type_C128,
+
+  // Truncated 8 bit floating-point formats.
+  PJRT_Buffer_Type_F8E5M2,
+  PJRT_Buffer_Type_F8E4M3FN,
 } PJRT_Buffer_Type;
 
 typedef enum {
