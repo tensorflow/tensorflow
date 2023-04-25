@@ -1018,6 +1018,12 @@ MatmulPlan::GetAlgorithms(se::Stream* stream) const {
   return blas_lt->GetMatmulAlgorithms(plan_, preference);
 }
 
+bool MatmulPlan::IsF8MatmulTrivialMatrixBias() const {  
+  return (plan_.a_desc.type() == CUDA_R_8F_E4M3 ||
+          plan_.a_desc.type() == CUDA_R_8F_E5M2) &&
+         (beta_ == 0.0);
+}
+
 }  // namespace cublas_lt
 
 #endif  // GOOGLE_CUDA
