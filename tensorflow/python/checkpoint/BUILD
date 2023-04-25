@@ -66,6 +66,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":async_checkpoint_helper",
         ":checkpoint_context",
         ":checkpoint_management",
         ":checkpoint_options",
@@ -105,7 +106,6 @@ py_strict_library(
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",

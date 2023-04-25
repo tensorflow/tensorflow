@@ -24,6 +24,7 @@ import time
 import weakref
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import async_checkpoint_helper
 from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
@@ -65,7 +66,6 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -2274,12 +2274,10 @@ class Checkpoint(autotrackable.AutoTrackable):
   def _async_checkpointer(self):
     """Returns an instantiated AsyncCheckpointHelper."""
     if self._async_checkpointer_impl is None:
-      ach = LazyLoader(
-          "async_checkpoint_helper", globals(),
-          "tensorflow.python.checkpoint.async_checkpoint_helper"
-      )
-      self._async_checkpointer_impl = ach.AsyncCheckpointHelper(
-          Checkpoint, **self._kwargs)
+      self._async_checkpointer_impl = (
+          async_checkpoint_helper.AsyncCheckpointHelper(
+              Checkpoint,
+              **self._kwargs))
 
     return self._async_checkpointer_impl
 
