@@ -351,6 +351,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
       options.enable_fusion_outlining = true;
       options.experimental_deallocation = true;
     }
+    options.xla_cpu_sparse_cuda_threads =
+        GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
 
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {

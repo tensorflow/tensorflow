@@ -165,6 +165,13 @@ message DebugOptions {
   // above!
   bool xla_gpu_enable_fast_min_max = 100;
 
+  // Defines the number of CUDA threads that can be used to accelerate
+  // a sparse computation compiled for the XLA Runtime and CPU backend.
+  // By default (value 0), no acceleration is used. Otherwise, this
+  // many threads may be used to accelerate sparse operations, typically
+  // useful when accelerating structured sparsity.
+  int32 xla_cpu_sparse_cuda_threads = 207;
+
   // Allows xla to increase the output precision of floating point operations.
   bool xla_allow_excess_precision = 122;
 
@@ -501,7 +508,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 207
+  // Next id: 208
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
