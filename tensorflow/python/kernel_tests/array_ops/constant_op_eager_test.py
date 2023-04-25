@@ -27,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.util import compat
 
 
-# TODO(josh11b): add tests with lists/tuples, Shape.
+# TODO(joshl): add tests with lists/tuples, Shape.
 # TODO(ashankar): Collapse with tests in constant_op_test.py and use something
 # like the test_util.run_in_graph_and_eager_modes decorator to confirm
 # equivalence between graph and eager execution.
@@ -272,7 +272,7 @@ class ConstantTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "should return >= 0"):
       constant_op.constant([BadList(), []])
 
-    # TODO(allenl, josh11b): These cases should return exceptions rather than
+    # TODO(allenl, joshl): These cases should return exceptions rather than
     # working (currently shape checking only checks the first element of each
     # sequence recursively). Maybe the first one is fine, but the second one
     # silently truncating is rather bad.
@@ -379,7 +379,7 @@ class ZerosTest(test.TestCase):
         dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
         dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
         dtypes_lib.bool,
-        # TODO(josh11b): Support string type here.
+        # TODO(joshl): Support string type here.
         # dtypes_lib.string
     ]:
       z = array_ops.zeros([2, 3], dtype=dtype)
@@ -427,7 +427,7 @@ class ZerosLikeTest(test.TestCase):
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
         dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
         dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
-        # TODO(josh11b): Support string type here.
+        # TODO(joshl): Support string type here.
         # dtypes_lib.string
     ]:
       self._compareZeros(dtype, use_gpu=False)
@@ -437,7 +437,7 @@ class ZerosLikeTest(test.TestCase):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
         dtypes_lib.bool, dtypes_lib.int64,
-        # TODO(josh11b): Support string type here.
+        # TODO(joshl): Support string type here.
         # dtypes_lib.string
     ]:
       self._compareZeros(dtype, use_gpu=True)

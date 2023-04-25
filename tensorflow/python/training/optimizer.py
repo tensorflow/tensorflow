@@ -554,7 +554,7 @@ class Optimizer(
         # Scale loss if using a "mean" loss reduction and multiple replicas.
         # Have to be careful to call distribute_utils.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
-        # TODO(josh11b): Test that we handle weight decay in a reasonable way.
+        # TODO(joshl): Test that we handle weight decay in a reasonable way.
         loss_value = self._scale_loss(loss_value)
 
       if var_list is None:

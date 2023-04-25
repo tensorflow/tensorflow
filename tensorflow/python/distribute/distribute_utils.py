@@ -339,7 +339,7 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
   # Ignore user-specified caching device, not needed for mirrored variables.
   kwargs.pop("caching_device", None)
 
-  # TODO(josh11b,apassos): It would be better if variable initialization
+  # TODO(joshl,apassos): It would be better if variable initialization
   # was never recorded on the tape instead of having to do this manually
   # here.
   with record.stop_recording():

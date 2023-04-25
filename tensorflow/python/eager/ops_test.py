@@ -153,7 +153,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4], output_shape[0])
     self.assertAllEqual([2, 3], output_shape[1])
 
-  # TODO(josh11b): Test an op that has multiple outputs, some but not
+  # TODO(joshl): Test an op that has multiple outputs, some but not
   # all of which are lists. Examples: barrier_take_many (currently
   # unsupported since it uses a type list) or sdca_optimizer (I don't
   # have an example of legal inputs & outputs).

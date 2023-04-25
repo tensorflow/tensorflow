@@ -156,7 +156,7 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
           "currently only works with the tf.Estimator API")
 
 
-# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+# TODO(joshl): Switch to V2 when we no longer need to support tf.compat.v1.
 class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of ParameterServerStrategy and CentralStorageStrategy."""
 
@@ -414,7 +414,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     if isinstance(tensor, (float, int)):
       return tensor
     if not cross_device_ops_lib.check_destinations(destinations):
-      # TODO(josh11b): Use current logical device instead of 0 here.
+      # TODO(joshl): Use current logical device instead of 0 here.
       destinations = self._compute_devices
     return self._cross_device_ops.broadcast(tensor, destinations)
 

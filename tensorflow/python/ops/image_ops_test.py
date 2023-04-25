@@ -2550,7 +2550,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
     # mean = np.mean(aspect_ratio_hist)
     # stddev = np.sqrt(mean)
     # TODO(wicke, shlens, dga): Restore this test so that it is no longer flaky.
-    # TODO(irving): Since the rejection probability is not independent of the
+    # TODO(geoffreyi): Since the rejection probability is not independent of the
     # aspect ratio, the aspect_ratio random value is not exactly uniformly
     # distributed in [min_aspect_ratio, max_aspect_ratio).  This test should be
     # fixed to reflect the true statistical property, then tightened to enforce
@@ -4456,7 +4456,7 @@ def simple_color_ramp():
 
 class JpegTest(test_util.TensorFlowTestCase):
 
-  # TODO(irving): Add self.assertAverageLess or similar to test_util
+  # TODO(geoffreyi): Add self.assertAverageLess or similar to test_util
   def averageError(self, image0, image1):
     self.assertEqual(image0.shape, image1.shape)
     image0 = image0.astype(int)  # Avoid overflow

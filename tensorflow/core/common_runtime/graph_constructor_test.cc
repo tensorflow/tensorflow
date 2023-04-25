@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/version.h"
 
-// TODO(josh11b): Test InitCostModel().
-// TODO(josh11b): Test setting the "device" field of a NodeDef.
-// TODO(josh11b): Test that feeding won't prune targets.
+// TODO(joshl): Test InitCostModel().
+// TODO(joshl): Test setting the "device" field of a NodeDef.
+// TODO(joshl): Test that feeding won't prune targets.
 
 namespace tensorflow {
 namespace {

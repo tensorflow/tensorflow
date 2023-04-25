@@ -277,7 +277,7 @@ class PadOpTest(test.TestCase):
           np.array(123).astype(t))
 
   def testIntTypes(self):
-    # TODO(touts): Figure out why the padding tests do not work on GPU
+    # TODO(mdevin): Figure out why the padding tests do not work on GPU
     # for int types and rank > 2.
     for t in [np.int8, np.uint8, np.int32, np.int64]:
       self._testAll(

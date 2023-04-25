@@ -224,7 +224,7 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
       example_state_data(example_index, 3) = example_weight;
     }
   };
-  // TODO(sibyl-Aix6ihai): Tune this properly based on sparsity of the data,
+  // TODO(rohananil): Tune this properly based on sparsity of the data,
   // number of cpus, and cost per example.
   const int64_t kCostPerUnit = examples.num_features();
   const DeviceBase::CpuWorkerThreads& worker_threads =
@@ -248,7 +248,7 @@ class SdcaOptimizer : public OpKernel {
   }
 
  private:
-  // TODO(sibyl-Aix6ihai): We could use the type-constraint on loss_type, and
+  // TODO(rohananil): We could use the type-constraint on loss_type, and
   // template the entire class to avoid the virtual table lookup penalty in
   // the inner loop.
   ComputeOptions options_;
@@ -283,7 +283,7 @@ class SdcaShrinkL1 : public OpKernel {
       for (int i = 0; i < weights_inputs.size(); ++i) {
         num_weights += weights_inputs.at(i, /*lock_held=*/true).NumElements();
       }
-      // TODO(sibyl-Aix6ihai): Tune this value.
+      // TODO(rohananil): Tune this value.
       const int64_t kCostPerUnit = (num_weights * 50) / weights_inputs.size();
       const DeviceBase::CpuWorkerThreads& worker_threads =
           *context->device()->tensorflow_cpu_worker_threads();

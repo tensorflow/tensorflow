@@ -1496,7 +1496,7 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
                               gtl::ArraySlice<NodeDef> nodes, Graph* g) {
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, g->op_registry());
-  // TODO(irving): Copy will go away once NodeInfo exists
+  // TODO(geoffreyi): Copy will go away once NodeInfo exists
   std::vector<const NodeDef*> node_defs;
   node_defs.reserve(nodes.size());
   for (const auto& n : nodes) {

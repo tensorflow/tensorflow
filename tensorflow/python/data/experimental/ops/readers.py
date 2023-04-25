@@ -285,7 +285,7 @@ def make_tf_record_dataset(file_pattern,
     num_parallel_reads = 24
 
   if num_parallel_parser_calls is None:
-    # TODO(josh11b): if num_parallel_parser_calls is None, use some function
+    # TODO(joshl): if num_parallel_parser_calls is None, use some function
     # of num cores instead of `batch_size`.
     num_parallel_parser_calls = batch_size
 
@@ -299,7 +299,7 @@ def make_tf_record_dataset(file_pattern,
       files, num_parallel_reads=num_parallel_reads)
 
   if shuffle_buffer_size is None:
-    # TODO(josh11b): Auto-tune this value when not specified
+    # TODO(joshl): Auto-tune this value when not specified
     shuffle_buffer_size = 10000
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)

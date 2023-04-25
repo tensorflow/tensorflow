@@ -358,7 +358,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:cancellation.h",
         "//tensorflow/core/framework:collective.h",
         "//tensorflow/core/framework:common_shape_fns.h",
-        "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
+        "//tensorflow/core/framework:control_flow.h",  # TODO(joshl): Make internal?
         "//tensorflow/core/framework:dataset.h",
         "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
         "//tensorflow/core/framework:device.h",
@@ -746,7 +746,7 @@ tf_cuda_library(
     hdrs = [
         "//tensorflow/core/common_runtime:testlib_headers",
         "//tensorflow/core/graph:testlib_headers",
-        # TODO(josh11b): Drop this once users are depending on
+        # TODO(joshl): Drop this once users are depending on
         # kernels:ops_testutil instead.
         "//tensorflow/core/kernels:ops_testutil.h",
         # TODO(gonnet): Stop exporting these headers once users depend on

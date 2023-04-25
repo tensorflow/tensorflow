@@ -629,7 +629,7 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
       strings::StrAppend(&comment, "The ", api_def.out_arg(0).name(),
                          " tensor.\n");
     } else {
-      // TODO(josh11b): Word wrap this.
+      // TODO(joshl): Word wrap this.
       strings::StrAppend(&comment, api_def.out_arg(0).description(), "\n");
     }
   } else {  // Multiple outputs.
@@ -643,7 +643,7 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
       if (api_def.out_arg(i).description().empty()) {
         strings::StrAppend(&comment, "\n");
       } else {
-        // TODO(josh11b): Word wrap this.
+        // TODO(joshl): Word wrap this.
         strings::StrAppend(&comment, ": ", api_def.out_arg(i).description(),
                            "\n");
       }

@@ -578,7 +578,7 @@ class TensorShapeOld {
 
   /// \brief Returns the number of elements in dimension `d`.
   /// REQUIRES: `0 <= d < dims()`
-  // TODO(touts): Rename to `dimension()` to match
+  // TODO(mdevin): Rename to `dimension()` to match
   // `Eigen::Tensor::dimension()`?
   int64_t dim_size(int d) const {
     DCHECK_GE(d, 0);
@@ -627,7 +627,7 @@ class TensorShapeOld {
   // Recalculates the dimensions of this tensor after they are modified.
   void recompute_dims();
 
-  // TODO(josh11b): Maybe use something from the Eigen Tensor library
+  // TODO(joshl): Maybe use something from the Eigen Tensor library
   // for the sizes.
   gtl::InlinedVector<int64_t, 4> dim_sizes_;
 
@@ -920,7 +920,7 @@ TEST(TensorShapeTest, Overflow) {
 }
 
 TEST(TensorShapeTest, UnknownRank) {
-  // NOTE(irving): Unfortunately, for historical reasons we have to allow an
+  // NOTE(geoffreyi): Unfortunately, for historical reasons we have to allow an
   // TensorShapeProto with unknown_rank() set to be parsed as a TensorShape.
   // Would be nice to tighten this, but it's tricky given backwards
   // compatibility requirements.

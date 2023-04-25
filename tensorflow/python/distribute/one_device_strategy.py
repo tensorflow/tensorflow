@@ -30,7 +30,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(josh11b): Do we wrap values in types to generate errors if you are
+# TODO(joshl): Do we wrap values in types to generate errors if you are
 # doing something that won't work with other DistributionStrategy
 # implementations?
 
@@ -250,7 +250,7 @@ class OneDeviceStrategyV1(distribute_lib.StrategyV1):
   __init__.__doc__ = OneDeviceStrategy.__init__.__doc__
 
 
-# TODO(josh11b): Switch to V2 after callers have been updated to only V2 APIs.
+# TODO(joshl): Switch to V2 after callers have been updated to only V2 APIs.
 class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of OneDeviceStrategy."""
 

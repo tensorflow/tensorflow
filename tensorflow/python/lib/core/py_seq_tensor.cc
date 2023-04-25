@@ -283,7 +283,7 @@ struct Converter {
 
   static Status Convert(TFE_Context* ctx, PyObject* obj, ConverterState* state,
                         TFE_TensorHandle** h, const char** error) {
-    // TODO(josh11b): Allocator & attributes
+    // TODO(joshl): Allocator & attributes
     AbstractTensorInterface* t;
     if (state->inferred_shape.empty()) { /* Scalar case */
       T value;
@@ -788,7 +788,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
     requested_dtype = dtype;
   }
 
-  // NOTE(josh11b): If don't successfully convert to the requested type,
+  // NOTE(joshl): If don't successfully convert to the requested type,
   // we just try instead to create a tensor of the inferred type and
   // let the caller convert it to the requested type using a cast
   // operation.
@@ -840,7 +840,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
   switch (state.inferred_dtype) {
     case DT_FLOAT:
-      // TODO(josh11b): Handle mixed floats and complex numbers?
+      // TODO(joshl): Handle mixed floats and complex numbers?
       if (requested_dtype == DT_INVALID) {
         // TensorFlow uses float32s to represent floating point numbers
         // by default (for space and speed over using doubles).
@@ -871,7 +871,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
         if (error == ErrorFoundFloat) {
           status = FloatConverter::Convert(ctx, obj, &state, &handle, &error);
         }
-        // TODO(josh11b): May also want to fall back to using doubles if
+        // TODO(joshl): May also want to fall back to using doubles if
         // error == ErrorOutOfRange?
       } else {
         status = Int64Converter::Convert(ctx, obj, &state, &handle, &error);

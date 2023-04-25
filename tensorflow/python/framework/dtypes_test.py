@@ -60,7 +60,7 @@ class TypesTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       numpy_dtype = dtype.as_numpy_dtype
       _ = np.empty((1, 1, 1, 1), dtype=numpy_dtype)
       if dtype.base_dtype != dtypes.bfloat16:
-        # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
+        # NOTE(mdevin): Intentionally no way to feed a DT_BFLOAT16.
         self.assertEqual(
             dtypes.as_dtype(datatype_enum).base_dtype,
             dtypes.as_dtype(numpy_dtype))

@@ -218,7 +218,7 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
   def dtype(self):
     return self._v.dtype
 
-  # TODO(josh11b): Test saving & restoring.
+  # TODO(joshl): Test saving & restoring.
   def _gather_saveables_for_checkpoint(self):
     if isinstance(self._v, CachingVariable):
       return self._v._gather_saveables_for_checkpoint()  # pylint:disable=protected-access

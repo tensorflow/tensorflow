@@ -136,14 +136,14 @@ Status ValidateSignatureWithAttrs(const OpDef& sig, AttrSlice attr_values) {
     }
   }
 
-// TODO(josh11b): Enable this code once it works with function gradients.
+// TODO(joshl): Enable this code once it works with function gradients.
 // Right now the C++ function gradient code assumes it can pass
 // all the attrs of the function to the gradient, and any attrs that
 // the gradient doesn't care about will be ignored.
 #if 0
   if (attr_values.size() != sig.attr_size()) {
     for (const auto& a : attr_values) {
-      // TODO(josh11b): Possibly should ignore attrs that start with "_" here?
+      // TODO(joshl): Possibly should ignore attrs that start with "_" here?
       bool found = false;
       for (const auto& s : sig.attr()) {
         if (a.first == s.name()) {
@@ -523,7 +523,7 @@ string Print(const OpDef::ArgDef& arg) {
   return out;
 }
 
-// TODO(josh11b): Merge this with SummarizeAttrValue().
+// TODO(joshl): Merge this with SummarizeAttrValue().
 // When hash_string_attrs = true, string attributes are hashed instead of being
 // truncated with ellipses. This is done to reduce the chance of collisions when
 // looking up functions using the canonical representation.
@@ -557,7 +557,7 @@ string Print(const AttrValue& attr_value,
   return SummarizeAttrValue(attr_value);
 }
 
-// TODO(josh11b): Merge this with SummarizeNodeDef().
+// TODO(joshl): Merge this with SummarizeNodeDef().
 string Print(const NodeDef& n) {
   string out;
   strings::StrAppend(&out, n.name(), " = ", n.op());

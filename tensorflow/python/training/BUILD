@@ -1379,7 +1379,7 @@ distribute_py_test(
 
 cuda_py_test(
     name = "session_manager_test",
-    size = "medium",  # TODO(irving): Can this be made small?
+    size = "medium",  # TODO(geoffreyi): Can this be made small?
     srcs = ["session_manager_test.py"],
     grpc_enabled = True,
     main = "session_manager_test.py",

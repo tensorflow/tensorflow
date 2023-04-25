@@ -287,7 +287,7 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
 Status LoadDynamicLibrary(const char* library_filename, void** result,
                           const void** buf, size_t* len);
 
-// TODO(josh11b,mrry): Change Session to be able to use a Graph*
+// TODO(joshl,mrry): Change Session to be able to use a Graph*
 // directly, instead of requiring us to serialize to a GraphDef and
 // call Session::Extend().
 bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
@@ -2313,7 +2313,7 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
                    TF_Tensor** output_values, int noutputs,
                    const TF_Operation* const* target_opers, int ntargets,
                    TF_Buffer* run_metadata, TF_Status* status) {
-  // TODO(josh11b,mrry): Change Session to be able to use a Graph*
+  // TODO(joshl,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
   if (session->extend_before_run &&
@@ -2395,7 +2395,7 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
                     TF_Tensor** output_values, int noutputs,
                     const TF_Operation* const* target_opers, int ntargets,
                     TF_Status* status) {
-  // TODO(josh11b,mrry): Change Session to be able to use a Graph*
+  // TODO(joshl,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
   if (session->extend_before_run &&

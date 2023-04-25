@@ -31,7 +31,7 @@ class DivisionTestCase(test.TestCase):
     """Test all the different ways to divide."""
     values = [1, 2, 7, 11]
     functions = (lambda x: x), constant_op.constant
-    # TODO(irving): Test int8, int16 once we support casts for those.
+    # TODO(geoffreyi): Test int8, int16 once we support casts for those.
     dtypes = np.int32, np.int64, np.float32, np.float64
 
     tensors = []

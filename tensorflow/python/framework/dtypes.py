@@ -667,7 +667,7 @@ _TF_TO_NP = {
         np.int16,
     types_pb2.DT_INT8:
         np.int8,
-    # NOTE(touts): For strings we use object as it supports variable length
+    # NOTE(mdevin): For strings we use object as it supports variable length
     # strings.
     types_pb2.DT_STRING:
         object,
