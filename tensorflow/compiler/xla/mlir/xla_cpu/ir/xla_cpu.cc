@@ -153,6 +153,12 @@ LogicalResult MemRefElementCastOp::verify() {
   return success();
 }
 
+LogicalResult ConvolutionOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() - 1);
+}
+
 }  // namespace xla_cpu
 }  // namespace mlir
 

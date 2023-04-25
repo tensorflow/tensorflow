@@ -294,6 +294,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/cpu/runtime:collectives",
+        "//tensorflow/compiler/xla/service/cpu/runtime:convolution_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:fft_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:retain",
