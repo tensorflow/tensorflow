@@ -198,7 +198,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
                           const se::CudaComputeCapability& cc, int num_warps,
                           int num_stages) {
   const int ccAsInt = cc.major * 10 + cc.minor;
-  // Based on optimize_triton_ir() in
+  // Based on optimize_ttir() in
   // @triton//:python/triton/compiler/compiler.py
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
@@ -320,7 +320,7 @@ struct GeneralizeKernelSignaturePass
 // TODO(b/270937368): Split this up into smaller functions.
 StatusOr<LaunchDimensions> MatMul(
     mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
-    mlir::func::FuncOp fn,
+    mlir::triton::FuncOp fn,
     const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
@@ -722,8 +722,8 @@ StatusOr<LaunchDimensions> TritonWrapper(
 
   fn_arg_types.push_back(mt::PointerType::get(root_ty, mn::kGlobalMemorySpace));
 
-  auto fn = b.create<mlir::func::FuncOp>(
-      loc, fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
+  auto fn = b.create<mt::FuncOp>(loc, fn_name,
+                                 b.getFunctionType(fn_arg_types, std::nullopt));
   for (int i = 0; i < fn.getNumArguments(); ++i) {
     fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
   }
@@ -735,7 +735,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
       generator(b, xla::Cast<HloDotInstruction>(root), fn, config,
                 device_info.shared_memory_per_block_optin));
 
-  b.create<mlir::func::ReturnOp>(loc);
+  b.create<mt::ReturnOp>(loc);
   CHECK(mlir::succeeded(mlir::verify(triton_module)));
 
   VLOG(4) << llvm_ir::DumpToString(triton_module);

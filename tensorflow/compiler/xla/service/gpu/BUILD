@@ -417,13 +417,13 @@ cc_library(
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-    ] + if_cuda_is_configured([
         "@triton//:TritonDialect",
+        "@triton//:TritonTransforms",
+    ] + if_cuda_is_configured([
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
         "@triton//:TritonLLVMIR",
         "@triton//:TritonToTritonGPU",
-        "@triton//:TritonTransforms",
     ]),
 )
 
