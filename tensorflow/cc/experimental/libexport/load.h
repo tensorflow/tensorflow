@@ -83,9 +83,9 @@ class TFPackage {
   // Returns a BundleReader for reading variable values.
   //
   // This TFPackage retains ownership of the underlying reader.
-  const std::unique_ptr<tensorflow::BundleReader> &GetVariableReader() {
-    return variable_reader_;
-  }
+tensorflow::BundleReader* GetVariableReader() {
+    return variable_reader_.get();
+}
 
   // Returns whether or not we found a valid checkpoint when loading the
   // package.
