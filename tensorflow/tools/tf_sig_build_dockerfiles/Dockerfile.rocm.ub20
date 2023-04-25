@@ -5,13 +5,17 @@ FROM ubuntu:20.04
 ARG GPU_DEVICE_TARGETS="gfx900 gfx906 gfx908 gfx90a gfx1030"
 ENV GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS}
 
+# Install build dependencies
+COPY setup.packages.sh setup.packages.sh
+COPY builder.packages.txt builder.packages.txt
+RUN /setup.packages.sh /builder.packages.txt
+
 # Install ROCM
 ARG ROCM_VERSION=5.4.0
 ARG CUSTOM_INSTALL
 ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
 ENV ROCM_PATH=${ROCM_PATH}
 COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
-COPY setup.packages.sh /setup.packages.sh
 COPY setup.rocm.sh /setup.rocm.sh
 COPY devel.packages.rocm.txt /devel.packages.rocm.txt
 RUN /setup.rocm.sh $ROCM_VERSION
