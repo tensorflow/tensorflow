@@ -17,6 +17,7 @@ COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
 COPY setup.packages.sh /setup.packages.sh
 COPY setup.rocm.sh /setup.rocm.sh
 COPY devel.packages.rocm.txt /devel.packages.rocm.txt
+COPY sles.devel.packages.rocm.txt /sles.devel.packages.rocm.txt
 RUN /setup.rocm.sh $ROCM_VERSION
 
 # All lines past this point are reset when $CACHEBUSTER is set. We need this

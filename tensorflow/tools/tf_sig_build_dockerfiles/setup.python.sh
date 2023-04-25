@@ -19,9 +19,40 @@
 # Usage: setup.python.sh <pyversion> <requirements.txt> <runtime mode>
 set -xe
 
+
+function build_python_from_src() {
+    VERSION=$1
+    REQUIREMENTS=$2
+    local python_map
+    declare -A python_map=(
+        [python3.8]='3.8.12'
+        [python3.9]='3.9.12'
+        [python3.10]='3.10.9'
+        [python3.11]='3.11.2'
+    )
+    local _ver=${python_map[$VERSION]}
+    wget https://www.python.org/ftp/python/${_ver}/Python-${_ver}.tgz
+    tar xvf "Python-${_ver}.tgz" && rm -rf "Python-${_ver}.tgz"
+    pushd Python-${_ver}/
+	./configure --enable-optimizations
+	make altinstall -j16
+
+    ln -sf "/usr/local/bin/python${_ver%.*}" /usr/bin/python3
+    ln -sf "/usr/local/bin/pip${_ver%.*}" /usr/bin/pip3
+    ln -sf "/usr/local/lib/python${_ver%.*}" /usr/lib/tf_python
+    popd
+}
+
+if (source /etc/os-release && [[ ${NAME} == SLES ]]); then
+    build_python_from_src $1 $2
+else
+
 source ~/.bashrc
 VERSION=$1
 REQUIREMENTS=$2
+
+# Add deadsnakes repo for Python installation
+add-apt-repository -y 'ppa:deadsnakes/ppa'
 
 # Install Python packages for this container's version
 cat >pythons.txt <<EOF
@@ -52,6 +83,9 @@ fi
 ln -sf /usr/bin/$VERSION /usr/bin/python3
 ln -sf /usr/bin/$VERSION /usr/bin/python
 ln -sf /usr/lib/$VERSION /usr/lib/tf_python
+
+fi # end of conditional check of various distros
+
 
 # Python 3.10 include headers fix:
 # sysconfig.get_path('include') incorrectly points to /usr/local/include/python
