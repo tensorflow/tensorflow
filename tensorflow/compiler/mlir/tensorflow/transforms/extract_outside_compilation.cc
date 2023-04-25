@@ -169,13 +169,14 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
                                 ValueRange inputs, Value compilation_key,
                                 Value device_ordinal,
                                 int default_device_ordinal,
+                                StringAttr device_type_attr,
                                 llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
         builder.create<TF::_XlaSendFromHostV2Op>(
             loc, inputs,
             /*dynamic_key=*/compilation_key, device_ordinal,
-            builder.getStringAttr(communication_key)),
+            builder.getStringAttr(communication_key), device_type_attr),
         builder);
 
   return ApplyXlaHostTransferAttr(
@@ -183,7 +184,8 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
           loc, inputs,
           /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
-          /*device_ordinal=*/builder.getI64IntegerAttr(default_device_ordinal)),
+          /*device_ordinal=*/builder.getI64IntegerAttr(default_device_ordinal),
+          device_type_attr),
       builder);
 }
 
@@ -192,19 +194,21 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
 Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
                               TypeRange output_types, Value compilation_key,
                               Value device_ordinal, int default_device_ordinal,
+                              StringAttr device_type_attr,
                               llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
         builder.create<TF::_XlaRecvAtHostV2Op>(
             loc, output_types, /*dynamic_key=*/compilation_key, device_ordinal,
-            builder.getStringAttr(communication_key)),
+            builder.getStringAttr(communication_key), device_type_attr),
         builder);
 
   return ApplyXlaHostTransferAttr(
       builder.create<TF::_XlaRecvAtHostOp>(
           loc, output_types, /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
-          /*device_ordinal=*/builder.getI64IntegerAttr(default_device_ordinal)),
+          /*device_ordinal=*/builder.getI64IntegerAttr(default_device_ordinal),
+          device_type_attr),
       builder);
 }
 
@@ -562,8 +566,8 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
                    const llvm::SmallSetVector<Value, 4>& external_operands,
                    const llvm::SmallSetVector<Value, 4>& external_outputs,
                    Operation* insertion_point, Value compilation_key,
-                   Value device_ordinal, int default_device_ordignal,
-                   int& communication_key_index) {
+                   Value device_ordinal, int default_device_ordinal,
+                   StringAttr device_type_attr, int& communication_key_index) {
   OpBuilder builder(insertion_point);
   Operation& op = *clustered_ops.back();
   std::string args_communication_key =
@@ -604,7 +608,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 
   Operation* recv_at_host = CreateRecvAtHostOp(
       builder, op.getLoc(), host_operand_types, compilation_key, device_ordinal,
-      default_device_ordignal, args_communication_key);
+      default_device_ordinal, device_type_attr, args_communication_key);
   Block* original_op_block = op.getBlock();
   Operation* after_op = recv_at_host;
   for (Operation* cluster_op : clustered_ops) {
@@ -616,7 +620,8 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   if (!external_outputs.empty()) {
     CreateSendFromHostOp(builder, op.getLoc(), external_outputs.getArrayRef(),
                          compilation_key, device_ordinal,
-                         default_device_ordignal, retvals_communication_key);
+                         default_device_ordinal, device_type_attr,
+                         retvals_communication_key);
   }
 
   if (external_operands.empty()) {
@@ -648,7 +653,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 // its value.
 LogicalResult MoveOpsToHost(
     tf_device::ClusterOp device_cluster, Block* src, Operation* insertion_point,
-    Value compilation_key, Value device_ordinal, int default_device_ordignal,
+    Value compilation_key, Value device_ordinal, int default_device_ordinal,
     int& communication_key_index,
     llvm::SmallVector<Value, 4>* return_value_from_host = nullptr) {
   // Contains all of the outside compiled operations that should be moved to the
@@ -656,6 +661,8 @@ LogicalResult MoveOpsToHost(
   // single op except in the case where some of the input/output shapes are
   // non-static.
   llvm::SmallSetVector<Operation*, 4> clustered_ops;
+  auto device_type_attr =
+      device_cluster->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
 
   for (Operation& op : llvm::make_early_inc_range(*src)) {
     if (HasOutsideCompilationAncestorExclusive(&op) ||
@@ -679,7 +686,8 @@ LogicalResult MoveOpsToHost(
       }
       MoveOpsToHost(clustered_ops, external_operands, external_outputs,
                     insertion_point, compilation_key, device_ordinal,
-                    default_device_ordignal, communication_key_index);
+                    default_device_ordinal, device_type_attr,
+                    communication_key_index);
       clustered_ops.clear();
     }
 
@@ -702,7 +710,8 @@ LogicalResult MoveOpsToHost(
 
       MoveOpsToHost(clustered_ops, external_operands, external_outputs,
                     insertion_point, compilation_key, device_ordinal,
-                    default_device_ordignal, communication_key_index);
+                    default_device_ordinal, device_type_attr,
+                    communication_key_index);
       clustered_ops.clear();
     }
   }
@@ -732,24 +741,22 @@ void GetReturnValueFromDevice(
 // `communication_key_index` when creating communication ops.
 LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
                                    Value compilation_key, Value device_ordinal,
-                                   int default_device_ordignal,
+                                   int default_device_ordinal,
                                    int& communication_key_index) {
   auto result = device_cluster.GetBody().walk([&](Operation* op) {
     if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(if_op);
       auto host_if = CloneEmptyIfWithPredicate(if_op, builder);
-      if (failed(MoveOpsToHost(device_cluster, &if_op.getThenBranch().front(),
-                               host_if.getThenBranch().front().getTerminator(),
-                               compilation_key, device_ordinal,
-                               default_device_ordignal,
-                               communication_key_index)))
+      if (failed(MoveOpsToHost(
+              device_cluster, &if_op.getThenBranch().front(),
+              host_if.getThenBranch().front().getTerminator(), compilation_key,
+              device_ordinal, default_device_ordinal, communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(device_cluster, &if_op.getElseBranch().front(),
-                               host_if.getElseBranch().front().getTerminator(),
-                               compilation_key, device_ordinal,
-                               default_device_ordignal,
-                               communication_key_index)))
+      if (failed(MoveOpsToHost(
+              device_cluster, &if_op.getElseBranch().front(),
+              host_if.getElseBranch().front().getTerminator(), compilation_key,
+              device_ordinal, default_device_ordinal, communication_key_index)))
         return WalkResult::interrupt();
       // Mark op as stateful due to side-effecting communication ops.
       if_op->setAttr("is_stateless", builder.getBoolAttr(false));
@@ -774,21 +781,21 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
       builder.setInsertionPointToEnd(&cond.front());
       auto recv_condition_at_host = CreateRecvAtHostOp(
           builder, while_op.getLoc(), TypeRange{condition.getType()},
-          compilation_key, device_ordinal, default_device_ordignal,
+          compilation_key, device_ordinal, default_device_ordinal,
+          device_cluster->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr),
           condition_send_recv_key);
       builder.create<TF::YieldOp>(while_op.getLoc(),
                                   recv_condition_at_host->getResults());
 
       if (failed(MoveOpsToHost(device_cluster, &while_op.getCond().front(),
                                recv_condition_at_host, compilation_key,
-                               device_ordinal, default_device_ordignal,
+                               device_ordinal, default_device_ordinal,
                                communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(device_cluster, &while_op.getBody().front(),
-                               host_while.getBody().front().getTerminator(),
-                               compilation_key, device_ordinal,
-                               default_device_ordignal,
-                               communication_key_index)))
+      if (failed(MoveOpsToHost(
+              device_cluster, &while_op.getBody().front(),
+              host_while.getBody().front().getTerminator(), compilation_key,
+              device_ordinal, default_device_ordinal, communication_key_index)))
         return WalkResult::interrupt();
       // Mark op as stateful due to side-effecting communication ops.
       while_op->setAttr("is_stateless", builder.getBoolAttr(false));
