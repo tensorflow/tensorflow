@@ -158,7 +158,6 @@ py_library(
         "//tensorflow/python/framework:type_utils",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:resource",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
