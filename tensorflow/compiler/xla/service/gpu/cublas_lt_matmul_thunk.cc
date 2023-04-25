@@ -91,13 +91,13 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
                                                  allocs.memory_allocator());
   se::DeviceMemoryBase c_buffer_maybe_null;
   // With trivial matrix bias, c is just a placeholder.
-#if CUDA_VERSION > 12000
+#if CUDA_VERSION >= 12000
   if (!plan_.IsF8MatmulTrivialMatrixBias()) {
-#endif
+#endif  // CUDA_VERSION >= 12000
     c_buffer_maybe_null = allocs.GetDeviceAddress(c_buffer_);
-#if CUDA_VERSION > 12000
+#if CUDA_VERSION >= 12000
   }
-#endif
+#endif  // CUDA_VERSION >= 12000
 
   return plan_.ExecuteOnStream(
       params.stream, allocs.GetDeviceAddress(a_buffer_),

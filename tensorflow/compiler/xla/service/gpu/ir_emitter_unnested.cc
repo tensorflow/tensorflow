@@ -1190,9 +1190,9 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
                       cublas_lt::MatmulPlan::For(matmul));
   bool use_empty_c_buffer = false;
   BufferAllocation::Slice c_empty_maybe;
-#if CUDA_VERSION > 12000
+#if CUDA_VERSION >= 12000
   use_empty_c_buffer = matmul.getBetaAttr().getValueAsDouble() == 0.0;
-#endif // CUDA_VERSION > 12000
+#endif  // CUDA_VERSION >= 12000
 
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b,
