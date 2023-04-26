@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -59,21 +60,12 @@ class Tf2XlaRewriter {
 
   // Compiles the given Operation with XlaBuilder and imports the generated HLO
   // via the HLO -> MHLO importer.
-  tsl::StatusOr<mlir::func::FuncOp> CompileWithHloImporter(
+  tsl::StatusOr<mhlo::TupleOp> CompileWithHloImporter(
       tensorflow::OpKernelContext& op_context);
-
-  // Create a unique function name for the given translated op and ensure
-  // it doesn't exist in the parent module op.
-  tsl::StatusOr<std::string> CreateUniqueTranslatedFunctionName(
-      std::string candidate_name);
-
-  // Renames computations to unique function names that dont' have clashes
-  // in this op's module.
-  tsl::Status CreateUniqueComputationNames(xla::XlaComputation& computation);
 
   // Import the given XlaComputation into the parent module. Returns the given
   // generated function.
-  tsl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
+  tsl::StatusOr<mhlo::TupleOp> ImportXlaComputation(
       xla::XlaComputation& computation);
 
   // Prepares OpKernelContext params common to all the ops.
@@ -93,18 +85,13 @@ class Tf2XlaRewriter {
 
   mlir::LogicalResult VerifyOpResults(tensorflow::OpKernelContext& op_context);
   mlir::LogicalResult GetKernelOutputs(tensorflow::OpKernelContext& op_context,
-                                       mlir::func::FuncOp translated_function,
+                                       mhlo::TupleOp tuple_results,
                                        llvm::SmallVector<Value>& outputs);
 
   // Given a translated function with a single return value, unpack the tuple
   // results.
-  mlir::LogicalResult UnpackTupleResults(
-      mlir::func::FuncOp translated_function);
-
-  // When using the Hlo Importer, legalize the op into a call to the imported
-  // MHLO function.
-  mlir::LogicalResult InsertCallToTranslatedFunction(
-      func::FuncOp translated_function, llvm::SmallVector<Value>& outputs);
+  mlir::LogicalResult UnpackTupleResults(mhlo::TupleOp tuple_result,
+                                         llvm::SmallVector<Value>& outputs);
 
   // Tries to legalize the specified TensorFlow op, if supported.
   //
