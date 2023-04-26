@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace mlir {
 class PassManager;
@@ -117,19 +117,28 @@ CreateCrossDeviceTransferPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTfToTfrtConversionPass(const TfrtPipelineOptions& options);
 
-// Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
-// dialect for CoreRT purposes.
-tsl::Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
-                                         const TfrtPipelineOptions& options);
-
 // Creates a pipeline of passes that lowers MLIR TF dialect to TFRT dialects.
 void CreateTfToTfrtPipeline(mlir::OpPassManager& pm,
                             const TfrtPipelineOptions& options);
 
 // Creates a pipeline of passes that lowers MLIR TF dialect from tf.function to
 // TFRT dialect. SavedModel related conversions are not included.
-tsl::Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
-                                           const TfrtPipelineOptions& options);
+Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
+                                      const TfrtPipelineOptions& options);
+
+// Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
+// dialect for CoreRT purposes.
+Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
+                                    const TfrtPipelineOptions& options);
+
+// TODO(deqiangc): refactor below helpers once mlrt is OSSed.
+void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
+    mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
+void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
+    mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
+
+Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
+    mlir::PassManager& pm, const TfrtPipelineOptions& options);
 
 }  // namespace tensorflow
 
