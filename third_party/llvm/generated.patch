@@ -1,53 +1,51 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Tosa/IR/TosaCanonicalizations.cpp b/mlir/lib/Dialect/Tosa/IR/TosaCanonicalizations.cpp
---- a/mlir/lib/Dialect/Tosa/IR/TosaCanonicalizations.cpp
-+++ b/mlir/lib/Dialect/Tosa/IR/TosaCanonicalizations.cpp
-@@ -105,11 +105,9 @@
-                                          "Used more than once or not-splat");
+diff -ruN --strip-trailing-cr a/mlir/test/mlir-opt/debugcounter.mlir b/mlir/test/mlir-opt/debugcounter.mlir
+--- a/mlir/test/mlir-opt/debugcounter.mlir
++++ b/mlir/test/mlir-opt/debugcounter.mlir
+@@ -1,15 +1,16 @@
+-// This test exercise the example in docs/ActionTracing.md ; changes here should
+-// probably be reflected there.
++// This test exercises the example in docs/ActionTracing.md ; changes here
++// should probably be reflected there.
  
-     // Build new const op with correct output shape
--    ShapedType inputShape = input.getType().cast<ShapedType>();
--    DenseElementsAttr outputAttr =
--        inputAttr.reshape(inputShape.clone(op.getNewShape()));
--    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, outputAttr.getType(),
--                                               outputAttr);
-+    DenseElementsAttr outputAttr = inputAttr.reshape(
-+        inputAttr.getType().cast<ShapedType>().clone(op.getNewShape()));
-+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, resultTy, outputAttr);
-     return success();
-   }
- };
-diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Tosa/canonicalize.mlir b/mlir/test/Dialect/Tosa/canonicalize.mlir
---- a/mlir/test/Dialect/Tosa/canonicalize.mlir
-+++ b/mlir/test/Dialect/Tosa/canonicalize.mlir
-@@ -358,12 +358,29 @@
+-// RUN: mlir-opt %s -mlir-debug-counter=unique-tag-for-my-action-skip=-1 -mlir-print-debug-counter --pass-pipeline="builtin.module(func.func(canonicalize))" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-UKNOWN-TAG
++// REQUIRES: asserts
++// RUN: mlir-opt %s -mlir-debug-counter=unique-tag-for-my-action-skip=-1 -mlir-print-debug-counter --pass-pipeline="builtin.module(func.func(canonicalize))" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-UNKNOWN-TAG
+ // RUN: mlir-opt %s -mlir-debug-counter=pass-execution-skip=1 -mlir-print-debug-counter --pass-pipeline="builtin.module(func.func(canonicalize))" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-PASS
  
- // CHECK-LABEL: @reshape_canonicalize_const_sparse
- func.func @reshape_canonicalize_const_sparse() -> (tensor<3xi32>, tensor<1x3xi32>) {
--  //CHECK: "tosa.reshape"
-+  // CHECK: "tosa.reshape"
-   %0 = "tosa.const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : ()-> tensor<3xi32>
-   %1 = "tosa.reshape"(%0) {new_shape = array<i64: 1, 3>} : (tensor<3xi32>) -> tensor<1x3xi32>
-   return %0 , %1 : tensor<3xi32>, tensor<1x3xi32>
+ func.func @foo() {
+     return
  }
  
-+// CHECK-LABEL: @reshape_canonicalize_quant
-+func.func @reshape_canonicalize_quant() -> (tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>) {
-+  // CHECK{literal}: "tosa.const"() {value = dense<[[1, 2, 3]]> : tensor<1x3xi8>} : () -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>> 
-+  %0 = "tosa.const"() {value = dense<[1, 2, 3]> : tensor<3xi8>} : ()-> tensor<3x!quant.uniform<i8:f32, 1.000000e+00>>
-+  %1 = "tosa.reshape"(%0) {new_shape = array<i64: 1, 3>} : (tensor<3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>
-+  return %1 :  tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>
-+}
-+
-+// CHECK-LABEL: @transpose_canonicalize_strip_quant
-+func.func @transpose_canonicalize_strip_quant() -> (tensor<2x1x3xi8>) {
-+  // CHECK: "tosa.const"() {value = dense<0> : tensor<2x1x3xi8>} : () -> tensor<2x1x3xi8>
-+  %perms = "tosa.const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
-+  %0 = "tosa.const"() {value = dense<0> : tensor<1x2x3xi8>} : ()-> tensor<1x2x3x!quant.uniform<i8:f32, 1.000000e+00>>
-+  %1 = "tosa.transpose"(%0, %perms) : (tensor<1x2x3x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<3xi32>) -> tensor<2x1x3xi8>
-+  return %1 :  tensor<2x1x3xi8>
-+}
-+
- // CHECK-LABEL: @slice_fold
- func.func @slice_fold(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
-   // CHECK: return %arg0
+-// CHECK-UKNOWN-TAG:  DebugCounter counters:
+-// CHECK-UKNOWN-TAG: unique-tag-for-my-action        : {0,-1,-1}
++// CHECK-UNKNOWN-TAG:  DebugCounter counters:
++// CHECK-UNKNOWN-TAG: unique-tag-for-my-action        : {0,-1,-1}
+ 
+ // CHECK-PASS: DebugCounter counters:
+ // CHECK-PASS: pass-execution                  : {1,1,-1}
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -156,7 +156,12 @@
+ libc_support_library(
+     name = "__support_cpp_functional",
+     hdrs = ["src/__support/CPP/functional.h"],
+-    deps = [":libc_root"],
++    deps = [
++        "__support_cpp_type_traits",
++        "__support_cpp_utility",
++        "__support_macros_attributes",
++        ":libc_root",
++    ],
+ )
+ 
+ libc_support_library(
+@@ -214,6 +219,7 @@
+     hdrs = ["src/__support/CPP/utility.h"],
+     deps = [
+         ":__support_cpp_type_traits",
++        ":__support_macros_attributes",
+         ":libc_root",
+     ],
+ )
