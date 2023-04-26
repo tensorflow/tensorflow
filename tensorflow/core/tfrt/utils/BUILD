@@ -267,7 +267,6 @@ cc_library(
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/tsl/profiler/lib:traceme",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
