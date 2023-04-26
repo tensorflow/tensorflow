@@ -798,18 +798,23 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     NcclCollectiveConfig config =
         GetNcclCollectiveConfig(op, replica_count, num_partitions);
 
-    // A given collective op can be degenerate if across all groups formed
-    // by it are singleton. In such a case, we don't need to do any
-    // communication and we can just copy the input to the output.
-    if (succeeded(TryDegenerateToMemCopy(op, config, replica_count,
-                                         num_partitions, rewriter))) {
-      // For async collective erase all corresponding done operations.
+    // For async collective erase all corresponding done operations.
+    auto erase_done_op = [&]() {
       eraseDoneOp<AllGatherStartOp, AllGatherDoneOp>(rewriter, op);
       eraseDoneOp<AllReduceStartOp, AllReduceDoneOp>(rewriter, op);
       eraseDoneOp<CollectivePermuteStartOp, CollectivePermuteDoneOp>(rewriter,
                                                                      op);
       eraseDoneOp<ReduceScatterStartOp, ReduceScatterDoneOp>(rewriter, op);
       eraseDoneOp<AllToAllStartOp, AllToAllDoneOp>(rewriter, op);
+    };
+
+    // A given collective op can be degenerate if across all groups formed
+    // by it are singleton. In such a case, we don't need to do any
+    // communication and we can just copy the input to the output.
+    if (succeeded(TryDegenerateToMemCopy(op, config, replica_count,
+                                         num_partitions, rewriter))) {
+      // For async collective erase all corresponding done operations.
+      erase_done_op();
 
       // Erase the original collective operation.
       rewriter.eraseOp(op);
@@ -877,6 +882,18 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if (failed(result)) return result;
 
     bool is_async = false;
+    if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
+                         AllToAllStartOp, CollectivePermuteStartOp,
+                         ReduceScatterStartOp>) {
+      is_async = !op.getIsSync();
+      // If the collective will not execute asynchronously, erase the associated
+      // done op.
+      if (!is_async) {
+        erase_done_op();
+      }
+    }
+    call->setAttr(b.getStringAttr("is_async"), b.getBoolAttr(is_async));
+
     // For asynchonous start operation we need to produce a fake token, that
     // will be later removed, because corresponding `done` operation doesn't
     // have a token argument. We rely on the `unrealized_conversion_cast`
@@ -885,13 +902,11 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
                          AllToAllStartOp, CollectivePermuteStartOp,
                          ReduceScatterStartOp>) {
-      is_async = true;
       Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
       token.replaceAllUsesWith(fake.getResult(0));
     }
-    call->setAttr(b.getStringAttr("is_async"), b.getBoolAttr(is_async));
 
     // Erase the original collective operation.
     rewriter.eraseOp(op);
