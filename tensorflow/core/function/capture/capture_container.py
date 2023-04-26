@@ -69,6 +69,7 @@ class FunctionCaptures(object):
     self._by_ref_tracetype = py_collections.OrderedDict()
     self._by_val_internal = MutationAwareDict()
     self._by_val_external = MutationAwareDict()
+    self._by_val_tracetype = py_collections.OrderedDict()
 
     # Set of external ops on which the graph has a control dependency
     self.control = object_identity.ObjectIdentitySet()
@@ -164,6 +165,10 @@ class FunctionCaptures(object):
     else:
       self._by_val_internal[key] = internal
       self._by_val_external[key] = external
+      if tracetype is not None:
+        self._by_val_tracetype[key] = tracetype
+      else:
+        self._by_val_tracetype[key] = trace_type.from_value(external)
 
   def pop(self,
           key: Hashable,
@@ -174,16 +179,19 @@ class FunctionCaptures(object):
               self._by_ref_tracetype.pop(key, None))
     else:
       return (self._by_val_external.pop(key, None),
-              self._by_val_internal.pop(key, None))
+              self._by_val_internal.pop(key, None),
+              self._by_val_tracetype.pop(key, None))
 
   def reset_captures(self, tensors, placeholders):
     """Set the captures with the provided list of captures & placeholder."""
     self._by_val_external = MutationAwareDict()
     self._by_val_internal = MutationAwareDict()
+    self._by_val_tracetype = MutationAwareDict()
     for external, internal in zip(tensors, placeholders):
       key = id(external)
       self._by_val_external[key] = external
       self._by_val_internal[key] = internal
+      self._by_val_tracetype[key] = trace_type.from_value(external)
 
   # TODO(panzf): make the method public after supporting lam() returns
   # non-tensor values. Currently, this method is only used by
@@ -292,8 +300,7 @@ class FunctionCaptures(object):
 
   @property
   def capture_types(self):
-    # TODO(panzf): Maintain and return by val tracetypes as well
-    return self._by_ref_tracetype
+    return self._by_val_tracetype | self._by_ref_tracetype
 
   @property
   def by_val_capture_tuples(self):
@@ -322,3 +329,7 @@ class FunctionCaptures(object):
   @property
   def by_val_external(self):
     return self._by_val_external
+
+  @property
+  def by_val_tracetype(self):
+    return self._by_val_tracetype
