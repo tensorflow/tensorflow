@@ -440,6 +440,11 @@ message DebugOptions {
   // large number of CUDA graph instances in memory.
   int32 xla_gpu_cuda_graph_instantiation_threshold = 202;
 
+  // This number determines how many moved instructions like fusion kernels are
+  // required for a region to be captured as a function to be launched as a cuda
+  // graph.
+  int32 xla_gpu_cuda_graph_capture_threshold = 208;
+
   // Allocate temp buffers once during the first execution of an executable.
   // Reuse the allocated buffers in subsequent executions. Executables cannot
   // run concurrently if this is enabled.
@@ -508,7 +513,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 208
+  // Next id: 209
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

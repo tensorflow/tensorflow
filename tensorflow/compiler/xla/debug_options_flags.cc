@@ -80,6 +80,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_graph_level(0);
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
+  opts.set_xla_gpu_cuda_graph_capture_threshold(2);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -825,6 +826,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cuda_graph_instantiation_threshold(),
       "Instantiate a cuda graph after the time a captured function is executed "
       "reaches the threshold."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cuda_graph_capture_threshold",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_capture_threshold),
+      debug_options->xla_gpu_cuda_graph_capture_threshold(),
+      "Capture a region as a function to be launched as cuda graph if the "
+      "number of moved instructions reaches this threshold."));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_persistent_temp_buffers",
       bool_setter_for(
