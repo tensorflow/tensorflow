@@ -474,12 +474,7 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
 // Collective operations lowerings.
 //===----------------------------------------------------------------------===//
 
-using mlir::lmhlo::AllGatherOp;
-using mlir::lmhlo::AllReduceOp;
-using mlir::lmhlo::AllToAllOp;
-using mlir::lmhlo::CollectivePermuteOp;
 using mlir::lmhlo::PartitionIdOp;
-using mlir::lmhlo::ReduceScatterOp;
 using mlir::lmhlo::ReplicaIdOp;
 using mlir::lmhlo_gpu::AllGatherDoneOp;
 using mlir::lmhlo_gpu::AllGatherStartOp;
@@ -542,22 +537,11 @@ class CollectiveUidGenerator {
 
 template <typename CollectiveOp>
 class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
-  static StringRef Target(AllGatherOp) { return "xla.gpu.all_gather"; }
   static StringRef Target(AllGatherStartOp) { return "xla.gpu.all_gather"; }
-
-  static StringRef Target(AllReduceOp) { return "xla.gpu.all_reduce"; }
   static StringRef Target(AllReduceStartOp) { return "xla.gpu.all_reduce"; }
-
-  static StringRef Target(AllToAllOp) { return "xla.gpu.all_to_all"; }
   static StringRef Target(AllToAllStartOp) { return "xla.gpu.all_to_all"; }
-
-  static StringRef Target(ReduceScatterOp) { return "xla.gpu.reduce_scatter"; }
   static StringRef Target(ReduceScatterStartOp) {
     return "xla.gpu.reduce_scatter";
-  }
-
-  static StringRef Target(CollectivePermuteOp) {
-    return "xla.gpu.collective_permute";
   }
   static StringRef Target(CollectivePermuteStartOp) {
     return "xla.gpu.collective_permute";
@@ -568,22 +552,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
                                                       int /*replica_count*/,
                                                       int /*num_partitions*/) {
     return GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
-  }
-
-  static NcclCollectiveConfig GetNcclCollectiveConfig(AllToAllOp op,
-                                                      int /*replica_count*/,
-                                                      int /*num_partitions*/) {
-    // TODO(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
-    // attribute and it should be removed.
-    return GetNcclCollectiveConfigForMlir(op, std::nullopt);
-  }
-
-  static NcclCollectiveConfig GetNcclCollectiveConfig(CollectivePermuteOp op,
-                                                      int replica_count,
-                                                      int num_partitions) {
-    return NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
-               op, replica_count, num_partitions)
-        .config;
   }
 
   static NcclCollectiveConfig GetNcclCollectiveConfig(
@@ -626,24 +594,11 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   }
 
   static LogicalResult TryDegenerateToMemCopy(
-      CollectivePermuteOp op, const NcclCollectiveConfig& config,
-      int replica_count, int num_partitions, PatternRewriter& rewriter) {
-    return TryDegenerateCollectivePermuteToMemCopy<NcclCollectivePermuteThunk>(
-        op, config, replica_count, num_partitions, rewriter);
-  }
-
-  static LogicalResult TryDegenerateToMemCopy(
       CollectivePermuteStartOp op, const NcclCollectiveConfig& config,
       int replica_count, int num_partitions, PatternRewriter& rewriter) {
     return TryDegenerateCollectivePermuteToMemCopy<
         NcclCollectivePermuteStartThunk>(op, config, replica_count,
                                          num_partitions, rewriter);
-  }
-
-  static Status CheckImplementable(AllGatherOp op, int64_t replica_count,
-                                   int64_t num_partitions) {
-    return NcclAllGatherThunk::CheckImplementable(op, replica_count,
-                                                  num_partitions);
   }
 
   static Status CheckImplementable(AllGatherStartOp op, int64_t replica_count,
@@ -652,41 +607,16 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
                                                        num_partitions);
   }
 
-  static Status CheckImplementable(AllReduceOp op, int64_t replica_count,
-                                   int64_t num_partitions) {
-    return NcclAllReduceThunk::CheckImplementable(op, replica_count,
-                                                  num_partitions);
-  }
-
   static Status CheckImplementable(AllReduceStartOp op, int64_t replica_count,
                                    int64_t num_partitions) {
     return NcclAllReduceStartThunk::CheckImplementable(op, replica_count,
                                                        num_partitions);
   }
 
-  static Status CheckImplementable(ReduceScatterOp op, int64_t replica_count,
-                                   int64_t num_partitions) {
-    return NcclReduceScatterThunk::CheckImplementable(op, replica_count,
-                                                      num_partitions);
-  }
-
-  static Status CheckImplementable(AllToAllOp op, int64_t replica_count,
-                                   int64_t num_partitions) {
-    return NcclAllToAllThunk::CheckImplementable(op, replica_count,
-                                                 num_partitions);
-  }
-
   static Status CheckImplementable(AllToAllStartOp op, int64_t replica_count,
                                    int64_t num_partitions) {
     return NcclAllToAllStartThunk::CheckImplementable(op, replica_count,
                                                       num_partitions);
-  }
-
-  static Status CheckImplementable(CollectivePermuteOp op,
-                                   int64_t replica_count,
-                                   int64_t num_partitions) {
-    return NcclCollectivePermuteThunk::CheckImplementable(op, replica_count,
-                                                          num_partitions);
   }
 
   static Status CheckImplementable(CollectivePermuteStartOp op,
@@ -704,11 +634,9 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   }
 
   template <typename OpT>
-  static
-      typename std::enable_if_t<is_any<OpT, AllReduceOp, AllReduceStartOp,
-                                       ReduceScatterOp, ReduceScatterStartOp>,
-                                LogicalResult>
-      SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
+  static typename std::enable_if_t<
+      is_any<OpT, AllReduceStartOp, ReduceScatterStartOp>, LogicalResult>
+  SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
     std::optional<xla::ReductionKind> reduction_kind =
         NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
             op.getComputation());
@@ -723,26 +651,22 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     return success();
   }
 
-  template <typename OpT>
-  static typename std::enable_if_t<is_any<OpT, AllGatherOp, AllGatherStartOp>,
-                                   LogicalResult>
-  SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
+                                        AllGatherStartOp op,
+                                        func::CallOp call) {
     return success();
   }
 
-  template <typename OpT>
-  static typename std::enable_if_t<is_any<OpT, AllToAllOp, AllToAllStartOp>,
-                                   LogicalResult>
-  SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
+                                        AllToAllStartOp op, func::CallOp call) {
     call->setAttr(b.getStringAttr("has_split_dimension"),
                   b.getBoolAttr(op.getSplitDimension().has_value()));
     return success();
   }
 
-  template <typename OpT>
-  static typename std::enable_if_t<
-      is_any<OpT, CollectivePermuteOp, CollectivePermuteStartOp>, LogicalResult>
-  SetSpecificAttrs(ImplicitLocOpBuilder& b, OpT op, func::CallOp call) {
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
+                                        CollectivePermuteStartOp op,
+                                        func::CallOp call) {
     auto source_target_pairs_or =
         ConvertNx2Attribute(op.getSourceTargetPairs());
     if (!source_target_pairs_or.ok()) {
@@ -881,27 +805,19 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto result = SetSpecificAttrs(b, op, call);
     if (failed(result)) return result;
 
-    bool is_async = false;
-    if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
-                         AllToAllStartOp, CollectivePermuteStartOp,
-                         ReduceScatterStartOp>) {
-      is_async = !op.getIsSync();
-      // If the collective will not execute asynchronously, erase the associated
-      // done op.
-      if (!is_async) {
-        erase_done_op();
-      }
-    }
+    bool is_async = !op.getIsSync();
     call->setAttr(b.getStringAttr("is_async"), b.getBoolAttr(is_async));
 
-    // For asynchonous start operation we need to produce a fake token, that
-    // will be later removed, because corresponding `done` operation doesn't
-    // have a token argument. We rely on the `unrealized_conversion_cast`
-    // operation to create a fake token from the `i8` constant, and on the dead
-    // code elimination pass that will remove unused fake tokens.
-    if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
-                         AllToAllStartOp, CollectivePermuteStartOp,
-                         ReduceScatterStartOp>) {
+    // If the collective will not execute asynchronously, erase the associated
+    // done op.
+    if (!is_async) {
+      erase_done_op();
+    } else {
+      // For asynchonous start operation we need to produce a fake token, that
+      // will be later removed, because corresponding `done` operation doesn't
+      // have a token argument. We rely on the `unrealized_conversion_cast`
+      // operation to create a fake token from the `i8` constant, and on the
+      // dead code elimination pass that will remove unused fake tokens.
       Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
@@ -925,14 +841,9 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     using CollectiveOpLowering::CollectiveOpLowering;    \
   }
 
-DEFINE_COLLECTIVE_OP_LOWERING(AllGatherOp);
 DEFINE_COLLECTIVE_OP_LOWERING(AllGatherStartOp);
-DEFINE_COLLECTIVE_OP_LOWERING(AllReduceOp);
 DEFINE_COLLECTIVE_OP_LOWERING(AllReduceStartOp);
-DEFINE_COLLECTIVE_OP_LOWERING(ReduceScatterOp);
-DEFINE_COLLECTIVE_OP_LOWERING(AllToAllOp);
 DEFINE_COLLECTIVE_OP_LOWERING(AllToAllStartOp);
-DEFINE_COLLECTIVE_OP_LOWERING(CollectivePermuteOp);
 DEFINE_COLLECTIVE_OP_LOWERING(CollectivePermuteStartOp);
 DEFINE_COLLECTIVE_OP_LOWERING(ReduceScatterStartOp);
 
@@ -1165,12 +1076,10 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   // Convert lmhlo collective operations to XLA gpu runtime custom calls.
   patterns.insert<PartitionIdOpLowering, ReplicaIdOpLowering>(ctx,
                                                               custom_calls);
-  patterns.insert<AllGatherOpLowering, AllGatherStartOpLowering,
-                  AllReduceOpLowering, AllReduceStartOpLowering,
-                  AllToAllOpLowering, AllToAllStartOpLowering,
-                  CollectivePermuteOpLowering, CollectivePermuteStartOpLowering,
-                  ReduceScatterOpLowering, ReduceScatterStartOpLowering>(
-      ctx, collective_uid, custom_calls);
+  patterns.insert<AllGatherStartOpLowering, AllReduceStartOpLowering,
+                  AllToAllStartOpLowering, CollectivePermuteStartOpLowering,
+                  ReduceScatterStartOpLowering>(ctx, collective_uid,
+                                                custom_calls);
 
   // Convert lmhlo host<->device point-to-point communication operations to XLA
   // gpu runtime.
