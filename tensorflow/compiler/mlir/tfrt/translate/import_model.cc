@@ -194,8 +194,7 @@ Status ConvertTfMlirToRuntimeExecutable(
   auto pipeline_options = GetTfrtPipelineOptions(options);
 
   TF_RETURN_IF_ERROR(
-      tensorflow::CreateTFExecutorToTFPreInvariantOptimizationPipeline(
-          pm, *pipeline_options));
+      tensorflow::CreateTFExecutorToTFPipeline(pm, *pipeline_options));
 
   auto status = emit_executable(pm, module, *pipeline_options);
 
@@ -214,8 +213,6 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
                    const tensorflow::TfrtPipelineOptions& options) {
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-        tensorflow::CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
-            pm, options);
         tensorflow::CreateTfToTfrtPipeline(pm, options);
 
         if (mlir::failed(pm.run(module))) {
