@@ -75,6 +75,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import autograph_util
 from tensorflow.python.eager.polymorphic_function import compiler_ir
 from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
@@ -657,6 +658,10 @@ class Function(core.GenericFunction, trackable.Trackable):
       name = fn.__name__
     except AttributeError:
       name = "function"
+
+    if self._autograph:
+      fn = autograph_util.py_func_from_autograph(
+          fn, self._experimental_autograph_options)
 
     return tracing_compiler.TracingCompiler(
         fn,

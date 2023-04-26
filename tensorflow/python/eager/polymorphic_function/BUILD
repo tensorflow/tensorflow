@@ -14,6 +14,17 @@ py_library(
 )
 
 py_library(
+    name = "autograph_util",
+    srcs = ["autograph_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/impl:api",
+        "//tensorflow/python/util:tf_decorator",
+    ],
+)
+
+py_library(
     name = "atomic_function",
     srcs = ["atomic_function.py"],
     srcs_version = "PY3",
@@ -89,8 +100,6 @@ py_library(
         ":tf_method_target",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/polymorphism:function_cache",
-        "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:lazy_loader",
@@ -118,6 +127,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attributes",
+        ":autograph_util",
         ":compiler_ir",
         ":eager_function_run",
         ":function_spec",
