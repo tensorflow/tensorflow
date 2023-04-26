@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
@@ -71,25 +72,6 @@ limitations under the License.
 // * Devices are not in this API.  Instead, they are created/used internally
 //   and the API just provides high level controls over the number of
 //   devices of each type.
-
-// Macro to control visibility of exported symbols in the shared library (.so,
-// .dylib, .dll).
-// This duplicates the TF_EXPORT macro definition in
-// tensorflow/core/platform/macros.h in order to keep this .h file independent
-// of any other includes.
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
