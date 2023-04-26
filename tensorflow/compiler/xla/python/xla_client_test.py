@@ -81,17 +81,11 @@ def TestFactory(xla_backend,
                 pathways=False):
   tests = []
 
-  if not cloud_tpu:
-    int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
-    # TODO(phawkins): test np.float16, where supported.
-    float_dtypes = [bfloat16, np.float32, np.float64]
-    complex_dtypes = [np.complex64, np.complex128]
-    standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  else:
-    int_dtypes = [np.int32, np.uint32]
-    float_dtypes = [np.float32]
-    complex_dtypes = [np.complex64]
-    standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+  int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
+  # TODO(phawkins): test np.float16, where supported.
+  float_dtypes = [bfloat16, np.float32, np.float64]
+  complex_dtypes = [np.complex64, np.complex128]
+  standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
   # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
   # standard_dtypes is only used for BufferProtocolTest so we only test fp8
   # round trip tests.
@@ -236,8 +230,6 @@ def TestFactory(xla_backend,
         "dtype": dtype,
     } for dtype in int_dtypes + float_dtypes)
     def testConstantScalarSum(self, dtype):
-      if dtype == np.int8 and self.backend.platform == "tpu":
-        self.skipTest("TPU doesn't support int8")
       c = self._NewComputation()
       ops.Add(ops.Constant(c, dtype(1.11)), ops.Constant(c, dtype(3.14)))
       self._ExecuteAndCompareClose(c, expected=[dtype(1.11) + dtype(3.14)])
@@ -734,15 +726,8 @@ def TestFactory(xla_backend,
 
     def testStandardTypes(self):
       for dtype in standard_dtypes:
-        if dtype == bfloat16 or dtype == np.complex128:
+        if dtype == np.complex128:
           continue
-        # NV FP8 not supported on some TPU backends.
-        if (
-            dtype in [float8_e4m3fn, float8_e5m2]
-            and self.backend.platform == "tpu"
-        ):
-          if self.backend.platform_version.find("TPU") == -1:
-            continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
         arr = np.asarray(arr)
         self.assertEqual(dtype, type(arr[0]))
