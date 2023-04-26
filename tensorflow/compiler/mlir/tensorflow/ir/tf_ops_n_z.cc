@@ -3493,7 +3493,7 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     return set_unranked_results();
   }
 
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     if (lhs_rank != rhs_rank && lhs_rank != 0 && rhs_rank != 0) {
       return emitOptionalError(
           location,
