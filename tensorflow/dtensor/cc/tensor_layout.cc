@@ -1311,21 +1311,19 @@ StatusOr<Layout> Layout::GetLayoutWithReducedDims(
   return Layout::FromProto(output_layout).value();
 }
 
-StatusOr<Layout> Layout::Truncate(int64 split_point, bool end) const {
+Layout Layout::Truncate(int64 split_point, bool end) const {
   if ((split_point == 0 && end) || (split_point == rank() && !end))
     return *this;
 
-  dtensor::LayoutProto output_layout;
-  TF_ASSIGN_OR_RETURN(*output_layout.mutable_mesh_config(), mesh().ToProto());
+  Layout output_layout(*this);
 
+  auto& specs = output_layout.sharding_specs_;
   if (end) {
-    for (int i = split_point; i < rank(); ++i)
-      *output_layout.add_sharding_specs() = dim(i);
+    specs.erase(specs.begin(), specs.begin() + split_point);
   } else {
-    for (int i = 0; i < split_point; ++i)
-      *output_layout.add_sharding_specs() = dim(i);
+    specs.resize(split_point);
   }
-  return Layout::FromProto(output_layout).value();
+  return output_layout;
 }
 
 namespace {
