@@ -232,7 +232,7 @@ def initialize_rbe_configs():
 
     tensorflow_rbe_config(
         name = "ubuntu20.04-clang_manylinux2014-cuda12.0.1-cudnn8.8",
-        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
+        compiler = "/usr/lib/llvm-16/bin/clang",
         cuda_version = "12.0.1",
         cudnn_version = "8.8",
         os = "ubuntu20.04-manylinux2014-multipython",
