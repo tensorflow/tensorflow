@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
 
+#include <climits>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -50,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -66,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
@@ -168,7 +171,8 @@ Value Cast(mlir::OpBuilder b, mlir::Location loc, Value value,
 }
 
 // Create a scalar constant.
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, int value) {
+ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type,
+                           int64_t value) {
   if (type.isa<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(b.getIntegerAttr(type, value));
   }
@@ -180,8 +184,8 @@ ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, int value) {
 }
 
 // Create a tensor constant.
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, int value,
-                           mlir::ArrayRef<int64_t> shape) {
+ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type,
+                           int64_t value, mlir::ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
@@ -314,11 +318,10 @@ struct GeneralizeKernelSignaturePass
   }
 };
 
-}  // namespace
-
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 // TODO(b/270937368): Split this up into smaller functions.
-StatusOr<LaunchDimensions> MatMul(
+template <typename IndexT>
+StatusOr<LaunchDimensions> MatMulImpl(
     mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
     mlir::triton::FuncOp fn,
     const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
@@ -328,6 +331,12 @@ StatusOr<LaunchDimensions> MatMul(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
   mlir::ImplicitLocOpBuilder b(loc, builder);
   Type i32_ty = b.getI32Type();
+  Type int_ty;
+  if constexpr (std::is_same_v<IndexT, int64_t>) {
+    int_ty = b.getI64Type();
+  } else {
+    int_ty = b.getI32Type();
+  }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
   const DotFusionAnalysis analysis(dot_instr, config.split_k());
   const HloInstruction* hlo_lhs_param = analysis.OperandToParameter(0);
@@ -393,19 +402,19 @@ StatusOr<LaunchDimensions> MatMul(
   CHECK_EQ(analysis.IterSpec(1, rhs_noncontracting_dim_idx).size(), 1);
   CHECK_EQ(analysis.IterSpec(0, dims.lhs_contracting_dimensions(0)).size(), 1);
 
-  const int stride_lhs_m =
+  const IndexT stride_lhs_m =
       analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].stride;
-  const int stride_lhs_k =
+  const IndexT stride_lhs_k =
       analysis.IterSpec(0, dims.lhs_contracting_dimensions(0))[0].stride;
-  const int stride_rhs_k =
+  const IndexT stride_rhs_k =
       analysis.IterSpec(1, dims.rhs_contracting_dimensions(0))[0].stride;
-  const int stride_rhs_n =
+  const IndexT stride_rhs_n =
       analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].stride;
 
   // Either batch size or upper part of the length of a split nc dimension.
   int batch_size = 1;
-  int stride_batch_lhs = 0;
-  int stride_batch_rhs = 0;
+  IndexT stride_batch_lhs = 0;
+  IndexT stride_batch_rhs = 0;
   // LHS non-contracting can be split, so this holds its full size unlike the
   // m_minor.
   int m_full = m_minor;
@@ -426,7 +435,7 @@ StatusOr<LaunchDimensions> MatMul(
         analysis.IterSpec(1, dims.rhs_batch_dimensions(0))[0].stride;
   }
 
-  constexpr int64_t group_m = 8;
+  constexpr int group_m = 8;
 
   // Logical output dimensions are always ordered as:
   //   batch, split-K, non-contracting LHS, non-contracting RHS,
@@ -436,10 +445,10 @@ StatusOr<LaunchDimensions> MatMul(
   const int split_k_out_logical_idx = have_split_k ? (have_batch ? 1 : 0) : -1;
   const int batch_out_logical_idx = have_batch ? 0 : -1;
 
-  int64_t stride_out_m = 0;
-  int64_t stride_out_n = 0;
-  int64_t stride_out_split_k = 0;
-  int64_t stride_out_batch = 0;
+  IndexT stride_out_m = 0;
+  IndexT stride_out_n = 0;
+  IndexT stride_out_split_k = 0;
+  IndexT stride_out_batch = 0;
 
   // Iterate over output's physical dimension starting from the fastest
   // varying one; detect their types and populate the strides accordingly.
@@ -546,9 +555,9 @@ StatusOr<LaunchDimensions> MatMul(
     return b.create<mt::SplatOp>(type, value);
   };
 
-  auto build_range = [&](uint32_t start, uint32_t end) {
-    auto type = mlir::RankedTensorType::get(end - start, b.getI32Type());
-    return b.create<mt::MakeRangeOp>(type, start, end);
+  auto build_range = [&](int32_t limit) {
+    auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
+    return b.create<mt::MakeRangeOp>(type, 0, limit);
   };
 
   using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
@@ -562,6 +571,22 @@ StatusOr<LaunchDimensions> MatMul(
     return b.create<mt::AddPtrOp>(ptr.getType(), ptr, offset);
   };
 
+  // Extend int32 indexes to int64, if necessary.
+  auto convert_scalar = [&](Value value) -> Value {
+    if constexpr (std::is_same_v<IndexT, int64_t>) {
+      return b.create<ma::ExtSIOp>(int_ty, value);
+    }
+    return value;
+  };
+  auto convert_range = [&](Value value) -> Value {
+    if constexpr (std::is_same_v<IndexT, int64_t>) {
+      auto type = mlir::RankedTensorType::get(
+          value.dyn_cast<TensorValue>().getType().getShape(), int_ty);
+      return b.create<ma::ExtSIOp>(type, value);
+    }
+    return value;
+  };
+
   auto pid_m = b.create<ma::AddIOp>(first_pid_m,
                                     b.create<ma::RemSIOp>(pid0, group_size));
   auto pid_m_stride =
@@ -569,55 +594,59 @@ StatusOr<LaunchDimensions> MatMul(
   // TODO(b/270351731): Consider regenerating range_m to reduce register
   // pressure if we figure out how to make this optimization survive CSE.
   auto range_m = b.create<ma::AddIOp>(build_splat(pid_m_stride, block_m),
-                                      build_range(0, block_m));
+                                      build_range(block_m));
 
   auto pid_n = b.create<ma::DivSIOp>(
       b.create<ma::RemSIOp>(pid0, CreateConst(b, i32_ty, width)), group_size);
   auto pid_n_stride =
       b.create<ma::MulIOp>(pid_n, CreateConst(b, i32_ty, block_n));
   auto range_n = b.create<ma::AddIOp>(build_splat(pid_n_stride, block_n),
-                                      build_range(0, block_n));
+                                      build_range(block_n));
 
   auto range_k = b.create<ma::AddIOp>(
       build_splat(b.create<ma::MulIOp>(pid1, CreateConst(b, i32_ty, block_k)),
                   block_k),
-      build_range(0, block_k));
+      build_range(block_k));
 
   SmallVector<int64_t, 2> shape_m_1{block_m, 1};
-  auto range_lhs_m =
-      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m_minor, block_m));
+  auto range_lhs_m = convert_range(
+      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m_minor, block_m)));
   auto lhs_offset_m =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_lhs_m, 1),
-                           CreateConst(b, i32_ty, stride_lhs_m, shape_m_1));
+                           CreateConst(b, int_ty, stride_lhs_m, shape_m_1));
   SmallVector<int64_t, 2> shape_1_k{1, block_k};
-  auto lhs_offset_k =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_k, 0),
-                           CreateConst(b, i32_ty, stride_lhs_k, shape_1_k));
+  auto lhs_offset_k = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_k), 0),
+      CreateConst(b, int_ty, stride_lhs_k, shape_1_k));
   SmallVector<int64_t, 2> shape_m_k{block_m, block_k};
   auto lhs_offset = b.create<ma::AddIOp>(
-      build_bcast(lhs_offset_m.getResult().cast<TensorValue>(), shape_m_k),
-      build_bcast(lhs_offset_k.getResult().cast<TensorValue>(), shape_m_k));
-  auto lhs_offset_batch =
-      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, stride_batch_lhs));
+      build_bcast(lhs_offset_m.getResult().template cast<TensorValue>(),
+                  shape_m_k),
+      build_bcast(lhs_offset_k.getResult().template cast<TensorValue>(),
+                  shape_m_k));
+  auto lhs_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid2), CreateConst(b, int_ty, stride_batch_lhs));
   mt::AddPtrOp lhs_ptrs_base = build_addptr(
       build_splat(build_addptr(lhs, lhs_offset_batch), shape_m_k), lhs_offset);
 
   SmallVector<int64_t, 2> shape_k_1{block_k, 1};
-  auto rhs_off_k =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_k, 1),
-                           CreateConst(b, i32_ty, stride_rhs_k, shape_k_1));
+  auto rhs_off_k = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_k), 1),
+      CreateConst(b, int_ty, stride_rhs_k, shape_k_1));
   SmallVector<int64_t, 2> shape_1_n{1, block_n};
-  auto range_rhs_n =
-      b.create<ma::RemSIOp>(range_n, CreateConst(b, i32_ty, n, block_n));
+  auto range_rhs_n = convert_range(
+      b.create<ma::RemSIOp>(range_n, CreateConst(b, i32_ty, n, block_n)));
   auto rhs_offset_n =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_rhs_n, 0),
-                           CreateConst(b, i32_ty, stride_rhs_n, shape_1_n));
+                           CreateConst(b, int_ty, stride_rhs_n, shape_1_n));
   SmallVector<int64_t, 2> shape_k_n{block_k, block_n};
   auto rhs_offset = b.create<ma::AddIOp>(
-      build_bcast(rhs_off_k.getResult().cast<TensorValue>(), shape_k_n),
-      build_bcast(rhs_offset_n.getResult().cast<TensorValue>(), shape_k_n));
-  auto rhs_offset_batch =
-      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, stride_batch_rhs));
+      build_bcast(rhs_off_k.getResult().template cast<TensorValue>(),
+                  shape_k_n),
+      build_bcast(rhs_offset_n.getResult().template cast<TensorValue>(),
+                  shape_k_n));
+  auto rhs_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid2), CreateConst(b, int_ty, stride_batch_rhs));
   mt::AddPtrOp rhs_ptrs_base = build_addptr(
       build_splat(build_addptr(rhs, rhs_offset_batch), shape_k_n), rhs_offset);
   SmallVector<int64_t, 2> shape_m_n{block_m, block_n};
@@ -644,14 +673,14 @@ StatusOr<LaunchDimensions> MatMul(
                                b.create<mt::ExpandDimsOp>(range_k, 0),
                                build_splat(elements_in_tile, shape_1_k))
               .getResult()
-              .cast<TensorValue>(),
+              .template cast<TensorValue>(),
           shape_m_k);
       rhs_mask = build_bcast(
           b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
                                b.create<mt::ExpandDimsOp>(range_k, 1),
                                build_splat(elements_in_tile, shape_k_1))
               .getResult()
-              .cast<TensorValue>(),
+              .template cast<TensorValue>(),
           shape_k_n);
     }
     auto lhs_tile = b.create<mt::LoadOp>(lhs_ptrs, lhs_mask, zeros_like_lhs,
@@ -670,11 +699,11 @@ StatusOr<LaunchDimensions> MatMul(
 
     mt::AddPtrOp lhs_ptrs_inc = build_addptr(
         lhs_ptrs,
-        CreateConst(b, i32_ty, block_k * config.split_k() * stride_lhs_k,
+        CreateConst(b, int_ty, block_k * config.split_k() * stride_lhs_k,
                     shape_m_k));
     mt::AddPtrOp rhs_ptrs_inc = build_addptr(
         rhs_ptrs,
-        CreateConst(b, i32_ty, block_k * config.split_k() * stride_rhs_k,
+        CreateConst(b, int_ty, block_k * config.split_k() * stride_rhs_k,
                     shape_k_n));
 
     b.create<mlir::scf::YieldOp>(
@@ -693,25 +722,26 @@ StatusOr<LaunchDimensions> MatMul(
           .getResult(2);
 
   // Output tile offsets.
-  auto out_offset_batch =
-      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, stride_out_batch));
-  auto out_offset_split_k =
-      b.create<ma::MulIOp>(pid1, CreateConst(b, i32_ty, stride_out_split_k));
-  auto out_offset_m =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_m, 1),
-                           CreateConst(b, i32_ty, stride_out_m, shape_m_1));
+  auto out_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid2), CreateConst(b, int_ty, stride_out_batch));
+  auto out_offset_split_k = b.create<ma::MulIOp>(
+      convert_scalar(pid1), CreateConst(b, int_ty, stride_out_split_k));
+  auto out_offset_m = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_m), 1),
+      CreateConst(b, int_ty, stride_out_m, shape_m_1));
   mt::AddPtrOp out_ptrs_m = build_addptr(
       build_splat(
           build_addptr(build_addptr(out, out_offset_batch), out_offset_split_k),
           shape_m_1),
       out_offset_m);
 
-  auto out_offset_n =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_n, 0),
-                           CreateConst(b, i32_ty, stride_out_n, shape_1_n));
+  auto out_offset_n = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_n), 0),
+      CreateConst(b, int_ty, stride_out_n, shape_1_n));
   mt::AddPtrOp out_ptrs = build_addptr(
       build_bcast(out_ptrs_m.getResult().cast<TensorValue>(), shape_m_n),
-      build_bcast(out_offset_n.getResult().cast<TensorValue>(), shape_m_n));
+      build_bcast(out_offset_n.getResult().template cast<TensorValue>(),
+                  shape_m_n));
 
   // Output tile store mask: check that the indices are within [M, N].
   auto rm_cmp = b.create<ma::CmpIOp>(
@@ -721,12 +751,32 @@ StatusOr<LaunchDimensions> MatMul(
                                      b.create<mt::ExpandDimsOp>(range_n, 0),
                                      CreateConst(b, i32_ty, n, shape_1_n));
   auto mask = b.create<ma::AndIOp>(
-      build_bcast(rm_cmp.getResult().cast<TensorValue>(), shape_m_n),
-      build_bcast(rn_cmp.getResult().cast<TensorValue>(), shape_m_n));
+      build_bcast(rm_cmp.getResult().template cast<TensorValue>(), shape_m_n),
+      build_bcast(rn_cmp.getResult().template cast<TensorValue>(), shape_m_n));
 
   b.create<mt::StoreOp>(out_ptrs, Cast(b, loc, acc_final, root_ty), mask,
                         mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   return launch_dimensions;
+}
+
+}  // namespace
+
+StatusOr<LaunchDimensions> MatMul(
+    mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
+    mlir::triton::FuncOp fn,
+    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+  // Use 32-bit indexing if addressing any of the inputs or the output (which
+  // could grow if split_k is set) does not cross the INT_MAX boundary.
+  // Otherwise, fall back to 64-bit indexing, which is slower.
+  bool use_64bit_indexing =
+      ShapeUtil::ElementsIn(dot_instr->operand(0)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr->operand(1)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k() > INT_MAX;
+  if (use_64bit_indexing) {
+    return MatMulImpl<int64_t>(builder, dot_instr, fn, config, shmem_budget);
+  } else {
+    return MatMulImpl<int32_t>(builder, dot_instr, fn, config, shmem_budget);
+  }
 }
 
 StatusOr<LaunchDimensions> TritonWrapper(
