@@ -77,7 +77,6 @@ class GraphArtifacts:
   output_shapes: Any
   control_captures: Any
   func_graph_outputs: Any
-  attrs: Any
   graph: Any
   stateful_ops: Any
 
@@ -440,7 +439,6 @@ def from_func_graph_no_transforms(
       output_shapes=[o.shape for o in outputs],
       control_captures=graph.function_captures.control,
       func_graph_outputs=list(outputs),
-      attrs=attrs,
       graph=graph,
       stateful_ops=tuple(op for op in operations if op._is_stateful),  # pylint: disable=protected-access
   )
