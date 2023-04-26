@@ -48,6 +48,10 @@ RUN /install/install_bootstrap_deb_packages.sh
 COPY install/install_deb_packages.sh /install/
 RUN /install/install_deb_packages.sh
 
+# LLVM/Clang: https://apt.llvm.org/
+RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
+RUN printf "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main\ndeb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main\n" > /etc/apt/sources.list.d/llvm.list
+
 RUN apt-get update && apt-get install -y \
     libbz2-dev \
     libffi-dev \
@@ -57,6 +61,7 @@ RUN apt-get update && apt-get install -y \
     libreadline-dev \
     libsqlite3-dev \
     patchelf \
+    clang-16 \
       && \
     rm -rf /var/lib/apt/lists/*
 
@@ -75,9 +80,3 @@ RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8" "jax"
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.11" "jax"
-
-# LLVM/Clang: https://apt.llvm.org/
-RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
-RUN printf "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main\ndeb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main\n" > /etc/apt/sources.list.d/llvm.list
-RUN cat /etc/apt/sources.list.d/llvm.list
-RUN apt-get update && apt-get install clang-16 -y && rm -rf /var/lib/apt/lists/*
