@@ -12,7 +12,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c:c_api_headers",
-        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_buffer_internal",
@@ -42,7 +41,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c:c_api_headers",
-        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
