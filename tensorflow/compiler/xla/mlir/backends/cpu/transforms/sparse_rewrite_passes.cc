@@ -69,14 +69,16 @@ void getIntegersFromDenseElements(Value v, SmallVectorImpl<int64_t>& values) {
   values.append(range.begin(), range.end());
 }
 
-struct SparsePackCallRewriter {
+struct SparseBatchedPackCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 2 && "Need two arrays (data/indices)");
+    assert(op.getInputs().size() == 3 && "Need two arrays (data/indices)");
     assert(op.getResults().size() == 1 && "Must be packing into one tensor");
+    llvm::APInt batchedLvls =
+        *getDenseIntAttrFromConstant(op.getInputs()[2]).begin();
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
         op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1],
-        nullptr);
+        IntegerAttr::get(rewriter.getIndexType(), batchedLvls));
     return success();
   }
 };
@@ -347,7 +349,8 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       mhlo::CustomCallOp op, PatternRewriter& rewriter)>;
 
   const llvm::StringMap<SparseCustomTargetRewriter> rewriter_map_{
-      std::make_pair("sparse_tensor_sparse_pack", SparsePackCallRewriter()),
+      std::make_pair("sparse_tensor_sparse_pack",
+                     SparseBatchedPackCallRewriter()),
       std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
       std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
       std::make_pair("sparse_tensor_dot_general", SparseDotCallRewriter()),
