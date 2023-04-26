@@ -30,7 +30,6 @@ py_library(
     srcs = ["mirrored_strategy.py"],
     deps = [
         ":dtensor_util",
-        "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
@@ -85,6 +84,7 @@ py_library(
     name = "dtensor_util",
     srcs = ["dtensor_util.py"],
     deps = [
+        "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/python/distribute:values",
     ],

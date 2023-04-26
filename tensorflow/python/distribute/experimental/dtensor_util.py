@@ -14,6 +14,7 @@
 # ==============================================================================
 """Utilities for strategies that are backed by DTensor."""
 
+from tensorflow.dtensor.python import accelerator_util
 from tensorflow.dtensor.python import api as d_api
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values
@@ -129,3 +130,15 @@ class DTensorReplicaContext(distribute_lib.ReplicaContext):
 
   def _update(self, var, fn, args=(), kwargs=None, group=True):
     raise NotImplementedError(self._UNSUPPORTED_ERROR_MSG)
+
+
+def initialize_accelerator_system_once(device_type):
+  # Initialize the GPU/TPU before creating the mesh.
+  # Note that this method will also trigger the creation of the pairing
+  # virtual host CPUs, which is needed by dataset and checkpoint.
+  if not accelerator_util.is_initialized():
+    # TODO(feyu): Add a method in accelerator_util to check the initialized
+    # mesh device types.
+    accelerator_util.initialize_accelerator_system(
+        device_type,
+        experimental_reset_context=True)
