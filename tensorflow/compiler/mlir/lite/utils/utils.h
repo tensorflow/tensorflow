@@ -29,7 +29,7 @@ using mlir::ShapedType;
 using mlir::Value;
 
 // Returns true if all tensor value in `values` has static shape and same shape.
-inline bool HasSameStaticShapes(Operation* op) {
+inline bool OpHasSameStaticShapes(Operation* op) {
   auto values = op->getOperands();
   int operand_num = 0;
   ArrayRef<int64_t> shape;
