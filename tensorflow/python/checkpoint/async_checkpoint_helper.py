@@ -401,9 +401,11 @@ class AsyncCheckpointHelper:
     # pylint: disable=protected-access
     new_embedding = tpu_embedding._create_copy_for_async_checkpoint(
         feature_config=tpu_embedding._feature_config,
-        optimizer=tpu_embedding._table_config[0].optimizer,
-        pipeline_execution_with_tensor_core=tpu_embedding
-        ._pipeline_execution_with_tensor_core)
+        optimizer=tpu_embedding._table_config[0]
+        if tpu_embedding._table_config
+        else None,
+        pipeline_execution_with_tensor_core=tpu_embedding._pipeline_execution_with_tensor_core,
+    )
     self._object_map[tpu_embedding] = new_embedding
     # pylint: enable=protected-access
 
