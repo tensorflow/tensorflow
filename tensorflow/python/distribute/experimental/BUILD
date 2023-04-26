@@ -75,6 +75,7 @@ dtensor_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

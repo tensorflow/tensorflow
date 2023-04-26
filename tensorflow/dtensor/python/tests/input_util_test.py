@@ -199,12 +199,16 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
         layouts=images_layout,
         batch_dim=MESH_DIM_BATCH)
 
+    self.assertEqual(d_dataset.element_spec.shape, [batch_size, 8, 8, 3])
+
     def train(iterator):
       return next(iterator)
 
     train_fn = polymorphic_function.function(train) if is_graph else train
 
     d_iterator = iter(d_dataset)
+    self.assertEqual(d_iterator.element_spec.shape, [batch_size, 8, 8, 3])
+
     d_images = train_fn(d_iterator)
 
     expected = next(iter(dataset.batch(batch_size, drop_remainder=True)))
