@@ -1164,8 +1164,14 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
                       GetAllocationSlice(matmul.getA()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSlice(matmul.getB()));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice c,
-                      GetAllocationSlice(matmul.getC()));
+  BufferAllocation::Slice c;
+#if CUDA_VERSION > 12000
+  if (matmul.getBetaAttr().getValueAsDouble() != 0.0) {
+#endif  // CUDA_VERSION > 12000
+    TF_ASSIGN_OR_RETURN(c, GetAllocationSlice(matmul.getC()));
+#if CUDA_VERSION > 12000
+  }
+#endif  // CUDA_VERSION > 12000
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
                       GetAllocationSlice(matmul.getD()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_scale,
@@ -1188,16 +1194,10 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
-  bool use_empty_c_buffer = false;
-  BufferAllocation::Slice c_empty_maybe;
-#if CUDA_VERSION >= 12000
-  use_empty_c_buffer = matmul.getBetaAttr().getValueAsDouble() == 0.0;
-#endif  // CUDA_VERSION >= 12000
 
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b,
-      use_empty_c_buffer ? c_empty_maybe : c, d, bias, aux, a_scale,
-      b_scale, c_scale, d_scale, d_amax);
+      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();

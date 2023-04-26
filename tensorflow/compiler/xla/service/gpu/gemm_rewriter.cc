@@ -833,28 +833,21 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Pad the non-batch dimensions of the operands to multiples of 16 as
     // required by cuBLASLt.
-    auto pad_shape = [&batch_dims](PaddingConfig &padding_config,
-                                   const Shape old_shape) {
-      Shape padded_shape = old_shape;
-      for (int i = 0; i < old_shape.rank(); ++i) {
+    auto pad_operand = [&instr, &batch_dims](HloInstruction *&x) -> void {
+      PaddingConfig padding_config;
+      Shape padded_shape = x->shape();
+      for (int i = 0; i < x->shape().rank(); ++i) {
         auto dimension = padding_config.add_dimensions();
         if (!absl::c_linear_search(batch_dims, i)) {
           int64_t padded_dimension =
-              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
+              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
           dimension->set_edge_padding_low(0);
           dimension->set_edge_padding_high(padded_dimension -
-                                           old_shape.dimensions(i));
+                                           x->shape().dimensions(i));
           dimension->set_interior_padding(0);
           padded_shape.set_dimensions(i, padded_dimension);
         }
       }
-      return padded_shape;
-    };
-
-    auto pad_operand = [&instr, &pad_shape](
-                           HloInstruction *&x) -> void {                           
-      PaddingConfig padding_config;  
-      Shape padded_shape = pad_shape(padding_config, x->shape());
       if (!ShapeUtil::Equal(padded_shape, x->shape())) {
         HloInstruction *zero =
             instr->AddInstruction(HloInstruction::CreateConstant(
@@ -865,6 +858,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return;
     };
 
+    // Get the possible padded shape.
+    auto pad_shape = [&batch_dims](const Shape old_shape) {
+      Shape padded_shape = old_shape;
+      for (int i = 0; i < old_shape.rank(); ++i) {
+        if (!absl::c_linear_search(batch_dims, i)) {
+          int64_t padded_dimension =
+              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
+          padded_shape.set_dimensions(i, padded_dimension);
+        }
+      }
+      return padded_shape;
+    };
+
     pad_operand(a);
     pad_operand(b);
     Shape new_output_shape;
@@ -872,8 +878,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (c == nullptr) {
       c = instr->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(c_type)));
-      PaddingConfig padding_config;
-      new_output_shape = pad_shape(padding_config, instr->shape());
+      new_output_shape = pad_shape(instr->shape());
     } else {
 #endif  // CUDA_VERSION >= 12000
       pad_operand(c);
