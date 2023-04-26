@@ -373,7 +373,7 @@ StatusOr<LaunchDimensions> MatMul(
 
   // Non-contracting dimension lengths.
   // Just the fastest-varying part of it if the dimension is split.
-  const int m = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].count;
+  const int m_minor = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].count;
   const int n = analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].count;
 
   // Contracting dimension length.
@@ -386,7 +386,7 @@ StatusOr<LaunchDimensions> MatMul(
       (analysis.IterSpec(0, lhs_noncontracting_dim_idx).size() > 1);
   CHECK_EQ(analysis.IterSpec(0, lhs_noncontracting_dim_idx).size(),
            1 + lhs_nc_split);
-  // For now split noncontracting and batch are not supported simultaneously
+  // For now split non-contracting and batch are not supported simultaneously
   // because they are implemented via same mechanism.
   CHECK_LE(have_batch + lhs_nc_split, 1);
   // Splitting of the other ones is not supported yet.
@@ -406,11 +406,15 @@ StatusOr<LaunchDimensions> MatMul(
   int batch_size = 1;
   int stride_batch_lhs = 0;
   int stride_batch_rhs = 0;
+  // LHS non-contracting can be split, so this holds its full size unlike the
+  // m_minor.
+  int m_full = m_minor;
   if (lhs_nc_split) {
     batch_size = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].count;
     stride_batch_lhs =
         analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].stride;
     stride_batch_rhs = 0;
+    m_full *= batch_size;
   } else if (have_batch) {
     // Batch dimension should have same length left and right.
     CHECK_EQ(analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].count,
@@ -424,24 +428,58 @@ StatusOr<LaunchDimensions> MatMul(
 
   constexpr int64_t group_m = 8;
 
-  int stride_out_m, stride_out_n;
-  // The only supported deviation from non-default output layout is a swap
-  // of non-contracting LHS and RHS dimensions. For example for rank 4 it can
-  // be either {3,2,1,0} or {2,3,1,0}.
-  auto compared_output_layout =
-      LayoutUtil::GetDefaultLayoutForShape(dot_instr->shape());
-  if (dot_instr->shape().layout() == compared_output_layout) {
-    stride_out_m = n;
-    stride_out_n = 1;
-  } else {
-    std::swap(compared_output_layout.mutable_minor_to_major()->at(0),
-              compared_output_layout.mutable_minor_to_major()->at(1));
-    CHECK_EQ(dot_instr->shape().layout(), compared_output_layout);
-    stride_out_m = 1;
-    stride_out_n = m;
+  // Logical output dimensions are always ordered as:
+  //   batch, split-K, non-contracting LHS, non-contracting RHS,
+  // where batch and split-K are optional.
+  const int rhs_nc_out_logical_idx = dot_instr->shape().rank() - 1;
+  const int lhs_nc_out_logical_idx = dot_instr->shape().rank() - 2;
+  const int split_k_out_logical_idx = have_split_k ? (have_batch ? 1 : 0) : -1;
+  const int batch_out_logical_idx = have_batch ? 0 : -1;
+
+  int64_t stride_out_m = 0;
+  int64_t stride_out_n = 0;
+  int64_t stride_out_split_k = 0;
+  int64_t stride_out_batch = 0;
+
+  // Iterate over output's physical dimension starting from the fastest
+  // varying one; detect their types and populate the strides accordingly.
+  int64_t out_stride_size_accumulator = 1;
+  for (int64_t logical_idx : dot_instr->shape().layout().minor_to_major()) {
+    const int64_t dim_size = dot_instr->shape().dimensions(logical_idx);
+    if (logical_idx == rhs_nc_out_logical_idx) {
+      CHECK_EQ(dim_size, n);
+      stride_out_n = out_stride_size_accumulator;
+    } else if (logical_idx == lhs_nc_out_logical_idx) {
+      CHECK_EQ(dim_size, m_full);
+      stride_out_m = out_stride_size_accumulator;
+      if (lhs_nc_split) {
+        // Dimension of the output produced by the non-contracting LHS one
+        // is physically contiguous even if the producing LHS one is split.
+        // Because the major part of the split is implemented using the batch
+        // logic stride_out_batch is populated here as the stride of the minor
+        // part times its size.
+        stride_out_batch = out_stride_size_accumulator * m_minor;
+      }
+    } else if (logical_idx == split_k_out_logical_idx) {
+      CHECK_EQ(dim_size, config.split_k());
+      stride_out_split_k = out_stride_size_accumulator;
+    } else if (logical_idx == batch_out_logical_idx) {
+      CHECK_EQ(dim_size, batch_size);
+      stride_out_batch = out_stride_size_accumulator;
+    } else {
+      CHECK(false) << "Unexpected dimension";
+    }
+    out_stride_size_accumulator *= dim_size;
   }
-  const int stride_out_split_k = m * n;
-  const int stride_out_batch = m * n * config.split_k();
+  CHECK_GE(stride_out_m, 1);
+  CHECK_GE(stride_out_n, 1);
+  // The next two should never be minor-most, so stride > 1.
+  if (have_split_k) {
+    CHECK_GT(stride_out_split_k, 1);
+  }
+  if (have_batch || lhs_nc_split) {
+    CHECK_GT(stride_out_batch, 1);
+  }
 
   const int block_m = config.block_m();
   const int block_k = config.block_k();
@@ -454,7 +492,7 @@ StatusOr<LaunchDimensions> MatMul(
   VLOG(3) << block_m << " " << block_k << " " << block_n << " "
           << config.num_warps() << " " << config.num_stages();
 
-  const int grid_m = ceil(1.0 * m / block_m);
+  const int grid_m = ceil(1.0 * m_minor / block_m);
   const int grid_n = ceil(1.0 * n / block_n);
   const int width = group_m * grid_n;
 
@@ -547,7 +585,7 @@ StatusOr<LaunchDimensions> MatMul(
 
   SmallVector<int64_t, 2> shape_m_1{block_m, 1};
   auto range_lhs_m =
-      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m, block_m));
+      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m_minor, block_m));
   auto lhs_offset_m =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_lhs_m, 1),
                            CreateConst(b, i32_ty, stride_lhs_m, shape_m_1));
@@ -676,9 +714,9 @@ StatusOr<LaunchDimensions> MatMul(
       build_bcast(out_offset_n.getResult().cast<TensorValue>(), shape_m_n));
 
   // Output tile store mask: check that the indices are within [M, N].
-  auto rm_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
-                                     b.create<mt::ExpandDimsOp>(range_m, 1),
-                                     CreateConst(b, i32_ty, m, shape_m_1));
+  auto rm_cmp = b.create<ma::CmpIOp>(
+      ma::CmpIPredicate::slt, b.create<mt::ExpandDimsOp>(range_m, 1),
+      CreateConst(b, i32_ty, m_minor, shape_m_1));
   auto rn_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
                                      b.create<mt::ExpandDimsOp>(range_n, 0),
                                      CreateConst(b, i32_ty, n, shape_1_n));
