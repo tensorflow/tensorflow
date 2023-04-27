@@ -382,6 +382,10 @@ message DebugOptions {
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
 
+  // Enable allreduce reassociation on allreduces that are converted to a wider
+  // type. The resulting allreduce will be promoted to a wider-typed allreduce.
+  bool xla_gpu_enable_reassociation_for_converted_ar = 209;
+
   // Number of devices per host for first stage of BlueConnect decomposition
   // pass. The pass will attempt to decompose all-reduces ops into a
   // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
@@ -513,7 +517,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 209
+  // Next id: 210
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
