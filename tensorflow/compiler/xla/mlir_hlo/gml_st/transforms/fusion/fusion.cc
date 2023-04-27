@@ -744,4 +744,29 @@ LogicalResult inlineFusionCluster(FusionOp fusionOp,
   return success();
 }
 
+// Duplicates the op so each copy has only one use as init parameter.
+template <typename OpTy>
+LogicalResult duplicateInitOps(OpTy op, PatternRewriter& rewriter) {
+  // Nothing to do, because the op has 0 or 1 users.
+  if (std::distance(op->user_begin(), op->user_end()) <= 1) return failure();
+
+  bool modified = false;
+  for (auto& use : llvm::make_early_inc_range(op->getUses())) {
+    Operation* ownerOp = use.getOwner();
+
+    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
+    if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
+
+    auto newOp = cast<OpTy>(rewriter.clone(*op));
+    use.set(newOp->getResult(0));
+    modified = true;
+  }
+  return success(modified);
+}
+
+void populateDuplicateInitOpsPatterns(RewritePatternSet& patterns) {
+  patterns.add(duplicateInitOps<linalg::FillOp>);
+  patterns.add(duplicateInitOps<tensor::EmptyOp>);
+}
+
 }  // namespace mlir::gml_st

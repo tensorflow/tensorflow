@@ -47,6 +47,10 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
 // Replaces gml_st.fusion op with ops from the region.
 LogicalResult inlineFusionCluster(FusionOp fusionOp, PatternRewriter &rewriter);
 
+// Adds patterns to duplicate linalg.fill and tensor.empty that used as init
+// parameters.
+void populateDuplicateInitOpsPatterns(RewritePatternSet &patterns);
+
 // Fuses an op into `tensor.extract_slice` and performs the necessary updates to
 // the surrounding loop if any.
 FailureOr<Operation *> fuse(PatternRewriter &rewriter,
