@@ -163,6 +163,7 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 #define REGISTER_DEFAULT_PACK(type)                             \
 REGISTER_KERNEL_BUILDER(Name("Pack")                            \
                             .Device(DEVICE_DEFAULT)             \
@@ -172,4 +173,5 @@ REGISTER_KERNEL_BUILDER(Name("Pack")                            \
                         PackOp<CPUDevice, type>);
 TF_CALL_ALL_TYPES(REGISTER_DEFAULT_PACK)
 #undef REGISTER_DEFAULT_PACK
+#endif
 }  // namespace tensorflow

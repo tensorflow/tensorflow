@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 namespace tensorflow {
 
 #define REGISTER_CPU_KERNELS(type)                                             \
