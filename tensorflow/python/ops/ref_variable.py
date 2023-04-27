@@ -24,6 +24,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
@@ -31,7 +32,125 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.deprecation import deprecated
+
+
+variable_scope = lazy_loader.LazyLoader(
+    "variable_scope", globals(),
+    "tensorflow.python.ops.variable_scope")
+
+
+def default_variable_creator(next_creator=None, **kwargs):
+  """Default variable creator."""
+  assert next_creator is None
+  initial_value = kwargs.get("initial_value", None)
+  trainable = kwargs.get("trainable", None)
+  collections = kwargs.get("collections", None)
+  validate_shape = kwargs.get("validate_shape", True)
+  caching_device = kwargs.get("caching_device", None)
+  name = kwargs.get("name", None)
+  variable_def = kwargs.get("variable_def", None)
+  dtype = kwargs.get("dtype", None)
+  expected_shape = kwargs.get("expected_shape", None)
+  import_scope = kwargs.get("import_scope", None)
+  constraint = kwargs.get("constraint", None)
+  use_resource = kwargs.get("use_resource", None)
+  synchronization = kwargs.get("synchronization", None)
+  aggregation = kwargs.get("aggregation", None)
+  shape = kwargs.get("shape", None)
+
+  if use_resource is None:
+    use_resource = variable_scope.get_variable_scope().use_resource
+  if use_resource is None:
+    use_resource = variable_scope._DEFAULT_USE_RESOURCE  # pylint: disable=protected-access
+  use_resource = use_resource or context.executing_eagerly()
+  if use_resource:
+    distribute_strategy = kwargs.get("distribute_strategy", None)
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value,
+        trainable=trainable,
+        collections=collections,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        dtype=dtype,
+        constraint=constraint,
+        variable_def=variable_def,
+        import_scope=import_scope,
+        distribute_strategy=distribute_strategy,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        shape=shape)
+  else:
+    return RefVariable(
+        initial_value=initial_value,
+        trainable=trainable,
+        collections=collections,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        dtype=dtype,
+        constraint=constraint,
+        variable_def=variable_def,
+        expected_shape=expected_shape,
+        import_scope=import_scope,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        shape=shape)
+
+
+variable_v1.default_variable_creator = default_variable_creator
+
+
+def _to_proto_fn(v, export_scope=None):
+  """Converts Variable and ResourceVariable to VariableDef for collections."""
+  return v.to_proto(export_scope=export_scope)
+
+
+def _from_proto_fn(v, import_scope=None):
+  """Creates Variable or ResourceVariable from VariableDef as needed."""
+  if v.is_resource:
+    return resource_variable_ops.ResourceVariable.from_proto(
+        v, import_scope=import_scope)
+  return variable_v1.VariableV1.from_proto(v, import_scope=import_scope)
+
+
+ops.register_proto_function(
+    ops.GraphKeys.GLOBAL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.TRAINABLE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.LOCAL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.MODEL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.GLOBAL_STEP,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.METRIC_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
 
 
 # TODO(apassos): do not repeat all comments here
