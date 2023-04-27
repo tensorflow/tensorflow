@@ -1970,13 +1970,13 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
         printer = logging_ops.print_v2(
             'hello', output_stream='file://' + file_name
         )
-        f._graph_artifacts.outputs[0].op._add_control_input(printer)
+        f.graph.outputs[0].op._add_control_input(printer)
 
         return atomic_function.from_func_graph_no_transforms(
             f.name,
             f.graph,
-            f._graph_artifacts.inputs,
-            f._graph_artifacts.outputs,
+            f.graph.inputs,
+            f.graph.outputs,
             f.cached_definition.attr,
             overwrite=True,
         )

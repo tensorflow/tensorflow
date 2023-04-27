@@ -325,6 +325,25 @@ class FunctionType(inspect.Signature):
 
     return inspect.BoundArguments(self, arguments)
 
+  @property
+  def flat_inputs(self):
+    """Flat tensor inputs accepted by this FunctionType."""
+    if not hasattr(self, "_cached_flat_inputs"):
+      self._cached_flat_inputs = []
+      for p in self.parameters.values():
+        self._cached_flat_inputs.extend(p.type_constraint._flatten())  # pylint: disable=protected-access
+
+    return self._cached_flat_inputs
+
+  @property
+  def flat_outputs(self):
+    """Flat tensor outputs returned by this FunctionType."""
+    if not hasattr(self, "_cached_flat_outputs"):
+      if self.output is not None:
+        self._cached_flat_outputs = self.output._flatten()   # pylint: disable=protected-access
+
+    return self._cached_flat_outputs
+
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, FunctionType):
       return NotImplemented

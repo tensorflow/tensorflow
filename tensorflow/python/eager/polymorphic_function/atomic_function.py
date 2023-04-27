@@ -18,6 +18,7 @@ import dataclasses
 from typing import Any
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
@@ -70,13 +71,7 @@ function_callbacks = set()
 # TODO(fmuham): Lower to FunctionRecord or remove otherwise.
 @dataclasses.dataclass(frozen=True)
 class GraphArtifacts:
-  inputs: Any
-  outputs: Any
-  num_outputs: Any
-  output_types: Any
-  output_shapes: Any
   control_captures: Any
-  func_graph_outputs: Any
   graph: Any
   stateful_ops: Any
 
@@ -155,7 +150,9 @@ class AtomicFunction:
     """Returns a dictionary of attributes needed to add a call in graph."""
     attrs = {
         "is_stateful": len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
-        "tout": self._graph_artifacts.output_types,
+        "tout": [
+            o.dtype.as_datatype_enum for o in self.function_type.flat_outputs
+        ],
         "xla_compile_attr": self.cached_definition.attr.get(
             attributes_lib.XLA_COMPILE, None
         ),
@@ -199,20 +196,20 @@ class AtomicFunction:
             outputs = self._bound_context.call_function(
                 self.name,
                 list(args),
-                self._graph_artifacts.num_outputs,
+                len(self.function_type.flat_outputs),
             )
           else:
             outputs = make_call_op_in_graph(self, list(args))
 
-    for i, func_graph_output in enumerate(
-        self._graph_artifacts.func_graph_outputs
-    ):
-      handle_data_util.copy_handle_data(func_graph_output, outputs[i])
+    for i, output_type in enumerate(self.function_type.flat_outputs):
+      handle_data = output_type.dtype._handle_data
+      if handle_data:
+        handle_data_util.set_handle_data(outputs[i], handle_data)
 
     # TODO(fmuham): Use FunctionType cast here for all cases.
     if not self._bound_context.executing_eagerly():
-      for i, shape in enumerate(self._graph_artifacts.output_shapes):
-        outputs[i].set_shape(shape)
+      for i, output_type in enumerate(self.function_type.flat_outputs):
+        outputs[i].set_shape(output_type.shape)
 
     return outputs
 
@@ -430,15 +427,8 @@ def from_func_graph_no_transforms(
   bound_context.add_c_function(fn)
   pywrap_tf_session.TF_DeleteFunction(fn)
 
-  signature = bound_context.get_function_def(name).signature
   graph_artifacts = GraphArtifacts(
-      inputs=inputs,
-      outputs=outputs,
-      num_outputs=len(signature.output_arg),
-      output_types=[o.type for o in signature.output_arg],
-      output_shapes=[o.shape for o in outputs],
       control_captures=graph.function_captures.control,
-      func_graph_outputs=list(outputs),
       graph=graph,
       stateful_ops=tuple(op for op in operations if op._is_stateful),  # pylint: disable=protected-access
   )
@@ -451,12 +441,10 @@ def from_func_graph_no_transforms(
         {},
     )
 
-  if graph.structured_outputs is not None:
-    output_signature = graph.structured_outputs
-  else:
-    output_signature = tuple(
-        tensor_spec.TensorSpec.from_tensor(o) for o in outputs
-    )
+  # TODO(fmuham): Include output structure info from structured_outputs
+  output_signature = tuple(
+      trace_type.from_value(o) for o in outputs
+  )
 
   function_type = function_type_lib.from_structured_signature(
       input_signature,

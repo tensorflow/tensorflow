@@ -246,17 +246,24 @@ class _DelayedRewriteGradientFunctions(object):
     # Rewrite an inference call op to be a forward call op
     op._set_func_attr("f", forward_function.name)
     op._set_type_list_attr(
-        "Tout", forward_function._graph_artifacts.output_types
+        "Tout",
+        [
+            o.dtype.as_datatype_enum
+            for o in forward_function.function_type.flat_outputs
+        ],
     )
+    truncated_outputs = forward_function.function_type.flat_outputs[
+        len(op.outputs) :
+    ]
     op._add_outputs(
-        forward_function._graph_artifacts.output_types[len(op.outputs) :],
-        forward_function._graph_artifacts.output_shapes[len(op.outputs) :],
+        [o.dtype.as_datatype_enum for o in truncated_outputs],
+        [o.shape for o in truncated_outputs],
     )
     for i in range(len(op.outputs)):
-      func_graph_output = forward_function._graph_artifacts.func_graph_outputs[
-          i
-      ]
-      handle_data_util.copy_handle_data(func_graph_output, op.outputs[i])
+      output_type = forward_function.function_type.flat_outputs[i]
+      handle_data = output_type.dtype._handle_data
+      if handle_data:
+        handle_data_util.set_handle_data(op.outputs[i], handle_data)
     # pylint: enable=protected-access
 
     capture_mapping = dict(

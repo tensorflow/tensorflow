@@ -331,6 +331,9 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     assert isinstance(value, ops.Tensor)
     return [value]
 
+  def _flatten(self):
+    return [self]
+
   def _cast(self, value, casting_context):
     """Cast value to a tensor that is a subtype of this TensorSpec."""
     # This method is mainly used to cast Python primitives to tensor.

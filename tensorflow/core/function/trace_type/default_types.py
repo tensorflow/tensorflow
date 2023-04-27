@@ -100,9 +100,6 @@ class Literal(trace.TraceType, serialization.Serializable):
       return list(self.value)
     return self.value
 
-  def _to_tensors(self, value: Any):
-    return []
-
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -136,9 +133,6 @@ class Weakref(trace.TraceType):
 
   def placeholder_value(self, placeholder_context) -> Any:
     return self._ref()
-
-  def _to_tensors(self, value: Any) -> Any:
-    return []
 
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
@@ -222,6 +216,12 @@ class Tuple(trace.TraceType, serialization.Serializable):
       flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
     return flattened_values
 
+  def _flatten(self) -> list[trace.TraceType]:
+    flattened_types = []
+    for component in self.components:
+      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+    return flattened_types
+
   def _cast(self, value: Any, casting_context) -> Any:
     assert isinstance(value, tuple), f"Can not cast {value!r} to tuple type."
     assert len(value) == len(
@@ -296,6 +296,9 @@ class List(trace.TraceType, serialization.Serializable):
   def _to_tensors(self, value):
     assert isinstance(value, list)
     return self.components_tuple._to_tensors(tuple(value))  # pylint: disable=protected-access
+
+  def _flatten(self) -> list[trace.TraceType]:
+    return self.components_tuple._flatten()  # pylint: disable=protected-access
 
   def _cast(self, value: Any, casting_context) -> Any:
     assert isinstance(value, list), f"Can not cast {value!r} to list type."
@@ -401,6 +404,14 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
       attribute_value = getattr(value, attribute_name)
       flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
     return flattened_values
+
+  def _flatten(self) -> list[trace.TraceType]:
+    flattened_types = []
+
+    for component in self.attributes.components:
+      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+
+    return flattened_types
 
   def _cast(self, value: Any, casting_context) -> Any:
     # Value must have same attributes with the TraceType
@@ -522,6 +533,14 @@ class Attrs(trace.TraceType):
       flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
     return flattened_values
 
+  def _flatten(self) -> list[trace.TraceType]:
+    flattened_types = []
+
+    for component in self.named_attributes.attributes.components:
+      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+
+    return flattened_types
+
   def _cast(self, value: Any, casting_context) -> Any:
     assert util.is_attrs(value)
     value_cast = {}
@@ -638,6 +657,14 @@ class Dict(trace.TraceType, serialization.Serializable):
       comp_value, comp_type = value[key], self.mapping[key]
       flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
     return flattened_values
+
+  def _flatten(self) -> list[trace.TraceType]:
+    flattened_types = []
+
+    for component in self.mapping.values():
+      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+
+    return flattened_types
 
   def _cast(self, value: Any, casting_context) -> Any:
     # Value must have same keys with the TraceType
