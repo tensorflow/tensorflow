@@ -55,7 +55,7 @@ void TensorShape::CheckDimsAtMost(int NDIMS) const {
 // TODO(slebedev): Consider merging IsValid implementations.
 template <class Shape>
 bool TensorShapeBase<Shape>::IsValid() {
-  // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
+  // NOTE(geoffreyi): Unfortunately, TensorShape allows parsing protos with
   // unknown_shape() set, and it seems hard to remove this without backwards
   // compatibility issues.
   if (kIsPartial && unknown_rank()) return dims() == 0;
@@ -75,7 +75,7 @@ bool TensorShapeBase<Shape>::IsValid() {
 
 template <class Shape>
 bool TensorShapeBase<Shape>::IsValid(const TensorShapeProto& proto) {
-  // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
+  // NOTE(geoffreyi): Unfortunately, TensorShape allows parsing protos with
   // unknown_shape() set, and it seems hard to remove this without backwards
   // compatibility issues.
   if (kIsPartial && proto.unknown_rank()) return proto.dim_size() == 0;
@@ -95,7 +95,7 @@ bool TensorShapeBase<Shape>::IsValid(const TensorShapeProto& proto) {
 
 template <class Shape>
 Status TensorShapeBase<Shape>::IsValidShape(const TensorShapeProto& proto) {
-  // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
+  // NOTE(geoffreyi): Unfortunately, TensorShape allows parsing protos with
   // unknown_shape() set, and it seems hard to remove this without backwards
   // compatibility issues.
   if (kIsPartial && proto.unknown_rank()) {
@@ -139,7 +139,7 @@ template <class Shape>
 TensorShapeBase<Shape>::TensorShapeBase(const TensorShapeProto& proto) {
   set_tag(REP16);
   set_data_type(DT_INVALID);
-  // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
+  // NOTE(geoffreyi): Unfortunately, TensorShape allows parsing protos with
   // unknown_shape() set, and it seems hard to remove this without backwards
   // compatibility issues.
   if (kIsPartial && proto.unknown_rank()) {
@@ -159,7 +159,7 @@ Status TensorShapeBase<Shape>::BuildTensorShapeBase(
     const TensorShapeProto& proto, TensorShapeBase* out) {
   out->set_tag(REP16);
   out->set_data_type(DT_INVALID);
-  // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
+  // NOTE(geoffreyi): Unfortunately, TensorShape allows parsing protos with
   // unknown_shape() set, and it seems hard to remove this without backwards
   // compatibility issues.
   if (kIsPartial && proto.unknown_rank()) {

@@ -37,7 +37,7 @@ namespace tfrt_stub {
 class CostRecorder {
  public:
   // Records an execution duration for the op keyed by `op_key`.
-  void RecordCostNanosecond(int64_t op_key, uint64_t execution_time_ns);
+  void RecordCostCpuCycle(int64_t op_key, uint64_t execution_time);
 
   // Returns the normalized average execution duration of the op keyed by
   // `op_key`. If there is no record for `op_key`, returns the uint32_t::max to

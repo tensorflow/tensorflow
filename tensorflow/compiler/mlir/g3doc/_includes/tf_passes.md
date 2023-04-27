@@ -269,6 +269,9 @@ inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
 ### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
+### `-tf-embedding-pipelining`: Rewrite graph for embedding pipelining
+For architectures that support accelerated embedding lookups, this pass will
+rewrite the graph to use pipelining for better device utilization.
 ### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-executor-check-control-dependencies`: Checks control dependencies
 This pass analyzes control dependencies between islands and warns about

@@ -452,7 +452,10 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     xla_compiler_args = std::move(status_or_xla_compiler_args.value());
   }
 
-  if (UsePjRtForSingleDeviceCompilation()) {
+  bool use_pjrt = GetXlaOpsCommonFlags()
+                      ->tf_xla_use_device_api.IsEnabledInXlaLaunchForDevice(
+                          platform_info_.device_type());
+  if (use_pjrt) {
     VLOG(2) << "Compiling using PJRT";
     Status status = CompileToPjRtLoadedExecutable(
         *ctx, platform_info_, function_, xla_compiler_args,

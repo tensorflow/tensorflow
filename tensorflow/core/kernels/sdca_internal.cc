@@ -330,7 +330,7 @@ void Examples::RandomShuffle() {
   std::shuffle(sampled_index_.begin(), sampled_index_.end(), rng);
 }
 
-// TODO(sibyl-Aix6ihai): Refactor/shorten this function.
+// TODO(rohananil): Refactor/shorten this function.
 Status Examples::Initialize(OpKernelContext* const context,
                             const ModelWeights& weights,
                             const int num_sparse_features,
@@ -473,7 +473,7 @@ Status Examples::CreateSparseFeatureRepresentation(
           }
           // If features are non empty.
           if (end_id - start_id > 0) {
-            // TODO(sibyl-Aix6ihai): Write this efficiently using vectorized
+            // TODO(rohananil): Write this efficiently using vectorized
             // operations from eigen.
             for (int64_t k = 0; k < sparse_features->indices->size(); ++k) {
               const int64_t feature_index = (*sparse_features->indices)(k);
@@ -504,7 +504,7 @@ Status Examples::CreateSparseFeatureRepresentation(
   // For each column, the cost of parsing it is O(num_examples). We use
   // num_examples here, as empirically Shard() creates the right amount of
   // threads based on the problem size.
-  // TODO(sibyl-Aix6ihai): Tune this as a function of dataset size.
+  // TODO(rohananil): Tune this as a function of dataset size.
   const int64_t kCostPerUnit = num_examples;
   Shard(worker_threads.num_threads, worker_threads.workers, num_sparse_features,
         kCostPerUnit, parse_partition);
@@ -536,7 +536,7 @@ Status Examples::CreateDenseFeatureRepresentation(
       }
     }
   };
-  // TODO(sibyl-Aix6ihai): Tune this as a function of dataset size.
+  // TODO(rohananil): Tune this as a function of dataset size.
   const int64_t kCostPerUnit = num_examples;
   Shard(worker_threads.num_threads, worker_threads.workers, num_dense_features,
         kCostPerUnit, parse_partition);
@@ -584,7 +584,7 @@ Status Examples::ComputeSquaredNormPerExample(
       example->squared_norm_ = squared_norm;
     }
   };
-  // TODO(sibyl-Aix6ihai): Compute the cost optimally.
+  // TODO(rohananil): Compute the cost optimally.
   const int64_t kCostPerUnit = num_dense_features + num_sparse_features;
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
         kCostPerUnit, compute_example_norm);

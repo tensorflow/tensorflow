@@ -29,6 +29,7 @@ from tensorflow.python.checkpoint import tensor_callable
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
+from tensorflow.python.eager import record
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import composite_tensor
@@ -38,8 +39,8 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_module
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -755,7 +756,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
-      tape.record_operation(
+      record.record_operation(
           "ReadVariableOp", [result], [self.handle],
           backward_function=lambda x: [x],
           forward_function=lambda x: [x])
@@ -2722,7 +2723,7 @@ def write_object_proto_for_resource_variable(resource_variable,
                      f"{resource_variable.name} because of "
                      f"unexpected suffix in the name (expected ':0')"
                      f"which won't be restored.")
-  proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
+  proto.variable.name = tensor_module.get_op_name(resource_variable.name)
   proto.variable.trainable = resource_variable.trainable
   proto.variable.dtype = resource_variable.dtype.as_datatype_enum
   proto.variable.synchronization = resource_variable.synchronization.value

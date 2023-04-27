@@ -309,8 +309,6 @@ class TracingCompiler:
             kwargs,
             None,
             func_graph=func_graph,
-            autograph=self._autograph,
-            autograph_options=self._autograph_options,
             arg_names=arg_names,
             capture_by_value=self._capture_by_value,
             create_placeholders=False),

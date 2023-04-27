@@ -1462,10 +1462,9 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
 static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
     absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
   std::vector<xla::cpu::BufferDesc> descriptor_table;
-  descriptor_table.reserve(descriptor_table.size());
+  descriptor_table.reserve(buffer_table.size());
   for (const auto& buf : buffer_table) {
-    descriptor_table.emplace_back(
-        xla::cpu::BufferDesc{buf->data(), buf->size()});
+    descriptor_table.emplace_back(buf->data(), buf->size());
   }
   return descriptor_table;
 }

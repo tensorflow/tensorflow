@@ -269,7 +269,7 @@ def : EqualityPat<TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">>;
 //===----------------------------------------------------------------------===//
 
 def OneElementAttrPred
-  : CPred<"$_self.cast<ElementsAttr>().getType().getNumElements() == 1">;
+  : CPred<"$_self.cast<ElementsAttr>().getShapedType().getNumElements() == 1">;
 
 def OneElementAttr
   : ElementsAttrBase<And<[ElementsAttr.predicate, OneElementAttrPred]>,

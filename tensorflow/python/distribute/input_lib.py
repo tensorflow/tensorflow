@@ -236,8 +236,15 @@ class DistributedIteratorBase(collections_abc.Iterator,
   """Common implementation for all input iterators."""
 
   # pylint: disable=super-init-not-called
-  def __init__(self, input_workers, iterators, strategy, cardinality,
-               enable_get_next_as_optional):
+  def __init__(
+      self,
+      input_workers,
+      iterators,
+      strategy,
+      cardinality,
+      enable_get_next_as_optional,
+      replica_order=None,
+  ):
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
       raise ValueError("Should have at least one worker for input iterator.")
@@ -247,6 +254,7 @@ class DistributedIteratorBase(collections_abc.Iterator,
     self._strategy = strategy
     self._cardinality = cardinality
     self._enable_get_next_as_optional = enable_get_next_as_optional
+    self._replica_order = replica_order
 
   def next(self):
     return self.__next__()
@@ -285,6 +293,10 @@ class DistributedIteratorBase(collections_abc.Iterator,
     def _create_optional_with_dummy():
       value_list = _get_value_or_dummy(
           self._input_workers, optional_list, produce_dummy=True)
+
+      if self._replica_order is not None:
+        value_list = self._reorder_replicas(value_list)
+
       per_replica = _create_per_replica(value_list, self._strategy)
       return optional_ops.Optional.from_value(per_replica)
 
@@ -322,6 +334,10 @@ class DistributedIteratorBase(collections_abc.Iterator,
     def _value_or_dummy():
       value_list = _get_value_or_dummy(
           self._input_workers, optional_list, produce_dummy=True)
+
+      if self._replica_order is not None:
+        value_list = self._reorder_replicas(value_list)
+
       return _create_per_replica(value_list, self._strategy)
 
     def _eof():
@@ -343,7 +359,19 @@ class DistributedIteratorBase(collections_abc.Iterator,
       with ops.device(worker):
         # Make `replicas` a flat list of values across all replicas.
         replicas.extend(self._iterators[i].get_next_as_list(new_name))
+
+    if self._replica_order is not None:
+      replicas = self._reorder_replicas(replicas)
+
     return _create_per_replica(replicas, self._strategy)
+
+  def _reorder_replicas(self, replicas):
+    assert len(self._replica_order) == len(
+        replicas
+    ), "replica order size ({}) != replicas size ({})!".format(
+        len(self._replica_order), len(replicas)
+    )
+    return [replicas[i] for i in self._replica_order]
 
 
 class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
@@ -354,13 +382,16 @@ class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
       "_enable_get_next_as_optional", "_options", "_canonicalize_devices"
   ]
 
-  def __init__(self,
-               input_workers,
-               element_spec,
-               strategy,
-               options,
-               cardinality=cardinality_lib.UNKNOWN,
-               enable_get_next_as_optional=None):
+  def __init__(
+      self,
+      input_workers,
+      element_spec,
+      strategy,
+      options,
+      cardinality=cardinality_lib.UNKNOWN,
+      enable_get_next_as_optional=None,
+      replica_order=None,
+  ):
     # We don't want to allow deserialization of this class because we don't
     # serialize the strategy object. Currently the only places where
     # _deserialize is called is when we save/restore using SavedModels.
@@ -379,6 +410,7 @@ class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
                                              "_canonicalize_devices", True)
       else:
         self._canonicalize_devices = True
+      self._replica_order = replica_order
 
   def _serialize(self):
     # We cannot serialize the strategy object so we convert it to an id that we
@@ -523,7 +555,9 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
         strategy=self._strategy,
         cardinality=self._cardinality,
         enable_get_next_as_optional=self._enable_get_next_as_optional,
-        options=self._options)
+        options=self._options,
+        replica_order=self._replica_order,
+    )
 
   @staticmethod
   def from_value(value):
@@ -541,15 +575,18 @@ class DistributedIterator(DistributedIteratorBase,
                           composite_tensor.CompositeTensor):
   """Input Iterator for a distributed dataset."""
 
-  def __init__(self,
-               input_workers=None,
-               iterators=None,
-               strategy=None,
-               components=None,
-               element_spec=None,
-               cardinality=cardinality_lib.UNKNOWN,
-               enable_get_next_as_optional=False,
-               options=None):
+  def __init__(
+      self,
+      input_workers=None,
+      iterators=None,
+      strategy=None,
+      components=None,
+      element_spec=None,
+      cardinality=cardinality_lib.UNKNOWN,
+      enable_get_next_as_optional=False,
+      options=None,
+      replica_order=None,
+  ):
     if input_workers is None:
       raise ValueError("`input_workers` should be "
                        "provided.")
@@ -568,13 +605,19 @@ class DistributedIterator(DistributedIteratorBase,
       self._strategy = strategy
       self._cardinality = cardinality
       self._enable_get_next_as_optional = enable_get_next_as_optional
+      self._replica_order = replica_order
     else:
       if (components is not None and element_spec is not None):
         raise ValueError(error_message)
 
-      super(DistributedIterator,
-            self).__init__(input_workers, iterators, strategy, cardinality,
-                           enable_get_next_as_optional)
+      super(DistributedIterator, self).__init__(
+          input_workers,
+          iterators,
+          strategy,
+          cardinality,
+          enable_get_next_as_optional,
+          replica_order,
+      )
 
   @property
   def element_spec(self):
@@ -593,11 +636,15 @@ class DistributedIterator(DistributedIteratorBase,
     # Note that we use actual element_spec instead of the rebatched-as-dynamic
     # one to create DistributedIteratorSpec, to be consistent with the
     # underlying iterators' specs.
-    return DistributedIteratorSpec(self._input_workers, self._element_spec,
-                                   self._strategy,
-                                   self._options,
-                                   self._cardinality,
-                                   self._enable_get_next_as_optional)
+    return DistributedIteratorSpec(
+        self._input_workers,
+        self._element_spec,
+        self._strategy,
+        self._options,
+        self._cardinality,
+        self._enable_get_next_as_optional,
+        self._replica_order,
+    )
 
 
 class _IterableInput(collections_abc.Iterable,
@@ -663,7 +710,9 @@ class DistributedDatasetSpec(DistributedDatasetAndIteratorSpec):
         components=components,
         element_spec=self._element_spec,
         enable_get_next_as_optional=self._enable_get_next_as_optional,
-        options=self._options)
+        options=self._options,
+        replica_order=self._replica_order,
+    )
 
   @staticmethod
   def from_value(value):
@@ -680,17 +729,20 @@ class DistributedDatasetSpec(DistributedDatasetAndIteratorSpec):
 class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
   """Distributed dataset that supports prefetching to multiple devices."""
 
-  def __init__(self,
-               input_workers,
-               strategy,
-               dataset=None,
-               num_replicas_in_sync=None,
-               input_context=None,
-               components=None,
-               element_spec=None,
-               enable_get_next_as_optional=None,
-               build=True,
-               options=None):
+  def __init__(
+      self,
+      input_workers,
+      strategy,
+      dataset=None,
+      num_replicas_in_sync=None,
+      input_context=None,
+      components=None,
+      element_spec=None,
+      enable_get_next_as_optional=None,
+      build=True,
+      options=None,
+      replica_order=None,
+  ):
     """Distribute the dataset on all workers.
 
     If `num_replicas_in_sync` is not None, we split each batch of the dataset
@@ -707,10 +759,10 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
         DistributedDataset. Use this when contructing DistributedDataset from a
         new `tf.data.Dataset`. Use components when constructing using
         DistributedDatasetSpec.
-      num_replicas_in_sync: Optional integer. If this is not None, the value
-        is used to decide how to rebatch datasets into smaller batches so that
-        the total batch size for each step (across all workers and replicas)
-        adds up to `dataset`'s batch size.
+      num_replicas_in_sync: Optional integer. If this is not None, the value is
+        used to decide how to rebatch datasets into smaller batches so that the
+        total batch size for each step (across all workers and replicas) adds up
+        to `dataset`'s batch size.
       input_context: `InputContext` for sharding. Only pass this in for between
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
@@ -727,6 +779,8 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
         This is only useful for `ParameterServerStrategy` now.
       options: `tf.distribute.InputOptions` used to control options on how this
         dataset is distributed.
+      replica_order: the order of the replicas, which will be used to reorder
+        the iterators to match the device order.
     """
     super(DistributedDataset, self).__init__(input_workers=input_workers)
     if input_workers is None or strategy is None:
@@ -741,6 +795,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     self._options = options
     self._input_context = input_context
     self._num_replicas_in_sync = num_replicas_in_sync
+    self._replica_order = replica_order
 
     if dataset is not None:
       self._original_dataset = dataset
@@ -943,7 +998,9 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
         self._strategy,
         cardinality=self._cardinality,
         enable_get_next_as_optional=self._enable_get_next_as_optional,
-        options=self._options)
+        options=self._options,
+        replica_order=self._replica_order,
+    )
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
     # When async eager is enabled, sometimes the iterator may not finish
@@ -1021,15 +1078,18 @@ class DistributedDatasetsFromFunction(_IterableInput,
                                       composite_tensor.CompositeTensor):
   """Inputs created from dataset function."""
 
-  def __init__(self,
-               input_workers,
-               strategy,
-               input_contexts=None,
-               dataset_fn=None,
-               options=None,
-               components=None,
-               element_spec=None,
-               build=True):
+  def __init__(
+      self,
+      input_workers,
+      strategy,
+      input_contexts=None,
+      dataset_fn=None,
+      options=None,
+      components=None,
+      element_spec=None,
+      build=True,
+      replica_order=None,
+  ):
     """Makes an iterable from datasets created by the given function.
 
     Args:
@@ -1055,12 +1115,15 @@ class DistributedDatasetsFromFunction(_IterableInput,
         from components.
       build: whether to build underlying datasets when this object is created.
         This is only useful for `ParameterServerStrategy` now.
+      replica_order: the order of the replicas, which will be used to reorder
+        the iterators to match the device order.
     """
     super(DistributedDatasetsFromFunction, self).__init__(
         input_workers=input_workers)
     self._input_workers = input_workers
     self._strategy = strategy
     self._options = options
+    self._replica_order = replica_order
     if dataset_fn is not None and components is not None:
       raise ValueError("Only one of dataset_fn or components should be set")
     if dataset_fn is None and components is None:
@@ -1169,7 +1232,9 @@ class DistributedDatasetsFromFunction(_IterableInput,
         strategy=self._strategy,
         cardinality=self._cardinality,
         enable_get_next_as_optional=self._enable_get_next_as_optional,
-        options=self._options)
+        options=self._options,
+        replica_order=self._replica_order,
+    )
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
     # When async eager is enabled, sometimes the iterator may not finish

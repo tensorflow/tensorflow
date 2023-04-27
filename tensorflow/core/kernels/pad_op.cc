@@ -211,7 +211,7 @@ class PadOp : public OpKernel {
         Operate<0>(context, input.tensor<T, 0>(), paddings, pad_value, output);
         break;
       case 1:
-        // TODO(irving): Once Pad doesn't need a scalar special case,
+        // TODO(geoffreyi): Once Pad doesn't need a scalar special case,
         // change flat to tensor.  That is, once !allow_legacy_scalars().
         Operate<1>(context, input.flat<T>(), paddings, pad_value, output);
         break;

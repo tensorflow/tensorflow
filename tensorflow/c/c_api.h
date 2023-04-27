@@ -1205,7 +1205,7 @@ TF_CAPI_EXPORT extern unsigned char TF_TryEvaluateConstant(TF_Graph* graph,
                                                            TF_Tensor** result,
                                                            TF_Status* status);
 
-// TODO(josh11b): Register OpDef, available to all operations added
+// TODO(joshl): Register OpDef, available to all operations added
 // to this graph.
 
 // --------------------------------------------------------------------------

@@ -63,7 +63,10 @@ class CompileTFGraphTest : public ::testing::Test {
   tsl::Status CompileWithComputation(
       const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
           computation) {
-    auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().value();
+    se::Platform* platform =
+        se::MultiPlatformManager::PlatformWithName("Host").value();
+    auto client =
+        xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
     std::vector<TensorShape> arg_shapes;
     bool use_tuple_args = true;

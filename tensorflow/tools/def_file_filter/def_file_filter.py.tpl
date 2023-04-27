@@ -49,6 +49,11 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"absl::lts_[0-9]+::StrAppend|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::hash_internal|" # for _pywrap_tfcompile
                            r"absl::lts_[0-9]+::container_internal|" # for _pywrap_tfcompile
+                           r"absl::lts_[0-9]+::Status::raw_code|" # for absl::Status
+                           r"absl::lts_[0-9]+::Status::code|" # for absl::Status
+                           r"absl::lts_[0-9]+::Status::UnrefNonInlined|"  # for absl::Status
+                           r"absl::lts_[0-9]+::Status::Status|" # for absl::Status
+                           r"absl::lts_[0-9]+::Status::ForEachPayload|" # for absl::Status
                            r"absl::lts_[0-9]+::Cord|" # for tensorflow::Status
                            r"absl::lts_[0-9]+::Cord::DestroyCordSlow|" # for tensorflow::Status
                            r"absl::lts_[0-9]+::cord_internal::CordzInfo::MaybeTrackCordImpl" # tensorflow::Status usage of absl::Cord

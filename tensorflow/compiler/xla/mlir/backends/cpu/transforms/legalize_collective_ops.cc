@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -294,6 +295,106 @@ class AddDependencyLowering : public OpRewritePattern<mhlo::AddDependencyOp> {
   };
 };
 
+class ConvolutionLowering : public OpRewritePattern<mhlo::ConvolutionOp> {
+  using OpRewritePattern<mhlo::ConvolutionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto input_shape = op.getLhs().getType().dyn_cast<ShapedType>();
+    auto kernel_shape = op.getRhs().getType().dyn_cast<ShapedType>();
+    auto output_shape = op.getResult().getType().dyn_cast<ShapedType>();
+
+    auto dnums = op.getDimensionNumbers();
+    auto reversals = op.getWindowReversal();
+    // Convolution op is implementable as Eigen convolution if:
+    // - input and kernel have non-zero number of elements
+    // - input is NHWC order
+    // - kernel is HWIO order
+    // - some other layout constraints
+    auto implementable_as_eigen_convolution = [&]() {
+      if (!input_shape || !kernel_shape || !output_shape ||
+          !input_shape.hasStaticShape() || !kernel_shape.hasStaticShape() ||
+          !output_shape.hasStaticShape()) {
+        return false;
+      }
+
+      auto primitive_type = input_shape.getElementType();
+      if (!(primitive_type.isF32() || primitive_type.isF16())) {
+        return false;
+      }
+
+      if (llvm::is_contained(input_shape.getShape(), 0) ||
+          llvm::is_contained(kernel_shape.getShape(), 0)) {
+        return false;
+      }
+
+      if (reversals.has_value() &&
+          llvm::is_contained(reversals.value().getValues<bool>(), true)) {
+        return false;
+      }
+
+      auto numSpatialDims = dnums.getOutputSpatialDimensions().size();
+      if (numSpatialDims < 1 || numSpatialDims > 3) {
+        return false;
+      }
+
+      if (!llvm::equal(dnums.getInputSpatialDimensions(),
+                       llvm::seq<int64_t>(1, numSpatialDims + 1))) {
+        return false;
+      }
+
+      if (!llvm::equal(dnums.getKernelSpatialDimensions(),
+                       llvm::seq<int64_t>(0, numSpatialDims))) {
+        return false;
+      }
+
+      if (!llvm::equal(dnums.getOutputSpatialDimensions(),
+                       llvm::seq<int64_t>(1, numSpatialDims + 1))) {
+        return false;
+      }
+
+      if (!op.getWindowStrides().has_value() || !op.getPadding().has_value() ||
+          !op.getLhsDilation().has_value() || !op.getRhsDilation().has_value())
+        return false;
+
+      auto input_rank = input_shape.getRank();
+      auto kernel_rank = kernel_shape.getRank();
+      auto output_rank = output_shape.getRank();
+      return dnums.getInputBatchDimension() == 0 &&
+             dnums.getInputFeatureDimension() == input_rank - 1 &&
+             dnums.getOutputBatchDimension() == 0 &&
+             dnums.getOutputFeatureDimension() == output_rank - 1 &&
+             dnums.getKernelInputFeatureDimension() == kernel_rank - 2 &&
+             dnums.getKernelOutputFeatureDimension() == kernel_rank - 1;
+    };
+    if (!implementable_as_eigen_convolution()) {
+      return failure();
+    }
+
+    auto dst = b.create<tensor::EmptyOp>(op.getLoc(), op.getType().getShape(),
+                                         op.getType().getElementType());
+
+    rewriter.replaceOpWithNewOp<xla_cpu::ConvolutionOp>(
+        op, op->getResultTypes(), op.getLhs(), op.getRhs(), dst,
+        op.getWindowStridesAttr(), op.getPaddingAttr(), op.getLhsDilationAttr(),
+        op.getRhsDilationAttr(), op.getWindowReversalAttr(),
+        rewriter.getI64IntegerAttr(dnums.getInputBatchDimension()),
+        rewriter.getI64IntegerAttr(dnums.getInputFeatureDimension()),
+        rewriter.getI64ArrayAttr(dnums.getInputSpatialDimensions()),
+        rewriter.getI64IntegerAttr(dnums.getKernelInputFeatureDimension()),
+        rewriter.getI64IntegerAttr(dnums.getKernelOutputFeatureDimension()),
+        rewriter.getI64ArrayAttr(dnums.getKernelSpatialDimensions()),
+        rewriter.getI64IntegerAttr(dnums.getOutputBatchDimension()),
+        rewriter.getI64IntegerAttr(dnums.getOutputFeatureDimension()),
+        rewriter.getI64ArrayAttr(dnums.getOutputSpatialDimensions()),
+        op.getFeatureGroupCountAttr(), op.getBatchGroupCountAttr(),
+        op.getPrecisionConfigAttr());
+    return success();
+  };
+};
+
 void LegalizeCollectiveOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
@@ -301,7 +402,8 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
   // Convert mhlo collective operations to XLA cpu ops.
   RewritePatternSet patterns(ctx);
   patterns.insert<AddDependencyLowering, AfterAllLowering, AllReduceLowering,
-                  AllToAllLowering, CollectivePermuteLowering, FftLowering,
+                  AllToAllLowering, CollectivePermuteLowering,
+                  ConvolutionLowering, FftLowering,
                   IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
                   IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>,
                   OutfeedLowering, RngBitGeneratorLowering>(ctx);

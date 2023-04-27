@@ -28,7 +28,6 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
-using ::testing::StartsWith;
 
 TEST(UtilsTest, ConvertTfDTypeToTfrtDType) {
 #define DTYPE(TFRT_DTYPE, TF_DTYPE)                          \

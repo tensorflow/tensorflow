@@ -37,7 +37,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 from tensorflow.python.util import deprecation
@@ -69,7 +69,7 @@ def match_filenames_once(pattern, name=None):
     A variable that is initialized to the list of files matching the pattern(s).
   """
   with ops.name_scope(name, "matching_filenames", [pattern]) as name:
-    return vs.variable(
+    return variable_v1.VariableV1(
         name=name, initial_value=io_ops.matching_files(pattern),
         trainable=False, validate_shape=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES])
@@ -103,7 +103,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     raise ValueError("num_epochs must be > 0 not %d." % num_epochs)
   with ops.name_scope(name, "limit_epochs", [tensor]) as name:
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    epochs = vs.variable(
+    epochs = variable_v1.VariableV1(
         zero64, name="epochs", trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES])
     counter = epochs.count_up_to(num_epochs)
@@ -364,7 +364,7 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
       raise ValueError(
           "Expected at least one tensor in slice_input_producer().")
     range_size = array_ops.shape(tensor_list[0])[0]
-    # TODO(josh11b): Add an assertion that the first dimension of
+    # TODO(joshl): Add an assertion that the first dimension of
     # everything in TensorList matches. Maybe just check the inferred shapes?
     queue = range_input_producer(range_size, num_epochs=num_epochs,
                                  shuffle=shuffle, seed=seed, capacity=capacity,
@@ -778,7 +778,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
         tensor_list, enqueue_many, keep_input)
     types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many)
-    # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
+    # TODO(joshl,mrry): Switch to BatchQueue once it is written.
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
@@ -794,7 +794,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
     return _as_original_type(tensors, dequeued)
 
 
-# TODO(josh11b): Add a thread_multiplier or num_threads (that has to be
+# TODO(joshl): Add a thread_multiplier or num_threads (that has to be
 # a multiple of len(tensor_list_list)?) parameter, to address the use
 # case where you want more parallelism than you can support different
 # readers (either because you don't have that many files or can't
@@ -818,7 +818,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
         tensor_list_list, enqueue_many, keep_input)
     types = _dtypes(tensor_list_list)
     shapes = _shapes(tensor_list_list, shapes, enqueue_many)
-    # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
+    # TODO(joshl,mrry): Switch to BatchQueue once it is written.
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)

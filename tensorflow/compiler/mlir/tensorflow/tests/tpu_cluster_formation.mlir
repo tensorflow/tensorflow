@@ -707,6 +707,19 @@ func.func @valid_compilation_cluster_no_replication_op_device() {
 
 // -----
 
+// Check conflicting device names
+// CHECK: "tf_device.cluster"()
+// CHECK:    "tf.opA"()
+// CHECK:    "tf.opB"()
+// CHECK-NOT: device =
+func.func @do_nothing_if_short_names_conflict() {
+  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/replica:1/task:2/device:TPU:1"} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/replica:3/task:4/device:TPU:1"} : () -> ()
+  func.return
+}
+
+// -----
+
 // Check non-replicated case, including expected device attr in cluster.
 // CHECK: "tf_device.cluster"()
 // CHECK:    "tf.opA"()
@@ -924,4 +937,25 @@ func.func @gpu_device() {
   func.return
 }
 
+// -----
 
+// CHECK-LABEL: func @gather_nd
+func.func @gather_nd(%arg0: tensor<*x!tf_type.resource<tensor<80xf32>>>,
+                     %arg1: tensor<3xf32>) {
+  // CHECK: ResourceGatherNd
+  // CHECK: tf_device.cluster
+  // CHECK: Add
+  // CHECK: ResourceGatherNd
+  %0 = "tf.Const"() {value = dense<32> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.ResourceGatherNd"(%arg0, %0) {
+    Tindices = i32
+  } : (tensor<*x!tf_type.resource<tensor<80xf32>>>, tensor<i32>) -> tensor<1x80xf32>
+  %2 = "tf.Add"(%1, %1) {
+    _xla_compile_device_type = "TPU",
+    device = "/task:0/device:TPU:0", dtype = f32
+  } : (tensor<1x80xf32>, tensor<1x80xf32>) -> tensor<1x80xf32>
+  %3 = "tf.ResourceGatherNd"(%arg0, %0) {
+    Tindices = i32
+  } : (tensor<*x!tf_type.resource<tensor<80xf32>>>, tensor<i32>) -> tensor<1x80xf32>
+  func.return
+}

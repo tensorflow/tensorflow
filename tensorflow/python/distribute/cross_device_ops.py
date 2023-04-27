@@ -20,6 +20,7 @@ import multiprocessing.dummy
 import multiprocessing.pool
 import threading
 
+import numpy as np
 import six
 
 from tensorflow.python.client import device_lib
@@ -91,9 +92,9 @@ def reduce_non_distributed_value(reduce_op,
   # If the same value is present on all replicas then the PerReplica value will
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
-  # TODO:(b/138823479): handle the tensor value properly.
-  if not tensor_util.is_tf_type(value) and value == 0:
-    return 0
+  # TODO(b/138823479): handle the tensor value properly.
+  if not tensor_util.is_tf_type(value) and np.all(value == 0):
+    return np.zeros(value.shape, dtype=value.dtype)
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.
   if reduce_op == reduce_util.ReduceOp.MEAN:
@@ -1246,7 +1247,7 @@ class CollectiveAllReduce(CrossDeviceOps):
               index.append(array_ops.identity(v))
               break
           else:
-            # TODO(josh11b): Once we add support for model parallelism, get the
+            # TODO(joshl): Once we add support for model parallelism, get the
             # copy from the corresponding replica instead of the primary.
             index.append(array_ops.identity(all_reduced._primary))  # pylint: disable=protected-access
     return distribute_utils.regroup(index, wrap_class=value_lib.Mirrored)

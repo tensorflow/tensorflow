@@ -1719,6 +1719,14 @@ class GroupConnectedBoundaries {
             ? next_boundary.operands()[0]->user_count()
             : CountNonLeafOps(next_boundary.operands()[0]->operands());
     if (next_boundary_count <= 1) {
+      if (next_boundary.IsOutsideBranchOperand() &&
+          next_boundary.operands()[0]->users()[0] == conditional_ &&
+          next_boundary.operands()[0] == conditional_->operand(0)) {
+        // Not safe to move if the operand is also the conditional operand(0)
+        // in addition to being passed into the true or false branches.
+        return false;
+      }
+
       // If boundary has only a single or no dependent, safe to move.
       return true;
     } else {

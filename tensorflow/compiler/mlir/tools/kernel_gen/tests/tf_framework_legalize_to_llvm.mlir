@@ -1,10 +1,10 @@
 // RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file | FileCheck %s
 
 // CHECK: llvm.func @_mlir_ciface_tf_alloc
-// CHECK-SAME:  (!llvm.ptr<i8>, i64, i64, i32, i32, !llvm.ptr<i32>) -> !llvm.ptr<i8>
+// CHECK-SAME:  (!llvm.ptr, i64, i64, i32, i32, !llvm.ptr) -> !llvm.ptr
 
 // CHECK-LABEL: llvm.func @alloc(
-// CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,
+// CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr,
 // CHECK-SAME:    [[SIZE_0:%.*]]: i64,
 // CHECK-SAME:    [[SIZE_2:%.*]]: i64) -> [[DESC_TY:!.*]] {
 func.func @alloc(%ctx: !tf_framework.op_kernel_context,
@@ -18,16 +18,16 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[NUM_ELEMS:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : i64
 
 // Compute the size of an individual element.
-// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr<f32>
+// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr
 // CHECK: [[GEP:%.*]] = llvm.getelementptr [[NULL]]{{\[}}1]
-// CHECK-SAME:            (!llvm.ptr<f32>) -> !llvm.ptr<f32>
+// CHECK-SAME:            (!llvm.ptr) -> !llvm.ptr, f32
 // CHECK: [[SIZE_OF_FLOAT:%.*]] = llvm.ptrtoint [[GEP]]
-// CHECK-SAME:            !llvm.ptr<f32> to i64
+// CHECK-SAME:            !llvm.ptr to i64
 
 // Compute output index (-1) and candidate indices (0, NULL).
 // CHECK: [[OUTPUT_INDEX:%.*]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-NEXT: [[NUM_CANDIDATES:%.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.null : !llvm.ptr<i32>
+// CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.null : !llvm.ptr
 
 // Allocate memory.
 // CHECK: [[BYTES_PTR:%.*]] = llvm.call @{{.*}}([[TF_CTX]], [[NUM_ELEMS]],
@@ -38,10 +38,8 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : [[DESC_TY]]
 
 // Set pointers and offset.
-// CHECK: [[FLOAT_PTR:%.*]] = llvm.bitcast [[BYTES_PTR]]
-// CHECK-SAME:                  !llvm.ptr<i8> to !llvm.ptr<f32>
-// CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[FLOAT_PTR]], [[DESC_0]][0]
-// CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[FLOAT_PTR]], [[DESC_1]][1]
+// CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[BYTES_PTR]], [[DESC_0]][0]
+// CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[BYTES_PTR]], [[DESC_1]][1]
 // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
 // CHECK: [[DESC_3:%.*]] = llvm.insertvalue [[C0]], [[DESC_2]][2] : [[DESC_TY]]
 
@@ -59,10 +57,10 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 
 // -----
 
-// CHECK: llvm.func @_mlir_ciface_tf_dealloc(!llvm.ptr<i8>, !llvm.ptr<i8>)
+// CHECK: llvm.func @_mlir_ciface_tf_dealloc(!llvm.ptr, !llvm.ptr)
 
 // CHECK-LABEL: llvm.func @dealloc(
-// CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,
+// CHECK-SAME:    [[TF_CTX:%[a-z0-9]*]]: !llvm.ptr
 func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
                   %memref : memref<?x10xf32>) {
   tf_framework.dealloc(%ctx, %memref) : memref<?x10xf32>
@@ -71,29 +69,27 @@ func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
 // Extract allocated ptr from the memref descriptor.
 // CHECK: %{{.*}} = llvm.mlir.undef : [[DESC_TY:!.*]]
 // CHECK: [[FLOAT_PTR:%.*]] = llvm.extractvalue %{{.*}}[0] : [[DESC_TY]]
-// CHECK-NEXT: [[VOID_PTR:%.*]] = llvm.bitcast [[FLOAT_PTR]]
-// CHECK-SAME:                   !llvm.ptr<f32> to !llvm.ptr<i8>
 
 // Deallocate.
 // CHECK: llvm.call @_mlir_ciface_tf_dealloc(
-// CHECK-SAME: [[TF_CTX]], [[VOID_PTR]]) : (!llvm.ptr<i8>, !llvm.ptr<i8>) -> ()
+// CHECK-SAME: [[TF_CTX]], [[FLOAT_PTR]]) : (!llvm.ptr, !llvm.ptr) -> ()
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_report_error(!llvm.ptr<i8>, i32, !llvm.ptr<i8>)
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_report_error(!llvm.ptr, i32, !llvm.ptr)
 // CHECK: llvm.mlir.global internal constant [[MSG_CONST:@error_message_[0-9]+]]("Everything is awesome\00")
 
 func.func @report_error(%ctx: !tf_framework.op_kernel_context) {
   tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome" loc(unknown)
   func.return
 }
-// CHECK:     llvm.func @report_error([[CTX:%.*]]: !llvm.ptr<i8>)
+// CHECK:     llvm.func @report_error([[CTX:%.*]]: !llvm.ptr)
 // CHECK-NEXT:  [[ADDR:%.*]] = llvm.mlir.addressof [[MSG_CONST]]
 // CHECK:       [[MSG:%.*]] = llvm.getelementptr [[ADDR]]
 // CHECK:       [[CODE:%.*]] = llvm.mlir.constant({{.*}}) : i32
 // CHECK:       llvm.call @{{.*}}_tf_report_error([[CTX]], [[CODE]], [[MSG]])
 
-// ----
+// -----
 
 // CHECK-LABEL: llvm.func @unranked_null_memref()
 func.func @unranked_null_memref() {
@@ -101,12 +97,12 @@ func.func @unranked_null_memref() {
   func.return
 }
 // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
-// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr<i8>)>
+// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr)>
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[C0]], [[DESC_0]][0]
 // CHECK: [[PTR:%.*]] = llvm.alloca {{.*}} x i8
 // CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[PTR]], [[DESC_1]][1]
 
-// ----
+// -----
 
 // CHECK-LABEL: llvm.func @ranked_null_memref()
 func.func @ranked_null_memref() {
@@ -119,9 +115,9 @@ func.func @ranked_null_memref() {
 // CHECK-NEXT: %[[C1_:.*]] = llvm.mlir.constant(1 : index) : i64
 
 // CHECK: llvm.mlir.null
-// CHECK: %[[NULL:.*]] = llvm.mlir.null : !llvm.ptr<f32>
+// CHECK: %[[NULL:.*]] = llvm.mlir.null : !llvm.ptr
 // CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.undef :
-// CHECK-SAME:   !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>
+// CHECK-SAME:   !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-NEXT: %[[DESC_1:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_0]][0]
 // CHECK-NEXT: %[[DESC_2:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_1]][1]
 // CHECK-NEXT: %[[DESC_3:.*]] = llvm.insertvalue %[[C0]], %[[DESC_2]][2]
@@ -130,7 +126,7 @@ func.func @ranked_null_memref() {
 // CHECK-NEXT: %[[DESC_6:.*]] = llvm.insertvalue %[[C1]], %[[DESC_5]][3, 1]
 // CHECK-NEXT: %[[DESC_7:.*]] = llvm.insertvalue %[[C1_]], %[[DESC_6]][4, 1]
 
-// ----
+// -----
 
 // CHECK-LABEL: llvm.func @is_valid_memref
 func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
@@ -146,19 +142,18 @@ func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 // CHECK-NEXT: %[[IS_EMPTY_:.*]] =  llvm.or %[[IS_EMPTY]], %[[IS_ZERO]] : i1
 
 // CHECK-NEXT: %[[PTR_F32:.*]] = llvm.extractvalue %[[MEMREF]][0]
-// CHECK-NEXT: %[[VOID_PTR:.*]] = llvm.bitcast %[[PTR_F32]] : !llvm.ptr<f32> to !llvm.ptr<i8>
-// CHECK-NEXT: %[[NULL_PTR:.*]] = llvm.mlir.null : !llvm.ptr<i8>
-// CHECK-NEXT: %[[NOT_NULL:.*]] = llvm.icmp "ne" %[[VOID_PTR]], %[[NULL_PTR]]
+// CHECK-NEXT: %[[NULL_PTR:.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK-NEXT: %[[NOT_NULL:.*]] = llvm.icmp "ne" %[[PTR_F32]], %[[NULL_PTR]]
 
 // CHECK-NEXT: %[[PRED:.*]] = llvm.or %[[NOT_NULL]], %[[IS_EMPTY_]]  : i1
 // CHECK-NEXT: llvm.return %[[PRED]]
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr<i8>, !llvm.ptr<i8>, i64, !llvm.ptr<i64>, i64, !llvm.ptr<i64>, i64, i1, i1, i1) -> !llvm.ptr<i8>
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr, !llvm.ptr, i64, !llvm.ptr, i64, !llvm.ptr, i64, i1, i1, i1) -> !llvm.ptr
 // CHECK: llvm.mlir.global internal constant @[[CODE:jit_module_code_[0-9]+]]("placeholder\00")
 
-// CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr<i8>)
+// CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr)
 func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable {
   // CHECK: %[[ADDR:.*]] = llvm.mlir.addressof @[[CODE]]
@@ -205,10 +200,10 @@ func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_execute(!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<i8>, i64, !llvm.ptr<i8>)
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_execute(!llvm.ptr, !llvm.ptr, !llvm.ptr, i64, !llvm.ptr)
 
 // CHECK:      @jit_execute
-// CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr<i8>, %[[CALLABLE:.*]]: !llvm.ptr<i8>, %[[RANK:.*]]: i64, %[[ARG_DESCR:.*]]: !llvm.ptr<i8>)
+// CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr, %[[CALLABLE:.*]]: !llvm.ptr, %[[RANK:.*]]: i64, %[[ARG_DESCR:.*]]: !llvm.ptr)
 func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
     %callable : !tf_framework.jit_callable, %arg : memref<*xf32>)
     -> memref<*xf32> {
@@ -216,24 +211,21 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[ARG:.*]] = llvm.insertvalue %[[ARG_DESCR]], %[[T1]][1]
   // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64)
-  // CHECK: %[[RESULT_PTR:.*]] = llvm.alloca %[[C1]] x !llvm.struct<(i64, ptr<i8>)>
-  // CHECK: %[[RESULT_PTR_:.*]] = llvm.bitcast %[[RESULT_PTR]]
-
+  // CHECK: %[[RESULT_PTR:.*]] = llvm.alloca %[[C1]] x !llvm.struct<(i64, ptr)>
+  
   // Copy argument(s) to stack-allocated buffer.
   // CHECK: %[[NUM_ARGS:.*]] = llvm.mlir.constant(1 : i64)
-  // CHECK: %[[ARGS_PTR:.*]] = llvm.alloca %[[NUM_ARGS]] x !llvm.struct<(i64, ptr<i8>)>
+  // CHECK: %[[ARGS_PTR:.*]] = llvm.alloca %[[NUM_ARGS]] x !llvm.struct<(i64, ptr)>
   // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i64)
   // CHECK: %[[ARGS0_PTR:.*]] = llvm.getelementptr %[[ARGS_PTR]][%[[C0]]]
   // CHECK: llvm.store %[[ARG]], %[[ARGS0_PTR]]
-  // CHECK: %[[ARGS_PTR_:.*]] = llvm.bitcast %[[ARGS_PTR]]
-  // CHECK: llvm.call @_mlir_ciface_tf_jit_execute(%[[CTX]], %[[CALLABLE]], %[[RESULT_PTR_]], %[[NUM_ARGS]], %[[ARGS_PTR_]])
+  // CHECK: llvm.call @_mlir_ciface_tf_jit_execute(%[[CTX]], %[[CALLABLE]], %[[RESULT_PTR]], %[[NUM_ARGS]], %[[ARGS_PTR]])
   // CHECK: %[[RESULT:.*]] = llvm.load %[[RESULT_PTR]]
 
   // Copy unranked memref descriptor to stack-allocated memory.
   // ...
-  // CHECK: %[[RESULT_DESCR_SIZE:.*]] = llvm.add %16, %20
   // CHECK: %[[FALSE:.*]] = llvm.mlir.constant(false)
-  // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.alloca %[[RESULT_DESCR_SIZE]] x i8
+  // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.alloca %[[RESULT_DESCR_SIZE:[0-9]*]] x i8
   // CHECK: %[[RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
   // CHECK: "llvm.intr.memcpy"(%[[STACK_RESULT_DESCR]], %[[RESULT_DESCR]], %[[RESULT_DESCR_SIZE]], %[[FALSE]])
   // CHECK: llvm.call @free(%[[RESULT_DESCR]])
@@ -244,9 +236,8 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
 
   // Copy unranked memref descriptor to heap-allocated memory for return.
   // ...
-  // CHECK: %[[RESULT_DESCR_SIZE:.*]] = llvm.add %33, %37
   // CHECK: %[[FALSE:.*]] = llvm.mlir.constant(false)
-  // CHECK: %[[HEAP_RESULT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE]])
+  // CHECK: %[[HEAP_RESULT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE:[0-9]*]])
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
   // CHECK: "llvm.intr.memcpy"(%[[HEAP_RESULT_DESCR]], %[[STACK_RESULT_DESCR]], %[[RESULT_DESCR_SIZE]], %[[FALSE]])
   // CHECK: %[[T0:.*]] = llvm.mlir.undef

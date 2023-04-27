@@ -125,6 +125,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/collectives.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/convolution_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/fft_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/rng.h"
@@ -202,7 +203,7 @@ namespace {
 void LoadMLIRDialects(mlir::MLIRContext& context) {
   context.loadDialect<mlir::arith::ArithDialect, mlir::linalg::LinalgDialect,
                       mlir::scf::SCFDialect, mlir::vector::VectorDialect,
-                      mlir::func::FuncDialect, mlir::AffineDialect,
+                      mlir::func::FuncDialect, mlir::affine::AffineDialect,
                       mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
   mlir::registerBuiltinDialectTranslation(context);
@@ -327,10 +328,11 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
   opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
       [](runtime::DirectCustomCallRegistry& registry) {
         PopulateXlaCpuCollectivesCall(registry);
+        PopulateXlaCpuConvolutionCall(registry);
         PopulateXlaCpuCustomCall(registry);
-        PopulateXlaXfeedCall(registry);
         PopulateXlaCpuFftCall(registry);
         PopulateXlaCpuRngCall(registry);
+        PopulateXlaXfeedCall(registry);
       });
   opts.compiler
       .create_compilation_pipeline = [&module, copts](
@@ -351,6 +353,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
       options.enable_fusion_outlining = true;
       options.experimental_deallocation = true;
     }
+    options.xla_cpu_sparse_cuda_threads =
+        GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
 
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {

@@ -170,8 +170,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
              options.use_bridge_for_gpu) {
-    TF_RETURN_IF_ERROR(
-        mlir::TF::RunTFXLABridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
 
     // GPU XLA clusters are wrapped in functions, which could be transformed by
     // bridge. Hence, the MLIR functions for XLA clusters are exported and added
@@ -195,7 +194,8 @@ Status ConvertTfMlirToRuntimeExecutable(
   auto pipeline_options = GetTfrtPipelineOptions(options);
 
   TF_RETURN_IF_ERROR(
-      tensorflow::CreateTFExecutorToTFPipeline(pm, *pipeline_options));
+      tensorflow::CreateTFExecutorToTFPreInvariantOptimizationPipeline(
+          pm, *pipeline_options));
 
   auto status = emit_executable(pm, module, *pipeline_options);
 
@@ -214,6 +214,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
                    const tensorflow::TfrtPipelineOptions& options) {
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+        tensorflow::CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
+            pm, options);
         tensorflow::CreateTfToTfrtPipeline(pm, options);
 
         if (mlir::failed(pm.run(module))) {

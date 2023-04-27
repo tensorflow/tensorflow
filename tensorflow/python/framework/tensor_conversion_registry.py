@@ -38,7 +38,7 @@ _CONSTANT_OP_CONVERTIBLES = (
 )
 
 
-# TODO(josh11b): Add ctx argument to conversion_func() signature.
+# TODO(joshl): Add ctx argument to conversion_func() signature.
 def register_tensor_conversion_function_internal(base_type,
                                                  conversion_func,
                                                  priority=100):

@@ -29,6 +29,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -166,7 +167,7 @@ class TestStrategyTest(test.TestCase):
           "bar", variable_scope.VariableSynchronization.AUTO,
           variable_scope.VariableAggregation.NONE)
       self.assertDictEqual(expected_value,
-                           variable_scope.variable(1.0, name="bar"))
+                           variable_v1.VariableV1(1.0, name="bar"))
 
     dist.extended.call_for_each_replica(run_fn)
     with dist.scope():
@@ -186,7 +187,7 @@ class TestStrategyTest(test.TestCase):
           "baz", variable_scope.VariableSynchronization.AUTO,
           variable_scope.VariableAggregation.NONE)
       self.assertDictEqual(expected_value,
-                           variable_scope.variable(1.0, name="baz"))
+                           variable_v1.VariableV1(1.0, name="baz"))
     _assert_in_default_state(self)
 
   def testScopeDeviceNestingError(self):
@@ -245,7 +246,7 @@ class TestStrategyTest(test.TestCase):
           variable_scope.VariableAggregation.MEAN)
       self.assertDictEqual(
           expected_value,
-          variable_scope.variable(
+          variable_v1.VariableV1(
               1.0,
               name="baz",
               synchronization=variable_scope.VariableSynchronization.ON_WRITE,
@@ -266,7 +267,7 @@ class TestStrategyTest(test.TestCase):
         "baz", variable_scope.VariableSynchronization.AUTO,
         variable_scope.VariableAggregation.NONE)
     self.assertDictEqual(expected_value,
-                         variable_scope.variable(1.0, name="baz"))
+                         variable_v1.VariableV1(1.0, name="baz"))
     distribute_lib.experimental_set_strategy(dist2)
     self.assertIs(dist2, distribute_lib.get_strategy())
     distribute_lib.experimental_set_strategy(None)
@@ -492,7 +493,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
 
     test_strategy = _TestStrategy2()
     with test_strategy.scope():
-      variable_scope.variable(1.0, name="before")
+      variable_v1.VariableV1(1.0, name="before")
 
     default_strategy = distribute_lib._get_default_strategy()
     scope = default_strategy.scope()
@@ -502,7 +503,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
       with test_strategy.scope():
         with self.assertRaisesRegex(
             RuntimeError, "Mixing different tf.distribute.Strategy objects"):
-          variable_scope.variable(1.0, name="error")
+          variable_v1.VariableV1(1.0, name="error")
 
       with scope:
         _assert_in_default_state(self)
@@ -510,13 +511,13 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
         with test_strategy.scope():
           with self.assertRaisesRegex(
               RuntimeError, "Mixing different tf.distribute.Strategy objects"):
-            variable_scope.variable(1.0, name="also_error")
+            variable_v1.VariableV1(1.0, name="also_error")
 
       _assert_in_default_state(self)
 
     _assert_in_default_state(self)
     with test_strategy.scope():
-      variable_scope.variable(1.0, name="after")
+      variable_v1.VariableV1(1.0, name="after")
 
   def testExperimentalRunV2(self):
     default_strategy = distribute_lib._get_default_strategy()

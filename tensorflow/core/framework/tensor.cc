@@ -1392,7 +1392,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
       if (print_v2 && (dims() > 0)) {
         strings::StrAppend(&ret, "[");
       }
-      // TODO(irving): Don't call flat every time around this
+      // TODO(geoffreyi): Don't call flat every time around this
       // loop.
       for (size_t i = 0; i < limit; ++i) {
         if (i > 0) strings::StrAppend(&ret, " ");
@@ -1406,7 +1406,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
             strings::StrAppend(&ret, "<", r.SummarizeValue(), ">");
           } break;
           default:
-            // TODO(zhifengc, josh11b): Pretty-print other types (bool,
+            // TODO(zhifengc, joshl): Pretty-print other types (bool,
             // complex64, quantized).
             strings::StrAppend(&ret, "?");
         }

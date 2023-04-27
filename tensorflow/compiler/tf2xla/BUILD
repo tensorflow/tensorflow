@@ -35,6 +35,7 @@ package_group(
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/core/tpu/...",
         "//tensorflow/python/compiler/...",
+        "//tensorflow/python/util/...",
     ],
 )
 
@@ -211,6 +212,7 @@ filegroup(
         "//tensorflow/compiler/xla:cpu_runtime_hdrs",
         "//tensorflow/compiler/xla/service:custom_call_status_hdrs",
         "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
+        "//tensorflow/compiler/xla/service/cpu:xla_runtime_runner_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "//tensorflow/tsl/framework:xla_cpu_runtime_hdrs",
@@ -227,6 +229,7 @@ filegroup(
         "//tensorflow/compiler/xla:cpu_runtime_srcs",
         "//tensorflow/compiler/xla/service:custom_call_status_srcs",
         "//tensorflow/compiler/xla/service/cpu:runtime_srcs",
+        "//tensorflow/compiler/xla/service/cpu:xla_runtime_runner_srcs",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "//tensorflow/tsl/platform:xla_cpu_runtime_srcs",
@@ -283,6 +286,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -372,6 +376,7 @@ cc_library(
         # binary produced by tfcompile.
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -1398,5 +1403,43 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+filegroup(
+    name = "tf2xla_opset_hdrs",
+    srcs = [
+        "tf2xla_opset.h",
+    ],
+    visibility = ["//tensorflow/python/util:__pkg__"],
+)
+
+cc_library(
+    name = "tf2xla_opset",
+    srcs = [
+        "tf2xla_opset.cc",
+    ],
+    hdrs = ["tf2xla_opset.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        ":tf2xla_util",
+        ":xla_op_registry",
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tf2xla_opset_test",
+    srcs = [
+        "tf2xla_opset_test.cc",
+    ],
+    deps = [
+        ":tf2xla_opset",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

@@ -383,20 +383,40 @@ class CollectivePermuteLowering
 
 //===----------------------------------------------------------------------===//
 
-class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
+class ConvolutionLowering : public OpRewritePattern<xla_cpu::ConvolutionOp> {
  public:
-  FftLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+  ConvolutionLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
-  LogicalResult matchAndRewrite(xla_cpu::FftOp op,
+  LogicalResult matchAndRewrite(xla_cpu::ConvolutionOp op,
                                 PatternRewriter& rewriter) const override {
-    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
-                                 rewriter);
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+    b.setInsertionPoint(op);
+
+    // Subview ops result in strided Memrefs. The runtime can't deal with them,
+    // so we copy everything that doesn't have the default layout.
+    SmallVector<Value> new_operands = EnsureFlatMemrefs(op->getOperands(), b);
+
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, kCallTarget, TypeRange(ValueRange(new_operands)), TypeRange());
+    auto call =
+        b.create<func::CallOp>(callee.getName(), TypeRange(), new_operands);
+
+    // Copy attributes from original op.
+    for (auto name :
+         {"inputBatchDimension", "inputSpatialDimensions",
+          "inputFeatureDimension", "kernelSpatialDimensions",
+          "kernelInputFeatureDimension", "kernelOutputFeatureDimension",
+          "outputSpatialDimensions", "window_strides", "padding",
+          "lhs_dilation", "rhs_dilation", "feature_group_count"}) {
+      call->setAttr(name, op->getAttr(name));
+    }
+    rewriter.eraseOp(op);
     return success();
   }
 
  private:
-  static constexpr const char kCallTarget[] = "xla.cpu.fft";
+  static constexpr const char kCallTarget[] = "xla.cpu.convolution";
 
   CustomCallDeclarations& custom_calls_;
 };
@@ -481,6 +501,26 @@ class OutfeedLowering : public OpRewritePattern<xla_cpu::OutfeedOp> {
 
 //===----------------------------------------------------------------------===//
 
+class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
+ public:
+  FftLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::FftOp op,
+                                PatternRewriter& rewriter) const override {
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.fft";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -491,10 +531,11 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<AllReduceLowering, AllToAllLowering,
-                  CollectivePermuteLowering, CustomCallOpLowering, FftLowering,
-                  InfeedOpLowering, OutfeedLowering, RngBitGeneratorLowering>(
-      ctx, custom_calls);
+  patterns
+      .insert<AllReduceLowering, AllToAllLowering, CollectivePermuteLowering,
+              ConvolutionLowering, CustomCallOpLowering, FftLowering,
+              InfeedOpLowering, OutfeedLowering, RngBitGeneratorLowering>(
+          ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",

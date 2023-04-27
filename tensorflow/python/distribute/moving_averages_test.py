@@ -104,7 +104,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       var = variables.Variable([10.0, 11.0])
       val = constant_op.constant([1.0, 2.0])
       decay = 0.25
-      # NOTE(josh11b): We currently generate an error if val is a PerReplica
+      # NOTE(joshl): We currently generate an error if val is a PerReplica
       # value.
       assign = moving_averages.assign_moving_average(
           var, val, decay, zero_debias=False)
@@ -133,7 +133,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       var = variables.Variable([0.0, 0.0])
       val = variables.Variable([1.0, 2.0])
       decay = 0.25
-      # NOTE(josh11b): We currently generate an error if val is a PerReplica
+      # NOTE(joshl): We currently generate an error if val is a PerReplica
       # value.
       assign = moving_averages.assign_moving_average(var, val, decay)
 

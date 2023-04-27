@@ -207,8 +207,9 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
 
     // Determine if the current index matches the case index.
     auto scalarType = idxValue.getType();
+    auto shapedType = scalarType.cast<ShapedType>();
     auto constAttr = DenseElementsAttr::get(
-        scalarType,
+        shapedType,
         {outerBuilder.getI32IntegerAttr(currentIdx).cast<mlir::Attribute>()});
     Value currentIdxVal = outerBuilder.create<mhlo::ConstantOp>(
         loc, idxValue.getType(), constAttr);

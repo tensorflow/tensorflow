@@ -2016,6 +2016,20 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       raise ValueError("Only support at least one signature key.")
 
+    # Distinguishes SavedModel artifacts created by `model.export`
+    # from SavedModel created by `model.save`/`tf.saved_model.save`.
+    if (
+        len(signature_keys) > 1
+        and hasattr(saved_model, "serve")  # `model.export` default endpoint
+        and not hasattr(saved_model, "_default_save_signature")
+        # `_default_save_signature` does not exist for `model.export` artifacts.
+    ):
+      # Default `serve` endpoint for `model.export` should be copied
+      # to `serving_default` to prevent issues in TF Lite serving.
+      saved_model.serving_default = saved_model.serve
+      delattr(saved_model, "serve")
+      signature_keys = ["serving_default"]
+
     funcs = []
     for key in signature_keys:
       if key not in saved_model.signatures:

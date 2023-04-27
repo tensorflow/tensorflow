@@ -1977,7 +1977,7 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
             f.graph,
             f._graph_artifacts.inputs,
             f._graph_artifacts.outputs,
-            f._graph_artifacts.attrs,
+            f.cached_definition.attr,
             overwrite=True,
         )
 

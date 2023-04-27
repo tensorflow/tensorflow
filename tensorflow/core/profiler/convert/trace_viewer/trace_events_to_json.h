@@ -510,7 +510,7 @@ void TraceEventsToJson(const JsonTraceOptions& options,
 
   WriteDetails(options.details, output);
   WriteSelectedDeviceIds(options.selected_device_ids, output);
-  WriteReturnedEventsSize(events.size(), output);
+  WriteReturnedEventsSize(events.NumEvents(), output);
   WriteFilteredByVisibility(events.FilterByVisibility(), output);
   WriteTraceFullTimespan(&events.trace(), output);
 

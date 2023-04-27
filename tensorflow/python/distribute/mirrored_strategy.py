@@ -34,7 +34,7 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
@@ -48,7 +48,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
-# TODO(josh11b): Replace asserts in this file with if ...: raise ...
+# TODO(joshl): Replace asserts in this file with if ...: raise ...
 
 
 def _is_device_list_single_worker(devices):
@@ -306,7 +306,7 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
         "MirroredStrategy")
 
 
-# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+# TODO(joshl): Switch to V2 when we no longer need to support tf.compat.v1.
 class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
@@ -540,7 +540,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
-            with tape.stop_recording():
+            with record.stop_recording():
               v = next_creator(**kwargs)
           assert not isinstance(v, values.DistributedVariable)
           value_list.append(v)
@@ -686,9 +686,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    # TODO(josh11b): In eager mode, use one thread per device, or async mode.
+    # TODO(joshl): In eager mode, use one thread per device, or async mode.
     if not destinations:
-      # TODO(josh11b): Use current logical device instead of 0 here.
+      # TODO(joshl): Use current logical device instead of 0 here.
       destinations = self._devices
     return self._get_cross_device_ops(tensor).broadcast(tensor, destinations)
 
@@ -798,7 +798,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         options=self._communication_options.merge(options))
 
   def _update(self, var, fn, args, kwargs, group):
-    # TODO(josh11b): In eager mode, use one thread per device.
+    # TODO(joshl): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
     updates = []
     for i, v in enumerate(var.values):
@@ -855,7 +855,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)
-    # TODO(josh11b): In eager mode, use one thread per device.
+    # TODO(joshl): In eager mode, use one thread per device.
     updates = []
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
@@ -911,7 +911,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def non_slot_devices(self, var_list):
     del var_list
-    # TODO(josh11b): Should this be the last logical device instead?
+    # TODO(joshl): Should this be the last logical device instead?
     return self._devices
 
   # TODO(priyag): Delete this once all strategies use global batch size.

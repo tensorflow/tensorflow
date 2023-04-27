@@ -338,7 +338,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/summary:summary_py",
@@ -396,7 +396,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
@@ -542,7 +542,7 @@ py_library(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/platform:tf_logging",
@@ -1379,7 +1379,7 @@ distribute_py_test(
 
 cuda_py_test(
     name = "session_manager_test",
-    size = "medium",  # TODO(irving): Can this be made small?
+    size = "medium",  # TODO(geoffreyi): Can this be made small?
     srcs = ["session_manager_test.py"],
     grpc_enabled = True,
     main = "session_manager_test.py",

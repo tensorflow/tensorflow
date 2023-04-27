@@ -2550,7 +2550,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
     # mean = np.mean(aspect_ratio_hist)
     # stddev = np.sqrt(mean)
     # TODO(wicke, shlens, dga): Restore this test so that it is no longer flaky.
-    # TODO(irving): Since the rejection probability is not independent of the
+    # TODO(geoffreyi): Since the rejection probability is not independent of the
     # aspect ratio, the aspect_ratio random value is not exactly uniformly
     # distributed in [min_aspect_ratio, max_aspect_ratio).  This test should be
     # fixed to reflect the true statistical property, then tightened to enforce
@@ -4456,7 +4456,7 @@ def simple_color_ramp():
 
 class JpegTest(test_util.TensorFlowTestCase):
 
-  # TODO(irving): Add self.assertAverageLess or similar to test_util
+  # TODO(geoffreyi): Add self.assertAverageLess or similar to test_util
   def averageError(self, image0, image1):
     self.assertEqual(image0.shape, image1.shape)
     image0 = image0.astype(int)  # Avoid overflow
@@ -4770,6 +4770,20 @@ class PngTest(test_util.TensorFlowTestCase):
       png0, image0, image1 = self.evaluate([png0, image0, image1])
       self.assertEqual(2, image0.shape[-1])
       self.assertAllEqual(image0, image1)
+
+  def testBatchedEncodeSynthetic(self):
+    with self.cached_session():
+      image0 = simple_color_ramp()
+      image_stack = np.broadcast_to(image0, (3, 4) + image0.shape)
+
+      png0 = self.evaluate(image_ops.encode_png(image0, compression=7))
+      png_stack = self.evaluate(
+          image_ops.encode_png(image_stack, compression=7)
+      )
+
+      # PNG is lossless
+      expected = np.broadcast_to(png0, (3, 4))
+      self.assertAllEqual(png_stack, expected)
 
   def testShape(self):
     # Shape function requires placeholders and a graph.

@@ -787,6 +787,7 @@ build_test(
 
 xla_cc_binary(
     name = "hlo_to_llvm_ir",
+    testonly = True,
     srcs = ["hlo_to_llvm_ir.cc"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
@@ -794,7 +795,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/gpu:compile_module_to_llvm_ir",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
-        "//tensorflow/compiler/xla/service/gpu:gpu_device_info",
+        "//tensorflow/compiler/xla/service/gpu:gpu_device_info_for_tests",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/stream_executor:device_description",
@@ -874,6 +875,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",

@@ -604,7 +604,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'a' value { shape { dim { size: 6 } dim { size: 3 } } } }
         """, op.node_def)
 
-      # TODO(josh11b): Re-enable this test once we stop promoting scalars to
+      # TODO(joshl): Re-enable this test once we stop promoting scalars to
       # shapes.
       # with self.assertRaises(TypeError) as cm:
       #   op_def_library.apply_op("AttrShape", a=5)

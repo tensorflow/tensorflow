@@ -21,8 +21,8 @@ import sys
 
 from absl import logging
 
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.function.capture import restore_captures
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
@@ -1014,7 +1014,12 @@ def load_partial(export_dir, filters, tags=None, options=None):
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
   except FileNotFoundError:
-    logging.exception("Unable to load fingerprint when loading saved model.")
+    logging.info(
+        "Fingerprint not found. Saved model loading will continue.")
+    singleprint = ""
+  except RuntimeError:
+    logging.exception(
+        "Fingerprint was found, but there was an error when reading the proto.")
     singleprint = ""
   else:
     metrics.SetReadFingerprint(

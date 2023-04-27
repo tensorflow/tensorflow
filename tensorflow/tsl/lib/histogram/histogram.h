@@ -120,7 +120,7 @@ class ThreadSafeHistogram {
 
   void Clear();
 
-  // TODO(touts): It might be a good idea to provide a AddN(<many values>)
+  // TODO(mdevin): It might be a good idea to provide a AddN(<many values>)
   // method to avoid grabbing/releasing the lock when adding many values.
   void Add(double value);
 

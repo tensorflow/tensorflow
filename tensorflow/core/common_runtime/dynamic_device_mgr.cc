@@ -36,8 +36,8 @@ DynamicDeviceMgr::DynamicDeviceMgr(
   CHECK(status.ok());  // Crash OK
   mutex_lock l(devices_mu_);
   // Initialize cpu_device_.
-  for (int i = 0; i < dynamic_devices_.size(); ++i) {
-    auto* d = dynamic_devices_[i].get();
+  for (const auto& it : dynamic_devices_) {
+    Device* d = it.first;
     if (d->device_type() == DEVICE_CPU && d->parsed_name().id == 0) {
       cpu_device_ = d;
       break;
@@ -56,10 +56,10 @@ DynamicDeviceMgr::~DynamicDeviceMgr() {
   // Release resources ahead of destroying the device manager as the resource
   // destructors (e.g. ~IteratorResource) assume devices still exist.
   mutex_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
+  for (const auto& it : dynamic_devices_) {
     // TODO(tf-runtime-team): clear devices' resource mgr in devices'
     // destructor.
-    d->ClearResourceMgr();
+    it.first->ClearResourceMgr();
   }
 }
 
@@ -67,8 +67,8 @@ void DynamicDeviceMgr::ListDeviceAttributes(
     std::vector<DeviceAttributes>* devices) const {
   tf_shared_lock l(devices_mu_);
   devices->reserve(dynamic_devices_.size());
-  for (const auto& d : dynamic_devices_) {
-    devices->emplace_back(d->attributes());
+  for (const auto& it : dynamic_devices_) {
+    devices->emplace_back(it.first->attributes());
   }
 }
 
@@ -76,8 +76,8 @@ std::vector<Device*> DynamicDeviceMgr::ListDevices() const {
   tf_shared_lock l(devices_mu_);
   std::vector<Device*> devices;
   devices.reserve(dynamic_devices_.size());
-  for (const auto& d : dynamic_devices_) {
-    devices.emplace_back(d.get());
+  for (const auto& it : dynamic_devices_) {
+    devices.emplace_back(it.first);
   }
   return devices;
 }
@@ -85,8 +85,8 @@ std::vector<Device*> DynamicDeviceMgr::ListDevices() const {
 string DynamicDeviceMgr::DebugString() const {
   string out;
   tf_shared_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
-    strings::StrAppend(&out, d->name(), "\n");
+  for (const auto& it : dynamic_devices_) {
+    strings::StrAppend(&out, it.first->name(), "\n");
   }
   return out;
 }
@@ -94,7 +94,8 @@ string DynamicDeviceMgr::DebugString() const {
 string DynamicDeviceMgr::DeviceMappingString() const {
   string out;
   tf_shared_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
+  for (const auto& it : dynamic_devices_) {
+    auto d = it.first;
     if (!d->attributes().physical_device_desc().empty()) {
       strings::StrAppend(&out, d->name(), " -> ",
                          d->attributes().physical_device_desc(), "\n");
@@ -128,7 +129,8 @@ void DynamicDeviceMgr::ClearContainers(
     gtl::ArraySlice<string> containers) const {
   Status s;
   tf_shared_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
+  for (const auto& it : dynamic_devices_) {
+    auto d = it.first;
     if (containers.empty()) {
       s.Update(d->resource_manager()->Cleanup(
           d->resource_manager()->default_container()));
@@ -176,7 +178,7 @@ Status DynamicDeviceMgr::AddDevices(
     }
     device_type_counts_[d->device_type()]++;
     device_incarnation_set_.insert(d->attributes().incarnation());
-    dynamic_devices_.push_back(std::move(d));
+    dynamic_devices_.emplace(d.get(), std::move(d));
   }
   return OkStatus();
 }
@@ -189,11 +191,8 @@ Status DynamicDeviceMgr::RemoveDevices(const std::vector<Device*>& devices) {
       TF_RETURN_IF_ERROR(
           errors::InvalidArgument("Can not remove HostCPU device ", d->name()));
     }
-    int i = 0;
-    for (; i < dynamic_devices_.size(); ++i) {
-      if (d == dynamic_devices_[i].get()) break;
-    }
-    if (i >= dynamic_devices_.size()) {
+    const auto it = dynamic_devices_.find(d);
+    if (it == dynamic_devices_.end()) {
       return errors::InvalidArgument("Unknown device ", d->name());
     }
   }
@@ -212,14 +211,14 @@ Status DynamicDeviceMgr::RemoveDevices(const std::vector<Device*>& devices) {
     device_type_counts_[d->device_type()]--;
     device_incarnation_set_.erase(d->attributes().incarnation());
 
-    int i = 0;
-    for (; i < dynamic_devices_.size(); ++i) {
-      if (d == dynamic_devices_[i].get()) break;
+    auto it = dynamic_devices_.find(d);
+    if (it == dynamic_devices_.end()) {
+      return errors::InvalidArgument("Unknown device ", d->name());
     }
     // There shouldn't be unknown devices at this point.
-    CHECK(i < dynamic_devices_.size());  // Crash OK
-    stale_devices_.add(std::move(dynamic_devices_[i]));
-    dynamic_devices_.erase(dynamic_devices_.begin() + i);
+    CHECK(it != dynamic_devices_.end());  // Crash OK
+    stale_devices_.add(std::move(it->second));
+    dynamic_devices_.erase(it);
   }
   return OkStatus();
 }
@@ -243,8 +242,8 @@ Device* DynamicDeviceMgr::HostCPU() const {
   if (device != nullptr) return device;
 
   mutex_lock l(devices_mu_);
-  for (int i = 0; i < dynamic_devices_.size(); ++i) {
-    Device* d = dynamic_devices_[i].get();
+  for (const auto& it : dynamic_devices_) {
+    Device* d = it.first;
     if (d->device_type() == DEVICE_CPU && d->parsed_name().id == 0) {
       cpu_device_ = d;
       break;

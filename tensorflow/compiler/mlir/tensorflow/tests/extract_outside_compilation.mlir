@@ -215,6 +215,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
     // CHECK-SAME:       device_ordinal = 0
+    // CHECK-SAME:       device_type = "TPU"
     // CHECK-SAME:       key = "host_compute_channel_0_retvals"
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -227,7 +228,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %2 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<2xi32>)
       %3 = "tf.C"(%2) : (tensor<2xi32>) -> tensor<2xi32>
       tf_device.return %3 : tensor<2xi32>
-    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+    }) {_xla_compile_device_type = "TPU", num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
 
     func.return %0 : tensor<2xi32>
   }
@@ -2063,6 +2064,36 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %3 = "tf.C"(%2) : (tensor<2xi32>) -> tensor<2xi32>
       tf_device.return %3 : tensor<2xi32>
     }) : () -> tensor<2xi32>
+
+    func.return %0 : tensor<2xi32>
+  }
+}
+
+// -----
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"]} {
+  // CHECK-LABEL: func @single_outside_compiled_output_device_type
+  func.func @single_outside_compiled_output_device_type(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
+    // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
+    // CHECK-SAME:       device_ordinal = 0
+    // CHECK-SAME:       device_type = "CPU"
+    // CHECK-SAME:       key = "host_compute_channel_0_retvals"
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"()
+    // CHECK-SAME:       recv_key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:       send_key = "host_compute_channel_0_args"
+    // CHECK:            "tf.C"(%[[HOST_OUTPUT]])
+    %0 = "tf_device.cluster"() ({
+      %1 = "tf.A"() : () -> (tensor<2xi32>)
+      %2 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<2xi32>)
+      %3 = "tf.C"(%2) : (tensor<2xi32>) -> tensor<2xi32>
+      tf_device.return %3 : tensor<2xi32>
+    }) {_xla_compile_device_type = "CPU"} : () -> tensor<2xi32>
 
     func.return %0 : tensor<2xi32>
   }

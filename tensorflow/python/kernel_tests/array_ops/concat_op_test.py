@@ -414,7 +414,7 @@ class ConcatOpTest(test.TestCase):
               x0 = np.random.randn(*(shape0 + (n0,) + shape1))
               x1 = np.random.randn(*(shape0 + (n1,) + shape1))
               correct = np.concatenate([x0, x1], axis=axis)
-              # TODO(irving): Make tf.concat handle map, then drop list().
+              # TODO(geoffreyi): Make tf.concat handle map, then drop list().
               xs = list(map(constant_op.constant, [x0, x1]))
               c = array_ops.concat(xs, axis)
               self.assertAllEqual(self.evaluate(c), correct)

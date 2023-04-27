@@ -57,7 +57,9 @@ class PjRtExecutionUtilTest : public OpsTestBase {
  public:
   PjRtExecutionUtilTest() {
     // Set flag to use PJRT for device compilation and execution.
-    GetXlaOpsCommonFlags()->tf_xla_use_device_api = true;
+    auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+    rollout_config.enabled_for_xla_launch_ = true;
+    rollout_config.enabled_for_compile_on_demand_ = true;
 
     // Set flag to enable using XLA devices. PJRT currently is only supported
     // for XLA devices.
@@ -65,6 +67,9 @@ class PjRtExecutionUtilTest : public OpsTestBase {
 
     // Add and setup the XLA_CPU device.
     auto device_type = DeviceType(DEVICE_XLA_CPU);
+    rollout_config.AllowForDeviceInXlaLaunch(device_type);
+    rollout_config.AllowForDeviceInXlaCompileOnDemand(device_type);
+
     auto jit_device_type = DeviceType(DEVICE_CPU_XLA_JIT);
     auto device =
         DeviceFactory::NewDevice(device_type.type_string(), SessionOptions(),

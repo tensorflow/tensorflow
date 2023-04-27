@@ -25,7 +25,7 @@ from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -180,7 +180,7 @@ class DistributedValues(ds_types.DistributedValues):
     return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
 
 
-# NOTE(josh11b,apassos): It would be great if we could inspect the values this was
+# NOTE(joshl,apassos): It would be great if we could inspect the values this was
 # initialized with and use that to generate the overloaded operators here.
 # Unfortunately, Python's rules for special methods don't allow this, see
 # https://docs.python.org/3/reference/datamodel.html#special-method-names
@@ -345,7 +345,7 @@ class DistributedDelegate(DistributedValues):
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
-  # TODO(josh11b): Even more operator overloads.
+  # TODO(joshl): Even more operator overloads.
 
 
 class PerReplica(DistributedValues, composite_tensor.CompositeTensor,
@@ -1106,7 +1106,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     graph = concrete_function.graph
     # Add given distributed variable to captures with given placeholder.
     graph.replace_capture(self, internal_capture)
-    tape.record_operation(
+    record.record_operation(
         "captured_value", [internal_capture], [self],
         backward_function=lambda x: [x],
         forward_function=lambda x: [x])

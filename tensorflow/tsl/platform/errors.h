@@ -118,6 +118,7 @@ inline void CopyPayloads(const ::tsl::Status& from, ::tsl::Status& to) {
   });
 }
 
+#if defined(PLATFORM_GOOGLE)
 // Creates a new status with the given code, message and payloads.
 inline ::tsl::Status Create(
     absl::StatusCode code, ::tsl::StringPiece message,
@@ -127,6 +128,15 @@ inline ::tsl::Status Create(
   InsertPayloads(status, payloads);
   return status;
 }
+#else
+inline ::absl::Status Create(
+    absl::StatusCode code, ::tsl::StringPiece message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  Status status(code, message);
+  InsertPayloads(status, payloads);
+  return status;
+}
+#endif
 
 // Returns a new Status, replacing its message with the given.
 inline ::tsl::Status CreateWithUpdatedMessage(const ::tsl::Status& status,
@@ -190,10 +200,13 @@ template <typename... Args>
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
+
+#if defined(PLATFORM_GOOGLE)
 // Specialized overloads to capture source location for up to three arguments.
 template <typename Arg1, typename Arg2, typename Arg3>
-::tsl::Status InvalidArgument(Arg1 arg1, Arg2 arg2, Arg3 arg3,
-                              SourceLocation loc = SourceLocation::current()) {
+::absl::Status InvalidArgument(
+    Arg1 arg1, Arg2 arg2, Arg3 arg3,
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   return ::tsl::Status(
       absl::StatusCode::kInvalidArgument,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
@@ -202,8 +215,9 @@ template <typename Arg1, typename Arg2, typename Arg3>
       loc);
 }
 template <typename Arg1, typename Arg2>
-::tsl::Status InvalidArgument(Arg1 arg1, Arg2 arg2,
-                              SourceLocation loc = SourceLocation::current()) {
+::absl::Status InvalidArgument(
+    Arg1 arg1, Arg2 arg2,
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   return ::tsl::Status(
       absl::StatusCode::kInvalidArgument,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
@@ -211,21 +225,50 @@ template <typename Arg1, typename Arg2>
       loc);
 }
 template <typename Arg1>
-::tsl::Status InvalidArgument(Arg1 arg1,
-                              SourceLocation loc = SourceLocation::current()) {
+::absl::Status InvalidArgument(
+    Arg1 arg1, absl::SourceLocation loc = absl::SourceLocation::current()) {
   return ::tsl::Status(
       absl::StatusCode::kInvalidArgument,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
       loc);
 }
 template <typename... Args>
-::tsl::Status InvalidArgumentWithPayloads(
+::absl::Status InvalidArgumentWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads,
-    SourceLocation loc = SourceLocation::current()) {
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   return errors::Create(absl::StatusCode::kInvalidArgument, message, payloads,
                         loc);
 }
+#else
+template <typename Arg1, typename Arg2, typename Arg3>
+::absl::Status InvalidArgument(Arg1 arg1, Arg2 arg2, Arg3 arg3) {
+  return ::absl::Status(
+      absl::StatusCode::kInvalidArgument,
+      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
+                             ::tsl::errors::internal::PrepareForStrCat(arg2),
+                             ::tsl::errors::internal::PrepareForStrCat(arg3)));
+}
+template <typename Arg1, typename Arg2>
+::absl::Status InvalidArgument(Arg1 arg1, Arg2 arg2) {
+  return ::absl::Status(
+      absl::StatusCode::kInvalidArgument,
+      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
+                             ::tsl::errors::internal::PrepareForStrCat(arg2)));
+}
+template <typename Arg1>
+::absl::Status InvalidArgument(Arg1 arg1) {
+  return ::absl::Status(
+      absl::StatusCode::kInvalidArgument,
+      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)));
+}
+template <typename... Args>
+::absl::Status InvalidArgumentWithPayloads(
+    const ::tsl::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(absl::StatusCode::kInvalidArgument, message, payloads);
+}
+#endif
 
 // NotFound
 template <typename... Args>
@@ -234,10 +277,12 @@ template <typename... Args>
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
+#if defined(PLATFORM_GOOGLE)
 // Specialized overloads to capture source location for up to three arguments.
 template <typename Arg1, typename Arg2, typename Arg3>
-::tsl::Status NotFound(Arg1 arg1, Arg2 arg2, Arg3 arg3,
-                       SourceLocation loc = SourceLocation::current()) {
+::absl::Status NotFound(
+    Arg1 arg1, Arg2 arg2, Arg3 arg3,
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   return ::tsl::Status(
       absl::StatusCode::kNotFound,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
@@ -246,8 +291,9 @@ template <typename Arg1, typename Arg2, typename Arg3>
       loc);
 }
 template <typename Arg1, typename Arg2>
-::tsl::Status NotFound(Arg1 arg1, Arg2 arg2,
-                       SourceLocation loc = SourceLocation::current()) {
+::absl::Status NotFound(
+    Arg1 arg1, Arg2 arg2,
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   return ::tsl::Status(
       absl::StatusCode::kNotFound,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
@@ -255,20 +301,49 @@ template <typename Arg1, typename Arg2>
       loc);
 }
 template <typename Arg1>
-::tsl::Status NotFound(Arg1 arg1,
-                       SourceLocation loc = SourceLocation::current()) {
+::absl::Status NotFound(
+    Arg1 arg1, absl::SourceLocation loc = absl::SourceLocation::current()) {
   return ::tsl::Status(
       absl::StatusCode::kNotFound,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
       loc);
 }
 template <typename... Args>
-::tsl::Status NotFoundWithPayloads(
+::absl::Status NotFoundWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads,
-    SourceLocation loc = SourceLocation::current()) {
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   return errors::Create(absl::StatusCode::kNotFound, message, payloads, loc);
 }
+#else
+template <typename Arg1, typename Arg2, typename Arg3>
+::absl::Status NotFound(Arg1 arg1, Arg2 arg2, Arg3 arg3) {
+  return ::absl::Status(
+      absl::StatusCode::kNotFound,
+      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
+                             ::tsl::errors::internal::PrepareForStrCat(arg2),
+                             ::tsl::errors::internal::PrepareForStrCat(arg3)));
+}
+template <typename Arg1, typename Arg2>
+::absl::Status NotFound(Arg1 arg1, Arg2 arg2) {
+  return ::absl::Status(
+      absl::StatusCode::kNotFound,
+      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
+                             ::tsl::errors::internal::PrepareForStrCat(arg2)));
+}
+template <typename Arg1>
+::absl::Status NotFound(Arg1 arg1) {
+  return ::absl::Status(
+      absl::StatusCode::kNotFound,
+      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)));
+}
+template <typename... Args>
+::absl::Status NotFoundWithPayloads(
+    const ::tsl::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(absl::StatusCode::kNotFound, message, payloads);
+}
+#endif
 
 // AlreadyExists
 template <typename... Args>

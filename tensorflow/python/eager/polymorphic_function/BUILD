@@ -14,6 +14,17 @@ py_library(
 )
 
 py_library(
+    name = "autograph_util",
+    srcs = ["autograph_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/impl:api",
+        "//tensorflow/python/util:tf_decorator",
+    ],
+)
+
+py_library(
     name = "atomic_function",
     srcs = ["atomic_function.py"],
     srcs_version = "PY3",
@@ -25,7 +36,7 @@ py_library(
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:c_api_util",
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
@@ -60,16 +71,16 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:forwardprop_util",
         "//tensorflow/python/eager:graph_only_ops",
-        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
@@ -89,6 +100,7 @@ py_library(
         ":tf_method_target",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/polymorphism:function_cache",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:tf_decorator",
@@ -115,6 +127,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attributes",
+        ":autograph_util",
         ":compiler_ir",
         ":eager_function_run",
         ":function_spec",
@@ -130,6 +143,7 @@ py_library(
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:deprecation",
@@ -282,6 +296,7 @@ cuda_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -366,6 +381,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -381,6 +397,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

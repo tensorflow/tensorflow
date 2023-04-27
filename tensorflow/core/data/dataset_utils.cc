@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -538,9 +541,12 @@ absl::flat_hash_set<string> GetExperiments(
   }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& [experiment_name, experiment_selector] : live_experiments) {
-    if (experiment_selector.job_selector(hash_func, experiment_name,
-                                         job_name) &&
-        experiment_selector.task_selector(task_id) &&
+    uint64_t name_hash = hash_func(strings::StrCat(job_name, experiment_name));
+    std::mt19937_64 rng{name_hash};
+    std::bernoulli_distribution d{0.5};
+    bool evens = d(rng);
+    if (experiment_selector.job_selector(name_hash) &&
+        experiment_selector.task_selector(task_id, evens) &&
         !opt_outs.contains(experiment_name)) {
       experiments.insert(experiment_name);
     }
@@ -931,28 +937,21 @@ DatasetExperimentRegistry::Experiments() {
   return *get_dataset_experiments();
 }
 
-namespace {
+bool AllTasks(int64_t unused_task_id, bool unused_evens) { return true; }
 
-// Select `rollout_pct` percent of jobs at random. `hash_func` takes a string
-// and returns a uint64 between 0 and 1.
-template <int64_t rollout_pct>
-bool RandomJobSamplePercentage(std::function<uint64_t(const string&)> hash_func,
-                               const std::string& experiment_name,
-                               const std::string& job_name) {
-  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
-         rollout_pct;
+bool IndependentHostTasks(int64_t task_id, bool evens) {
+  int64_t lhs = task_id & 0x2;
+  int64_t rhs = 0x2;
+  return evens ? lhs != rhs : lhs == rhs;
 }
-bool AllTasks(int64_t task_id) { return true; }
-// Typically 2 tasks run on a single TPU host. This selector assigns every 2
-// other tasks in the experiment such that control and experiment do not run on
-// the same hosts. For example, if a job has 4 tasks, then task 0 and 1 are
-// assigned to control and tasks 2 and 3 experiment.
-bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
+
+namespace {
 
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<50>, AllTasks);
+                            RandomJobSamplePercentage<10>,
+                            IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
@@ -964,8 +963,7 @@ REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
-                            RandomJobSamplePercentage<25>,
-                            IndependentHostTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<1>,
                             IndependentHostTasks);
 }  // namespace

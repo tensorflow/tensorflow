@@ -150,7 +150,7 @@ pytype_strict_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
     ],
 )
@@ -307,7 +307,7 @@ pytype_strict_library(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],

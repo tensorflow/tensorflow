@@ -44,7 +44,7 @@ from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import monitoring
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as pydev
@@ -551,7 +551,7 @@ class Tensor(
 
   def _record_tape(self, capture):
     """Connect this graph tensor with capture for gradients calculation."""
-    tape.record_operation(
+    record.record_operation(
         "captured_value",
         [self], [capture],
         backward_function=lambda x: [x],
@@ -1233,7 +1233,7 @@ class _EagerTensorBase(Tensor, internal.NativeObject, core_tf_types.Value):
             if hasattr(dresult, "_copy") else dresult
         ]
 
-      tape.record_operation("_copy", [new_tensor], [self], grad_fun)
+      record.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
 
@@ -1421,8 +1421,8 @@ def pack_eager_tensors(tensors, ctx=None):
     raise ValueError(
         "Computing gradients through pack_eager_tensors is not supported.")
 
-  tape.record_operation("pack_eager_tensors", [packed_tensor], tensors,
-                        grad_fun)
+  record.record_operation("pack_eager_tensors", [packed_tensor], tensors,
+                          grad_fun)
 
   return packed_tensor
 
@@ -1684,7 +1684,7 @@ def _NodeDef(op_type, name, attrs=None):
 
 
 # Copied from core/framework/node_def_util.cc
-# TODO(mrry,josh11b): Consolidate this validation in C++ code.
+# TODO(mrry,joshl): Consolidate this validation in C++ code.
 _VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
@@ -5446,7 +5446,7 @@ def init_scope():
 
   if context.executing_eagerly():
     # Fastpath.
-    with tape.stop_recording():
+    with record.stop_recording():
       yield
   else:
     # Retrieve the active name scope: entering an `init_scope` preserves
@@ -5465,7 +5465,7 @@ def init_scope():
     try:
       with outer_context(), name_scope(
           scope, skip_on_eager=False), control_dependencies(
-              None), tape.stop_recording():
+              None), record.stop_recording():
         context_manager = NullContextmanager
         context_manager_input = None
         if not context.executing_eagerly():
@@ -5898,7 +5898,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   original_graph_element = None
   for op_input in op_input_list:
     # Determine if this is a valid graph_element.
-    # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
+    # TODO(joshl): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
     if isinstance(op_input, (Operation, internal.NativeObject)) and (
@@ -6803,3 +6803,22 @@ def _copy_handle_data_to_arg_def(tensor, arg_def):
     proto = arg_def.handle_data.add()
     proto.dtype = shape_and_type.dtype
     proto.shape.CopyFrom(handle_data.shape_and_type[0].shape)
+
+
+# This will be replaced by a concrete implementation in a future CL.
+@tf_export("__internal__.SymbolicTensor")
+class SymbolicTensor(object):
+  """Stub class for symbolic tensors."""
+
+
+@tf_export("is_symbolic_tensor", v1=["is_symbolic_tensor"])
+def is_symbolic_tensor(tensor):
+  """Test if `tensor` is a symbolic Tensor.
+
+  Args:
+    tensor: a tensor-like object
+
+  Returns:
+    True if `tensor` is a symbolic tensor (not an eager tensor).
+  """
+  return type(tensor) == Tensor  # pylint: disable=unidiomatic-typecheck

@@ -24,7 +24,7 @@ class Graph;
 
 // Converts the `GraphDef` being built by `builder` to a `Graph` and
 // stores it in `*graph`.
-// TODO(josh11b): Make this faster; right now it converts
+// TODO(joshl): Make this faster; right now it converts
 // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
 // edges from the source and to the sink node, resolves back edges
 // by name), and makes sure the resulting graph is valid.

@@ -175,8 +175,8 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   TF_ASSERT_OK(optimized_info.status());
   // Check that only one cache file exists.
   file_list.clear();
-  TF_ASSERT_OK(env->GetMatchingPaths(absl::StrCat(temp_dir, "/_FindDevice"),
-                                     &file_list));
+  TF_ASSERT_OK(env->GetMatchingPaths(
+      absl::StrCat(temp_dir, "/_-1_FindDevice_1234"), &file_list));
   EXPECT_EQ(file_list.size(), 1);
   EXPECT_EQ(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
                 metrics::GraphOptimizationSource::kJit),
@@ -195,8 +195,8 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
       Env::Default(), /*caching_threshold_duration=*/absl::ZeroDuration());
   TF_ASSERT_OK(optimized_info.status());
   file_list.clear();
-  TF_ASSERT_OK(env->GetMatchingPaths(absl::StrCat(temp_dir, "/_FindDevice"),
-                                     &file_list));
+  TF_ASSERT_OK(env->GetMatchingPaths(
+      absl::StrCat(temp_dir, "/_-1_FindDevice_1234"), &file_list));
   EXPECT_EQ(file_list.size(), 1);
   EXPECT_GT(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
                 metrics::GraphOptimizationSource::kJit),

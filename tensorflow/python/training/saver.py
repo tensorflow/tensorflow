@@ -364,7 +364,7 @@ class BaseSaverBuilder:
     idx = 0
     # Load and optionally reshape on the CPU, as string tensors are not
     # available on the GPU.
-    # TODO(touts): Re-enable restore on GPU when we can support annotating
+    # TODO(mdevin): Re-enable restore on GPU when we can support annotating
     # string tensors as "HostMemory" inputs.
     for saveable in saveables:
       shapes = None
@@ -417,7 +417,7 @@ class BaseSaverBuilder:
   def _GroupByDevices(self, saveables):
     """Group Variable tensor slices per device.
 
-    TODO(touts): Make sure that all the devices found are on different
+    TODO(mdevin): Make sure that all the devices found are on different
     job/replica/task/cpu|gpu.  It would be bad if 2 were on the same device.
     It can happen if the devices are unspecified.
 

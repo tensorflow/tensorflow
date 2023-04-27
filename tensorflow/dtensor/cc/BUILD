@@ -116,6 +116,7 @@ cc_library(
         "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",

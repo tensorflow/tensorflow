@@ -60,7 +60,7 @@ extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.
-// TODO(irving): This will turn into std::vector<NodeInfoPtr> soon.
+// TODO(geoffreyi): This will turn into std::vector<NodeInfoPtr> soon.
 extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
                                      gtl::ArraySlice<NodeDef> nodes, Graph* g);
 

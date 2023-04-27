@@ -16,24 +16,31 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <memory>
+#include <numeric>
+#include <ostream>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -41,10 +48,30 @@ namespace xla {
 using absl::flat_hash_map;
 using absl::flat_hash_set;
 
+HeapSimulator::Chunk HeapSimulator::Chunk::FromOffsetEnd(int64_t offset,
+                                                         int64_t end) {
+  return FromOffsetSize(offset, end - offset);
+}
+
+HeapSimulator::Chunk HeapSimulator::Chunk::FromOffsetSize(int64_t offset,
+                                                          int64_t size) {
+  return Chunk(offset, size);
+}
+
+std::string HeapSimulator::Chunk::ToString() const {
+  return absl::StrCat("[", offset, ",", chunk_end(), ")");
+}
+
 bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
   CHECK_NE(size, 0);
   CHECK_NE(other_chunk.size, 0);
   return offset < other_chunk.chunk_end() && other_chunk.offset < chunk_end();
+}
+
+std::ostream& operator<<(std::ostream& stream,
+                         const HeapSimulator::Chunk& chunk) {
+  stream << chunk.ToString();
+  return stream;
 }
 
 /*static*/
@@ -551,7 +578,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
     const BufferType* buffer, int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
-    result_.chunk_map.emplace(buffer, Chunk{0, 0});
+    result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(0, 0));
     return;
   }
 
@@ -566,7 +593,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::ShareWith(
     const BufferType* buffer, const BufferType* share_with, int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
-    result_.chunk_map.emplace(buffer, Chunk{0, 0});
+    result_.chunk_map.emplace(buffer, Chunk::FromOffsetSize(0, 0));
     return;
   }
   DCHECK_NE(buffer_intervals_.count(share_with), 0);
@@ -835,6 +862,572 @@ std::string GlobalDecreasingSizeBestFitHeap<
 }
 
 template <typename BufferType>
+std::string GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::FreeChunkPiece::ToString() const {
+  return absl::StrCat("{ dimensions: ", dimensions.ToString(), ", free at: t",
+                      earliest_free_slice_time, " }");
+}
+
+template <typename BufferType>
+std::string GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::FreeChunkRoot::ToString() const {
+  return absl::StrCat(
+      "{ chunk: ", chunk.ToString(), ", pieces: { ",
+      absl::StrJoin(
+          pieces.rbegin(), pieces.rend(), ", ",
+          [](std::string* out, const auto& offset_sliced_free_chunk_pair) {
+            absl::StrAppend(out,
+                            offset_sliced_free_chunk_pair.second.ToString());
+          }),
+      " } }");
+}
+
+template <typename BufferType>
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
+    FreeChunkRoot::FreeChunkRoot(const Chunk& free_chunk,
+                                 int64_t free_chunk_slice_time)
+    : chunk(free_chunk),
+      pieces({{free_chunk.offset, {free_chunk_slice_time, free_chunk}}}) {}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
+    FreeChunkRoot::Update(const Chunk& free_chunk,
+                          int64_t free_chunk_slice_time) {
+  VLOG(4) << "Updating root " << chunk.ToString() << " with "
+          << free_chunk.ToString() << ", free at t" << free_chunk_slice_time;
+
+  // Iterate through all pieces that might overlap with free_chunk.
+  std::vector<FreeChunkPiece> new_pieces;
+  for (auto it = pieces.lower_bound(free_chunk.chunk_end() - 1);
+       it != pieces.end() &&
+       it->second.dimensions.chunk_end() >= free_chunk.offset;) {
+    const FreeChunkPiece& piece = it->second;
+    if (!free_chunk.OverlapsWith(piece.dimensions) ||
+        free_chunk_slice_time != piece.earliest_free_slice_time - 1) {
+      ++it;
+      continue;
+    }
+
+    // If free_chunk overlaps with piece and the slice time of piece is 1 before
+    // that of free_chunk, replace piece with up to 3 new pieces:
+    // - new_piece0: the part of piece that spatially comes before free_chunk
+    // - new_piece1: the part of free_chunk that overlaps with piece
+    // - new_piece2: the part of piece that spatially comes after free_chunk
+
+    if (free_chunk.offset > piece.dimensions.offset) {
+      FreeChunkPiece new_piece0(
+          {piece.earliest_free_slice_time,
+           Chunk::FromOffsetEnd(
+               piece.dimensions.offset,
+               std::min(free_chunk.offset, piece.dimensions.chunk_end()))});
+      new_pieces.push_back(new_piece0);
+    }
+
+    FreeChunkPiece new_piece1(
+        {free_chunk_slice_time,
+         Chunk::FromOffsetEnd(
+             std::max(free_chunk.offset, piece.dimensions.offset),
+             std::min(free_chunk.chunk_end(), piece.dimensions.chunk_end()))});
+    new_pieces.push_back(new_piece1);
+
+    if (free_chunk.chunk_end() < piece.dimensions.chunk_end()) {
+      FreeChunkPiece new_piece2(
+          {piece.earliest_free_slice_time,
+           Chunk::FromOffsetEnd(free_chunk.chunk_end(),
+                                piece.dimensions.chunk_end())});
+      new_pieces.push_back(new_piece2);
+    }
+    it = pieces.erase(it);
+  }
+
+  for (auto it = new_pieces.begin(); it != new_pieces.end(); ++it) {
+    pieces.insert({it->dimensions.offset, *it});
+  }
+
+  VLOG(4) << "Root after update: " << ToString();
+}
+
+namespace {
+
+// Code for rendering time_by_chunks as ascii art. Since this is for debugging,
+// we only render ascii art of certain dimensions.
+constexpr int64_t kMaxRenderOffset = 200;
+constexpr int64_t kMaxRenderSliceTime = 9;
+std::string RenderTimeByFreeChunks(
+    const std::vector<std::vector<Chunk>>& time_by_chunks) {
+  if (time_by_chunks.size() - 1 > kMaxRenderSliceTime) {
+    return "too many time slices to render";
+  }
+
+  std::vector<std::string> time_by_memory_units;
+  for (int i = 0; i < time_by_chunks.size(); ++i) {
+    // Populate each row with Xs to start.
+    time_by_memory_units.push_back(std::string(kMaxRenderOffset + 1, 'X'));
+
+    for (const Chunk& chunk : time_by_chunks[i]) {
+      if (chunk.chunk_end() > kMaxRenderOffset) {
+        return "largest offset is too large to render";
+      }
+      for (int j = chunk.offset; j < chunk.chunk_end(); ++j) {
+        // Overwrite X with a space if memory_unit j is free at slice time i.
+        time_by_memory_units[i][j] = ' ';
+      }
+    }
+  }
+
+  // Create the final ascii art lines.
+  std::vector<std::string> lines;
+  lines.push_back("   ^");
+  for (int i = time_by_memory_units.size() - 1; i >= 0; --i) {
+    lines.push_back(absl::StrCat("t", i, " |", time_by_memory_units[i]));
+  }
+  std::string yaxis = "   +";
+  for (int i = 0; i < kMaxRenderOffset + 1; ++i) {
+    if (i % 10 == 0) {
+      yaxis += "!";
+      continue;
+    }
+    if (i % 5 == 0) {
+      yaxis += "|";
+      continue;
+    }
+    yaxis += "-";
+  }
+  lines.push_back(absl::StrCat(yaxis, ">"));
+  lines.push_back("         space");
+
+  return absl::StrJoin(lines, "\n");
+}
+
+}  // namespace
+
+template <typename BufferType>
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
+    SlicedAllocationFinder(
+        absl::Span<const FreeChunks> free_chunks_per_slice_time,
+        std::vector<int64_t> sorted_slice_sizes, int64_t max_colocation_size,
+        int64_t preferred_offset, int64_t alignment)
+    : sorted_slice_sizes_(std::move(sorted_slice_sizes)),
+      slice_size_sum_(std::accumulate(sorted_slice_sizes_.begin(),
+                                      sorted_slice_sizes_.end(),
+                                      static_cast<int64_t>(0))),
+      max_colocation_size_(max_colocation_size),
+      preferred_offset_(preferred_offset),
+      alignment_(alignment) {
+  CHECK_EQ(sorted_slice_sizes_.size(), free_chunks_per_slice_time.size())
+      << "We expect a data structure explaining the free chunks at each slice "
+         "time.";
+  CHECK(!free_chunks_per_slice_time.empty())
+      << "Even an unsliced allocation is expected to have a list of free "
+         "chunks at slice time t0.";
+
+  if (VLOG_IS_ON(1)) {
+    // Create a 2d vector where each row represents a slice time and each
+    // column represents a free chunk at that slice time.
+    std::vector<std::vector<Chunk>> time_by_chunks;
+    for (int64_t i = 0; i < free_chunks_per_slice_time.size(); ++i) {
+      std::vector<Chunk> chunks;
+      for (const auto& free_chunk : free_chunks_per_slice_time[i]) {
+        chunks.push_back(
+            Chunk::FromOffsetEnd(free_chunk.first, free_chunk.second));
+      }
+      time_by_chunks.push_back(chunks);
+    }
+
+    LOG(INFO) << "Initial free space:\n"
+              << RenderTimeByFreeChunks(time_by_chunks);
+  }
+
+  if (max_colocation_size_ < slice_size_sum_) {
+    // If max_colocation_size was specified as -1 (or some other incorrect
+    // value), set it to the sum of the real slices.
+    max_colocation_size_ = slice_size_sum_;
+  }
+
+  // Build free_chunks_.
+  //
+  // Start by initializing FreeChunkRoots at LatestSliceTime().
+  for (const std::pair<const int64_t, int64_t>& free_chunk_pair :
+       free_chunks_per_slice_time.back()) {
+    free_chunks_.insert(
+        {free_chunk_pair.first,
+         FreeChunkRoot(Chunk::FromOffsetEnd(free_chunk_pair.first,
+                                            free_chunk_pair.second),
+                       LatestSliceTime())});
+  }
+  // For slice times < LatestSliceTime(), slice the space of each root according
+  // to when each subset of that root space is available.
+  for (int64_t free_chunk_slice_time = LatestSliceTime() - 1;
+       free_chunk_slice_time >= EarliestSliceTime(); --free_chunk_slice_time) {
+    // Note, free_chunks_ and free_chunks_per_slice_time[] are sorted in
+    // descending order of free chunk offsets. We simultaneously iterate through
+    // the 2 data structures, increasing the iterator for whichever one points
+    // to the greater chunk position.
+    auto it = free_chunks_.begin();
+    for (const std::pair<const int64_t, int64_t>& free_chunk_pair :
+         free_chunks_per_slice_time[free_chunk_slice_time]) {
+      Chunk free_chunk =
+          Chunk::FromOffsetEnd(free_chunk_pair.first, free_chunk_pair.second);
+
+      // Increment it while all of free_chunk < all of it.
+      for (; it != free_chunks_.end() &&
+             free_chunk.chunk_end() - 1 < it->second.chunk.offset;
+           ++it) {
+      }
+
+      if (it == free_chunks_.end()) {
+        // free_chunk (and everything remaining in
+        // free_chunks_per_slice_time[free_chunk_slice_time]) spatially come
+        // before everything in free_chunks_.
+        break;
+      }
+
+      // At this point, free_chunk and it overlap OR all of it < all of
+      // free_chunk. For example, the following diagram illustrates the
+      // relationship between the position of it and the possible positions for
+      // free_chunk (fc below):
+      //
+      //           [---- it ----)
+      //       [-fc-)..................................[-fc-)... ->
+
+      // While free_chunk and it overlap, keep iterating it and updating
+      // the root at it.
+
+      // We restore it to 1 before its last value (in the loop) because at the
+      // end of the loop it no longer overlaps with free_chunk, and it - 1
+      // may overlap with the next free_chunk as well.
+      auto previous_it = it;
+      for (; it != free_chunks_.end() &&
+             it->second.chunk.OverlapsWith(free_chunk);
+           previous_it = it, ++it) {
+        FreeChunkRoot& root = it->second;
+        root.Update(free_chunk, free_chunk_slice_time);
+      }
+      it = previous_it;
+    }
+  }
+
+  VLOG(1) << "Initial candidates:\n" << FreeChunksToAsciiArt();
+  VLOG(2) << "SlicedAllocationFinder:\n" << ToString();
+}
+
+template <typename BufferType>
+std::string GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::FreeChunksToAsciiArt() const {
+  auto it = free_chunks_.begin();
+  if (it == free_chunks_.end()) {
+    return "no candidate data";
+  }
+  int64_t final_offset = it->second.chunk.chunk_end();
+
+  if (LatestSliceTime() > kMaxRenderSliceTime ||
+      final_offset > kMaxRenderOffset) {
+    return "candidates too large to render";
+  }
+
+  std::vector<std::vector<Chunk>> time_by_chunks;
+  for (int64_t i = EarliestSliceTime(); i <= LatestSliceTime(); ++i) {
+    time_by_chunks.push_back({});
+  }
+
+  for (const std::pair<const int64_t, FreeChunkRoot>& offset_root_pair :
+       free_chunks_) {
+    for (const std::pair<const int64_t, FreeChunkPiece>& offset_piece_pair :
+         offset_root_pair.second.pieces) {
+      for (int64_t slice_time =
+               offset_piece_pair.second.earliest_free_slice_time;
+           slice_time <= LatestSliceTime(); ++slice_time) {
+        time_by_chunks[slice_time].push_back(
+            offset_piece_pair.second.dimensions);
+      }
+    }
+  }
+
+  return RenderTimeByFreeChunks(time_by_chunks);
+}
+
+template <typename BufferType>
+std::string GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::ToString() const {
+  std::vector<std::string> lines;
+
+  lines.push_back(absl::StrCat("slices:              { ",
+                               absl::StrJoin(sorted_slice_sizes_, ", "), " }"));
+  lines.push_back(absl::StrCat("max_colocation_size: ", max_colocation_size_));
+  lines.push_back(absl::StrCat("preferred_offset:    ", preferred_offset_));
+  lines.push_back("free chunks:");
+  int i = 0;
+  for (auto it = free_chunks_.rbegin(); it != free_chunks_.rend(); ++it) {
+    lines.push_back(absl::StrCat("  chunk ", i, ": ", it->second.ToString()));
+    ++i;
+  }
+
+  return absl::StrJoin(lines, "\n");
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::ChunksSortedBySliceTime
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
+    const {
+  // Check if we can place the fully allocated buffer at the preferred offset
+  if (preferred_offset_ >= 0) {
+    VLOG(2) << "SlicedAllocationFinder::Find() searching preferred offset "
+            << preferred_offset_;
+    auto it = free_chunks_.lower_bound(preferred_offset_);
+    if (it != free_chunks_.end()) {
+      const FreeChunkRoot* root = &it->second;
+      ChunksSortedBySliceTime chunks =
+          FindInRoot(*root, /*only_try_preferred_offset=*/true);
+      if (!chunks.empty()) {
+        return chunks;
+      }
+    }
+  }
+
+  // Find the smallest overall chunk that fits the allocation request
+  std::vector<const FreeChunkRoot*> root_heap;
+  for (auto it = free_chunks_.rbegin(); it != free_chunks_.rend(); ++it) {
+    root_heap.push_back(&it->second);
+  }
+  auto heap_cmp = [](const FreeChunkRoot* lhs, const FreeChunkRoot* rhs) {
+    if (lhs->chunk.size != rhs->chunk.size) {
+      return lhs->chunk.size > rhs->chunk.size;
+    }
+    return lhs->chunk.offset > rhs->chunk.offset;
+  };
+  auto heap_next = [&]() -> const FreeChunkRoot* {
+    if (root_heap.empty()) {
+      return nullptr;
+    }
+    absl::c_pop_heap(root_heap, heap_cmp);
+    const FreeChunkRoot* root = root_heap.back();
+    root_heap.pop_back();
+    return root;
+  };
+  absl::c_make_heap(root_heap, heap_cmp);
+  // Each call to heap_next() gives us the next smallest root.
+  for (const FreeChunkRoot* root = heap_next(); root != nullptr;
+       root = heap_next()) {
+    VLOG(2) << "SlicedAllocationFinder::Find() searching " << root->ToString();
+    ChunksSortedBySliceTime chunks =
+        FindInRoot(*root, /*only_try_preferred_offset=*/false);
+    if (!chunks.empty()) {
+      return chunks;
+    }
+  }
+
+  LOG(ERROR) << "We did not find a place for our sliced allocation. This "
+                "should not happen because MSA operates on an infinitely "
+                "sized heap.";
+  return {};
+}
+
+template <typename BufferType>
+Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
+    DoesPermutationFit(const std::vector<int64_t>& permutation_of_slice_times,
+                       const FreeChunkRoot& root, int64_t offset) const {
+  Status result =
+      DoesPermutationFitImpl(permutation_of_slice_times, root, offset);
+  VLOG(3) << "SlicedAllocationFinder::DoesPermutationFit\n"
+          << "  permutation of slice times: [ "
+          << absl::StrJoin(permutation_of_slice_times, ",") << " ]\n"
+          << "  offset: " << offset << "\n"
+          << "  root: " << root.ToString() << "\n"
+          << "  -> " << result;
+  return result;
+}
+
+template <typename BufferType>
+Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
+    DoesPermutationFitImpl(
+        const std::vector<int64_t>& permutation_of_slice_times,
+        const FreeChunkRoot& root, int64_t offset) const {
+  if (permutation_of_slice_times.size() != sorted_slice_sizes_.size()) {
+    return InvalidArgumentStrCat(
+        sorted_slice_sizes_.size(), " slices times expected in permutation. ",
+        permutation_of_slice_times.size(), " specified.");
+  }
+  if (offset >= root.chunk.chunk_end()) {
+    return FailedPrecondition(
+        "%s", absl::StrCat("Free chunk root ", root.chunk.ToString(),
+                           " does not overlap with offset ", offset, "."));
+  }
+  if (offset + max_colocation_size_ > root.chunk.chunk_end()) {
+    return FailedPrecondition(
+        "%s", absl::StrCat("Not enough space to fit enitre allocation [",
+                           offset, ", ", offset + max_colocation_size_,
+                           ") in free chunk root ", root.chunk.ToString()));
+  }
+
+  auto piece_fwd_it = root.pieces.lower_bound(offset);
+  if (piece_fwd_it == root.pieces.end()) {
+    return FailedPrecondition(
+        "%s", absl::StrCat("Offset ", offset, " comes before free chunk root ",
+                           root.chunk.ToString()));
+  }
+  ++piece_fwd_it;
+  auto piece_reverse_it = std::make_reverse_iterator(piece_fwd_it);
+  auto at_pieces_end = [&](auto it) { return it == root.pieces.rend(); };
+  size_t slice_index = 0;
+  auto out_of_slices = [&](size_t index) { return index > LatestSliceTime(); };
+
+  // Check to see if the slices will fit in pieces, starting at
+  // piece_reverse_it.
+  int64_t amount_of_current_slice_consumed = 0;
+  int64_t current_offset = offset;
+  while (!at_pieces_end(piece_reverse_it) && !out_of_slices(slice_index)) {
+    int64_t current_slice_time = permutation_of_slice_times[slice_index];
+    int64_t current_slice_size = sorted_slice_sizes_[slice_index];
+    int64_t remaining_in_slice =
+        current_slice_size - amount_of_current_slice_consumed;
+
+    int64_t current_piece_time =
+        piece_reverse_it->second.earliest_free_slice_time;
+    int64_t remaining_in_piece =
+        piece_reverse_it->second.dimensions.chunk_end() - current_offset;
+
+    int64_t amount_to_consume =
+        std::min(remaining_in_slice, remaining_in_piece);
+
+    if (current_piece_time > current_slice_time) {
+      // The current piece is not free far enough back in time to support the
+      // current slice.
+      return FailedPrecondition(
+          "%s",
+          absl::StrCat("At slice time t", current_slice_time, ", slice ",
+                       slice_index, " does not fit at offset ", current_offset,
+                       " in root ", root.chunk.ToString()));
+    }
+
+    if (remaining_in_slice >= remaining_in_piece) {
+      ++piece_reverse_it;
+      amount_of_current_slice_consumed += amount_to_consume;
+    }
+    if (remaining_in_slice <= remaining_in_piece) {
+      ++slice_index;
+      amount_of_current_slice_consumed = 0;
+    }
+
+    current_offset += amount_to_consume;
+  }
+
+  if (!out_of_slices(slice_index)) {
+    return InternalErrorStrCat("Ran out of space in root ",
+                               root.chunk.ToString(),
+                               " to fit slice permutation; however, we should "
+                               "have caught such a condition earlier.");
+  }
+
+  return OkStatus();
+}
+
+namespace {
+
+// An iterator for iterating through permuations of slice times.
+class SliceTimePermutationIterator {
+ public:
+  explicit SliceTimePermutationIterator(int64_t latest_slice_time)
+      : done_(latest_slice_time < 0) {
+    permutation_.reserve(latest_slice_time + 1);
+    for (int64_t i = 0; i <= latest_slice_time; ++i) {
+      permutation_.push_back(i);
+    }
+  }
+
+  bool Done() const { return done_; }
+
+  void Next() {
+    if (Done()) {
+      return;
+    }
+    done_ = !absl::c_next_permutation(permutation_);
+  }
+
+  const std::vector<int64_t>& Get() const { return permutation_; }
+
+ private:
+  bool done_ = false;
+  std::vector<int64_t> permutation_;
+};
+
+}  // namespace
+
+// Future opportunities:
+// 1) Potential optimization: We don't have to try every offset in
+//    [root.chunk.offset, root.chunk.chunk_end()). If a permutation doesn't fit
+//    at offset, it won't fit at offset + 1, unless the geometry of the free
+//    space changes at offset + 1. If we carefully choose which offsets to try,
+//    we don't have to try them all.
+// 2) Potential tuning: We don't have a specific way to prioritize 1 permutation
+//    or 1 offset over another. For example, it is likely better to place an
+//    allocation at the beginning or the end of a root, to minimize
+//    fragmentation. In the future, we may want to prioritize such
+//    considerations.
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::ChunksSortedBySliceTime
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::FindInRoot(
+    const FreeChunkRoot& root, bool only_try_preferred_offset) const {
+  int64_t first_offset = root.chunk.offset;
+  int64_t last_end = root.chunk.chunk_end();
+  if (only_try_preferred_offset) {
+    first_offset = preferred_offset_;
+    last_end = preferred_offset_ + max_colocation_size_;
+    if (preferred_offset_ % alignment_ != 0) {
+      return {};
+    }
+  } else if (first_offset % alignment_ != 0) {
+    first_offset = first_offset + (alignment_ - (first_offset % alignment_));
+  }
+  CHECK_EQ(first_offset % alignment_, 0);
+  for (int64_t offset = first_offset; offset + max_colocation_size_ <= last_end;
+       offset += alignment_) {
+    for (SliceTimePermutationIterator permutation_it(LatestSliceTime());
+         !permutation_it.Done(); permutation_it.Next()) {
+      if (DoesPermutationFit(permutation_it.Get(), root, offset).ok()) {
+        return PermutationToChunks(permutation_it.Get(), offset);
+      }
+    }
+
+    // Optimization: We can skip checking other offsets if the root
+    // represents the same space at all slice times. In such a case, if we
+    // don't fit at the first offset, we won't fit at any offset.
+    if (root.pieces.size() == 1) {
+      break;
+    }
+  }
+
+  return {};
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedAllocationFinder::ChunksSortedBySliceTime
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
+    PermutationToChunks(const std::vector<int64_t>& permutation_of_slice_times,
+                        int64_t offset) const {
+  ChunksSortedBySliceTime chunks(permutation_of_slice_times.size() + 1,
+                                 Chunk::FromOffsetSize(-1, 1));
+  int64_t current_offset = offset;
+  for (int64_t slice_index = 0; slice_index <= LatestSliceTime();
+       ++slice_index) {
+    int64_t size = sorted_slice_sizes_[slice_index];
+    chunks[permutation_of_slice_times[slice_index]] =
+        Chunk::FromOffsetSize(current_offset, size);
+    current_offset += size;
+  }
+  chunks.back() = Chunk::FromOffsetSize(
+      current_offset, max_colocation_size_ - (current_offset - offset));
+
+  DCHECK(std::all_of(chunks.begin(), chunks.end(), [](const Chunk& chunk) {
+    return chunk.offset >= 0 && chunk.size >= 0;
+  }));
+
+  return chunks;
+}
+
+template <typename BufferType>
 HeapSimulator::Result<BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
@@ -883,57 +1476,14 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
 }
 
 template <typename BufferType>
-std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
-GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
-    const SlicedBufferInterval& sliced_buffer_interval,
-    int64_t preferred_offset) const {
-  const BufferInterval& buffer_interval =
-      sliced_buffer_interval.full_buffer_interval;
-  // TODO(b/275905276): changes this method to account for slicing and remove
-  // the following check
-  CHECK(sliced_buffer_interval.sorted_slices.empty())
-      << "Chunk slicing is not yet supported.";
-
-  VLOG(1) << "Finding chunks for sliced buffer interval: "
-          << sliced_buffer_interval.ToString();
-
-  // Get all colocated buffers and gather all interferenced chunks.
-  //
-  // Imagine that we've already allocated three chunks : a, b and c.  And now
-  // we want to allocate d. Since e is colocated with d, we have to allocate
-  // chunks for them together at the same address. To do this, we first gather
-  // all chunks that overlap with d and e on the time dimension, in this case
-  // the overlapped chunks are a and b (c doesn't overlap with either of d and
-  // e), then find create a new chunk that doesn't overlap with a and b on the
-  // space dimension.
-  //
-  // space
-  //   ^
-  //   |+--d---+      +---e---+
-  //   |
-  //   |+---+  +---------------+  +-------+
-  //   ||   |  |               |  |       |
-  //   ||   |  |               |  |       |
-  //   |+-a-+  +-------b-------+  +---c---+
-  //   ----------------------------------------> time
-
-  // TODO(b/275905276): when slicing, build free_chunks for each consecutive
-  // slice time, where slice time is logical time.
-
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::FreeChunks
+GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
+    const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
   // Map free chunk offsets -> ends.
   // We use `greater` for the comparison so that we can use `lower_bound` to
   // find the largest key less than or equal to the lookup value.
-  absl::btree_map<int64_t, int64_t, std::greater<int64_t>> free_chunks{
+  FreeChunks free_chunks{
       {0, INT64_MAX}};  // Initialize with "infinite" free memory.
-
-  // Find the max size of interval across its colocations and use this value to
-  // determine whether the buffer will fit in the heap.
-  int64_t max_colocation_size = buffer_interval.size;
-  for (const BufferType* colocation :
-       GetTransitiveColocations(buffer_interval)) {
-    max_colocation_size =
-        std::max(max_colocation_size, buffer_intervals_.at(colocation).size);
-  }
 
   // Subtract chunks that are in use from the free chunks.
   auto subtract_used_chunks = [&](const std::vector<Chunk>& used_chunks) {
@@ -952,7 +1502,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
         if (used_chunk.offset - it_start->first >= buffer_interval.size) {
           it_start->second = std::min(it_start->second, used_chunk.offset);
         } else {
-          ++it_start;  // Increment iterator so that this entry is erased below.
+          ++it_start;  // Increment iterator so that this entry is erased
+                       // below.
         }
       }
 
@@ -982,12 +1533,45 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
         interval_tree_.ChunksOverlappingInTime(interval.start, interval.end));
   }
 
+  return free_chunks;
+}
+
+template <typename BufferType>
+std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
+GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
+    const SlicedBufferInterval& sliced_buffer_interval,
+    int64_t preferred_offset) const {
+  const BufferInterval& buffer_interval =
+      sliced_buffer_interval.full_buffer_interval;
+  // TODO(b/275905276): changes this method to account for slicing and remove
+  // the following check
+  CHECK(sliced_buffer_interval.sorted_slices.empty())
+      << "Chunk slicing is not yet supported.";
+
+  VLOG(1) << "Finding chunks for sliced buffer interval: "
+          << sliced_buffer_interval.ToString();
+
+  // Find the max size of interval across its colocations and use this value
+  // to determine whether the buffer will fit in the heap.
+  int64_t max_colocation_size = buffer_interval.size;
+  for (const BufferType* colocation :
+       GetTransitiveColocations(buffer_interval)) {
+    max_colocation_size =
+        std::max(max_colocation_size, buffer_intervals_.at(colocation).size);
+  }
+
+  // Get all colocated buffers and gather all interferenced chunks.
+  FreeChunks free_chunks = MakeFreeChunks(buffer_interval, max_colocation_size);
+
+  // TODO(b/275905276): when slicing, build free_chunks for each consecutive
+  // slice time, where slice time is logical time.
+
   // TODO(b/275905276): when slicing, merge the free_chunks for each slice time.
-  // The end result should be a list of free chunks in which buffer_interval
-  // not only fits in each free chunk, but the slices of buffer interval can
-  // be allocated according to their requirements.
-  // Try to find a large enough free chunk containing the preferred offset.
-  Chunk chunk{preferred_offset, max_colocation_size};
+  // The end result should be a list of free chunks in which buffer_interval not
+  // only fits in each free chunk, but the slices of buffer interval can be
+  // allocated according to their requirements. Try to find a large enough free
+  // chunk containing the preferred offset.
+  Chunk chunk = Chunk::FromOffsetSize(preferred_offset, max_colocation_size);
   auto it = (preferred_offset < 0) ? free_chunks.end()
                                    : free_chunks.lower_bound(preferred_offset);
   if (it == free_chunks.end() || (it->second < chunk.chunk_end())) {
@@ -1019,7 +1603,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     auto colocation_interval = buffer_intervals_[colocation];
     // Create a colocation chunk with the same offset but with the correct size
     // of the colocated interval in case the colocations are of different sizes.
-    Chunk colocation_chunk{chunk.offset, colocation_interval.size};
+    Chunk colocation_chunk =
+        Chunk::FromOffsetSize(chunk.offset, colocation_interval.size);
     AddToChunkMap(colocation, colocation_chunk);
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
                        colocation_chunk);

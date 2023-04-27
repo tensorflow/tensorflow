@@ -22,19 +22,38 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -51,6 +70,7 @@ XlaCompiler::CompileOptions GetCompileOptions(bool for_pjrt = false) {
   compile_options.always_return_tuple = false;
   if (for_pjrt) {
     compile_options.use_tuple_arg = false;
+    compile_options.always_return_tuple = true;
   }
 
   return compile_options;
@@ -232,7 +252,11 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   std::vector<int> variable_indices =
       GetResourceVariableIndicesFromContext(ctx);
 
-  if (UsePjRtForSingleDeviceCompilation()) {
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()
+          ->tf_xla_use_device_api.IsEnabledInXlaCompileOnDemandForDevice(
+              platform_info_.device_type());
+  if (use_pjrt) {
     std::vector<VariableInfo> variables;
     std::vector<XlaCompiler::Argument> args;
     // Lock variables for the whole duration of compile + execute.

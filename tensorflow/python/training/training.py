@@ -116,7 +116,7 @@ from tensorflow.core.example.example_pb2 import *
 from tensorflow.core.example.feature_pb2 import *
 from tensorflow.core.protobuf.saver_pb2 import *
 
-# Utility op.  Open Source. TODO(touts): move to nn?
+# Utility op.  Open Source. TODO(mdevin): move to nn?
 from tensorflow.python.training.learning_rate_decay import *
 # pylint: enable=wildcard-import
 

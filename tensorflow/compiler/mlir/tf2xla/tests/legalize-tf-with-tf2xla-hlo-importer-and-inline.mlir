@@ -477,4 +477,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0: tensor<2xi1>
   }
 
+  // CHECK-LABEL: batchmatmulv2
+  func.func @batchmatmulv2(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
+    // CHECK: mhlo.reduce
+    // CHECK: mhlo.dot_general
+    // CHECK: mhlo.transpose
+    %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+    func.return %0 : tensor<3x4x4xf32>
+  }
+
 }

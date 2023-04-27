@@ -66,7 +66,7 @@ py_strict_library(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/framework:tensor_conversion",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -207,7 +207,7 @@ py_strict_library(
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/module",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:data_structures",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",

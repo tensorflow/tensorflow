@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/python/eager:executor",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
@@ -131,7 +132,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
@@ -143,6 +143,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:training_lib",
     ],
 )
@@ -195,6 +196,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 

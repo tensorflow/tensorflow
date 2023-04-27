@@ -112,9 +112,10 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 
   // Initialize (with memoization) BlasSupport here because cublasCreate fails
   // during cuda graph capturing.
-  // TODO(b/272559361): The initialization should be conditional.
-  if (!executor->AsBlas()) {
-    return absl::InternalError("Failed to initialize BLAS support");
+  if (function_ref.RequiresBlas()) {
+    if (!executor->AsBlas()) {
+      return absl::InternalError("Failed to initialize BLAS support");
+    }
   }
 
   StatusOr<StreamPool::Ptr> capture_stream =

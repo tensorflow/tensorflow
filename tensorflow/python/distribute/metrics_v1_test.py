@@ -88,7 +88,7 @@ def tpu_combinations():
       mode=["graph"])
 
 
-# TODO(josh11b): Test metrics.recall_at_top_k, metrics.average_precision_at_k,
+# TODO(joshl): Test metrics.recall_at_top_k, metrics.average_precision_at_k,
 # metrics.precision_at_k
 class MetricsV1Test(test.TestCase, parameterized.TestCase):
 
@@ -115,7 +115,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
         value, update = distribution.extended.call_for_each_replica(
             metric_fn, args=(iterator.get_next(),))
         update = distribution.group(update)
-        # TODO(josh11b): Once we switch to using a global batch size for input,
+        # TODO(joshl): Once we switch to using a global batch size for input,
         # replace "distribution.num_replicas_in_sync" with "1".
         batches_per_update = distribution.num_replicas_in_sync
 

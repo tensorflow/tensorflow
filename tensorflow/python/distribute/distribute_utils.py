@@ -23,7 +23,7 @@ from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.reduce_util import ReduceOp
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -339,10 +339,10 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
   # Ignore user-specified caching device, not needed for mirrored variables.
   kwargs.pop("caching_device", None)
 
-  # TODO(josh11b,apassos): It would be better if variable initialization
+  # TODO(joshl,apassos): It would be better if variable initialization
   # was never recorded on the tape instead of having to do this manually
   # here.
-  with tape.stop_recording():
+  with record.stop_recording():
     value_list = real_mirrored_creator(**kwargs)
     # MirroredVariable is recreated during saved_model loading, and its
     # component variables (value_list) will have None initializer. We

@@ -647,7 +647,7 @@ static StatusOr<Operation*> BuildSparseConstOp(
   }
   std::vector<char> dense_buffer(
       value_type.getElementType().getIntOrFloatBitWidth() / CHAR_BIT);
-  mlir::Attribute dummy_value =
+  mlir::TypedAttr dummy_value =
       mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(value_type,
                                                        dense_buffer);
 

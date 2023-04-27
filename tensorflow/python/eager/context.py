@@ -1452,7 +1452,8 @@ class Context:
         )
     )
 
-    if cancellation.context() is None:
+    cancellation_context = cancellation.context()
+    if cancellation_context is None:
       outputs = execute.execute(
           name.decode("utf-8"),
           num_outputs=num_outputs,
@@ -1467,7 +1468,7 @@ class Context:
           inputs=tensor_inputs,
           attrs=attrs,
           ctx=self,
-          cancellation_manager=cancellation.context(),
+          cancellation_manager=cancellation_context,
       )
     # Empty list means no function outputs so return None
     outputs = outputs or None

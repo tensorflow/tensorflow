@@ -171,7 +171,7 @@ struct SparseXentEigenImpl {
                       typename TTypes<T>::Vec scratch,
                       typename TTypes<T>::Vec loss,
                       typename TTypes<T>::Matrix backprop) {
-    // NOTE(touts): This duplicates some of the computations in softmax_op
+    // NOTE(mdevin): This duplicates some of the computations in softmax_op
     // because we need the intermediate (logits -max(logits)) values to
     // avoid a log(exp()) in the computation of the loss.
 

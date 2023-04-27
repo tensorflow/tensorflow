@@ -89,16 +89,14 @@ void CreateData(std::vector<FlatBufferBuilder> benchmark_events,
 
   std::vector<uint8_t> data;
   data.reserve(kPerBenchmarkEventSize * benchmark_events.size());
-  auto cur = data.begin();
   for (auto& event_data : benchmark_events) {
     FlatBufferBuilder fbb;
     tflite::BenchmarkEventT event_obj;
     flatbuffers::GetRoot<tflite::BenchmarkEvent>(event_data.GetBufferPointer())
         ->UnPackTo(&event_obj);
     fbb.FinishSizePrefixed(CreateBenchmarkEvent(fbb, &event_obj));
-    data.insert(cur, fbb.GetBufferPointer(),
+    data.insert(data.end(), fbb.GetBufferPointer(),
                 fbb.GetBufferPointer() + fbb.GetSize());
-    std::advance(cur, fbb.GetSize());
   }
   minibenchmark_result.flatbuffer_data = new uint8_t[data.size()];
   minibenchmark_result.flatbuffer_data_size = data.size();

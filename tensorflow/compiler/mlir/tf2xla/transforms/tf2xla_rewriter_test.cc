@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -29,6 +30,8 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -56,10 +59,11 @@ using ::mlir::Operation;
 using ::mlir::func::FuncOp;
 using ::tsl::Status;
 using ::tsl::StatusOr;
-using xla::ReplicaGroup;
+using ::xla::ReplicaGroup;
 using ::xla::ShapeUtil;
 using ::xla::XlaBuilder;
 using ::xla::XlaComputation;
+using ::xla::XlaOp;
 
 static constexpr char kMlirModuleStr[] = R"(
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
@@ -71,9 +75,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 XlaComputation GetTestXlaComputation() {
   XlaBuilder xla_builder("test");
-  xla::Add(xla::ConstantR0<float>(&xla_builder, 1.0),
-           xla::ConstantR0<float>(&xla_builder, 2.0));
+  XlaOp add = xla::Add(xla::ConstantR0<float>(&xla_builder, 1.0),
+                       xla::ConstantR0<float>(&xla_builder, 2.0));
 
+  std::vector<XlaOp> tuple_values;
+  tuple_values.push_back(add);
+
+  xla::Tuple(&xla_builder, tuple_values);
   return xla_builder.Build().value();
 }
 
@@ -95,16 +103,9 @@ class Tf2XlaRewriterTestPeer {
                          /*is_module_pass=*/false,
                          /*use_tf2xla_hlo_importer=*/true) {}
 
-  StatusOr<FuncOp> ImportXlaComputationIntoModule(XlaComputation& computation) {
+  tsl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
+      XlaComputation& computation) {
     return tf2xla_rewriter_.ImportXlaComputation(computation);
-  }
-
-  Status UnpackTupleFromFunction(FuncOp func_op) {
-    if (failed(tf2xla_rewriter_.UnpackTupleResults(func_op))) {
-      return tsl::errors::Internal("Couldn't unpack tuple results");
-    }
-
-    return tsl::OkStatus();
   }
 
  private:
@@ -146,13 +147,32 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  Status LegalizeModuleWithSingleOp(
-      bool use_tf2xla_hlo_importer,
-      std::string module_string = kMlirModuleStr) {
+  Status LegalizeModule(bool use_tf2xla_hlo_importer,
+                        std::string module_string = kMlirModuleStr) {
     TF_EXPECT_OK(CreateMlirModule(module_string));
+    FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
+    if (!main) {
+      return tsl::errors::InvalidArgument("Could not find a main function");
+    }
 
-    Operation& first_op = GetFirstOpFromMain();
-    return LegalizeSingleOp(use_tf2xla_hlo_importer, first_op);
+    WalkResult walk_result = main.walk([&](Operation* op) {
+      if (op->getDialect()->getNamespace() !=
+          TF::TensorFlowDialect::getDialectNamespace()) {
+        return WalkResult::advance();
+      }
+
+      if (!LegalizeSingleOp(use_tf2xla_hlo_importer, *op).ok()) {
+        return WalkResult::interrupt();
+      }
+
+      return WalkResult::advance();
+    });
+
+    if (walk_result.wasInterrupted()) {
+      return tsl::errors::Internal("Could not legalize all ops");
+    }
+
+    return tsl::OkStatus();
   }
 
   mlir::func::FuncOp GetMainFunc() {
@@ -167,7 +187,8 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return main_func.getBody().front().front();
   }
 
-  StatusOr<FuncOp> ImportXlaComputationIntoModule(XlaComputation& computation) {
+  StatusOr<TupleOp> ImportXlaComputationIntoModule(
+      XlaComputation& computation) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
     mlir::Operation& first_op = GetFirstOpFromMain();
@@ -183,11 +204,16 @@ class Tf2XlaRewriterTest : public ::testing::Test {
 };
 
 TEST_F(Tf2XlaRewriterTest, LegalizesOp) {
-  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/false));
+  TF_EXPECT_OK(LegalizeModule(/*use_tf2xla_hlo_importer=*/false));
 }
 
 TEST_F(Tf2XlaRewriterTest, LegalizesOpWithTf2xlaHloImporter) {
-  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/true));
+  TF_EXPECT_OK(LegalizeModule(/*use_tf2xla_hlo_importer=*/true));
+
+  int num_tuple_ops = 0;
+  module_->walk([&num_tuple_ops](TupleOp tuple_op) { num_tuple_ops += 1; });
+
+  EXPECT_EQ(num_tuple_ops, 0);
 }
 
 TEST_F(Tf2XlaRewriterTest, ImportsXlaComputationIntoModule) {
@@ -195,23 +221,23 @@ TEST_F(Tf2XlaRewriterTest, ImportsXlaComputationIntoModule) {
 
   XlaComputation computation = GetTestXlaComputation();
 
-  TF_ASSERT_OK_AND_ASSIGN(FuncOp translated_function,
+  TF_ASSERT_OK_AND_ASSIGN(TupleOp root_tuple,
                           ImportXlaComputationIntoModule(computation));
 
-  EXPECT_TRUE(module_->lookupSymbol(computation.name()));
-  EXPECT_EQ(translated_function.getName(), computation.name());
+  ModuleOp parent_module =
+      root_tuple.getOperation()->getParentOfType<ModuleOp>();
+  EXPECT_EQ(parent_module, *module_);
 }
 
-TEST_F(Tf2XlaRewriterTest, ReturnsMultipleValues) {
-  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/true));
+TEST_F(Tf2XlaRewriterTest, FailsWithoutRootTuple) {
+  TF_ASSERT_OK(CreateMlirModule());
 
-  FuncOp expected_generated_function =
-      module_->lookupSymbol<mlir::func::FuncOp>(
-          "tf2xla_rewriter.tf.Unpack.9.0");
+  XlaBuilder xla_builder("test_fail");
+  xla::Add(xla::ConstantR0<float>(&xla_builder, 1.0),
+           xla::ConstantR0<float>(&xla_builder, 2.0));
+  XlaComputation bad_computation = xla_builder.Build().value();
 
-  EXPECT_TRUE(expected_generated_function);
-  EXPECT_EQ(expected_generated_function.getNumResults(),
-            GetFirstOpFromMain().getNumResults());
+  EXPECT_FALSE(ImportXlaComputationIntoModule(bad_computation).ok());
 }
 
 TEST_F(Tf2XlaRewriterTest, ImportsSingleComputation) {
@@ -230,22 +256,27 @@ TEST_F(Tf2XlaRewriterTest, ImportsSingleComputation) {
   ReplicaGroup group;
   group.add_replica_ids(0);
   group.add_replica_ids(1);
-  ReduceScatter(x, to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
-                /*replica_groups=*/{group});
+  XlaOp reduce_scatter =
+      ReduceScatter(x, to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
+                    /*replica_groups=*/{group});
+
+  std::vector<XlaOp> tuple_values;
+  tuple_values.push_back(reduce_scatter);
+  xla::Tuple(&builder, tuple_values);
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
   EXPECT_EQ(computation.proto().computations_size(), 2);
 
   TF_ASSERT_OK(CreateMlirModule());
-  TF_ASSERT_OK_AND_ASSIGN(FuncOp translated_function,
+  TF_ASSERT_OK_AND_ASSIGN(TupleOp root_tuple,
                           ImportXlaComputationIntoModule(computation));
-  EXPECT_TRUE(translated_function);
+  EXPECT_TRUE(root_tuple);
 
   int num_func_ops = 0;
   module_->walk([&num_func_ops](func::FuncOp func_op) { num_func_ops++; });
 
-  // 2 because we have one from the existing module_ and one that's inserted.
-  EXPECT_EQ(num_func_ops, 2);
+  // Ensure that only a single computation was imported.
+  EXPECT_EQ(num_func_ops, 1);
 }
 
 TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
@@ -258,45 +289,11 @@ TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
     }
   })";
 
-  TF_ASSERT_OK(CreateMlirModule(kModuleWithConstParam));
-  func::FuncOp main_func = GetMainFunc();
-
-  // NOTE: Extra wonkiness here. LLVM returns an iterator and hold references to
-  // the op here. However, we're testing a rewriter and replace the original op
-  // with a call op. The original op that we have a reference to via the getOps
-  // is a use after free. To get around that, we clone the op, lose the ref to
-  // it and convert the cloned op instead. For purposes of just this test,
-  // it's fine, but this is bad.
-  int atan_op_count = 0;
-  for (auto atan_op : main_func.getOps<TF::Atan2Op>()) {
-    atan_op_count++;
-    mlir::Operation* cloned_op = atan_op->clone();
-
-    OpBuilder builder(atan_op);
-    builder.insert(cloned_op);
-
-    TF_ASSERT_OK(
-        LegalizeSingleOp(/*use_tf2xla_hlo_importer=*/true, *cloned_op));
-  }
-
-  EXPECT_EQ(atan_op_count, 1);
-
-  FuncOp expected_generated_function =
-      module_->lookupSymbol<mlir::func::FuncOp>("tf2xla_rewriter.tf.Atan2.9.0");
-
-  EXPECT_TRUE(expected_generated_function);
-  EXPECT_EQ(expected_generated_function.getNumArguments(), 2);
-
-  EXPECT_TRUE(expected_generated_function.getArgument(1).getUses().empty());
-  EXPECT_FALSE(expected_generated_function.getArgument(0).getUses().empty());
-
-  mhlo::ConstantOp const_op = llvm::dyn_cast<mhlo::ConstantOp>(
-      expected_generated_function.getBody().front().front());
-  EXPECT_TRUE(const_op);
-  EXPECT_EQ(const_op.getValue().getSplatValue<float>(), 1.42f);
+  TF_ASSERT_OK(
+      LegalizeModule(/*use_tf2xla_hlo_importer=*/true, kModuleWithConstParam));
 }
 
-TEST_F(Tf2XlaRewriterTest, ImportsPrivateFunctions) {
+TEST_F(Tf2XlaRewriterTest, DISABLED_ImportsPrivateFunctions) {
   XlaBuilder builder("test_builder");
   XlaComputation to_apply;
   {
@@ -310,69 +307,19 @@ TEST_F(Tf2XlaRewriterTest, ImportsPrivateFunctions) {
   }
   auto a = Parameter(&builder, 0, ShapeUtil::MakeScalarShape(xla::F32), "a");
   auto b = Parameter(&builder, 1, ShapeUtil::MakeScalarShape(xla::F32), "b");
-  xla::Call(&builder, to_apply, {a, b});
+  XlaOp call_op = xla::Call(&builder, to_apply, {a, b});
+
+  std::vector<XlaOp> tuple_values;
+  tuple_values.push_back(call_op);
+  xla::Tuple(&builder, tuple_values);
+
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
   EXPECT_EQ(computation.proto().computations_size(), 2);
 
   TF_ASSERT_OK(CreateMlirModule());
-  TF_ASSERT_OK_AND_ASSIGN(FuncOp generated_function,
+  TF_ASSERT_OK_AND_ASSIGN(TupleOp root_tuple,
                           ImportXlaComputationIntoModule(computation));
-
-  EXPECT_TRUE(generated_function);
-
-  int num_func_ops = 0;
-  bool has_private_function = false;
-  module_->walk([&num_func_ops, &has_private_function](func::FuncOp func_op) {
-    num_func_ops++;
-    has_private_function &= func_op.isPrivate();
-  });
-
-  EXPECT_EQ(num_func_ops, 3);
-  EXPECT_FALSE(has_private_function);
-}
-
-TEST_F(Tf2XlaRewriterTest, ErasesTupleOpFromMultipleReturnValues) {
-  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/true));
-
-  FuncOp expected_generated_function =
-      module_->lookupSymbol<mlir::func::FuncOp>(
-          "tf2xla_rewriter.tf.Unpack.9.0");
-  ASSERT_TRUE(expected_generated_function);
-
-  EXPECT_TRUE(expected_generated_function.getOps<mhlo::TupleOp>().empty());
-}
-
-TEST_F(Tf2XlaRewriterTest, FailsUnpackingModuleWithoutTuple) {
-  TF_ASSERT_OK(CreateMlirModule());
-
-  FuncOp funcOp = GetFirstOpFromMain().getParentOfType<FuncOp>();
-  ASSERT_TRUE(funcOp);
-
-  Tf2XlaRewriterTestPeer test_peer(funcOp.getOperation());
-  EXPECT_FALSE(test_peer.UnpackTupleFromFunction(funcOp).ok());
-}
-
-TEST(UnpackingModuleTest, FailsUnpackingModuleWithMultipleReturnValues) {
-  static constexpr char kMlirModuleStr[] = R"(
-  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
-    func.func @main(%arg0: tensor<3xi64>) -> (tensor<1xi64>, tensor<i64>) {
-      %0 = "mhlo.slice"(%arg0) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<3xi64>) -> tensor<1xi64>
-      %1 = mhlo.reshape %0 : (tensor<1xi64>) -> tensor<i64>
-      return %0, %1 : tensor<1xi64>, tensor<i64>
-    }
-  })";
-
-  MLIRContext context;
-  TF_ASSERT_OK_AND_ASSIGN(
-      OwningOpRef<ModuleOp> module,
-      test::GetMlirModuleFromString(kMlirModuleStr, &context));
-
-  mlir::func::FuncOp main_func =
-      module->lookupSymbol<mlir::func::FuncOp>("main");
-  ASSERT_TRUE(main_func);
-
-  Tf2XlaRewriterTestPeer test_peer(main_func.getOperation());
-  EXPECT_FALSE(test_peer.UnpackTupleFromFunction(main_func).ok());
+  EXPECT_TRUE(root_tuple);
 }
 
 }  // namespace mhlo

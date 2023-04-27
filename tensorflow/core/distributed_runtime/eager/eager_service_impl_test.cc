@@ -51,7 +51,7 @@ namespace {
 
 class TestEagerServiceImpl : public EagerServiceImpl {
  public:
-  explicit TestEagerServiceImpl(const WorkerEnv* env) : EagerServiceImpl(env) {}
+  explicit TestEagerServiceImpl(WorkerEnv* env) : EagerServiceImpl(env) {}
   Status GetEagerContext(const uint64 context_id, EagerContext** ctx) {
     ServerContext* context = nullptr;
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
@@ -164,7 +164,6 @@ class EagerServiceImplTest : public ::testing::Test {
 
     device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
-    worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
   }
 
@@ -172,7 +171,7 @@ class EagerServiceImplTest : public ::testing::Test {
   WorkerEnv worker_env_;
   tensorflow::RpcRendezvousMgr rendezvous_mgr_;
   std::unique_ptr<SessionMgr> session_mgr_;
-  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> device_mgr_;
 };
 
 void SetTensorProto(TensorProto* tensor_proto) {
@@ -790,8 +789,9 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         /*session_metadata=*/nullptr,
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-          *r = worker_env_.rendezvous_mgr->Find(step_id).release();
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              worker_env_.rendezvous_mgr->Find(step_id).release());
           return OkStatus();
         }});
   }
@@ -1230,13 +1230,15 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
 
 // Test requests sent to the eager service on master.
 TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
-  tensorflow::Rendezvous* rendezvous =
-      new tensorflow::IntraProcessRendezvous(device_mgr_.get());
+  tsl::core::RefCountPtr<tensorflow::Rendezvous> rendezvous =
+      tsl::core::RefCountPtr<tensorflow::Rendezvous>(
+          new tensorflow::IntraProcessRendezvous(device_mgr_.get()));
   // Create a master eager context.
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, device_mgr_.get(), false, rendezvous, nullptr, nullptr,
+      /*async=*/false, device_mgr_.get(), false, std::move(rendezvous), nullptr,
+      nullptr,
       /*run_eager_op_as_function=*/true);
   const uint64 context_id = random::New64();
 

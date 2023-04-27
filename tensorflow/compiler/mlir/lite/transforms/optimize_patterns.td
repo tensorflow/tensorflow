@@ -25,12 +25,12 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getType().getElementType().isF32()">,
+  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">,
         "32 bit float constant tensor">;
 
 // Checks if the param passed is a float ElementsAttr.
 def FloatElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getType().getElementType().isa<FloatType>()">,
+  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getShapedType().getElementType().isa<FloatType>()">,
         "float constant tensor">;
 
 // Checks if the param passed is of NoneType.
@@ -56,6 +56,8 @@ class HasRank<int n> : Constraint<
 
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
+
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 def HasSameStaticShapes : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "

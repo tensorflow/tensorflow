@@ -1032,6 +1032,7 @@ package_group(
         "//third_party/py/gldm/...",
         "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
+        "//waymo/ml/cn/...",
     ],
 )
 

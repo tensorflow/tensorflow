@@ -347,10 +347,16 @@ cc_library(
         ":pjrt_device_compiler_client",
         ":xla_device_compiler_client",
         ":xla_device_context",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "//tensorflow/core/tfrt/common:pjrt_util",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
 )
@@ -396,9 +402,11 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_graph",
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -411,12 +419,11 @@ cc_library(
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:dump_graph",
-        "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -577,6 +584,7 @@ tf_cc_test(
         "xla_compile_util_test.cc",
     ],
     deps = [
+        ":flags_headers",
         ":xla_compile_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:test_main",
@@ -724,6 +732,8 @@ cc_library(
     name = "xla_kernel_creator",
     srcs = [
         "xla_kernel_creator.cc",
+    ],
+    hdrs = [
         "xla_kernel_creator.h",
     ],
     visibility = [

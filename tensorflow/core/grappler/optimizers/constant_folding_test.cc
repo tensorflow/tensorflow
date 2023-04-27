@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <string>
+
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -4301,6 +4305,102 @@ TEST_F(ConstantFoldingTest, QuantizationEmulation) {
     std::vector<Tensor> actual_tensors = EvaluateNodes(output, item.fetch);
     for (int i = 0; i < item.fetch.size(); ++i) {
       test::ExpectTensorEqual<float>(expected_tensors[i], actual_tensors[i]);
+    }
+  }
+}
+
+static void add_full_type(GrapplerItem& item, std::string node_name) {
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    NodeDef* node = item.graph.mutable_node(i);
+    if (node->name() == node_name) {
+      FullTypeDef t;
+      t.set_type_id(TFT_PRODUCT);
+      t.add_args()->set_type_id(TFT_TENSOR);
+      t.mutable_args(0)->add_args()->set_type_id(TFT_FLOAT);
+      *node->mutable_experimental_type() = t;
+      break;
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, RedundantVariableUpdateAddZeroToVar) {
+  // Adding zeros to a variable should be changed to Identity
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output var = ops::Variable(scope.WithOpName("var"), {2, 2}, DT_FLOAT);
+  Output zeros = ops::Const(scope.WithOpName("zeros_const"), 0.0f, {2, 2});
+  Output b = ops::AssignAdd(scope.WithOpName("assign_add"), var, zeros);
+
+  GrapplerItem item;
+  item.fetch = {"assign_add"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  // Add full type information to the node that will be converted to an Identity
+  add_full_type(item, "assign_add");
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef got;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("var", "VariableV2", {}, {}, &want);
+  AddNode("zeros_const", "Const", {}, {}, &want);
+  AddNode("assign_add", "Identity", {"var", "^zeros_const"}, {}, &want);
+
+  CompareGraphs(want, got);
+  TF_EXPECT_OK(status);
+
+  for (int i = 0; i < got.node_size(); ++i) {
+    const NodeDef& node = got.node(i);
+    if (node.name() == "assign_add") {  // now an Identity
+      FullTypeDef t1 = node.experimental_type();
+      EXPECT_EQ(t1.type_id(), TFT_PRODUCT);
+      EXPECT_EQ(t1.args_size(), 1);
+      FullTypeDef t2 = t1.args(0);
+      EXPECT_EQ(t2.type_id(), TFT_TENSOR);
+      EXPECT_EQ(t2.args_size(), 1);
+      FullTypeDef t3 = t1.args(0).args(0);
+      EXPECT_EQ(t3.type_id(), TFT_FLOAT);
+      EXPECT_EQ(t3.args_size(), 0);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, RedundantVariableUpdateAddZerosToHandle) {
+  // Adding zeros to a variable handle should be changed to NoOp
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output handle =
+      ops::VarHandleOp(scope.WithOpName("handle"), DT_FLOAT, {2, 2});
+  Output zeros = ops::Const(scope.WithOpName("zeros_const"), 0.0f, {2, 2});
+  auto b = ops::AssignAddVariableOp(scope.WithOpName("assign_add_var"), handle,
+                                    zeros);
+
+  GrapplerItem item;
+  item.fetch = {"assign_add_var"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  // Add full type information to the node that will be converted to a NoOp
+  add_full_type(item, "assign_add_var");
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef got;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("handle", "VarHandleOp", {}, {}, &want);
+  AddNode("zeros_const", "Const", {}, {}, &want);
+  AddNode("assign_add_var", "NoOp", {"^handle", "^zeros_const"}, {}, &want);
+
+  CompareGraphs(want, got);
+  TF_EXPECT_OK(status);
+
+  for (int i = 0; i < got.node_size(); ++i) {
+    const NodeDef& node = got.node(i);
+    if (node.name() == "assign_add_var") {  // now a NoOp
+      FullTypeDef t = node.experimental_type();
+      EXPECT_TRUE((t.type_id() == TFT_UNSET) ||
+                  ((t.type_id() == TFT_PRODUCT) && (t.args_size() == 0)));
     }
   }
 }

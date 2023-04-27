@@ -293,12 +293,10 @@ Status MlirBridgePass::Run(const std::string& function_name,
     }
     VLOG(1) << "Running MLIR TPU Bridge";
     mlir_bridge_gauge_v2->GetCell()->Set(true);
-    return mlir::TFTPU::TPUBridge(module,
-                                  /*enable_logging=*/VLOG_IS_ON(1),
-                                  fallback_enabled, function_name);
+    return mlir::TFTPU::TPUBridge(module, fallback_enabled, function_name);
   }
   VLOG(1) << "Running MLIR CPU/GPU Bridge";
-  return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1), function_name);
+  return mlir::TF::RunTFXLABridge(module, function_name);
 }
 
 MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
@@ -392,8 +390,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   mlir_bridge_gauge_v1->GetCell()->Set(true);
 
-  return mlir::TFTPU::TPUBridgeV1Compat(
-      module, /*enable_logging=*/VLOG_IS_ON(1), fallback_enabled);
+  return mlir::TFTPU::TPUBridgeV1Compat(module, fallback_enabled);
 }
 
 }  // namespace tensorflow

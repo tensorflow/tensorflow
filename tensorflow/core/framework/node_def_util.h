@@ -163,7 +163,7 @@ class AttrSlice {
                       const AttrValue** attr_value) const;
 
   // Helper class to avoid allocations in EqualAttrs.
-  // TODO(irving): Will go away once NodeInfo is used.
+  // TODO(geoffreyi): Will go away once NodeInfo is used.
   struct Scratch {
     std::string a;
     std::string b;
@@ -172,7 +172,7 @@ class AttrSlice {
   // Check if all attrs and attr values match.  Does not take defaults into
   // account.
   //
-  // TODO(irving): There is a bug in this routine inherited from its
+  // TODO(geoffreyi): There is a bug in this routine inherited from its
   // OptimizerCSE::EqualAttrs predecessor.  The same tensor attr can be
   // represented in more than one way as an AttrValue, since TensorProto is
   // not 1-1.  This bug will go away once I replace everything with NodeInfo,
@@ -439,6 +439,12 @@ Status MaybeAddPrefixToColocationConstraints(
 Status MaybeUpdateColocationConstraintsWithMap(
     const std::map<absl::string_view, absl::string_view>& node_name_map,
     NodeDef* node_def);
+
+// For replacing a existing node with a NoOp, change the op and clear full type
+// information (since a NoOp has no output). Note that (duplicate control or
+// all) inputs, (regular, output or all) attributes and output properperties are
+// NOT cleared (and should be cleared if appropriate elsewhere).
+void ChangeToNoOp(NodeDef* node_def);
 
 }  // namespace tensorflow
 
