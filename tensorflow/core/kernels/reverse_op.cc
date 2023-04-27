@@ -16,6 +16,11 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc
 #define EIGEN_USE_THREADS
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include "tensorflow/core/kernels/reverse_op.h"
 
 #include <memory>
@@ -405,6 +410,7 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                         ReverseV2Op<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 #define REGISTER_DEFAULT_KERNELS(T)                         \
 REGISTER_KERNEL_BUILDER(Name("Reverse")                     \
                             .Device(DEVICE_DEFAULT)         \
@@ -436,5 +442,6 @@ TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
 TF_CALL_int32(REGISTER_DEFAULT_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
+#endif
 
 }  // namespace tensorflow

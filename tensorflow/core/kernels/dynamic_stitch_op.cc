@@ -25,6 +25,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_device_array.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -385,7 +390,23 @@ TF_CALL_int64(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
-
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+#define REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE(type)     \
+  REGISTER_KERNEL_BUILDER(Name("DynamicStitch")          \
+                              .Device(DEVICE_DEFAULT)    \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          DynamicStitchOpCPU<type>)
+
+TF_CALL_int32(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+TF_CALL_int64(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+TF_CALL_COMPLEX_TYPES(REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE);
+#undef REGISTER_DYNAMIC_STITCH_DEFAULT_DEVICE
+#endif
 
 }  // namespace tensorflow

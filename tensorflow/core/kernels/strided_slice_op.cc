@@ -21,6 +21,11 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -551,6 +556,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
@@ -594,5 +600,6 @@ REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
                             .HostMemory("end")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32, true>);
+#endif
 
 }  // namespace tensorflow

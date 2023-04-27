@@ -17,6 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include <limits>
 #include <vector>
 // TODO(b/31496047): Fix non-standard include order.
@@ -263,6 +268,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 #define REGISTER_DEVICE_DEFAULT(type)                        \
   REGISTER_KERNEL_BUILDER(Name("TensorArray")                \
                               .Device(DEVICE_DEFAULT)        \
@@ -288,6 +294,7 @@ TF_CALL_bfloat16(REGISTER_DEVICE_DEFAULT);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_DEVICE_DEFAULT);
 TF_CALL_COMPLEX_TYPES(REGISTER_DEVICE_DEFAULT);
 #undef REGISTER_DEVICE_DEFAULT
+#endif
 
 // GRADIENT *******************************************************************
 // Note that this op may have an optional third input. If present, it represents
@@ -431,6 +438,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
                             .HostMemory("shape_to_prepend")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("handle")
@@ -452,6 +460,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
                             .HostMemory("shape_to_prepend")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
+#endif
 
 // WRITE **********************************************************************
 
@@ -1056,6 +1065,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("dtype")
@@ -1074,6 +1084,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
                             .HostMemory("lengths")
                             .HostMemory("handle"),
                         TensorArrayConcatOp<CPUDevice, int32>);
+#endif
 
 // UNPACK and SCATTER *********************************************************
 

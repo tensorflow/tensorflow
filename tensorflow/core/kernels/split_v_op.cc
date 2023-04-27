@@ -21,6 +21,11 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include <numeric>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -530,6 +535,7 @@ REGISTER_GPU_int32(int64_t);
 
 #undef REGISTER_GPU_int32
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 #define REGISTER_DEFAULT_KERNEL(len_type)                       \
   REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
                               .Device(DEVICE_DEFAULT)           \
@@ -544,6 +550,7 @@ REGISTER_GPU_int32(int64_t);
 TF_CALL_int32(REGISTER_DEFAULT_KERNEL);
 TF_CALL_int64(REGISTER_DEFAULT_KERNEL);
 #undef REGISTER_DEFAULT_KERNEL
+#endif
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
