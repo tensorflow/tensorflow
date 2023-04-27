@@ -561,7 +561,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:while_loop",
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:py_builtins",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:distribute",

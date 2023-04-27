@@ -862,7 +862,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "parsing_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/autograph/operators:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2704,7 +2707,7 @@ py_library(
     deps = [
         ":array_ops",
         ":script_ops_gen",
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:py_builtins",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:record",
