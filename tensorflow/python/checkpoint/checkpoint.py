@@ -2373,7 +2373,9 @@ class Checkpoint(autotrackable.AutoTrackable):
 
   def sync(self):
     """Wait for any outstanding save or restore operations."""
-    if self._async_checkpointer_impl is not None:
+    # Subclasses of Checkpoint may not have `_async_checkpointer_impl` so use
+    # `getattr` for safer check.
+    if getattr(self, "_async_checkpointer_impl", None) is not None:
       self._async_checkpointer_impl.sync()
 
   def save(self, file_prefix, options=None):
