@@ -300,7 +300,7 @@ class FunctionCaptures(object):
 
   @property
   def capture_types(self):
-    return self._by_val_tracetype | self._by_ref_tracetype
+    return {**self._by_val_tracetype, **self._by_ref_tracetype}
 
   @property
   def by_val_capture_tuples(self):
