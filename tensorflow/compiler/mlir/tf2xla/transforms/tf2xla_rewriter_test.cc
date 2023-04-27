@@ -100,7 +100,6 @@ class Tf2XlaRewriterTestPeer {
         empty_rewriter_(op_builder_),
         tf2xla_rewriter_(op, empty_rewriter_,
                          /*device_type=*/"XLA_CPU_JIT",
-                         /*is_module_pass=*/false,
                          /*use_tf2xla_hlo_importer=*/true) {}
 
   tsl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
@@ -138,8 +137,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
 
     LogicalResult result = Tf2XlaRewriter::RewriteOp(
         &op, pattern_rewriter,
-        /*device_type=*/"XLA_CPU_JIT",
-        /*is_module_pass=*/false, use_tf2xla_hlo_importer);
+        /*device_type=*/"XLA_CPU_JIT", use_tf2xla_hlo_importer);
     if (!result.succeeded()) {
       return tsl::errors::Internal("Failed to rewrite op");
     }

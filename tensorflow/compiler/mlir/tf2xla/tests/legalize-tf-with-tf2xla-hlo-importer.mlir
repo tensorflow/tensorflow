@@ -545,4 +545,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
     func.return %0 : tensor<3x4x4xf32>
   }
+
+  // CHECK-LABEL: approx_topk
+  func.func @approx_topk(%arg0: tensor<!tf_type.resource<tensor<10x500xbf16>>> {tf._user_specified_name = "db"}) -> (tensor<10x10xbf16>) {
+    %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf_type.resource<tensor<10x500xbf16>>>) -> tensor<10x500xbf16>
+    // CHECK: mhlo.compare  GT
+    %values, %indices = "tf.ApproxTopK"(%0) {aggregate_to_topk = true, device = "", is_max_k = true, k = 10 : i64, recall_target = 0.949999988 : f32, reduction_dimension = -1 : i64, reduction_input_size_override = -1 : i64} : (tensor<10x500xbf16>) -> (tensor<10x10xbf16>, tensor<10x10xi32>)
+    return %values : tensor<10x10xbf16>
+  }
 }

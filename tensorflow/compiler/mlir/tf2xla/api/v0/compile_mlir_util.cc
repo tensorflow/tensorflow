@@ -427,8 +427,6 @@ void CreateConvertMlirToXlaHloPipeline(
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
-  pm.addPass(mlir::mhlo::createLegalizeTFModulePass(
-      /*tf2xla_fallback_device_type=*/device_type));
 
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));

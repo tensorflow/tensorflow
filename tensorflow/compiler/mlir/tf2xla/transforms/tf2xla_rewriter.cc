@@ -120,22 +120,20 @@ bool RootInstructionIsTuple(const xla::HloModule& hlo_module) {
 LogicalResult Tf2XlaRewriter::RewriteOp(Operation* op,
                                         PatternRewriter& rewriter,
                                         const std::string& device_type,
-                                        bool is_module_pass,
                                         bool use_tf2xla_hlo_importer) {
-  Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type, is_module_pass,
+  Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type,
                                  use_tf2xla_hlo_importer);
   return tf2xla_rewriter.LegalizeOp();
 }
 
 Tf2XlaRewriter::Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
                                const std::string& device_type,
-                               bool is_module_pass,
                                bool use_tf2xla_hlo_importer)
     : op_(op),
       device_type_(device_type),
       rewriter_(rewriter),
       hlo_builder_(op->getName().getStringRef().str(), rewriter_, op->getLoc(),
-                   /*build_functions=*/is_module_pass),
+                   /*build_functions=*/true),
       context_(nullptr),
       use_tf2xla_hlo_importer_(use_tf2xla_hlo_importer),
       xla_builder_(op_->getName().getStringRef().str()) {}
