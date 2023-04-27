@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_NEXT_PLUGGABLE_DEVICE_C_API_H_
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer.h"
@@ -25,25 +26,6 @@ limitations under the License.
 // --------------------------------------------------------------------------
 // C API for device. The API is under active development and eventually
 // should allow registering a plugin device with TensorFlow.
-
-// Macro to control visibility of exported symbols in the shared library (.so,
-// .dylib, .dll).
-// This duplicates the TF_EXPORT macro definition in
-// tensorflow/core/platform/macros.h in order to keep this .h file independent
-// of any other includes.
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
