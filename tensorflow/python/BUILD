@@ -179,6 +179,7 @@ py_library(
         ":proto_ops",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
+        ":ref_variable",
         ":rnn_ops_gen",
         ":script_ops",
         ":sendrecv_ops_gen",
@@ -191,6 +192,7 @@ py_library(
         ":tensor_array_ops",
         ":training",
         ":uniform_quant_ops_gen",
+        ":variable_v1",
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
@@ -3290,6 +3292,7 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":resource_variable_ops",
         ":state_ops",
         ":state_ops_gen",
         ":variable_v1",
@@ -3305,6 +3308,7 @@ py_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:lazy_loader",
     ],
 )
 

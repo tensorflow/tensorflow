@@ -43,14 +43,9 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-def default_variable_creator(_, **kwds):
-  del kwds
-  raise NotImplementedError("variable_scope needs to be imported")
-
-
 def default_variable_creator_v2(_, **kwds):
   del kwds
-  raise NotImplementedError("variable_scope needs to be imported")
+  raise NotImplementedError("resource_variable_ops needs to be imported")
 
 
 def _make_getter(captured_getter, captured_previous):
