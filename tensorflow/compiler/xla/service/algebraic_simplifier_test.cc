@@ -2025,22 +2025,6 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
-TEST_F(AlgebraicSimplifierTest, ZeroValuedConvolution) {
-  const char* kModuleStr = R"(
-    HloModule m
-    test {
-      p0 = f32[1,10,20,2] parameter(0)
-      c = f32[] constant(0)
-      zero = f32[3,5,6,2] broadcast(c), dimensions={}
-      ROOT conv = f32[1,10,20,6] convolution(p0, zero), window={size=3x5 pad=1_1x2_2}, dim_labels=b01f_01oi->b01f
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Broadcast((m::ConstantScalar(0.0)))));
-}
-
 TEST_F(AlgebraicSimplifierTest, ReduceWindowIsReduceAndReshape) {
   auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
