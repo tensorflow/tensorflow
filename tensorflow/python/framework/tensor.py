@@ -276,15 +276,14 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       placeholder.op._set_attr(  # pylint: disable=protected-access
           "_user_specified_name",
           attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
-    # TODO(b/263894631): Add an assertion for a TensorSpec of type resource or
-    # variant which must have handle data associated with it.
-    if ((self.dtype == dtypes.resource or self.dtype == dtypes.variant)
-        and placeholder_context.has_handledata(id(self))):
-      handle_data = placeholder_context.get_handledata(id(self))
-      if (handle_data is not None
-          and handle_data.is_set
-          and handle_data.shape_and_type):
-        handle_data_util.set_handle_data(placeholder, handle_data)
+
+    handle_data = self.dtype._handle_data  # pylint: disable=protected-access
+    if (
+        handle_data is not None
+        and handle_data.is_set
+        and handle_data.shape_and_type
+    ):
+      handle_data_util.set_handle_data(placeholder, handle_data)
 
     # Record the composite device as an attribute to the placeholder.
     # This attribute would be propagated into the arg_attr of the FunctionDef.

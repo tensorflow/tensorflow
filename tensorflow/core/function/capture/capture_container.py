@@ -276,9 +276,6 @@ class FunctionCaptures(object):
           graph,
           with_none_control_dependencies=True,
           composite_device_name=composite_device_name)
-      placeholder_ctx._spec_id_to_handledata = (  # pylint: disable=protected-access
-          tracing_ctx.get_handledata_mapping()
-      )
       placeholder = spec.placeholder_value(placeholder_ctx)
       self.add_or_replace(
           key=id(tensor),

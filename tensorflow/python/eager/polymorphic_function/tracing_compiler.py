@@ -386,10 +386,9 @@ class TracingCompiler:
                 current_func_context, lookup_func_type)
           else:
             target_func_type = lookup_func_type
-          handledata_mapping = lookup_func_context.get_handledata_mapping()
           placeholder_mapping = lookup_func_context.get_placeholder_mapping()
           placeholder_context = trace_type.InternalPlaceholderContext(
-              func_graph, placeholder_mapping, handledata_mapping)
+              func_graph, placeholder_mapping)
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)

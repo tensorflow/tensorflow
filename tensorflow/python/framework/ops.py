@@ -950,13 +950,12 @@ class Tensor(
     return object_identity.Reference(self)
 
   def __tf_tracing_type__(self, signature_context):
-    spec = tensor_spec.TensorSpec(
-        self.shape, self.dtype).__tf_tracing_type__(signature_context)
-    # TODO(b/263894631): Store handle data in the TensorSpec itself. Once
-    # implemented, the following section under the if condition can be removed.
     if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
       handle_data = handle_data_util.get_handle_data(self)
-      signature_context.add_handledata(id(spec), handle_data)
+      dtype = dtypes.DType(self.dtype._type_enum, handle_data)
+    else:
+      dtype = self.dtype
+    spec = tensor_spec.TensorSpec(self.shape, dtype)
     return spec
 
   def __tf_tensor__(
