@@ -127,7 +127,7 @@ void DebugDataDumper::DumpGraph(const std::string& name,
                                 const std::string& tag, const Graph* graph,
                                 const FunctionLibraryDefinition* func_lib_def,
                                 bool bypass_filter) {
-  if (!ShouldDump(name, group)) return;
+  if (!ShouldDump(name, group) && !bypass_filter) return;
 
   // Construct the dump filename.
   std::string dump_filename = GetDumpFilename(name, group, tag);
