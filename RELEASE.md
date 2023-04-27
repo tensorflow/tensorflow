@@ -21,6 +21,23 @@
     *  Added `keras.utils.TimedThread` utility to run a timed thread every x
        seconds. It can be used to run a threaded function alongside model
        training or any other snippet of code.
+    *  In the `keras` PyPI package, accessible symbols are now restricted to
+       symbols that are intended to be public.
+       This may affect your code if you were using `import keras` and you used
+       `keras` functions that were not public APIs, but were accessible in
+       earlier versions with direct imports. In those cases, please use the
+       following guideline:
+        -  The API may be available in the public Keras API under a different
+           name, so make sure to look for it on keras.io or TensorFlow docs
+           and switch to the public version.
+        -  It could also be a simple python or TF utility that you could easily
+           copy over to your own codebase. In those case, just make it your own!
+        -  If you believe it should definitely be a public Keras API,
+           please open a feature request in keras GitHub repo.
+        -  As a workaround, you could import the same private symbol keras
+           `keras.src`, but keep in mind the `src` namespace is not stable and
+           those APIs may change or be removed in the future.
+
 
 * The LMDB kernels have been changed to return an error. This is in preparation
   for completely removing them from TensorFlow. The LMDB dependency that these
