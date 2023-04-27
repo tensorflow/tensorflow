@@ -18,10 +18,8 @@ name: ARM CD
 on:
   push:
     tags:
-      - v2.**
-  schedule:
+      - v2.** schedule:
     - cron: '0 8 * * *'
-
 jobs:
   build:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
