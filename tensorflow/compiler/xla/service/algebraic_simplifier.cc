@@ -7439,9 +7439,11 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
     TF_RETURN_IF_ERROR(ScalarMultiplyReduction(convolution));
   }
 
-  // Zero-sized input or filter.
+  // Zero-sized or zero-valued input or filter.
   if (ShapeUtil::IsZeroElementArray(convolution->operand(0)->shape()) ||
-      ShapeUtil::IsZeroElementArray(convolution->operand(1)->shape())) {
+      ShapeUtil::IsZeroElementArray(convolution->operand(1)->shape()) ||
+      Match(convolution->operand(0), m::Broadcast(m::ConstantScalar(0))) ||
+      Match(convolution->operand(1), m::Broadcast(m::ConstantScalar(0)))) {
     return ReplaceInstruction(convolution, MakeScalarLike(convolution, 0));
   }
 
