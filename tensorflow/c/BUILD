@@ -765,6 +765,8 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/tsl/framework:device_id_utils",
+            "//tensorflow/tsl/platform:statusor",
         ],
     }),
 )
