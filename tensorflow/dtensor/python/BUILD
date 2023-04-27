@@ -18,7 +18,7 @@ package(
 # A list of all modules linked into TensorFlow.
 
 py_library(
-    name = "core",
+    name = "dtensor",
     srcs = ["__init__.py"],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [

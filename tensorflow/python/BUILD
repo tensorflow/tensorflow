@@ -5567,7 +5567,7 @@ alias(
 py_library(
     name = "dtensor",
     deps = [
-        "//tensorflow/dtensor/python:core",
+        "//tensorflow/dtensor/python:dtensor",
     ],
 )
 
