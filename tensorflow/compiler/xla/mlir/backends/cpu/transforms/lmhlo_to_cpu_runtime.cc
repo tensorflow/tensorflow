@@ -143,9 +143,9 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
 
     // Forward backend config to the custom call implementation.
-    auto dict = op.getBackendConfig()
-                    ? op.getBackendConfig()->cast<mlir::DictionaryAttr>()
-                    : nullptr;
+    auto config = op.getBackendConfig();
+    if (!config) return op.emitOpError("Failed to get backend config");
+    auto dict = config->cast<mlir::DictionaryAttr>();
     llvm::SmallVector<NamedAttribute> backend_config(dict.begin(), dict.end());
 
     // Call the custom call function forwarding user-defined attributes.
