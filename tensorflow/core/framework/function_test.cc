@@ -633,7 +633,7 @@ TEST(InstantiateErrors, Not_Sufficient_Attrs) {
       "Attr T is not found from ");
 }
 
-#if 0  // TODO(joshl): Enable this test once having an extra attr is an error.
+#if 0  // TODO(josh11b): Enable this test once having an extra attr is an error.
 TEST(InstantiateErrors, Too_Many_Attrs) {
   auto fdef =
       FDH::Define("nop", {}, {}, {"T:{float, double, int32, int64}"}, {});
@@ -747,7 +747,7 @@ TEST(InstantiateErrors, FuncRet_NameMismatch) {
            "Return y missing");
 }
 
-// TODO(joshl): Make this an error.
+// TODO(josh11b): Make this an error.
 // TEST(InstantiateErrors, FuncRet_Extra) {
 //   auto fdef = FDH::Create("test", {}, {"y: float"}, {},
 //                           {

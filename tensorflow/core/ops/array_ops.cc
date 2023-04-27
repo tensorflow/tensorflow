@@ -518,7 +518,7 @@ REGISTER_OP("BroadcastTo")
     });
 
 // --------------------------------------------------------------------------
-// TODO(joshl): Remove the >= 2 constraint, once we can rewrite the graph
+// TODO(josh11b): Remove the >= 2 constraint, once we can rewrite the graph
 // in the N == 1 case to remove the node.
 REGISTER_OP("Concat")
     .Input("concat_dim: int32")

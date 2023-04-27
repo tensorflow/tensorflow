@@ -48,7 +48,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
-# TODO(joshl): Replace asserts in this file with if ...: raise ...
+# TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
 
 def _is_device_list_single_worker(devices):
@@ -306,7 +306,7 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
         "MirroredStrategy")
 
 
-# TODO(joshl): Switch to V2 when we no longer need to support tf.compat.v1.
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
 class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
@@ -686,9 +686,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    # TODO(joshl): In eager mode, use one thread per device, or async mode.
+    # TODO(josh11b): In eager mode, use one thread per device, or async mode.
     if not destinations:
-      # TODO(joshl): Use current logical device instead of 0 here.
+      # TODO(josh11b): Use current logical device instead of 0 here.
       destinations = self._devices
     return self._get_cross_device_ops(tensor).broadcast(tensor, destinations)
 
@@ -798,7 +798,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         options=self._communication_options.merge(options))
 
   def _update(self, var, fn, args, kwargs, group):
-    # TODO(joshl): In eager mode, use one thread per device.
+    # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
     updates = []
     for i, v in enumerate(var.values):
@@ -855,7 +855,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)
-    # TODO(joshl): In eager mode, use one thread per device.
+    # TODO(josh11b): In eager mode, use one thread per device.
     updates = []
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
@@ -911,7 +911,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def non_slot_devices(self, var_list):
     del var_list
-    # TODO(joshl): Should this be the last logical device instead?
+    # TODO(josh11b): Should this be the last logical device instead?
     return self._devices
 
   # TODO(priyag): Delete this once all strategies use global batch size.

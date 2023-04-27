@@ -169,9 +169,9 @@ class OpDefBuilder {
   // Note that any attr specifying the length of an input or output will
   // get a default minimum of 1 unless the >= # syntax is used.
   //
-  // TODO(joshl): Perhaps support restrictions and defaults as optional
+  // TODO(josh11b): Perhaps support restrictions and defaults as optional
   // extra arguments to Attr() instead of encoding them in the spec string.
-  // TODO(joshl): Would like to have better dtype handling for tensor attrs:
+  // TODO(josh11b): Would like to have better dtype handling for tensor attrs:
   // * Ability to say the type of an input/output matches the type of
   //   the tensor.
   // * Ability to restrict the type of the tensor like the existing
@@ -190,9 +190,9 @@ class OpDefBuilder {
   //                 or the name of an attr (see above) with type "type".
   //   <number> is the name of an attr with type "int".
   //   <type-list> is the name of an attr with type "list(type)".
-  // TODO(joshl): Indicate Ref() via an optional argument instead of
+  // TODO(josh11b): Indicate Ref() via an optional argument instead of
   // in the spec?
-  // TODO(joshl): SparseInput() and SparseOutput() matching the Python
+  // TODO(josh11b): SparseInput() and SparseOutput() matching the Python
   // handling?
   OpDefBuilder& Input(std::string spec);
   OpDefBuilder& Output(std::string spec);

@@ -1002,7 +1002,7 @@ def cast(x, dtype, name=None):
       values_cast = cast(x.values, base_type, name=name)
       x = indexed_slices.IndexedSlices(values_cast, x.indices, x.dense_shape)
     else:
-      # TODO(joshl): If x is not already a Tensor, we could return
+      # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
@@ -3925,7 +3925,7 @@ def _as_indexed_slices(x, optimize=True):
   Raises:
     TypeError: If 'x' is not a Tensor or an IndexedSlices object.
   """
-  # TODO(mdevin): op_scope
+  # TODO(touts): op_scope
   if not isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices)):
     raise TypeError(f"Not a Tensor or IndexedSlices: {type(x)}.")
   if isinstance(x, indexed_slices.IndexedSlices):

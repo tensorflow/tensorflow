@@ -182,7 +182,7 @@ class FunctionDefHelper {
                             gtl::ArraySlice<Node> node_def,
                             gtl::ArraySlice<std::pair<string, string>> ret_def);
 
-  // TODO(joshl): Get rid of these and transition to the one above.
+  // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const std::string& function_name,
                             gtl::ArraySlice<string> arg_def,
                             gtl::ArraySlice<string> ret_def,
@@ -547,7 +547,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Given a node def 'ndef', inspects attributes of the callee
   // function to derive the attribute 'value' for 'attr'. Returns OK
   // iff the attribute is given by the function's definition.
-  // TODO(geoffreyi): Remove; keep only the const Node& version.
+  // TODO(irving): Remove; keep only the const Node& version.
   template <typename T>
   Status GetAttr(const NodeDef& ndef, const std::string& attr, T* value) const;
 

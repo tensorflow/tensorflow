@@ -96,7 +96,7 @@ message OpDef {
     // Human-readable description.
     string description = 4;
 
-    // TODO(joshl): bool is_optional?
+    // TODO(josh11b): bool is_optional?
 
     // --- Constraints ---
     // These constraints are only in effect if specified.  Default is no
@@ -139,7 +139,7 @@ message OpDef {
   // taking input from multiple devices with a tree of aggregate ops
   // that aggregate locally within each device (and possibly within
   // groups of nearby devices) before communicating.
-  // TODO(joshl): Implement that optimization.
+  // TODO(josh11b): Implement that optimization.
   bool is_aggregate = 16;  // for things like add
 
   // Other optimizations go here, like

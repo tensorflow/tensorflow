@@ -292,7 +292,7 @@ def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
     raise TypeError(f"Expected Tensor {t} (converted from {value}) with shape "
                     f"{tuple(shape)}, but got shape {tuple(t.shape)}.")
   num_t = t.shape.num_elements()
-  # TODO(joshl): Implement shape -> eager tensor conversion.
+  # TODO(josh11b): Implement shape -> eager tensor conversion.
   if num_t == shape.num_elements():
     return _eager_reshape(t, shape.as_list(), ctx)
   if num_t == 1:

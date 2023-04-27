@@ -446,7 +446,7 @@ static void AssignSizes(const Graph& g, CostModel* cost_model) {
     }
     const Node* src = e->src();
 
-    // TODO(joshl): Get an estimate from the Op
+    // TODO(josh11b): Get an estimate from the Op
     Bytes size(1);
     cost_model->RecordSize(src, e->src_output(), size);
   }

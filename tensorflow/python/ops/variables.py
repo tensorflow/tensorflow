@@ -1958,7 +1958,7 @@ def assert_variables_initialized(var_list=None):
   """
   if var_list is None:
     var_list = global_variables() + local_variables()
-  # Backwards compatibility for old-style variables. TODO(mdevin): remove.
+  # Backwards compatibility for old-style variables. TODO(touts): remove.
   if not var_list:
     var_list = []
     for op in ops.get_default_graph().get_operations():
@@ -1997,7 +1997,7 @@ def report_uninitialized_variables(var_list=None,
   """
   if var_list is None:
     var_list = global_variables() + local_variables()
-    # Backwards compatibility for old-style variables. TODO(mdevin): remove.
+    # Backwards compatibility for old-style variables. TODO(touts): remove.
     if not var_list:
       var_list = []
       for op in ops.get_default_graph().get_operations():

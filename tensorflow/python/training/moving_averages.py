@@ -526,7 +526,7 @@ class ExponentialMovingAverage:
     Raises:
       TypeError: If the arguments are not an allowed type.
     """
-    # TODO(mdevin): op_scope
+    # TODO(touts): op_scope
     if var_list is None:
       var_list = variables.trainable_variables()
     for v in var_list:

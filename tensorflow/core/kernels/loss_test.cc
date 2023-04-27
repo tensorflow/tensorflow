@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// TODO(rohananil): add a test to show the improvements of the Newton
+// TODO(sibyl-Aix6ihai): add a test to show the improvements of the Newton
 // modification detailed in readme.md
 
 // This test checks that the dual value after update is optimal.

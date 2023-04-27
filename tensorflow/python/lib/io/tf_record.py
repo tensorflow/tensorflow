@@ -274,7 +274,7 @@ class TFRecordWriter(_pywrap_record_io.RecordWriter):
   in `with` blocks like a normal file. (See the usage example above.)
   """
 
-  # TODO(joshl): Support appending?
+  # TODO(josh11b): Support appending?
   def __init__(self, path, options=None):
     """Opens file `path` and creates a `TFRecordWriter` writing to it.
 

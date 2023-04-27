@@ -1973,7 +1973,7 @@ def _GroupControlDeps(dev, deps, name=None):
         return no_op(name=name)
 
 
-# TODO(mdevin): Accept "inputs" as a list.
+# TODO(touts): Accept "inputs" as a list.
 @tf_export("group")
 def group(*inputs, **kwargs):
   """Create an op that groups multiple operations.

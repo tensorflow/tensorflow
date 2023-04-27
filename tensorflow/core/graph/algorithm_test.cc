@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
-// TODO(joshl): Test setting the "device" field of a NodeDef.
-// TODO(joshl): Test that feeding won't prune targets.
+// TODO(josh11b): Test setting the "device" field of a NodeDef.
+// TODO(josh11b): Test that feeding won't prune targets.
 
 namespace tensorflow {
 namespace {

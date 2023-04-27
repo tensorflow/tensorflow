@@ -128,7 +128,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       indices = ops.convert_to_tensor(
           indices, name="indices", dtype=dtypes.int64)
-      # TODO(mdevin): Consider adding mutable_values() when 'values'
+      # TODO(touts): Consider adding mutable_values() when 'values'
       # is a VariableOp and updating users of SparseTensor.
       values = ops.convert_to_tensor(values, name="values")
 

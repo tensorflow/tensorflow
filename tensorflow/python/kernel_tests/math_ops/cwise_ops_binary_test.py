@@ -490,7 +490,7 @@ class BinaryOpTest(test.TestCase):
           self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)
 
-  # TODO(joshl,vrv): Refactor this to use parameterized tests.
+  # TODO(josh11b,vrv): Refactor this to use parameterized tests.
   def _testBCastByFunc(self, funcs, xs, ys):
     dtypes = [
         np.float16,

@@ -99,7 +99,7 @@ class Node {
   // * def().device() is the "user's requested device" and may not match
   //   the actual assigned device, see assigned_device_name() below;
   // * def().attr() is authoritative.
-  // TODO(geoffreyi): Replace with NodeInfo.
+  // TODO(irving): Replace with NodeInfo.
   const NodeDef& def() const;
   const OpDef& op_def() const;
 
@@ -124,9 +124,9 @@ class Node {
 
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
-  // TODO(joshl): Validate that the assigned_device, if not empty:
+  // TODO(josh11b): Validate that the assigned_device, if not empty:
   // fully specifies a device, and satisfies def().device().
-  // TODO(joshl): Move assigned_device_name outside of Node into a
+  // TODO(josh11b): Move assigned_device_name outside of Node into a
   // NodeId->DeviceName map.
   const std::string& assigned_device_name() const;
   void set_assigned_device_name(const std::string& device_name);
@@ -815,7 +815,7 @@ class Graph {
   // information in the map.
   void NodeType(StringPiece name, const FullTypeDef** result);
 
-  // TODO(joshl): uint64 hash() const;
+  // TODO(josh11b): uint64 hash() const;
 
  private:
   // If cost_node is non-null, then cost accounting (in CostModel)
@@ -898,7 +898,7 @@ class Graph {
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
 
-// TODO(joshl): We may want to support keeping an index on various
+// TODO(josh11b): We may want to support keeping an index on various
 // node/edge attributes in a graph, particularly node names.
 
 // Helper routines

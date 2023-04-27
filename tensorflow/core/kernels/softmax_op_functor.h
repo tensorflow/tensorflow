@@ -74,7 +74,7 @@ struct SoftmaxEigenImpl {
                                          .reshape(batch_by_one)
                                          .broadcast(one_by_class));
     } else {
-      // NOTE(mdevin): If you modify this implementation please run
+      // NOTE(touts): If you modify this implementation please run
       // the BM_ImageNetSoftmaxFwd benchmark in nn_ops_test.cc.
       //
       // softmax = exp(logits - max(logits along classes));

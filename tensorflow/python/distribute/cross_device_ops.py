@@ -1247,7 +1247,7 @@ class CollectiveAllReduce(CrossDeviceOps):
               index.append(array_ops.identity(v))
               break
           else:
-            # TODO(joshl): Once we add support for model parallelism, get the
+            # TODO(josh11b): Once we add support for model parallelism, get the
             # copy from the corresponding replica instead of the primary.
             index.append(array_ops.identity(all_reduced._primary))  # pylint: disable=protected-access
     return distribute_utils.regroup(index, wrap_class=value_lib.Mirrored)

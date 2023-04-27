@@ -124,7 +124,7 @@ def cond(pred,
   # We needed to make true_fn/false_fn keyword arguments for
   # backwards-compatibility. This check exists so that we can convert back to
   # having them be positional arguments.
-  # TODO(joshl): Make `true_fn` and `false_fn` positional arguments after
+  # TODO(josh11b): Make `true_fn` and `false_fn` positional arguments after
   # `fn1` and `fn2` are deleted.
   if fn1 is not None:
     if true_fn is not None:

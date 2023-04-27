@@ -564,7 +564,7 @@ class OptimizerV2(trackable.Trackable):
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid, or var_list is None.
     """
-    # TODO(joshl): Test that we handle weight decay in a reasonable way.
+    # TODO(josh11b): Test that we handle weight decay in a reasonable way.
     if not callable(loss) and tape is None:
       raise ValueError("`tape` is required when a `Tensor` loss is passed.")
     tape = tape if tape is not None else backprop.GradientTape()

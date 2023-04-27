@@ -163,7 +163,7 @@ class Scaffold:
       summary_op = coalesce(summary_op, copy_from_scaffold.summary_op)
       saver = coalesce(saver, copy_from_scaffold.saver)
 
-    # NOTE(mdevin): modifying the init function to be passed the scaffold is a
+    # NOTE(touts): modifying the init function to be passed the scaffold is a
     # hack to make it easy to find the saver.  Is there a better way?
     self._user_init_fn = init_fn
     if init_fn:

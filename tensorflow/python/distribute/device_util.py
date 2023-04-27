@@ -135,7 +135,7 @@ class _FakeOperation(object):
 
 def current():
   """Return a string (not canonicalized) for the current device."""
-  # TODO(joshl): Work out how this function interacts with ops.colocate_with.
+  # TODO(josh11b): Work out how this function interacts with ops.colocate_with.
   if ops.executing_eagerly_outside_functions():
     d = context.context().device_name
   else:

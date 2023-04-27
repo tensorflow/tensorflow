@@ -171,7 +171,7 @@ class StackOpTest(test.TestCase):
 
           def func(*xs):
             return array_ops_stack.stack(xs)
-          # TODO(geoffreyi): Remove list() once we handle maps correctly
+          # TODO(irving): Remove list() once we handle maps correctly
           xs = list(map(constant_op.constant, data))
           theoretical, numerical = gradient_checker_v2.compute_gradient(
               func, xs)
@@ -188,7 +188,7 @@ class StackOpTest(test.TestCase):
 
           def func(*inp):
             return array_ops_stack.stack(inp, axis=1)
-          # TODO(geoffreyi): Remove list() once we handle maps correctly
+          # TODO(irving): Remove list() once we handle maps correctly
           xs = list(map(constant_op.constant, data))
           theoretical, numerical = gradient_checker_v2.compute_gradient(
               func, xs)

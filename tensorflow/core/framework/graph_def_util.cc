@@ -153,7 +153,7 @@ Status RemoveNewDefaultAttrsFromGraphDef(
     for (int n = 0; n < func_def->node_def_size(); ++n) {
       NodeDef* node_def = func_def->mutable_node_def(n);
       if (!IsFunction(*graph_def, node_def->op())) {
-        // TODO(joshl): Better handling of attrs with placeholder values.
+        // TODO(josh11b): Better handling of attrs with placeholder values.
         TF_RETURN_IF_ERROR(RemoveNewDefaultAttrsFromNodeDef(
             node_def, consumer_op_registry, producer_op_registry,
             op_attr_removed));
@@ -237,7 +237,7 @@ void OpsUsedByGraph(const GraphDef& graph_def,
   }
 
   // Filter out function names to produce output.
-  // TODO(joshl): Change the above code to produce this directly.
+  // TODO(josh11b): Change the above code to produce this directly.
   ops_used_in_graph->clear();
   for (const string& op_name : used_ops) {
     if (name_to_function.find(op_name) == name_to_function.end()) {

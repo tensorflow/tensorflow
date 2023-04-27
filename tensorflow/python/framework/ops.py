@@ -1684,7 +1684,7 @@ def _NodeDef(op_type, name, attrs=None):
 
 
 # Copied from core/framework/node_def_util.cc
-# TODO(mrry,joshl): Consolidate this validation in C++ code.
+# TODO(mrry,josh11b): Consolidate this validation in C++ code.
 _VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
@@ -5898,7 +5898,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   original_graph_element = None
   for op_input in op_input_list:
     # Determine if this is a valid graph_element.
-    # TODO(joshl): Note that we exclude subclasses of Tensor. Need to clean this
+    # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
     if isinstance(op_input, (Operation, internal.NativeObject)) and (

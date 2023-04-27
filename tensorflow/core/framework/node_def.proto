@@ -61,7 +61,7 @@ message NodeDef {
   // one of the names from the corresponding OpDef's attr field).
   // The values must have a type matching the corresponding OpDef
   // attr's type field.
-  // TODO(joshl): Add some examples here showing best practices.
+  // TODO(josh11b): Add some examples here showing best practices.
   map<string, AttrValue> attr = 5;
 
   message ExperimentalDebugInfo {

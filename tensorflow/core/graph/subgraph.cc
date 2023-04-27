@@ -97,7 +97,7 @@ Status FeedInputs(
         // When feeding a Placeholder node, any outgoing control edges
         // will be replaced with a control edge from the replacement
         // feed_node.
-        // TODO(joshl,mrry): Come up with a more elegant way of addressing
+        // TODO(josh11b,mrry): Come up with a more elegant way of addressing
         // the general version of this problem.
         to_remove.emplace_back(e);
       }

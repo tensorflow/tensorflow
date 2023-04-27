@@ -351,7 +351,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session():
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
-  # TODO(rohananil): Add benchmark to compare Hashed vs Non-hashed.
+  # TODO(sibyl-Aix6ihai): Add benchmark to compare Hashed vs Non-hashed.
   @test_util.run_deprecated_v1
   def test_hashed_no_hash_key(self):
     op = sparse_ops.sparse_cross_hashed(

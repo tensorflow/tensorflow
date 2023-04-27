@@ -164,7 +164,7 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
     RuntimeError: If fn() calls get_replica_context().merge_call() a different
         number of times from the available devices.
   """
-  # TODO(joshl): Add this option once we add synchronization to variable
+  # TODO(josh11b): Add this option once we add synchronization to variable
   # creation. Until then, this is pretty unsafe to use.
   run_concurrently = False
   if not context.executing_eagerly():
@@ -371,7 +371,7 @@ class _MirroredReplicaThread(threading.Thread):
           self.caching_scope_exited is not None):
         distribute_utils.caching_scope_local.new_cache_scope_count = self.caching_scope_entered
         distribute_utils.caching_scope_local.cache_scope_exited_count = self.caching_scope_exited
-      # TODO(joshl): Use current logical device instead of 0 here.
+      # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
           _enter_graph(self.graph, self.in_eager,
