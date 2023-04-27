@@ -10735,6 +10735,115 @@ func DebugIdentityV2(scope *Scope, input tf.Output, optional ...DebugIdentityV2A
 	return op.Output(0)
 }
 
+// DebugIdentityV3Attr is an optional argument to DebugIdentityV3.
+type DebugIdentityV3Attr func(optionalAttr)
+
+// DebugIdentityV3DeviceName sets the optional device_name attribute to value.
+//
+// value: Name of the device on which the tensor resides.
+// If not specified, defaults to ""
+func DebugIdentityV3DeviceName(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["device_name"] = value
+	}
+}
+
+// DebugIdentityV3TensorName sets the optional tensor_name attribute to value.
+//
+// value: Name of the input tensor.
+// If not specified, defaults to ""
+func DebugIdentityV3TensorName(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["tensor_name"] = value
+	}
+}
+
+// DebugIdentityV3IoOfNode sets the optional io_of_node attribute to value.
+//
+// value: Name of the node of which the tensor is an input or output.
+// If not specified, defaults to ""
+func DebugIdentityV3IoOfNode(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["io_of_node"] = value
+	}
+}
+
+// DebugIdentityV3IsInput sets the optional is_input attribute to value.
+//
+// value: If true, the tensor is an input of the node; otherwise the output.
+// If not specified, defaults to false
+func DebugIdentityV3IsInput(value bool) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["is_input"] = value
+	}
+}
+
+// DebugIdentityV3IoIndex sets the optional io_index attribute to value.
+//
+// value: The index of which the tensor is an input or output of the node.
+// If not specified, defaults to -1
+func DebugIdentityV3IoIndex(value int64) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["io_index"] = value
+	}
+}
+
+// DebugIdentityV3DebugUrls sets the optional debug_urls attribute to value.
+//
+// value: List of URLs to debug targets, e.g.,
+//
+//	file:///foo/tfdbg_dump, grpc:://localhost:11011
+//
+// If not specified, defaults to {}
+func DebugIdentityV3DebugUrls(value []string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["debug_urls"] = value
+	}
+}
+
+// DebugIdentityV3GatedGrpc sets the optional gated_grpc attribute to value.
+//
+// value: Whether this op will be gated. If any of the debug_urls of this
+//
+//	debug node is of the grpc:// scheme, when the value of this attribute is set
+//	to True, the data will not actually be sent via the grpc stream unless this
+//	debug op has been enabled at the debug_url. If all of the debug_urls of this
+//	debug node are of the grpc:// scheme and the debug op is enabled at none of
+//	them, the output will be an empty Tensor.
+//
+// If not specified, defaults to false
+func DebugIdentityV3GatedGrpc(value bool) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["gated_grpc"] = value
+	}
+}
+
+// Provides an identity mapping of the non-Ref type input tensor for debugging.
+//
+// Provides an identity mapping of the non-Ref type input tensor for debugging.
+//
+// Arguments:
+//
+//	input: Input tensor, non-Reference type
+func DebugIdentityV3(scope *Scope, input tf.Output, optional ...DebugIdentityV3Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DebugIdentityV3",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DebugNanCountAttr is an optional argument to DebugNanCount.
 type DebugNanCountAttr func(optionalAttr)
 
