@@ -243,6 +243,30 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
                                       wrapped_done);
 }
 
+// Allocates a temporary tensor. The GpuSolver object maintains a
+// TensorReference to the underlying Tensor to prevent it from being deallocated
+// prematurely.
+Status GpuSolver::allocate_scoped_tensor(DataType type,
+                                         const TensorShape& shape,
+                                         Tensor* out_temp) {
+  const Status status = context_->allocate_temp(type, shape, out_temp);
+  if (status.ok()) {
+    scratch_tensor_refs_.emplace_back(*out_temp);
+  }
+  return status;
+}
+
+Status GpuSolver::forward_input_or_allocate_scoped_tensor(
+    gtl::ArraySlice<int> candidate_input_indices, DataType type,
+    const TensorShape& shape, Tensor* out_temp) {
+  const Status status = context_->forward_input_or_allocate_temp(
+      candidate_input_indices, type, shape, out_temp);
+  if (status.ok()) {
+    scratch_tensor_refs_.emplace_back(*out_temp);
+  }
+  return status;
+}
+
 #define TF_RETURN_IF_ROCBLAS_ERROR(expr)                                  \
   do {                                                                    \
     auto status = (expr);                                                 \
@@ -257,6 +281,8 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
 #define TF_CALL_ROCSOLV_TYPES(m) \
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, s) m(double, d)
+#define TF_CALL_HIP_LAPACK_TYPES_NO_COMPLEX(m) m(float, S) m(double, D)
+
 #define BLAS_SOLVER_FN(method, type_prefix) \
   se::wrap::rocblas##_##type_prefix##method
 
@@ -281,6 +307,13 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
 #define BUFSIZE_FN(method, hip_prefix) \
   se::wrap::hipsolver##hip_prefix##method##_bufferSize
 
+
+//=============================================================================
+// Wrappers of hip/rocSolver computational methods begin here.
+//  Please check actual declarations here
+//  https://github.com/ROCmSoftwarePlatform/hipSOLVER
+//  https://github.com/ROCmSoftwarePlatform/rocSOLVER
+//=============================================================================
 #if TF_ROCM_VERSION >= 40500
 
 #define GETRF_INSTANCE(Scalar, type_prefix)                                \
@@ -705,29 +738,51 @@ TF_CALL_ROCSOLV_TYPES(GETRF_BATCHED_INSTANCE);
 
 TF_CALL_ROCSOLV_TYPES(GETRS_BATCHED_INSTANCE);
 
-// Allocates a temporary tensor. The GpuSolver object maintains a
-// TensorReference to the underlying Tensor to prevent it from being deallocated
-// prematurely.
-Status GpuSolver::allocate_scoped_tensor(DataType type,
-                                         const TensorShape& shape,
-                                         Tensor* out_temp) {
-  const Status status = context_->allocate_temp(type, shape, out_temp);
-  if (status.ok()) {
-    scratch_tensor_refs_.emplace_back(*out_temp);
+#define GESVD_INSTANCE(Scalar, type_prefix)                              \
+  template <>                                                            \
+  Status GpuSolver::Gesvd<Scalar>(                                       \
+      signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,  \
+      int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,    \
+      int ldvt, int* dev_lapack_info) {                                  \
+      mutex_lock lock(handle_map_mutex);                                 \
+      /* Get amount of workspace memory required. */                     \
+      int lwork;                                                         \
+      TF_RETURN_IF_ROCBLAS_ERROR(BUFSIZE_FN(gesvd, type_prefix)(         \
+                        hipsolver_handle_, jobu, jobvt, m, n, &lwork));  \
+      /* Allocate device memory for workspace. */                        \
+      auto dev_workspace =                                               \
+        this->GetScratchSpace<Scalar>(lwork, "", /* on_host */ false);   \
+      TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(gesvd, type_prefix)(          \
+                              hipsolver_handle_, jobu, jobvt, m, n,      \
+                              ROCmComplex(dev_A), lda, dev_S,            \
+                              ROCmComplex(dev_U), ldu,                   \
+                              ROCmComplex(dev_VT), ldvt,                 \
+                              ROCmComplex(dev_workspace.mutable_data()), \
+                              lwork, nullptr, dev_lapack_info));         \
+      return OkStatus();                                                 \
   }
-  return status;
-}
 
-Status GpuSolver::forward_input_or_allocate_scoped_tensor(
-    gtl::ArraySlice<int> candidate_input_indices, DataType type,
-    const TensorShape& shape, Tensor* out_temp) {
-  const Status status = context_->forward_input_or_allocate_temp(
-      candidate_input_indices, type, shape, out_temp);
-  if (status.ok()) {
-    scratch_tensor_refs_.emplace_back(*out_temp);
+TF_CALL_HIP_LAPACK_TYPES_NO_COMPLEX(GESVD_INSTANCE);
+
+//=============================================================================
+// Wrappers of rocBlas computational methods begin here.
+//  Please check actual declarations here
+//  https://github.com/ROCmSoftwarePlatform/rocBlas
+//=============================================================================
+#define TRSV_INSTANCE(Scalar, type_prefix)                                   \
+  template <>                                                                \
+  Status GpuSolver::Trsv<Scalar>(                                            \
+      rocblas_fill uplo, rocblas_operation trans, rocblas_diagonal diag,     \
+      int n, const Scalar* A, int lda, Scalar* x, int incx) {                \
+      mutex_lock lock(handle_map_mutex);                                     \
+      using ROCmScalar = typename ROCmComplexT<Scalar>::type;                \
+      TF_RETURN_IF_ROCBLAS_ERROR(BLAS_SOLVER_FN(trsv, type_prefix)(          \
+        rocm_blas_handle_, uplo, trans, diag, n, A, lda, x, incx));          \
+      return OkStatus();                                                     \
   }
-  return status;
-}
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSV_INSTANCE);
+
 
 template <typename Scalar, typename SolverFnT>
 static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
@@ -805,6 +860,41 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
         rocm_blas_handle_, n, host_a_dev_ptrs, lda, dev_pivots,               \
         host_a_inverse_dev_ptrs, ldainv, dev_lapack_info, batch_size);        \
   }
+
+#define TRSM_BATCHED_INSTANCE(Scalar, type_prefix)                              \
+  template <>                                                                   \
+  Status GpuSolver::TrsmBatched<Scalar>(                                        \
+      rocblas_side side, rocblas_fill uplo, rocblas_operation trans,            \
+      rocblas_diagonal diag, int m, int n, const Scalar* alpha,                 \
+      const Scalar* const dev_Aarray[], int lda, Scalar* dev_Barray[],          \
+      int ldb, int batch_size) {                                                \
+    mutex_lock lock(handle_map_mutex);                                          \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                     \
+    ScratchSpace<uint8> dev_a_dev_ptrs =                                        \
+        this->GetScratchSpace<uint8>(sizeof(ROCmScalar*) * batch_size, "",      \
+                                            /* on_host */ false);               \
+    ScratchSpace<uint8> dev_b_dev_ptrs =                                        \
+        this->GetScratchSpace<uint8>(sizeof(ROCmScalar*) * batch_size, "",      \
+                                            /* on_host */ false);               \
+    if (!CopyHostToDevice(context_, dev_a_dev_ptrs.mutable_data()/* dest */,    \
+                          dev_Aarray /* source */,                              \
+                          dev_a_dev_ptrs.bytes())) {                            \
+      return errors::Internal("TrsmBatched: Failed to copy pointers to device");\
+    }                                                                           \
+    if (!CopyHostToDevice(context_, dev_b_dev_ptrs.mutable_data()/* dest */,    \
+                          dev_Barray /* source */,                              \
+                          dev_b_dev_ptrs.bytes())) {                            \
+      return errors::Internal("TrsmBatched: Failed to copy pointers to device");\
+    }                                                                           \
+    TF_RETURN_IF_ROCBLAS_ERROR(BLAS_SOLVER_FN(trsm_batched, type_prefix)(       \
+        rocm_blas_handle_, side, uplo, trans, diag, m, n, alpha,                \
+        reinterpret_cast<ROCmScalar**>(dev_a_dev_ptrs.mutable_data()),          \
+        lda, reinterpret_cast<ROCmScalar**>(dev_b_dev_ptrs.mutable_data()),     \
+        ldb, batch_size));                                                      \
+    return OkStatus();                                                          \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_BATCHED_INSTANCE);
 
 template <typename Scalar, typename SolverFnT>
 Status GeamImpl(GpuExecutor* gpu_executor, SolverFnT solver,
