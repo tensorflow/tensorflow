@@ -1,1 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
+--- a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
++++ b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
+@@ -722,7 +722,7 @@
+ void FuncPGOInstrumentation<Edge, BBInfo>::renameComdatFunction() {
+   if (!canRenameComdat(F, ComdatMembers))
+     return;
+-  StringRef OrigName = F.getName();
++  std::string OrigName = F.getName().str();
+   std::string NewFuncName =
+       Twine(F.getName() + "." + Twine(FunctionHash)).str();
+   F.setName(Twine(NewFuncName));
