@@ -39,13 +39,13 @@ namespace xla {
 namespace cpu {
 namespace {
 
-#define GEN_PASS_DEF_LEGALIZECOLLECTIVEOPSPASS
+#define GEN_PASS_DEF_LEGALIZELIBRARYOPSPASS
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 
-class LegalizeCollectiveOpsPass
-    : public impl::LegalizeCollectiveOpsPassBase<LegalizeCollectiveOpsPass> {
+class LegalizeLibraryOpsPass
+    : public impl::LegalizeLibraryOpsPassBase<LegalizeLibraryOpsPass> {
   void runOnOperation() override;
 };
 
@@ -395,11 +395,11 @@ class ConvolutionLowering : public OpRewritePattern<mhlo::ConvolutionOp> {
   };
 };
 
-void LegalizeCollectiveOpsPass::runOnOperation() {
+void LegalizeLibraryOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
-  // Convert mhlo collective operations to XLA cpu ops.
+  // Convert mhlo library operations to XLA cpu ops.
   RewritePatternSet patterns(ctx);
   patterns.insert<AddDependencyLowering, AfterAllLowering, AllReduceLowering,
                   AllToAllLowering, CollectivePermuteLowering,
@@ -415,8 +415,8 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeCollectiveOpsPass() {
-  return std::make_unique<LegalizeCollectiveOpsPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeLibraryOpsPass() {
+  return std::make_unique<LegalizeLibraryOpsPass>();
 }
 
 }  // namespace cpu

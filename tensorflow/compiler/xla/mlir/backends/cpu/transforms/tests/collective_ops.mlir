@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -xla-legalize-collective-ops | FileCheck %s
+// RUN: xla-cpu-opt %s -xla-legalize-library-ops | FileCheck %s
 
 func.func @max_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = "mhlo.all_reduce"(%arg0) ({

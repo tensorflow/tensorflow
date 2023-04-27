@@ -165,7 +165,7 @@ static Status CreateHloXlaPipeline(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      xla::cpu::createLegalizeCollectiveOpsPass());
+      xla::cpu::createLegalizeLibraryOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
