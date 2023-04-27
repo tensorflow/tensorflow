@@ -24,6 +24,7 @@ limitations under the License.
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/tensor_utils.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -546,6 +547,7 @@ FusionCluster getFusionCluster(
 
     rootOp = users[0];
   }
+  resultOps.insert(rootOp);
 
   // Run DFS to find all ops that satisfy producerFilterFn.
   SmallVector<Operation*> remainingProducers;
@@ -555,6 +557,11 @@ FusionCluster getFusionCluster(
   while (!remainingProducers.empty()) {
     Operation* curOp = remainingProducers.pop_back_val();
     if (!curOp || resultOps.contains(curOp)) continue;
+    if (!llvm::all_of(curOp->getUsers(),
+                      [&](Operation* op) { return resultOps.contains(op); })) {
+      continue;
+    }
+
     if (curOp == op || producerFilterFn(curOp)) {
       resultOps.insert(curOp);
       for (Value operand : curOp->getOperands())

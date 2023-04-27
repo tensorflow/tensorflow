@@ -70,13 +70,13 @@ FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
 // Tiles the op to scf.for and fuses greedily according to the filter.
 FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
     PatternRewriter &rewriter, Operation *op, const scf::SCFTilingOptions &opts,
-    llvm::function_ref<bool(Operation *)> fuseFilterFn);
+    llvm::function_ref<bool(Operation *)> fuseFilterFn = nullptr);
 
 // Tiles the op to 1 for all dimensions and fuses greedily according to the
 // filter function.
 LogicalResult tilePeeledOpsToScalars(
     PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
-    llvm::function_ref<bool(Operation *)> fuseFilterFn);
+    llvm::function_ref<bool(Operation *)> fuseFilterFn = nullptr);
 
 }  // namespace mlir::gml_st
 
