@@ -165,8 +165,11 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::cpu::createLegalizeLibraryOpsPass());
+  // Outlined ABI doesn't support XLA Runtime FFI.
+  if (!options.outline_with_xla_framework) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        xla::cpu::createLegalizeLibraryOpsPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
