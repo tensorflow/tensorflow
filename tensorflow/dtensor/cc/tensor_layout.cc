@@ -1326,31 +1326,16 @@ Layout Layout::Truncate(int64 split_point, bool end) const {
   return output_layout;
 }
 
-namespace {
-// Adds unsharded sharding specs to layout.
-Layout PadLayout(const int64 rank, const bool is_padding_before,
-                 const Layout& layout) {
-  if (rank <= layout.rank()) return layout;
+Layout Layout::LeftPad(int64_t rank) const {
+  if (rank <= this->rank()) return *this;
 
-  // Create list of padding sharding specs.
-  const int n = rank - layout.rank();
-  std::vector<ShardingSpec> new_specs(n);
-  for (int i = 0; i < n; ++i)
-    new_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+  Layout output_layout(*this);
 
-  // Define concatenation point of layout specs.
-  auto concat_point = is_padding_before ? new_specs.end() : new_specs.begin();
-
-  // Concatenate old layout specs and new unsharded specs.
-  new_specs.insert(concat_point, layout.sharding_specs().begin(),
-                   layout.sharding_specs().end());
-  return Layout::GetLayout(new_specs, layout.mesh()).value();
-}
-}  // namespace
-
-Layout Layout::LeftPad(int64 rank) const {
-  bool is_padding_before = true;
-  return PadLayout(rank, is_padding_before, *this);
+  auto& specs = output_layout.sharding_specs_;
+  ShardingSpec spec;
+  spec.set_sharding_spec(Layout::kUnshardedDim);
+  specs.insert(specs.begin(), rank - this->rank(), spec);
+  return output_layout;
 }
 
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
