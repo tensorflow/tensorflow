@@ -1288,6 +1288,7 @@ py_library(
         ":cond",
         ":ops",
         ":training",
+        ":variable_v1",
         "//tensorflow/python/framework",
     ],
 )
@@ -2936,6 +2937,7 @@ py_library(
         ":sparse_ops",
         ":state_ops",
         ":variable_scope",
+        ":variable_v1",
         ":variables",
         ":weights_broadcast_ops",
         "//tensorflow/python/distribute:distribute_lib",

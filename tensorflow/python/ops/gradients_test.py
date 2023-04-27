@@ -1031,7 +1031,7 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
   def testGetVariableByName(self):
     with context.graph_mode():
       init = constant_op.constant(100.0)
-      var = variable_scope.variable(init, name="a/replica_1")
+      var = variable_v1.VariableV1(init, name="a/replica_1")
       if isinstance(var, ref_variable.RefVariable):
         var._variable = array_ops.identity(var, name="a")
       else:

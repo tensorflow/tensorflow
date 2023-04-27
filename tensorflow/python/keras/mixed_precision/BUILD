@@ -113,6 +113,7 @@ py_library(
     deps = [
         ":loss_scale",
         "//tensorflow/python:cond",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
