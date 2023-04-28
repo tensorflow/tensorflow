@@ -55,7 +55,7 @@ class CollectiveOpsTest : public HloTestBase {
     // Disable async->sync collective conversion pass to enable unit testing
     // of async collectives.
     debug_options.add_xla_disable_hlo_passes(
-        "gpu-convert-async-collectives-to-sync");
+        "convert-async-collectives-to-sync");
     return debug_options;
   }
 
