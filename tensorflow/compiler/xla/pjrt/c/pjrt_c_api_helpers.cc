@@ -570,4 +570,14 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk) {
       });
 }
 
+PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
+                                             PJRT_Device* device) {
+  PJRT_Device_GetDescription_Args args;
+  args.struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_GetDescription(&args), api);
+  return args.device_description;
+}
+
 }  // namespace pjrt
