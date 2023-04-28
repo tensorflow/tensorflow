@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/transforms/hlo_constant_splitter.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
@@ -91,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
@@ -722,28 +724,41 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     }
 
     {
-      bool async_all_reduce = debug_options.xla_gpu_enable_async_all_reduce();
-      bool async_collective_permute =
-          debug_options.xla_gpu_enable_async_collective_permute();
-      bool async_all_gather = debug_options.xla_gpu_enable_async_all_gather();
-      bool async_reduce_scatter =
-          debug_options.xla_gpu_enable_async_reduce_scatter();
-      bool async_all_to_all = debug_options.xla_gpu_enable_async_all_to_all();
+      // Convert all collectives to their async form, and then annotate the ones
+      // thet actually need to run asynchronously with an GPU specific backend
+      // config.
+      AsyncCollectiveCreator::CollectiveCreatorConfig config;
+      config.convert_all_reduce = HloPredicateTrue;
+      config.convert_collective_permute = HloPredicateTrue;
+      config.convert_all_gather = HloPredicateTrue;
+      config.convert_reduce_scatter = HloPredicateTrue;
+      config.convert_all_to_all = HloPredicateTrue;
+      pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
-      if (async_all_reduce || async_collective_permute || async_all_gather ||
-          async_reduce_scatter || async_all_to_all) {
-        AsyncCollectiveCreator::CollectiveCreatorConfig config;
-        auto convert_op = [](bool flag) {
-          return [=](const HloInstruction*) { return flag; };
-        };
-        config.convert_all_reduce = convert_op(async_all_reduce);
-        config.convert_collective_permute =
-            convert_op(async_collective_permute);
-        config.convert_all_gather = convert_op(async_all_gather);
-        config.convert_reduce_scatter = convert_op(async_reduce_scatter);
-        config.convert_all_to_all = convert_op(async_all_to_all);
-        pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
-      }
+      auto convert_to_async = [&debug_options](const HloInstruction* inst) {
+        switch (inst->opcode()) {
+          case HloOpcode::kAllReduceStart:
+            return debug_options.xla_gpu_enable_async_all_reduce();
+          case HloOpcode::kAllGatherStart:
+            return debug_options.xla_gpu_enable_async_all_gather();
+          case HloOpcode::kCollectivePermuteStart:
+            return debug_options.xla_gpu_enable_async_collective_permute();
+          case HloOpcode::kAsyncStart: {
+            auto async_inst = Cast<HloAsyncInstruction>(inst);
+            switch (async_inst->async_wrapped_opcode()) {
+              case HloOpcode::kReduceScatter:
+                return debug_options.xla_gpu_enable_async_reduce_scatter();
+              case HloOpcode::kAllToAll:
+                return debug_options.xla_gpu_enable_async_all_to_all();
+              default:
+                return false;
+            }
+          }
+          default:
+            return false;
+        }
+      };
+      pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
     }
 
     if (!hlo_module->config().use_spmd_partitioning()) {
