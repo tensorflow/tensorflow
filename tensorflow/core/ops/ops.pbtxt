@@ -2545,6 +2545,7 @@ op {
         type: DT_COMPLEX128
         type: DT_BOOL
         type: DT_VARIANT
+        type: DT_STRING
       }
     }
   }
@@ -58162,7 +58163,6 @@ op {
     name: "N"
     type: "int"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "separator"
