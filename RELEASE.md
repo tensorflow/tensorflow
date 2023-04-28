@@ -313,6 +313,7 @@ This release contains contributions from many people at Google, as well as:
 
 ## Security
 
+*   Moving forward, TensorFlow will no longer update [TFSAs](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/security). Please refer instead to our [GitHub security advisories](https://github.com/tensorflow/tensorflow/security/advisories), which are attached to [CVEs](https://cve.mitre.org/cve/).
 *   Fixes an FPE in TFLite in conv kernel [CVE-2023-27579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-27579)
 *   Fixes a double free in Fractional(Max/Avg)Pool [CVE-2023-25801](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25801)
 *   Fixes a null dereference on ParallelConcat with XLA [CVE-2023-25676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25676)
