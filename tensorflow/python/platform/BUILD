@@ -31,40 +31,6 @@ py_strict_library(
     srcs_version = "PY3",
 )
 
-py_library(
-    name = "platform",
-    srcs = glob(
-        [
-            "*.py",
-        ],
-        exclude = [
-            "*test.py",
-            "benchmark.py",  # In platform_benchmark.
-            "analytics.py",  # In platform_analytics.
-            "device_context.py",  # In platform_device_context.
-            "self_check.py",  # In self_check
-        ],
-    ) + ["build_info.py"],
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    visibility = ["//tensorflow/python:__pkg__"],
-    deps = [
-        ":_pywrap_cpu_feature_guard",
-        ":build_info",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/util:_pywrap_util_port",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
-        "@rules_python//python/runfiles",
-    ],
-)
-
 py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
