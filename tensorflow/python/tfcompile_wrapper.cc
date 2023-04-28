@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <string>
 
+#ifdef __s390x__
 #include "llvm/TargetParser/Host.h"
+#endif
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
@@ -45,10 +47,15 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         tensorflow::tfcompile::MainFlags flags;
         flags.graph = std::move(graph);
         flags.config = std::move(config);
+#ifdef __s390x__
         flags.target_triple = std::move(target_triple.empty() ?
                        llvm::sys::getDefaultTargetTriple() : target_triple);
         flags.target_cpu = std::move(target_cpu.empty() ?
                        llvm::sys::getHostCPUName().str() : target_cpu);
+#else
+        flags.target_triple = std::move(target_triple);
+        flags.target_cpu = std::move(target_cpu);
+#endif
         flags.target_features = std::move(target_features);
         flags.entry_point = std::move(entry_point);
         flags.cpp_class = std::move(cpp_class);
@@ -65,7 +72,12 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         tensorflow::MaybeRaiseFromStatus(tensorflow::tfcompile::Main(flags));
       },
       py::arg("graph") = "", py::arg("config") = "",
-      py::arg("target_triple") = "", py::arg("target_cpu") = "",
+#ifdef __s390x__
+      py::arg("target_triple") = "",
+#else
+      py::arg("target_triple") = "x86_64-pc-linux",
+#endif
+      py::arg("target_cpu") = "",
       py::arg("target_features") = "", py::arg("entry_point") = "entry",
       py::arg("cpp_class") = "", py::arg("out_function_object") = "out_model.o",
       py::arg("out_metadata_object") = "out_helper.o",

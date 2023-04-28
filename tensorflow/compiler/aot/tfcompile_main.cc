@@ -60,6 +60,9 @@ const char kUsageHeader[] =
 
 int main(int argc, char** argv) {
   tensorflow::tfcompile::MainFlags flags;
+#ifndef __s390x__
+  flags.target_triple = "x86_64-pc-linux";
+#endif
   flags.out_function_object = "out_model.o";
   flags.out_metadata_object = "out_helper.o";
   flags.out_header = "out.h";
