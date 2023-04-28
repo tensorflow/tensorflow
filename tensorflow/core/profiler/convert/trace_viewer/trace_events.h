@@ -343,12 +343,12 @@ class TraceEventsContainer {
 
   // Returns the number of tracks.
   size_t NumTracks() const {
-    size_t num_tracks = 0;
-    for (auto& [device_id, device] : events_by_device_) {
-      num_tracks += device.counter_events_by_name.size() +
-                    device.events_by_resource.size();
-    }
-    return num_tracks;
+    return std::accumulate(
+        events_by_device_.begin(), events_by_device_.end(), 0,
+        [](const size_t tracks, const std::pair<uint32_t, DeviceEvents> item) {
+          return tracks + item.second.counter_events_by_name.size() +
+                 item.second.events_by_resource.size();
+        });
   }
 
   bool FilterByVisibility() const { return filter_by_visibility_; }
