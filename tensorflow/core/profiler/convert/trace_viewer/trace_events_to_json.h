@@ -130,12 +130,12 @@ std::string JsonEscape(absl::string_view raw);
 
 std::string ProtoString(const tsl::protobuf::Message& pb);
 
-template <typename RawData, typename IOBuffer>
-void WriteTpuData(const RawData& data, JsonSeparator<IOBuffer>* separator,
+template <typename RawDataType, typename IOBuffer>
+void WriteTpuData(const RawDataType& data, JsonSeparator<IOBuffer>* separator,
                   IOBuffer* output) {}
 
 // Writes JSON events from a TraceEvent.
-template <typename IOBuffer, typename RawData>
+template <typename IOBuffer, typename RawDataType>
 class JsonEventWriter {
  public:
   JsonEventWriter(const TraceEventsColorerInterface* colorer,
@@ -260,20 +260,20 @@ class JsonEventWriter {
       output_->Append(R"("group_id":)", event.group_id());
     }
     if (event.has_raw_data()) {
-      RawData data;
+      RawDataType data;
       data.ParseFromString(event.raw_data());
       switch (data.raw_data_case()) {
-        case RawData::RAW_DATA_NOT_SET:
+        case RawDataType::RAW_DATA_NOT_SET:
           break;
-        case RawData::kTpuData:
-          WriteTpuData(data.tpu_data(), &separator, output_);
+        case RawDataType::kTpuData:
+          WriteTpuData<RawDataType, IOBuffer>(data, &separator, output_);
           break;
-        case RawData::kDmaActivity:
+        case RawDataType::kDmaActivity:
           separator.Add();
           output_->Append(R"("DMA activity":)",
                           ProtoString(data.dma_activity()));
           break;
-        case RawData::kArgs:
+        case RawDataType::kArgs:
           for (const auto& arg : data.args().arg()) {
             switch (arg.value_case()) {
               case TraceEventArguments::Argument::kStrValue:
@@ -499,7 +499,8 @@ void WriteTraceFullTimespan(const Trace* trace, IOBuffer* output) {
                  R"(],)");
 }
 
-template <typename IOBuffer, typename TraceEventsContainer, typename RawData>
+template <typename IOBuffer, typename TraceEventsContainer,
+          typename RawDataType>
 void TraceEventsToJson(const JsonTraceOptions& options,
                        const TraceEventsContainer& events, IOBuffer* output) {
   // Set the displayTimeUnit to nanoseconds (default is milliseconds), so the UI
@@ -563,7 +564,8 @@ void TraceEventsToJson(const JsonTraceOptions& options,
   colorer->SetUp(trace);
 
   // Write events.
-  JsonEventWriter<IOBuffer, RawData> writer(colorer, trace, references, output);
+  JsonEventWriter<IOBuffer, RawDataType> writer(colorer, trace, references,
+                                                output);
   events.ForAllEvents([&](const TraceEvent& event) {
     separator.Add();
     writer.WriteEvent(event);
