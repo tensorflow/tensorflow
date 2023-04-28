@@ -5106,7 +5106,12 @@ alias(
     name = "platform",
     actual = "//tensorflow/python/platform:platform",
     deprecation = "This target has been split. Depend on the sub-targets instead.",
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/tools/proto_splitter:__pkg__",
+        "//third_party/py/tf_slim:__pkg__",
+        "//third_party/py/tf_slim/data:__pkg__",
+        "//third_party/py/tf_slim/training:__pkg__",
+    ],
 )
 
 alias(

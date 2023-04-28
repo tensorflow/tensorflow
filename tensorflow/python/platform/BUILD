@@ -47,6 +47,7 @@ py_library(
     ) + ["build_info.py"],
     deprecation = "This target has been split. Depend on the sub-targets instead.",
     srcs_version = "PY3",
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         ":_pywrap_cpu_feature_guard",
         ":build_info",
