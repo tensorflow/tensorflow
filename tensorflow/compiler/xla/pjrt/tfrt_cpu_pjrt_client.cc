@@ -144,12 +144,6 @@ class MarkEventReadyOnExit {
 static const char kCpuPlatformName[] = "cpu";
 static constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
-static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent() {
-  static const auto* ready_event = new tfrt::AsyncValueRef<CpuEvent>(
-      tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
-  return ready_event->CopyRef();
-}
-
 static void EnqueueWork(tsl::thread::ThreadPool* pool,
                         absl::AnyInvocable<void()> callee) {
   // TSL TheadPool expects std::function that must be copyable, so we are
