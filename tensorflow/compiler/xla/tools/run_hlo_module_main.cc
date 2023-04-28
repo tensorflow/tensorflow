@@ -72,6 +72,7 @@ std::string GetReferencePlatformName(std::string reference_platform) {
 
 int main(int argc, char** argv) {
   xla::RunHloModuleOptions opts;
+  bool different_random_seeds = false;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("platform", &opts.platform,
                 "The test platform that the HLO module will be executed on "
@@ -125,7 +126,11 @@ int main(int argc, char** argv) {
       tsl::Flag(
           "iterations", &opts.iterations,
           "The number of times to run the module. Each iteration will be run "
-          "with different input data.")};
+          "with different input data."),
+      tsl::Flag("different_random_seeds", &different_random_seeds,
+                "Whether each iteration should use a different random seed for "
+                "the HloModuleConfig."),
+  };
   xla::AppendDebugOptionsFlags(&flag_list);
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.
@@ -170,7 +175,12 @@ int main(int argc, char** argv) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
     xla::Status matched = xla::RunAndCompare(
-        hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts);
+        hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts,
+        /*iteration_literals_proto=*/nullptr,
+        /*reference_module_modifier_hook=*/{},
+        [&](xla::HloModuleConfig* config) {
+          config->set_seed(different_random_seeds ? i : 42);
+        });
 
     // The AssertionResult is only meaningful when the reference is
     // used. Without a reference, the test just verifies that nothing blew up
