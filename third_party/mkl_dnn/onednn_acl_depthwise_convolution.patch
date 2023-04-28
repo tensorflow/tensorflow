@@ -1,5 +1,5 @@
  *******************************************************************************
- Copyright 2022 Arm Limited and affiliates.
+ Copyright 2022-2023 Arm Limited and affiliates.
  SPDX-License-Identifier: Apache-2.0
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
  *******************************************************************************
 
 diff --git a/src/cpu/aarch64/acl_convolution_utils.cpp b/src/cpu/aarch64/acl_convolution_utils.cpp
-index fc93d2aa9..6ebac0d17 100644
+index 1792d0af96..ad19caf5d8 100644
 --- a/src/cpu/aarch64/acl_convolution_utils.cpp
 +++ b/src/cpu/aarch64/acl_convolution_utils.cpp
 @@ -54,10 +54,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
@@ -33,12 +33,13 @@ index fc93d2aa9..6ebac0d17 100644
          return status::unimplemented;
      }
  
-@@ -135,11 +137,11 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -135,11 +137,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
          is_nspc = utils::one_of(src_tag, nhwc);
  
          memory_desc_t want_wei_md = weights_md;
 -        auto wei_tag = is_nspc ? ohwi : oihw;
 +        auto wei_tag = is_depthwise ? hwigo : (is_nspc ? ohwi : oihw);
++
          CHECK(memory_desc_init_by_tag(want_wei_md, wei_tag));
  
          // Compute Library does not support mismatching layouts
@@ -47,7 +48,7 @@ index fc93d2aa9..6ebac0d17 100644
              return status::unimplemented;
  
          if (weights_md.format_kind == format_kind::any) {
-@@ -187,6 +189,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -187,6 +190,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
              acl_wei_data_t,
              acl_layout);
  
@@ -60,7 +61,7 @@ index fc93d2aa9..6ebac0d17 100644
      acp.dst_info = arm_compute::TensorInfo(
              is_nspc ? arm_compute::TensorShape(oc, ow, oh, mb) :
              arm_compute::TensorShape(ow, oh, oc, mb),
-@@ -212,6 +220,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -212,6 +221,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
                  arm_compute::QuantizationInfo(1.0f / scales[0], 0));
      }
  
@@ -70,10 +71,10 @@ index fc93d2aa9..6ebac0d17 100644
 +        return status::success;
 +    }
 +
+     // WeightFormat::ANY tells ACL we can handle any format
      acp.weights_info = arm_compute::WeightsInfo(
-         false,
-         kw,
-@@ -302,6 +316,10 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+             false, kw, kh, oc, false, arm_compute::WeightFormat::ANY);
+@@ -280,6 +295,10 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
          const primitive_attr_t &attr) {
      acp.is_indirect = false;
  
@@ -84,7 +85,7 @@ index fc93d2aa9..6ebac0d17 100644
      // General Compute Library checks, memory tags are also set there
      CHECK(acl_init_conf(acp, src_md, weights_md, dst_md, bias_md, cd, attr));
  
-@@ -330,7 +348,8 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -308,7 +327,8 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
      auto math_mode = get_fpmath_mode();
      // Indirect convolution results in slowdown for low thread count or 1x1
      // kernels, so fall back to GEMM-based convolution in these cases
@@ -94,7 +95,7 @@ index fc93d2aa9..6ebac0d17 100644
                  weights_md.dims[3] == 1, // kw
                  (!math_mode && dnnl_get_max_threads() < 28))) {
          return status::unimplemented;
-@@ -355,6 +374,27 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -333,6 +353,27 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
      return status::success;
  }
  
@@ -122,7 +123,7 @@ index fc93d2aa9..6ebac0d17 100644
  status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
          memory_desc_t &weights_md, memory_desc_t &dst_md,
          memory_desc_t &bias_md, const convolution_desc_t &cd,
-@@ -364,7 +404,8 @@ status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -342,7 +383,8 @@ status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
      // Under these conditions, fallback to faster GEMM-based convolution
      // unless the user explicitly specifies Winograd algorithm
      // clang-format off
@@ -133,7 +134,7 @@ index fc93d2aa9..6ebac0d17 100644
                  src_md.dims[1] < 64, // ic
                  dst_md.dims[1] < 64, // oc
 diff --git a/src/cpu/aarch64/acl_convolution_utils.hpp b/src/cpu/aarch64/acl_convolution_utils.hpp
-index 44dc8eecb..7eae5cbb1 100644
+index 44dc8eecbf..7eae5cbb1a 100644
 --- a/src/cpu/aarch64/acl_convolution_utils.hpp
 +++ b/src/cpu/aarch64/acl_convolution_utils.hpp
 @@ -67,6 +67,11 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
@@ -149,7 +150,7 @@ index 44dc8eecb..7eae5cbb1 100644
          memory_desc_t &weights_md, memory_desc_t &dst_md,
          memory_desc_t &bias_md, const convolution_desc_t &cd,
 diff --git a/src/cpu/cpu_convolution_list.cpp b/src/cpu/cpu_convolution_list.cpp
-index 4142dbc7e..1800aaf58 100644
+index 4142dbc7e7..1800aaf583 100644
 --- a/src/cpu/cpu_convolution_list.cpp
 +++ b/src/cpu/cpu_convolution_list.cpp
 @@ -65,6 +65,7 @@ using namespace dnnl::impl::cpu::x64;
@@ -170,7 +171,7 @@ index 4142dbc7e..1800aaf58 100644
              CPU_INSTANCE(gemm_convolution_fwd_t)
 diff --git a/src/cpu/aarch64/acl_depthwise_convolution.cpp b/src/cpu/aarch64/acl_depthwise_convolution.cpp
 new file mode 100644
-index 000000000..1beb8b8af
+index 0000000000..1beb8b8af3
 --- /dev/null
 +++ b/src/cpu/aarch64/acl_depthwise_convolution.cpp
 @@ -0,0 +1,41 @@
@@ -217,7 +218,7 @@ index 000000000..1beb8b8af
 +}
 diff --git a/src/cpu/aarch64/acl_depthwise_convolution.hpp b/src/cpu/aarch64/acl_depthwise_convolution.hpp
 new file mode 100644
-index 000000000..d84fc4fb5
+index 0000000000..d84fc4fb51
 --- /dev/null
 +++ b/src/cpu/aarch64/acl_depthwise_convolution.hpp
 @@ -0,0 +1,139 @@
