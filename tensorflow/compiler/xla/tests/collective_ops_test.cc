@@ -285,11 +285,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
 
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {},
-                        /*num_replicas=*/2,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {},
+                                            /*num_replicas=*/2,
+                                            /*use_threads=*/true));
   for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({false}),
                                        results[replica_idx]));
@@ -326,11 +325,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
 
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {},
-                        /*num_replicas=*/2,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {},
+                                            /*num_replicas=*/2,
+                                            /*use_threads=*/true));
   for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({true}),
                                        results[replica_idx]));
@@ -444,7 +442,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
                         /*num_replicas=*/kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+                        /*use_threads=*/true));
   std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
   auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
   std::vector<float> expected1_vec = {14., 6., 8., 2., 4.};
@@ -1047,7 +1045,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
                         /*num_replicas=*/kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+                        /*use_threads=*/true));
   std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
   auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
   std::vector<float> expected1_vec = {14., 6., 8., 2., 4., 6., 8.};
