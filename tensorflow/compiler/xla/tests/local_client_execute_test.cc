@@ -223,10 +223,6 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Nested tuples not supported by MLIR";
-  }
-
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
@@ -331,10 +327,6 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
-  }
-
   const Shape array_shape = ShapeUtil::MakeShape(F32, {2, 2});
   const Shape vector_shape = ShapeUtil::MakeShape(F32, {3});
 
@@ -458,10 +450,6 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Nested tuples not supported by MLIR";
-  }
-
   // Construct and run a computation which takes a two-level nested tuple
   // parameter with a large fanout.
   const int kFanout = 40;
@@ -523,10 +511,6 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Nested tuples not supported by MLIR";
-  }
-
   // Construct and run a computation which takes a very deep tuple. The tuple
   // has no fan out and a single scalar element at the bottom.
   const int kTupleDepth = 100;
