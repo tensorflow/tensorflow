@@ -15,7 +15,7 @@
 """TraceType implementations for common Python types."""
 
 import collections
-from typing import Any, Dict as PythonDict, Hashable, Optional, Sequence, Tuple as PythonTuple, Type
+from typing import Any, Dict as PythonDict, Hashable, List as PythonList, Optional, Sequence, Tuple as PythonTuple, Type
 import weakref
 
 from tensorflow.core.function.trace_type import default_types_pb2
@@ -216,7 +216,7 @@ class Tuple(trace.TraceType, serialization.Serializable):
       flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
     return flattened_values
 
-  def _flatten(self) -> list[trace.TraceType]:
+  def _flatten(self) -> PythonList[trace.TraceType]:
     flattened_types = []
     for component in self.components:
       flattened_types.extend(component._flatten())  # pylint: disable=protected-access
@@ -297,7 +297,7 @@ class List(trace.TraceType, serialization.Serializable):
     assert isinstance(value, list)
     return self.components_tuple._to_tensors(tuple(value))  # pylint: disable=protected-access
 
-  def _flatten(self) -> list[trace.TraceType]:
+  def _flatten(self) -> PythonList[trace.TraceType]:
     return self.components_tuple._flatten()  # pylint: disable=protected-access
 
   def _cast(self, value: Any, casting_context) -> Any:
@@ -405,7 +405,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
       flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
     return flattened_values
 
-  def _flatten(self) -> list[trace.TraceType]:
+  def _flatten(self) -> PythonList[trace.TraceType]:
     flattened_types = []
 
     for component in self.attributes.components:
@@ -533,7 +533,7 @@ class Attrs(trace.TraceType):
       flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
     return flattened_values
 
-  def _flatten(self) -> list[trace.TraceType]:
+  def _flatten(self) -> PythonList[trace.TraceType]:
     flattened_types = []
 
     for component in self.named_attributes.attributes.components:
@@ -658,7 +658,7 @@ class Dict(trace.TraceType, serialization.Serializable):
       flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
     return flattened_values
 
-  def _flatten(self) -> list[trace.TraceType]:
+  def _flatten(self) -> PythonList[trace.TraceType]:
     flattened_types = []
 
     for component in self.mapping.values():
