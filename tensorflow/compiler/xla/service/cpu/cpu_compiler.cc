@@ -1126,15 +1126,30 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   auto mlir_module = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(mlir_module, module));
 
+  // Flatten tuples before we set up the input mapping. The flattening pass
+  // doesn't preserve attributes so we'd lose some in the process.
+  mlir::PassManager pm(mlir_module.getOperation()->getName(),
+                       mlir::PassManager::Nesting::Implicit);
+  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
+  if (failed(pm.run(mlir_module.getOperation()))) {
+    return tsl::errors::Internal("Failed to flatten tuples");
+  }
+
   // Add buffer mappings. The first attribute is the index of the slice, the
   // second is a boolean attribute on whether the allocation is writeable.
   llvm::SmallVector<std::pair<mlir::Attribute, mlir::Attribute>>
       operand_mapping;
   for (auto i : module->entry_computation()->parameter_instructions()) {
-    auto slice = assignment->GetUniqueTopLevelSlice(i);
-    operand_mapping.emplace_back(
-        builder.getI32IntegerAttr(static_cast<int32_t>(slice->index())),
-        builder.getBoolAttr(!slice->allocation()->is_readonly()));
+    ShapeUtil::ForEachSubshape(
+        i->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsTuple()) {
+            return;
+          }
+          auto slice = assignment->GetUniqueSlice(i, index);
+          operand_mapping.emplace_back(
+              builder.getI32IntegerAttr(static_cast<int32_t>(slice->index())),
+              builder.getBoolAttr(!slice->allocation()->is_readonly()));
+        });
   }
 
   auto root_instr = module->entry_computation()->root_instruction();
@@ -1143,15 +1158,20 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   // Gather mappings to each element in the tuple if necessary
   llvm::SmallVector<mlir::Attribute> result_inner_mapping;
   if (output_allocation->allocation()->is_tuple()) {
-    for (auto i : llvm::seq<int>(0, root_instr->shape().tuple_shapes_size())) {
-      int64_t result_index =
-          assignment->GetUniqueSlice(root_instr, {i})->index();
-      result_inner_mapping.push_back(mlir::IntegerAttr::get(
-          mlir::IntegerType::get(&mlir_context, 64), result_index));
-      if (export_mapping != nullptr) {
-        export_mapping->flattened_outputs.push_back(result_index);
-      }
-    }
+    ShapeUtil::ForEachSubshape(
+        root_instr->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsTuple()) {
+            return;
+          }
+          int64_t result_index =
+              assignment->GetUniqueSlice(root_instr, index)->index();
+          result_inner_mapping.push_back(
+              builder.getI64IntegerAttr(result_index));
+          if (export_mapping != nullptr) {
+            export_mapping->flattened_outputs.push_back(result_index);
+          }
+        });
   }
 
   int output_index = static_cast<int>(output_allocation->index());

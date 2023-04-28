@@ -285,10 +285,6 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
-  }
-
   const Shape array_shape = ShapeUtil::MakeShape(F32, {2, 2});
   const Shape vector_shape = ShapeUtil::MakeShape(F32, {3});
 
@@ -378,10 +374,6 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
-  }
-
   // Construct a computation which takes and returns the same shape (a
   // tuple). Feed the result of the computation back into the input. This
   // provides additional verification that the returned tuple is properly
@@ -418,10 +410,6 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
-  }
-
   // Construct a computation which takes a tuple parameter with a very large
   // number of elements.
 
