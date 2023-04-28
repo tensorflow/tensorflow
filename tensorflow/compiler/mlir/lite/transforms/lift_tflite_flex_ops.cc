@@ -230,7 +230,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
       StatusOr<Attribute> mlir_attr =
           tensorflow::ConvertAttributeValue(attr_value, &builder);
       if (!mlir_attr.ok()) {
-        return emitError(loc, mlir_attr.status().error_message());
+        return emitError(loc, mlir_attr.status().message());
       }
       attributes.push_back(builder.getNamedAttr(attr_name, *mlir_attr));
     }

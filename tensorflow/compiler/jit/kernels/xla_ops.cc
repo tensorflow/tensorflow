@@ -452,7 +452,10 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     xla_compiler_args = std::move(status_or_xla_compiler_args.value());
   }
 
-  if (UsePjRtForSingleDeviceCompilation()) {
+  bool use_pjrt = GetXlaOpsCommonFlags()
+                      ->tf_xla_use_device_api.IsEnabledInXlaLaunchForDevice(
+                          platform_info_.device_type());
+  if (use_pjrt) {
     VLOG(2) << "Compiling using PJRT";
     Status status = CompileToPjRtLoadedExecutable(
         *ctx, platform_info_, function_, xla_compiler_args,
@@ -479,24 +482,11 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           done);
       OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
                            done);
-
-      StatusOr<xla::PjRtDevice*> device =
-          pjrt_client->LookupAddressableDevice(GetDeviceOrdinal(ctx->device()));
-      OP_REQUIRES_OK_ASYNC(ctx, device.status(), done);
-
-      const std::vector<xla::PjRtBuffer*> executable_args =
-          PreparePjRtExecutableArguments(compilation_result->input_mapping,
-                                         inputs, variable_infos);
-      // TODO(b/257548614): currently PJRT is compiled as portable (num_replica
-      // = 1 and num_partition = 1). Support multiple partitions case.
-      auto executable_outputs = pjrt_executable->ExecutePortable(
-          executable_args, *device, GetPjRtExecuteOptions());
-      OP_REQUIRES_OK_ASYNC(ctx, executable_outputs.status(), done);
-      OP_REQUIRES_OK_ASYNC(ctx,
-                           PopulateCtxOutputsFromPjRtExecutableOutputs(
-                               inputs, variable_infos, *compilation_result,
-                               *executable_outputs, ctx),
-                           done);
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
+                            *compilation_result, pjrt_executable, ctx),
+          done);
       VLOG(2) << "Done executing with PJRT.";
       done();
     };

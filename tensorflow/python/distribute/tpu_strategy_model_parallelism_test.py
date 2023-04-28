@@ -21,7 +21,7 @@ from absl.testing import parameterized
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.compiler.xla.experimental import xla_sharding
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_replicated_variable
@@ -161,7 +161,7 @@ class TPUStrategyModelParallelismTest(
 
     @def_function.function
     def f(x):
-      replica_ctx = distribution_strategy_context.get_replica_context()
+      replica_ctx = distribute_lib.get_replica_context()
       with replica_ctx.experimental_logical_device(0):
         y = v * x
       with replica_ctx.experimental_logical_device(1):
@@ -187,8 +187,8 @@ class TPUStrategyModelParallelismTest(
       def __init__(self, v, w):
         super(PartitionedModel, self).__init__()
 
-        assert distribution_strategy_context.has_strategy()
-        strategy = distribution_strategy_context.get_strategy()
+        assert distribute_lib.has_strategy()
+        strategy = distribute_lib.get_strategy()
 
         with strategy.extended.experimental_logical_device(0):
           self.v = variables.Variable(v)
@@ -196,7 +196,7 @@ class TPUStrategyModelParallelismTest(
           self.w = variables.Variable(w)
 
       def __call__(self, x):
-        replica_ctx = distribution_strategy_context.get_replica_context()
+        replica_ctx = distribute_lib.get_replica_context()
         with replica_ctx.experimental_logical_device(0):
           y = self.v * x
         with replica_ctx.experimental_logical_device(1):

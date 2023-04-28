@@ -42,8 +42,8 @@ namespace {
 
 void ExpectErrorContains(const Status& status, absl::string_view str) {
   EXPECT_NE(OkStatus(), status);
-  EXPECT_TRUE(absl::StrContains(status.error_message(), str))
-      << "expected error: " << status.error_message() << " to contain: " << str;
+  EXPECT_TRUE(absl::StrContains(status.message(), str))
+      << "expected error: " << status.message() << " to contain: " << str;
 }
 
 TEST(ValidateConfig, Good) {

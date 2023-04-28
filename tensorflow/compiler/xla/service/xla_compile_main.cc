@@ -38,10 +38,14 @@ limitations under the License.
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#endif
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 #endif
 
 namespace xla {
@@ -68,25 +72,29 @@ StatusOr<std::string> AotCompileCpuExecutable(
   return result;
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 StatusOr<std::string> AotCompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     const gpu::GpuTargetConfig& gpu_target_config,
     const AutotuneResults& autotune_results = AutotuneResults()) {
-  gpu::NVPTXCompiler nvptx_compiler;
+#if GOOGLE_CUDA
+  auto gpu_compiler = gpu::NVPTXCompiler();
+#elif TENSORFLOW_USE_ROCM
+  auto gpu_compiler = gpu::AMDGPUCompiler();
+#endif
   Compiler::CompileOptions compile_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module_after_opt,
-                      nvptx_compiler.RunHloPassesWithoutDevice(
+                      gpu_compiler.RunHloPassesWithoutDevice(
                           std::move(hlo_module), compile_options,
                           gpu_target_config, autotune_results));
 
   auto module_group =
       std::make_unique<HloModuleGroup>(std::move(module_after_opt));
-  AotCompilationOptions aot_options(nvptx_compiler.PlatformId());
+  AotCompilationOptions aot_options(gpu_compiler.PlatformId());
   aot_options.set_target_config(gpu_target_config);
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      nvptx_compiler.CompileAheadOfTime(std::move(module_group), aot_options));
+      gpu_compiler.CompileAheadOfTime(std::move(module_group), aot_options));
   TF_ASSIGN_OR_RETURN(std::string result, aot_results[0]->SerializeAsString());
   return result;
 }
@@ -131,7 +139,7 @@ xla::Status XlaCompileMain(const std::string& module_path,
   std::string result;
   if (platform == "cpu") {
     TF_ASSIGN_OR_RETURN(result, AotCompileCpuExecutable(std::move(hlo_module)));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   } else if (platform == "gpu") {
     // Parse GpuTargetConfig.
     std::string gpu_target_config_string;
@@ -213,7 +221,7 @@ int main(int argc, char* argv[]) {
       module_path, output_path, platform, gpu_target_config_path,
       autotune_results_path);
   if (!result.ok()) {
-    LOG(ERROR) << "Compilation failed: " << result.error_message();
+    LOG(ERROR) << "Compilation failed: " << result.message();
     return 1;
   }
 

@@ -57,11 +57,12 @@ FallbackState::FallbackState(const SessionOptions &session_options,
             session_options.config.graph_options().optimizer_options(),
             /*thread_pool=*/nullptr, /*parent=*/nullptr,
             /*session_metadata=*/nullptr,
-            Rendezvous::Factory{
-                [](const int64, const DeviceMgr *device_mgr, Rendezvous **r) {
-                  *r = new IntraProcessRendezvous(device_mgr);
-                  return OkStatus();
-                }}) {
+            Rendezvous::Factory{[](const int64, const DeviceMgr *device_mgr,
+                                   tsl::core::RefCountPtr<Rendezvous> *r) {
+              *r = tsl::core::RefCountPtr<Rendezvous>(
+                  new IntraProcessRendezvous(device_mgr));
+              return OkStatus();
+            }}) {
   for (auto *d : device_manager_.ListDevices()) {
     device_set_.AddDevice(d);
   }

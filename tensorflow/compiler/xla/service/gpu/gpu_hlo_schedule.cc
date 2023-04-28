@@ -17,15 +17,17 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
 
 namespace xla {
@@ -33,11 +35,16 @@ namespace gpu {
 
 namespace {
 
+bool IsSyncCollective(const HloInstruction& instr) {
+  auto backend_config = instr.backend_config<CollectiveBackendConfig>().value();
+  return backend_config.is_sync();
+}
+
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return true;
+      return !IsSyncCollective(instr);
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -58,7 +65,7 @@ bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteDone:
-      return true;
+      return ShouldScheduleAsEarlyAsPossible(*instr.operand(0));
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() == CustomCallSchedule::SCHEDULE_LATEST;
@@ -154,18 +161,40 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
   return result;
 }
 
+// Post process to move start/done for synchronous collectives next to each
+// other.
+HloInstructionSequence PostprocessorToScheduleSyncCollectives(
+    const HloInstructionSequence& input) {
+  HloInstructionSequence result;
+  auto is_synchronous_op = [](const HloInstruction* instr) {
+    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode()) &&
+           IsSyncCollective(*instr);
+  };
+  for (HloInstruction* instr : input.instructions()) {
+    if (is_synchronous_op(instr)) {
+      continue;
+    }
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode())) {
+      // Place the start op just before the done op if its synchronous.
+      HloInstruction* start = instr->mutable_operand(0);
+      if (is_synchronous_op(start)) {
+        result.push_back(start);
+      }
+    }
+    result.push_back(instr);
+  }
+  return result;
+}
+
 StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
-    const HloModule* module, int64_t pointer_size, bool enable_post_processor) {
-  MemorySchedulerPostprocessor post_processor =
-      enable_post_processor ? PostprocessorToScheduleAsEarlyOrLateAsPossible
-                            : nullptr;
+    const HloModule* module, int64_t pointer_size) {
   return ScheduleModule(
       module,
       [pointer_size](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
       },
       ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler,
-                                            post_processor));
+                                            PostProcessSchedule));
 }
 
 // Latency hiding scheduler support.
@@ -188,11 +217,29 @@ enum class GpuResourceType {
   kNumTargetResources = 1,
 };
 
-// GPU async tracker maps all collectives onto a async stream resource.
-class GpuAsyncTracker : public AsyncTracker {
+// Base GPU async tracker that enables async tracking only for async collectives
+// that are marked for async execution.
+class GpuAsyncTrackerBase : public AsyncTracker {
+ public:
+  using AsyncTracker::AsyncTracker;
+
+  bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
+    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode()) &&
+           !IsSyncCollective(*hlo.operand(0));
+  }
+
+  // Returns if this is an Async op start that the scheduler supports.
+  bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
+    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode()) &&
+           !IsSyncCollective(hlo);
+  }
+};
+
+// GPU async tracker maps all collectives onto an async stream resource.
+class GpuAsyncTracker : public GpuAsyncTrackerBase {
  public:
   explicit GpuAsyncTracker(const SchedulerConfig& config)
-      : AsyncTracker(config) {}
+      : GpuAsyncTrackerBase(config) {}
 
   ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& instr) const override {
@@ -208,7 +255,7 @@ class GpuAsyncTracker : public AsyncTracker {
           static_cast<int64_t>(GpuResourceType::kGpuAsyncStream);
       return {std::make_pair(gpu_stream_resource, usage)};
     }
-    return AsyncTracker::GetResourcesFromInstruction(instr);
+    return GpuAsyncTrackerBase::GetResourcesFromInstruction(instr);
   }
 
   int64_t GetNumTargetDefinedResources() const override {
@@ -219,7 +266,7 @@ class GpuAsyncTracker : public AsyncTracker {
   int64_t GetNumAvailableResources(int64_t resource_type) const override {
     const int64_t first_target_resource = GetFirstTargetDefinedResource();
     if (resource_type < first_target_resource) {
-      return AsyncTracker::GetNumAvailableResources(resource_type);
+      return GpuAsyncTrackerBase::GetNumAvailableResources(resource_type);
     }
     CHECK_EQ(resource_type,
              first_target_resource +
@@ -241,7 +288,7 @@ class GpuAsyncTracker : public AsyncTracker {
   absl::string_view GetResourceName(int64_t resource_type) const override {
     const int64_t first_target_resource = GetFirstTargetDefinedResource();
     if (resource_type < first_target_resource) {
-      return AsyncTracker::GetResourceName(resource_type);
+      return GpuAsyncTrackerBase::GetResourceName(resource_type);
     }
     CHECK_LE(resource_type,
              first_target_resource + GetNumTargetDefinedResources());
@@ -257,7 +304,7 @@ class GpuAsyncTracker : public AsyncTracker {
       int64_t resource_type) const override {
     const int64_t first_target_resource = GetFirstTargetDefinedResource();
     if (resource_type < first_target_resource) {
-      return AsyncTracker::GetResourceHazardType(resource_type);
+      return GpuAsyncTrackerBase::GetResourceHazardType(resource_type);
     }
     CHECK_LE(resource_type,
              first_target_resource + GetNumTargetDefinedResources());
@@ -298,19 +345,31 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
 
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
                          const GpuDeviceInfo& gpu_info) {
+  TF_ASSIGN_OR_RETURN(
+      HloSchedule schedule,
+      ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+
+  // Tag the module with its 128 bit fingeprint. The fingerprint should include
+  // instruction name with ids
+  std::string fingerprint = module->GetFingerprint128(
+      HloPrintOptions::Canonical().set_print_backend_config(true));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())[kFingerprintBeforeLHS] = fingerprint;
+  root->add_frontend_attributes(attributes);
+  VLOG(1) << "Fingerprint before LHS for module " << module->name() << " = "
+          << fingerprint;
+
   const bool enable_latency_hiding_scheduler =
       module->config()
           .debug_options()
           .xla_gpu_enable_latency_hiding_scheduler();
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleGpuModuleWithMemoryScheduler(module, pointer_size,
-                                           !enable_latency_hiding_scheduler));
-  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
   if (!enable_latency_hiding_scheduler) {
     return OkStatus();
   }
+
   SchedulerConfig config = GetSchedulerConfig(gpu_info);
   auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
   auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
@@ -318,7 +377,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
                    .debug_options()
                    .xla_gpu_lhs_enable_gpu_async_tracker()
                ? std::make_unique<GpuAsyncTracker>(config)
-               : std::make_unique<AsyncTracker>(config);
+               : std::make_unique<GpuAsyncTrackerBase>(config);
   }();
 
   auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
@@ -335,6 +394,12 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
 
   TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   return OkStatus();
+}
+
+HloInstructionSequence PostProcessSchedule(
+    const HloInstructionSequence& input) {
+  HloInstructionSequence result = PostprocessorToScheduleSyncCollectives(input);
+  return PostprocessorToScheduleAsEarlyOrLateAsPossible(result);
 }
 
 }  // namespace gpu

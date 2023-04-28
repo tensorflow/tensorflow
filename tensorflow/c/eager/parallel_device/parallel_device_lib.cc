@@ -368,6 +368,27 @@ void ParallelDevice::StartExecute(TFE_Context* context,
   }
 }
 
+void ParallelDevice::StartExecute(
+    TFE_Context* context,
+    const std::vector<std::vector<TFE_TensorHandle*>>& inputs,
+    const char* operation_name, const TFE_OpAttrs* attributes,
+    int expected_max_outputs, CancellationManager& cancellation_manager,
+    absl::optional<int64_t> step_id) const {
+  for (int device_index = 0; device_index < underlying_devices_.size();
+       ++device_index) {
+    DeviceThread* device_thread = device_threads_[device_index].get();
+    std::vector<TFE_TensorHandle*> device_inputs;
+    device_inputs.reserve(inputs.size());
+    for (int input_index = 0; input_index < inputs.size(); ++input_index) {
+      // Parallel tensors are divided between operations by device.
+      device_inputs.push_back(inputs[input_index][device_index]);
+    }
+    device_thread->StartExecute(
+        context, operation_name, std::move(device_inputs), attributes,
+        expected_max_outputs, cancellation_manager, step_id);
+  }
+}
+
 void ParallelDevice::AsyncWait(TFE_Context* context, TF_Status* status) const {
   StatusPtr first_bad_status(nullptr);
 

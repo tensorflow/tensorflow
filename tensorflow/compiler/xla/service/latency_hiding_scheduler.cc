@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -681,8 +682,8 @@ class ReadySetLt {
     // discovering the closest "done" to every instruction and prioritize
     // those that are closer rather than ones that are further away.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            ShouldScheduleAsyncDone(*a.node), a,
-            ShouldScheduleAsyncDone(*b.node), b, "kScheduleDone")) {
+            ShouldScheduleAsyncDone(a), a, ShouldScheduleAsyncDone(b), b,
+            "kScheduleDone")) {
       return *value;
     }
 
@@ -871,13 +872,16 @@ class ReadySetLt {
     }
     return *cand.resource_constrained;
   }
-  bool ShouldScheduleAsyncDone(const HloGraphNode& gn) const {
-    if (!gn.DoesOccupyAnyResource()) {
+  bool ShouldScheduleAsyncDone(
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand) const {
+    if (!gn_cand.node->DoesOccupyAnyResource()) {
       return false;
     }
-    return !ShouldDelaySendHostDone(gn);
+    return !ShouldDelaySendHostDone(gn_cand);
   }
-  bool ShouldDelaySendHostDone(const HloGraphNode& gn) const {
+  bool ShouldDelaySendHostDone(
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand) const {
+    const HloGraphNode& gn = *gn_cand.node;
     if (!gn.UsesResourceType(ResourceType::kSendHost).has_value() ||
         gn.GetInstr().opcode() != HloOpcode::kSendDone) {
       return false;
@@ -888,7 +892,26 @@ class ReadySetLt {
         sched_state_.sched_graph.GetNode(gn.GetInstr().operand(0));
     const LatencyEstimator::TimeCost latency =
         sched_state_.latency_estimator->GetLatencyBetween(start, gn);
-    if (start.GetReadyTime() - sched_state_.current_time <= latency) {
+    if (!gn_cand.estimated_connected_send_ready_time.has_value()) {
+      HloGraphNode::TimeCost start_ready_time = 0;
+      for (const auto& succ : start.GetSuccessors()) {
+        // If any successor is not ready skip this logic. We detect this by
+        // checking that ready time is set to max. This should never happen
+        // because sends always have 1 or 2 successors that should be scheduled
+        // or ready already, but in case somebody comes up with different
+        // patterns lets keep this check here.
+        if (succ.Target().GetReadyTime() >=
+            std::numeric_limits<HloGraphNode::TimeCost>::max()) {
+          return false;
+        }
+        start_ready_time = std::max(
+            start_ready_time, succ.Latency() + succ.Target().GetReadyTime());
+      }
+      gn_cand.estimated_connected_send_ready_time = start_ready_time;
+    }
+    if (*gn_cand.estimated_connected_send_ready_time -
+            sched_state_.current_time <=
+        latency) {
       return false;
     }
     return true;

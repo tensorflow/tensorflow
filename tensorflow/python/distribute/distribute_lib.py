@@ -220,8 +220,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import distribute as ds_types
@@ -4026,8 +4028,8 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     numpy_flat = nest.flatten(numpy_input)
     vars_flat = tuple(
-        variable_scope.variable(array_ops.zeros(i.shape, i.dtype),
-                                trainable=False, use_resource=True)
+        variable_v1.VariableV1(array_ops.zeros(i.shape, i.dtype),
+                               trainable=False, use_resource=True)
         for i in numpy_flat
     )
     for v, i in zip(vars_flat, numpy_flat):
@@ -4172,7 +4174,7 @@ class _DefaultReplicaContext(ReplicaContext):
 # So here we catch any attempts to deserialize variables
 # when using distribution strategies.
 # pylint: disable=protected-access
-_original_from_proto = variable_scope._from_proto_fn
+_original_from_proto = ref_variable._from_proto_fn
 
 
 def _from_proto_fn(v, import_scope=None):
@@ -4183,7 +4185,7 @@ def _from_proto_fn(v, import_scope=None):
   else:
     return _original_from_proto(v, import_scope=import_scope)
 
-variable_scope._from_proto_fn = _from_proto_fn
+ref_variable._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
 
 

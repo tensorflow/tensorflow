@@ -19882,7 +19882,7 @@ If two elements are equal, the lower-index element appears first.
 
   let arguments = (ins
     Arg<TF_IntOrFpTensor, [{1-D or higher with last dimension at least `k`.}]>:$input,
-    Arg<TF_Int32Tensor, [{0-D.  Number of top elements to look for along the last dimension (along each
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{0-D.  Number of top elements to look for along the last dimension (along each
 row for matrices).}]>:$k,
 
     DefaultValuedOptionalAttr<BoolAttr, "true">:$sorted
@@ -19890,10 +19890,12 @@ row for matrices).}]>:$k,
 
   let results = (outs
     Res<TF_IntOrFpTensor, [{The `k` largest elements along each last dimensional slice.}]>:$values,
-    Res<TF_Int32Tensor, [{The indices of `values` within the last dimension of `input`.}]>:$indices
+    Res<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{The indices of `values` within the last dimension of `input`.}]>:$indices
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tk = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr index_type = TF_DerivedResultTypeAttr<1>;
 
   let hasVerifier = 1;
 }
@@ -21141,7 +21143,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     StrAttr:$module,
     TF_ShapeAttrArray:$Sout,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
-    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
+    SymbolRefArrayAttr:$function_list
   );
 
   let results = (outs
@@ -22613,7 +22616,8 @@ A pseudo-op to represent host-side computation in an XLA program.
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$host_mlir_module
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$host_mlir_module,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$manual_sharding
   );
 
   let results = (outs
@@ -22640,7 +22644,8 @@ A placeholder op to receive values from a running XLA computation.
 execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
-    I64Attr:$device_ordinal
+    I64Attr:$device_ordinal,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs
@@ -22660,7 +22665,8 @@ A placeholder op to receive values from a running XLA computation with support f
 execution the transfer corresponds to.}]>:$dynamic_key,
     Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
 
-    StrAttr:$key
+    StrAttr:$key,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs
@@ -22679,7 +22685,8 @@ def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", [DeclareOpInterfaceMethods
 execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
-    I64Attr:$device_ordinal
+    I64Attr:$device_ordinal,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs);
@@ -22698,7 +22705,8 @@ A placeholder op to send values to a running XLA computation with support for a 
 execution the transfer corresponds to.}]>:$dynamic_key,
     Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
 
-    StrAttr:$key
+    StrAttr:$key,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs);

@@ -29,6 +29,7 @@ from tensorflow.python.checkpoint import tensor_callable
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
+from tensorflow.python.eager import record
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import composite_tensor
@@ -38,8 +39,8 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_module
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -50,7 +51,6 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -332,6 +332,46 @@ def variable_accessed(variable):
     ops.get_default_graph().watch_variable(variable)
   if variable.trainable:
     tape.variable_accessed(variable)
+
+
+def default_variable_creator_v2(next_creator=None, **kwargs):
+  """Default variable creator."""
+  assert next_creator is None
+  initial_value = kwargs.get("initial_value", None)
+  trainable = kwargs.get("trainable", None)
+  validate_shape = kwargs.get("validate_shape", True)
+  caching_device = kwargs.get("caching_device", None)
+  name = kwargs.get("name", None)
+  variable_def = kwargs.get("variable_def", None)
+  dtype = kwargs.get("dtype", None)
+  import_scope = kwargs.get("import_scope", None)
+  constraint = kwargs.get("constraint", None)
+  distribute_strategy = kwargs.get("distribute_strategy", None)
+  synchronization = kwargs.get("synchronization", None)
+  aggregation = kwargs.get("aggregation", None)
+  shape = kwargs.get("shape", None)
+  experimental_enable_variable_lifting = kwargs.get(
+      "experimental_enable_variable_lifting", None)
+
+  return ResourceVariable(
+      initial_value=initial_value,
+      trainable=trainable,
+      validate_shape=validate_shape,
+      caching_device=caching_device,
+      name=name,
+      dtype=dtype,
+      constraint=constraint,
+      variable_def=variable_def,
+      import_scope=import_scope,
+      distribute_strategy=distribute_strategy,
+      synchronization=synchronization,
+      aggregation=aggregation,
+      shape=shape,
+      experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+      )
+
+
+variables.default_variable_creator_v2 = default_variable_creator_v2
 
 
 class BaseResourceVariable(variables.Variable, core.Tensor):
@@ -756,7 +796,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
-      tape.record_operation(
+      record.record_operation(
           "ReadVariableOp", [result], [self.handle],
           backward_function=lambda x: [x],
           forward_function=lambda x: [x])
@@ -808,8 +848,9 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
           value._handle_data = (  # pylint: disable=protected-access
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
                   is_set=True, shape_and_type=handle_data.shape_and_type[1:]))
+        return array_ops.identity(value)
 
-    return array_ops.identity(value)
+    return value
 
   def gather_nd(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather_nd`."""
@@ -2443,10 +2484,6 @@ def _GatherGrad(op, grad):
   return (indexed_slices.IndexedSlices(values, indices, params_shape), None)
 
 
-_to_proto_fn = variable_scope._to_proto_fn  # pylint: disable=protected-access
-_from_proto_fn = variable_scope._from_proto_fn  # pylint: disable=protected-access
-
-
 @tf_export("__internal__.ops.is_resource_variable", v1=[])
 def is_resource_variable(var):
   """"Returns True if `var` is to be considered a ResourceVariable."""
@@ -2726,7 +2763,7 @@ def write_object_proto_for_resource_variable(resource_variable,
                      f"{resource_variable.name} because of "
                      f"unexpected suffix in the name (expected ':0')"
                      f"which won't be restored.")
-  proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
+  proto.variable.name = tensor_module.get_op_name(resource_variable.name)
   proto.variable.trainable = resource_variable.trainable
   proto.variable.dtype = resource_variable.dtype.as_datatype_enum
   proto.variable.synchronization = resource_variable.synchronization.value

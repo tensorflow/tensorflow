@@ -17,17 +17,21 @@
 import dataclasses
 from typing import Any
 
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 
 
 class _InterpolateFunctionError(object):
@@ -67,14 +71,7 @@ function_callbacks = set()
 # TODO(fmuham): Lower to FunctionRecord or remove otherwise.
 @dataclasses.dataclass(frozen=True)
 class GraphArtifacts:
-  inputs: Any
-  outputs: Any
-  num_outputs: Any
-  output_types: Any
-  output_shapes: Any
   control_captures: Any
-  func_graph_outputs: Any
-  attrs: Any
   graph: Any
   stateful_ops: Any
 
@@ -93,13 +90,15 @@ class AtomicFunction:
   __slots__ = [
       "_name",
       "_bound_context",
+      "_function_type",
       "_graph_artifacts",
       "_cached_definition",
   ]
 
-  def __init__(self, name, bound_context, graph_artifacts):
+  def __init__(self, name, bound_context, function_type, graph_artifacts):
     self._name = compat.as_bytes(name)
     self._bound_context = bound_context
+    self._function_type = function_type
     self._graph_artifacts = graph_artifacts
     self._cached_definition = None
 
@@ -112,6 +111,10 @@ class AtomicFunction:
   @property
   def _c_func(self):
     return context.get_c_function(self.name)
+
+  @property
+  def function_type(self):
+    return self._function_type
 
   # TODO(fmuham): Remove this property.
   @property
@@ -147,7 +150,9 @@ class AtomicFunction:
     """Returns a dictionary of attributes needed to add a call in graph."""
     attrs = {
         "is_stateful": len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
-        "tout": self._graph_artifacts.output_types,
+        "tout": [
+            o.dtype.as_datatype_enum for o in self.function_type.flat_outputs
+        ],
         "xla_compile_attr": self.cached_definition.attr.get(
             attributes_lib.XLA_COMPILE, None
         ),
@@ -186,25 +191,25 @@ class AtomicFunction:
         # case by explicitly pausing recording. We don't have a gradient
         # registered for PartitionedCall, so recording this operation confuses
         # forwardprop code (GradientTape manages to ignore it).
-        with tape.stop_recording():
+        with record.stop_recording():
           if self._bound_context.executing_eagerly():
             outputs = self._bound_context.call_function(
                 self.name,
                 list(args),
-                self._graph_artifacts.num_outputs,
+                len(self.function_type.flat_outputs),
             )
           else:
             outputs = make_call_op_in_graph(self, list(args))
 
-    for i, func_graph_output in enumerate(
-        self._graph_artifacts.func_graph_outputs
-    ):
-      handle_data_util.copy_handle_data(func_graph_output, outputs[i])
+    for i, output_type in enumerate(self.function_type.flat_outputs):
+      handle_data = output_type.dtype._handle_data
+      if handle_data:
+        handle_data_util.set_handle_data(outputs[i], handle_data)
 
     # TODO(fmuham): Use FunctionType cast here for all cases.
     if not self._bound_context.executing_eagerly():
-      for i, shape in enumerate(self._graph_artifacts.output_shapes):
-        outputs[i].set_shape(shape)
+      for i, output_type in enumerate(self.function_type.flat_outputs):
+        outputs[i].set_shape(output_type.shape)
 
     return outputs
 
@@ -247,13 +252,84 @@ def _set_read_only_resource_inputs_attr(op, func_graph):
                         read_only_indices)
 
 
+def partitioned_call_op(
+    name,
+    args,
+    is_stateful,
+    tout,
+    config=None,
+    executor_type=None,
+    xla_compile_attr=None,
+):
+  """Generates a function call op respecting device annotations.
+
+  Args:
+    name: Name of the function to call.
+    args: The arguments of the function, including captured inputs.
+    is_stateful: If the function is stateful.
+    tout: a list containing the output dtypes enums
+    config: (Optional) A `tensorflow::ConfigProto` proto, serialized. If `None`,
+      all optimizations are disabled. Currently only handled for eager defined
+      functions.
+    executor_type: (Optional) A string for the name of the executor to be used
+      in the function call. If not set, or set to an empty string, the default
+      tensorflow executor will be used.
+    xla_compile_attr: (Optional) value of the XLA compilation attribute.
+
+  Returns:
+    Returns the operation.
+  """
+  if config is None:
+    config = function_utils.get_disabled_rewriter_config()
+
+  if executor_type is None:
+    executor_type = ""
+
+  # The generated binding returns an empty list for functions that don't
+  # return any Tensors, hence the need to use `create_op` directly.
+  args = [ops.convert_to_tensor(x) for x in args]
+  tin_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(
+          type=[x.dtype.as_datatype_enum for x in args]))
+  tout_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(type=tout))
+  func_attr = attr_value_pb2.AttrValue(
+      func=attr_value_pb2.NameAttrList(name=name))
+  executor_type_attr = attr_value_pb2.AttrValue(
+      s=compat.as_bytes(executor_type))
+
+  # When running in graph mode, the graph and function graphs are optimized
+  # (i.e. run through grappler) per the session options, so we can disable any
+  # eager-specific rewriting.
+  config_proto = attr_value_pb2.AttrValue(s=config)
+
+  op_name = "StatefulPartitionedCall" if is_stateful else "PartitionedCall"
+
+  # Propagate the attribute indicating the need to compile from function to the
+  # call itself.
+  op_attrs = {
+      "Tin": tin_attr,
+      "Tout": tout_attr,
+      "f": func_attr,
+      "config_proto": config_proto,
+      "executor_type": executor_type_attr,
+  }
+  if xla_compile_attr is not None:
+    op_attrs[attributes_lib.XLA_COMPILE] = xla_compile_attr
+
+  op = ops.get_default_graph().create_op(
+      op_name, args, tout, name=op_name, attrs=op_attrs
+  )
+  return op
+
+
 def make_call_op_in_graph(atomic, tensor_inputs):
   """Adds an AtomicFunction to graph."""
   graph = ops.get_default_graph()
   graph._add_function_recursive(atomic)  # pylint: disable=protected-access
 
   function_call_attrs = atomic.graph_call_attrs
-  op = functional_ops.partitioned_call_op(
+  op = partitioned_call_op(
       name=atomic.name,
       args=tensor_inputs,
       is_stateful=function_call_attrs["is_stateful"],
@@ -351,18 +427,29 @@ def from_func_graph_no_transforms(
   bound_context.add_c_function(fn)
   pywrap_tf_session.TF_DeleteFunction(fn)
 
-  signature = bound_context.get_function_def(name).signature
   graph_artifacts = GraphArtifacts(
-      inputs=inputs,
-      outputs=outputs,
-      num_outputs=len(signature.output_arg),
-      output_types=[o.type for o in signature.output_arg],
-      output_shapes=[o.shape for o in outputs],
       control_captures=graph.function_captures.control,
-      func_graph_outputs=list(outputs),
-      attrs=attrs,
       graph=graph,
       stateful_ops=tuple(op for op in operations if op._is_stateful),  # pylint: disable=protected-access
   )
 
-  return AtomicFunction(name, bound_context, graph_artifacts)
+  if graph.structured_input_signature is not None:
+    input_signature = graph.structured_input_signature
+  else:
+    input_signature = (
+        tuple(tensor_spec.TensorSpec.from_tensor(i) for i in inputs),
+        {},
+    )
+
+  # TODO(fmuham): Include output structure info from structured_outputs
+  output_signature = tuple(
+      trace_type.from_value(o) for o in outputs
+  )
+
+  function_type = function_type_lib.from_structured_signature(
+      input_signature,
+      output_signature,
+      graph.function_captures.capture_types,
+  )
+
+  return AtomicFunction(name, bound_context, function_type, graph_artifacts)

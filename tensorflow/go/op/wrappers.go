@@ -10735,6 +10735,115 @@ func DebugIdentityV2(scope *Scope, input tf.Output, optional ...DebugIdentityV2A
 	return op.Output(0)
 }
 
+// DebugIdentityV3Attr is an optional argument to DebugIdentityV3.
+type DebugIdentityV3Attr func(optionalAttr)
+
+// DebugIdentityV3DeviceName sets the optional device_name attribute to value.
+//
+// value: Name of the device on which the tensor resides.
+// If not specified, defaults to ""
+func DebugIdentityV3DeviceName(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["device_name"] = value
+	}
+}
+
+// DebugIdentityV3TensorName sets the optional tensor_name attribute to value.
+//
+// value: Name of the input tensor.
+// If not specified, defaults to ""
+func DebugIdentityV3TensorName(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["tensor_name"] = value
+	}
+}
+
+// DebugIdentityV3IoOfNode sets the optional io_of_node attribute to value.
+//
+// value: Name of the node of which the tensor is an input or output.
+// If not specified, defaults to ""
+func DebugIdentityV3IoOfNode(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["io_of_node"] = value
+	}
+}
+
+// DebugIdentityV3IsInput sets the optional is_input attribute to value.
+//
+// value: If true, the tensor is an input of the node; otherwise the output.
+// If not specified, defaults to false
+func DebugIdentityV3IsInput(value bool) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["is_input"] = value
+	}
+}
+
+// DebugIdentityV3IoIndex sets the optional io_index attribute to value.
+//
+// value: The index of which the tensor is an input or output of the node.
+// If not specified, defaults to -1
+func DebugIdentityV3IoIndex(value int64) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["io_index"] = value
+	}
+}
+
+// DebugIdentityV3DebugUrls sets the optional debug_urls attribute to value.
+//
+// value: List of URLs to debug targets, e.g.,
+//
+//	file:///foo/tfdbg_dump, grpc:://localhost:11011
+//
+// If not specified, defaults to {}
+func DebugIdentityV3DebugUrls(value []string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["debug_urls"] = value
+	}
+}
+
+// DebugIdentityV3GatedGrpc sets the optional gated_grpc attribute to value.
+//
+// value: Whether this op will be gated. If any of the debug_urls of this
+//
+//	debug node is of the grpc:// scheme, when the value of this attribute is set
+//	to True, the data will not actually be sent via the grpc stream unless this
+//	debug op has been enabled at the debug_url. If all of the debug_urls of this
+//	debug node are of the grpc:// scheme and the debug op is enabled at none of
+//	them, the output will be an empty Tensor.
+//
+// If not specified, defaults to false
+func DebugIdentityV3GatedGrpc(value bool) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["gated_grpc"] = value
+	}
+}
+
+// Provides an identity mapping of the non-Ref type input tensor for debugging.
+//
+// Provides an identity mapping of the non-Ref type input tensor for debugging.
+//
+// Arguments:
+//
+//	input: Input tensor, non-Reference type
+func DebugIdentityV3(scope *Scope, input tf.Output, optional ...DebugIdentityV3Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DebugIdentityV3",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DebugNanCountAttr is an optional argument to DebugNanCount.
 type DebugNanCountAttr func(optionalAttr)
 
@@ -43536,7 +43645,8 @@ func SetSizeValidateIndices(value bool) SetSizeAttr {
 // allowed but ignored.
 //
 // If `validate_indices` is `True`, this op validates the order and range of `set`
-// indices.
+// indices. Setting is to `False` while passing invalid arguments results in
+// undefined behavior.
 //
 // Arguments:
 //
@@ -49543,6 +49653,37 @@ func StatsAggregatorSummary(scope *Scope, iterator tf.Output) (summary tf.Output
 	return op.Output(0)
 }
 
+// Stochastically cast a given tensor from floats to ints.
+//
+// The values are cast with a deterministic pseudo-random tensor from a uniform distribution generated from user given key, counter, algorithm. Values will saturate if out of the specified integer type range, and will become zero if inputs are NaN.
+//
+// The outputs are a deterministic function of `input`, `key`, `counter`, `alg`.
+//
+// Arguments:
+//
+//	input: The operand to stochastically cast to int.
+//	key: Key for the counter-based RNG algorithm (shape uint64[1]).
+//	counter: Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+//	alg: The RNG algorithm (shape int32[]).
+//	Tout: The type of the output.
+//
+// Returns The cast result with the same shape as the input.
+func StochasticCastToInt(scope *Scope, input tf.Output, key tf.Output, counter tf.Output, alg tf.Output, Tout tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout}
+	opspec := tf.OpSpec{
+		Type: "StochasticCastToInt",
+		Input: []tf.Input{
+			input, key, counter, alg,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Stops gradient computation.
 //
 // When executed in a graph, this op outputs its input tensor as-is.
@@ -54011,6 +54152,14 @@ func TopKV2Sorted(value bool) TopKV2Attr {
 	}
 }
 
+// TopKV2IndexType sets the optional index_type attribute to value.
+// If not specified, defaults to DT_INT32
+func TopKV2IndexType(value tf.DataType) TopKV2Attr {
+	return func(m optionalAttr) {
+		m["index_type"] = value
+	}
+}
+
 // Finds values and indices of the `k` largest elements for the last dimension.
 //
 // If the input is a vector (rank-1), finds the `k` largest entries in the vector
@@ -57503,101 +57652,6 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// XlaCallModuleAttr is an optional argument to XlaCallModule.
-type XlaCallModuleAttr func(optionalAttr)
-
-// XlaCallModuleDimArgsSpec sets the optional dim_args_spec attribute to value.
-//
-// value: in presence of dynamic shapes, this is the specification for the
-// dimension arguments. In absence of dynamic shapes this list is empty. The
-// `module` takes one 0-dimensional integer tensor dimension argument for each
-// element of `dim_spec_args`. The dimension arguments come after the platform
-// index argument and before the actual arguments. Each specification is a
-// string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
-// the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
-// where "args" are the actual array arguments.
-// If not specified, defaults to {}
-func XlaCallModuleDimArgsSpec(value []string) XlaCallModuleAttr {
-	return func(m optionalAttr) {
-		m["dim_args_spec"] = value
-	}
-}
-
-// XlaCallModulePlatforms sets the optional platforms attribute to value.
-//
-// value: the list of platforms supported by `module`. If the list is empty,
-// the `module` is platform independent or there should be no platform checking
-// or preprocessing. The list can contain the strings "CPU", "CUDA", "ROCM",
-// or "TPU".
-// If the list is not empty then it is an error to compile this op for a
-// platform that does not appear in the list. If the list contains more than
-// one platform, then the `module` takes one additional 0-dimensional
-// integer-tensor parameter in the first position, encoding the index in
-// `platforms` of the current compilation platform.
-// If not specified, defaults to {}
-func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
-	return func(m optionalAttr) {
-		m["platforms"] = value
-	}
-}
-
-// Invokes a StableHLO module.
-//
-// This op is used with JAX native serialization in a TensorFlow context with
-// stability guarantees.
-//
-// Arguments:
-//
-//	args: A list of `Tensor` with possibly different types to be passed as arguments
-//
-// to the `module`. These are the actual arguments and do not include the
-// platform argument (see `platforms`) nor the dimension arguments (see
-// `dim_args_spec`).
-//
-//	version: Tracks changes the semantics of the op, to support backwards
-//
-// compatibility. Minimum supported version is 2. From
-// version 2, the op carries a StableHLO text or bytecode `module`. From
-// version 3, the op also supports the `platforms` attribute. From version 4,
-// the op carries a StableHLO module with compatibility guarantees.
-//
-//	module: A serialized computation, a text or bytecode representation of
-//
-// an mlir.Module. The return type must be a tuple if and only if the `Sout` is
-// a list with 0 or more than 1 elements. The length of `Tout` and
-// `Sout` must match. This op always returns a tuple of results, even if the
-// module returns a single result.
-//
-//	Sout: List of output tensor shapes.
-//	Tout: List of output tensor data types.
-func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, optional ...XlaCallModuleAttr) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "XlaCallModule",
-		Input: []tf.Input{
-			tf.OutputList(args),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("XlaCallModule", err)
-		return
-	}
-	return output
 }
 
 // XlaConcatNDAttr is an optional argument to XlaConcatND.

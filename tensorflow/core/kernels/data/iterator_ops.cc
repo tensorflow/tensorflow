@@ -1074,7 +1074,7 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
         errors::CreateWithUpdatedMessage(
             s, absl::StrCat(
                    "Failed to restore dataset iterator from checkpoint: ",
-                   s.error_message(),
+                   s.message(),
                    ". Make sure the dataset definition has not changed between "
                    "the process that saved the checkpoint and the process that "
                    "is restoring it.")));

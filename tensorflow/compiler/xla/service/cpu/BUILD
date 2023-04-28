@@ -112,6 +112,20 @@ filegroup(
     visibility = [":friends"],
 )
 
+filegroup(
+    name = "xla_runtime_runner_hdrs",
+    srcs = [
+        "buffer_desc.h",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "xla_runtime_runner_srcs",
+    srcs = [],
+    visibility = [":friends"],
+)
+
 cc_library(
     name = "cpu_xfeed",
     srcs = ["cpu_xfeed.cc"],
@@ -294,8 +308,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/cpu/runtime:collectives",
+        "//tensorflow/compiler/xla/service/cpu/runtime:convolution_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:fft_call",
+        "//tensorflow/compiler/xla/service/cpu/runtime:retain",
         "//tensorflow/compiler/xla/service/cpu/runtime:rng",
         "//tensorflow/compiler/xla/service/cpu/runtime:xfeed",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_command_line_options",
@@ -394,6 +410,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/compiler/xla/runtime:compiler",
@@ -403,7 +420,10 @@ cc_library(
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
+        "@llvm-project//mlir:ConversionPasses",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
@@ -501,10 +521,16 @@ cc_library(
 )
 
 cc_library(
+    name = "buffer_desc",
+    hdrs = ["buffer_desc.h"],
+)
+
+cc_library(
     name = "cpu_executable",
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
     deps = [
+        ":buffer_desc",
         ":simple_orc_jit",
         ":xla_framework",
         "//tensorflow/compiler/xla:shape_tree",

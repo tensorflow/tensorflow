@@ -1150,7 +1150,7 @@ def concatenate(arys, axis=0):
 @np_utils.np_doc_only('tile')
 def tile(a, reps):  # pylint: disable=missing-function-docstring
   a = np_array_ops.array(a)
-  reps = np_array_ops.array(reps, dtype=dtypes.int32).reshape([-1])
+  reps = array_ops.reshape(np_array_ops.array(reps, dtype=dtypes.int32), [-1])
 
   a_rank = array_ops.rank(a)
   reps_size = array_ops.size(reps)

@@ -1445,9 +1445,29 @@ class DatasetV2(
     # [1, 0, 2]
     ```
 
+    ### Fully shuffling all the data
+
+    To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
+    is equivalent to setting the `buffer_size` equal to the number of elements
+    in the dataset, resulting in uniform shuffle.
+
+    Note: `shuffle(dataset.cardinality())` loads the full dataset into memory so
+    that it can be shuffled. This will cause a memory overflow (OOM) error if
+    the dataset is too large, so full-shuffle should only be used for datasets
+    that are known to fit in the memory, such as datasets of filenames or other
+    small datasets.
+
+    ```python
+    dataset = tf.data.Dataset.range(20)
+    dataset = dataset.shuffle(dataset.cardinality())
+    # [18, 4, 9, 2, 17, 8, 5, 10, 0, 6, 16, 3, 19, 7, 14, 11, 15, 13, 12, 1]
+    ```
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        elements from this dataset from which the new dataset will sample.
+        elements from this dataset from which the new dataset will sample. To
+        uniformly shuffle the entire dataset, use
+        `buffer_size=dataset.cardinality()`.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.

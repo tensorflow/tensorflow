@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
@@ -40,7 +41,8 @@ namespace memory_space_assignment {
 namespace {
 // Define a dummy chunk for chunks that will be allocated in the default memory
 // space and for keeping track of number of asynchronous copies.
-const HeapSimulator::Chunk kDummyChunk{-1, -1};
+const HeapSimulator::Chunk kDummyChunk =
+    HeapSimulator::Chunk::FromOffsetSize(-1, -1);
 // For cross-program prefetched buffer, we only perform the freeing optimization
 // if the buffer occupies less of the execution time ratio than this value.
 const float kCrossProgramPrefetchOccupyFreeingLimit = 0.6;
@@ -1745,6 +1747,9 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
   }
 
+  // TODO(b/275905276): if slicing is turned on, ensure repacking is disabled,
+  // i.e., max_repacks == 0
+
   AllocateReservedScopedAllocations();
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -3052,7 +3057,8 @@ void AlternateMemoryBestFitHeap::ImportRepackedAllocations() {
     allocation_block.allocation->mutable_chunk()->offset =
         allocation_block.offset;
     interval_tree_.Add(allocation_block.start_time, allocation_block.end_time,
-                       {allocation_block.offset, allocation_block.size});
+                       HeapSimulator::Chunk::FromOffsetSize(
+                           allocation_block.offset, allocation_block.size));
     allocation_block.initial_offset = allocation_block.offset;
     allocation_block.offset = -1;
   }
@@ -3281,8 +3287,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
       std::optional<Chunk> aliased_chunk = std::nullopt;
       if (required_assignment_at_start->memory_space ==
           MemorySpace::kAlternate) {
-        aliased_chunk =
-            Chunk{required_assignment_at_start->offset->offset, request.size};
+        aliased_chunk = Chunk::FromOffsetSize(
+            required_assignment_at_start->offset->offset, request.size);
       }
       allocation_sequence->push_back(
           std::make_unique<MemorySpaceAssignment::Allocation>(
@@ -3784,13 +3790,11 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
       result_mark(Result::kFailOutOfMemory, result);
       continue;
     }
-    int64_t estimated_prefetch_end_time =
-        options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
-            shape, alternate_mem_interval.start, prefetch_end_time);
     VLOG(4) << "Trying alternate memory allocation ("
             << alternate_mem_interval.start << ", " << request.end_time
             << "), estimated prefetch end time = "
-            << estimated_prefetch_end_time;
+            << options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
+                   shape, alternate_mem_interval.start, prefetch_end_time);
     float prefetch_resource =
         options_.cost_analysis
             ? options_.cost_analysis->GetAsyncCopyElapsed(shape)
@@ -3818,6 +3822,10 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
       continue;
     }
 
+    // TODO(b/275905276): when slicing, compute start times and sizes for
+    // each slice
+
+    // TODO(b/275905276): pass slice info to FindBestChunkCandidate
     auto chunk_candidate = FindBestChunkCandidate(
         request, request.preferred_offset, &alternate_mem_interval);
     // Check if we could find a suitable chunk.
@@ -3831,6 +3839,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
               << options_.prefetch_interval_picker->ToDebugString();
       AddToPendingChunks(alternate_mem_interval, *chunk_candidate);
 
+      // TODO(b/275905276): when slicing, account for multiple chunks & call
+      // AddAsyncSlicedCopy
       AddAsyncCopy(prev_allocation_in_default_mem, MemorySpace::kAlternate,
                    chunk_candidate, alternate_mem_interval.start,
                    request.end_time, prefetch_end_time,

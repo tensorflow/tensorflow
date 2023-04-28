@@ -5,7 +5,7 @@
 // CHECK-LABEL: func @valid_copy_op_in_replicated_host
 
 // CHECK: "tf_device.launch"
-// CHECK: "TPU_REPLICATED_HOST"
+// CHECK: "TPU_REPLICATED_HOST_0"
 // CHECK: "tf_device.launch"
 // CHECK: "tf.TPUCopyWithDynamicShape"
 // CHECK: "TPU_REPLICATED_CORE_0"
@@ -18,7 +18,7 @@ func.func @valid_copy_op_in_replicated_host(
         %2 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2048xi64>) -> tensor<2048xi32>
         %3:2 = "tf.TPUCopyWithDynamicShape"(%1, %2, %cst, %cst) {operand_segment_sizes = array<i32: 2, 2>} : (tensor<2048xi32>, tensor<2048xi32>, tensor<i32>, tensor<i32>) -> (tensor<2048xi32>, tensor<2048xi32>)
         tf_device.return %3#0, %3#1 : tensor<2048xi32>, tensor<2048xi32>
-      }) {device = "TPU_REPLICATED_HOST"} : () -> (tensor<2048xi32>, tensor<2048xi32>)
+      }) {device = "TPU_REPLICATED_HOST_0"} : () -> (tensor<2048xi32>, tensor<2048xi32>)
   return %0#0, %0#1: tensor<2048xi32>, tensor<2048xi32>
 }
 

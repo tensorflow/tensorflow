@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_CTYPES_H_
 
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -31,16 +32,7 @@ inline const T* GetTensorData(const TfLiteTensor* tensor) {
                            : nullptr;
 }
 
-inline RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
-  if (tensor == nullptr) {
-    return RuntimeShape();
-  }
-
-  TfLiteIntArray* dims = tensor->dims;
-  const int dims_size = dims->size;
-  const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
-  return RuntimeShape(dims_size, dims_data);
-}
+TFLITE_NOINLINE RuntimeShape GetTensorShape(const TfLiteTensor* tensor);
 
 }  // namespace tflite
 

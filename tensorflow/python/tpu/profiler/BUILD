@@ -35,9 +35,10 @@ py_library(
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
-        "//tensorflow/python:platform",
         "//tensorflow/python:versions",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",

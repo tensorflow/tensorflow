@@ -24,7 +24,7 @@ import os
 import time
 
 from tensorflow.python.checkpoint import checkpoint_management
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -372,10 +372,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """
   init_from_checkpoint_fn = lambda _: _init_from_checkpoint(
       ckpt_dir_or_file, assignment_map)
-  if distribution_strategy_context.get_cross_replica_context():
+  if distribute_lib.get_cross_replica_context():
     init_from_checkpoint_fn(None)
   else:
-    distribution_strategy_context.get_replica_context().merge_call(
+    distribute_lib.get_replica_context().merge_call(
         init_from_checkpoint_fn)
 
 

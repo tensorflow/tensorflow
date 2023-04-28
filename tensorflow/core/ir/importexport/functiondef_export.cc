@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -60,7 +61,8 @@ static tensorflow::StatusOr<std::string> GetValueName(Value operand,
     std::string name;
     if (is_control) name = "^";
     DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
-        block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
+        FunctionOpInterface(block_operand.getParentBlock()->getParentOp()),
+        arg_num - is_control);
     if (!arg_attrs)
       return InvalidArgument("Missing attribute for argument #", arg_num);
     StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");

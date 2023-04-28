@@ -21,7 +21,6 @@ import sys
 import threading
 import traceback
 
-from tensorflow.core.framework import variable_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -33,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import ref_variable
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -42,16 +42,7 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# References needed while refactor is in progress in order to
-#  not break tensorflow estimator.
-resource_variable_ops = LazyLoader(
-    "resource_variable_ops",
-    globals(),
-    "tensorflow.python.ops.resource_variable_ops")
 
 
 __all__ = [
@@ -63,56 +54,6 @@ __all__ = [
 _api_usage_gauge = monitoring.BoolGauge(
     "/tensorflow/api/resource_variables",
     "Whether variable_scope.enable_resource_variables() is called.")
-
-
-def _to_proto_fn(v, export_scope=None):
-  """Converts Variable and ResourceVariable to VariableDef for collections."""
-  return v.to_proto(export_scope=export_scope)
-
-
-def _from_proto_fn(v, import_scope=None):
-  """Creates Variable or ResourceVariable from VariableDef as needed."""
-  if v.is_resource:
-    return resource_variable_ops.ResourceVariable.from_proto(
-        v, import_scope=import_scope)
-  return variables.Variable.from_proto(v, import_scope=import_scope)
-
-
-ops.register_proto_function(
-    ops.GraphKeys.GLOBAL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.TRAINABLE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.LOCAL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.MODEL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.GLOBAL_STEP,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.METRIC_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
 
 
 class _PartitionInfo:
@@ -2740,106 +2681,6 @@ def _iter_slices(full_shape, num_slices, slice_dim):
     offset[slice_dim] += shape[slice_dim]
 
 
-def default_variable_creator(next_creator=None, **kwargs):
-  """Default variable creator."""
-  assert next_creator is None
-  initial_value = kwargs.get("initial_value", None)
-  trainable = kwargs.get("trainable", None)
-  collections = kwargs.get("collections", None)
-  validate_shape = kwargs.get("validate_shape", True)
-  caching_device = kwargs.get("caching_device", None)
-  name = kwargs.get("name", None)
-  variable_def = kwargs.get("variable_def", None)
-  dtype = kwargs.get("dtype", None)
-  expected_shape = kwargs.get("expected_shape", None)
-  import_scope = kwargs.get("import_scope", None)
-  constraint = kwargs.get("constraint", None)
-  use_resource = kwargs.get("use_resource", None)
-  synchronization = kwargs.get("synchronization", None)
-  aggregation = kwargs.get("aggregation", None)
-  shape = kwargs.get("shape", None)
-
-  if use_resource is None:
-    use_resource = get_variable_scope().use_resource
-  if use_resource is None:
-    use_resource = _DEFAULT_USE_RESOURCE
-  use_resource = use_resource or context.executing_eagerly()
-  if use_resource:
-    distribute_strategy = kwargs.get("distribute_strategy", None)
-    return resource_variable_ops.ResourceVariable(
-        initial_value=initial_value,
-        trainable=trainable,
-        collections=collections,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        dtype=dtype,
-        constraint=constraint,
-        variable_def=variable_def,
-        import_scope=import_scope,
-        distribute_strategy=distribute_strategy,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape)
-  else:
-    return ref_variable.RefVariable(
-        initial_value=initial_value,
-        trainable=trainable,
-        collections=collections,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        dtype=dtype,
-        constraint=constraint,
-        variable_def=variable_def,
-        expected_shape=expected_shape,
-        import_scope=import_scope,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape)
-
-
-def default_variable_creator_v2(next_creator=None, **kwargs):
-  """Default variable creator."""
-  assert next_creator is None
-  initial_value = kwargs.get("initial_value", None)
-  trainable = kwargs.get("trainable", None)
-  validate_shape = kwargs.get("validate_shape", True)
-  caching_device = kwargs.get("caching_device", None)
-  name = kwargs.get("name", None)
-  variable_def = kwargs.get("variable_def", None)
-  dtype = kwargs.get("dtype", None)
-  import_scope = kwargs.get("import_scope", None)
-  constraint = kwargs.get("constraint", None)
-  distribute_strategy = kwargs.get("distribute_strategy", None)
-  synchronization = kwargs.get("synchronization", None)
-  aggregation = kwargs.get("aggregation", None)
-  shape = kwargs.get("shape", None)
-  experimental_enable_variable_lifting = kwargs.get(
-      "experimental_enable_variable_lifting", None)
-
-  return resource_variable_ops.ResourceVariable(
-      initial_value=initial_value,
-      trainable=trainable,
-      validate_shape=validate_shape,
-      caching_device=caching_device,
-      name=name,
-      dtype=dtype,
-      constraint=constraint,
-      variable_def=variable_def,
-      import_scope=import_scope,
-      distribute_strategy=distribute_strategy,
-      synchronization=synchronization,
-      aggregation=aggregation,
-      shape=shape,
-      experimental_enable_variable_lifting=experimental_enable_variable_lifting,
-      )
-
-
-variables.default_variable_creator = default_variable_creator
-variables.default_variable_creator_v2 = default_variable_creator_v2
-
-
 def _make_getter(captured_getter, captured_previous):
   """Gets around capturing loop variables in python being broken."""
   return lambda **kwargs: captured_getter(captured_previous, **kwargs)
@@ -2847,6 +2688,11 @@ def _make_getter(captured_getter, captured_previous):
 
 # TODO(apassos) remove forwarding symbol
 variable = variable_v1.VariableV1
+
+# temporary references needed while refactors are in progress
+default_variable_creator = ref_variable.default_variable_creator
+_to_proto_fn = ref_variable._to_proto_fn  # pylint: disable=protected-access
+_from_proto_fn = ref_variable._from_proto_fn  # pylint: disable=protected-access
 
 
 @tf_export(v1=["variable_creator_scope"])

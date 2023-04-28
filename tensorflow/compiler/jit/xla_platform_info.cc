@@ -197,6 +197,18 @@ Status BuildPjRtDeviceCompiler(const XlaPlatformInfo& platform_info,
         persistor_config, compilation_device_type, pjrt_client);
     return OkStatus();
   }
+  if (platform_info.pjrt_device_metadata()) {
+    VLOG(2) << "Building PjRtDeviceCompiler using "
+               "platform_info.pjrt_device_metadata().";
+
+    DeviceType compilation_device_type =
+        platform_info.pjrt_device_metadata()->jit_device_type();
+    TF_ASSIGN_OR_RETURN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
+
+    *pjrt_device_compiler = CreatePjRtDeviceCompiler(
+        persistor_config, compilation_device_type, pjrt_client);
+    return OkStatus();
+  }
 
   // TFRT-TPU is used if device_type is `DEVICE_TPU` and platform_info does not
   // have `xla_device_metadata`.
@@ -235,6 +247,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   auto device = static_cast<Device*>(device_base);
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
+  const PjRtBaseDevice::Metadata* pjrt_device_metadata = nullptr;
   std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
 
   if (device->device_type() == DEVICE_CPU) {
@@ -258,10 +271,14 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     platform_id = xla_device_metadata->platform()->id();
     custom_allocator =
         xla_device_metadata->client()->backend().shared_memory_allocator();
+  } else if (auto metadata = PjRtBaseDevice::GetMetadataFromDevice(device);
+             metadata.ok()) {
+    pjrt_device_metadata = *metadata;
   }
 
   return XlaPlatformInfo(DeviceType(device->device_type()), platform_id,
-                         xla_device_metadata, custom_allocator);
+                         xla_device_metadata, pjrt_device_metadata,
+                         custom_allocator);
 }
 
 std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(

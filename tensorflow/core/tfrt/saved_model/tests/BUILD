@@ -15,6 +15,7 @@ package_group(
     packages = [
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
+        "//tensorflow/core/tfrt/utils/debug/...",
     ],
 )
 
@@ -607,11 +608,13 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "//tensorflow/core/tfrt/graph_executor:config",
+        "//tensorflow/core/tfrt/graph_executor:test_config_proto_cc",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_mira_impl",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
-        "@com_google_googletest//:gtest",
+        "//testing/base/public:gunit_for_library_testonly",
         "@tf_runtime//:core_runtime_alwayslink",
     ],
     alwayslink = 1,

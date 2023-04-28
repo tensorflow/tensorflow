@@ -1687,6 +1687,83 @@ AlgebraicSimplifierVisitor::TrySimplifyTautologicalBitcastConvert(
   return true;
 }
 
+Status
+AlgebraicSimplifierVisitor::TryRemoveUpcastAndDowncastSurroundingBinaryOp(
+    HloInstruction* convert_instruction) {
+  HloInstruction* arg_1 = nullptr;
+  HloInstruction* arg_2 = nullptr;
+  HloInstruction* bin_op_instr = nullptr;
+  HloInstruction* final_convert_instr = nullptr;
+
+  // TODO(b/277095115): Instead, consider a more broad matching here which will
+  // also catch constants. For an example, look at
+  // cudnn_fused_conv_rewriter.cc's IsLosslesslyConvertibleTo().
+  auto arg_1_pattern = m::Convert(m::Op(&arg_1)).WithOneUser();
+  auto arg_2_pattern = m::Convert(m::Op(&arg_2)).WithOneUser();
+
+  auto is_unsigned_int_pred = [](const HloInstruction* instr) {
+    // Only unsigned integer division/remainder is safe. Signed integer division
+    // can result in undefined behavior. For example, in S8 consider -128/-1.
+    return primitive_util::IsUnsignedIntegralType(
+        instr->shape().element_type());
+  };
+
+  auto bin_op_pattern =
+      m::Convert(&final_convert_instr,
+                 m::AnyOf<HloInstruction>(
+                     m::Add(&bin_op_instr, arg_1_pattern, arg_2_pattern),
+                     m::Subtract(&bin_op_instr, arg_1_pattern, arg_2_pattern),
+                     m::Multiply(&bin_op_instr, arg_1_pattern, arg_2_pattern),
+                     m::Divide(&bin_op_instr, arg_1_pattern, arg_2_pattern)
+                         .WithPredicate(is_unsigned_int_pred),
+                     m::Remainder(&bin_op_instr, arg_1_pattern, arg_2_pattern)
+                         .WithPredicate(is_unsigned_int_pred))
+                     .WithOneUser());
+
+  if (!Match(convert_instruction, bin_op_pattern)) {
+    return OkStatus();
+  }
+
+  const PrimitiveType arg_1_type = arg_1->shape().element_type();
+  const PrimitiveType arg_2_type = arg_2->shape().element_type();
+  const PrimitiveType final_type = final_convert_instr->shape().element_type();
+
+  if (arg_1_type != final_type || arg_2_type != final_type) {
+    // Only match when the series of instructions ends with the same types that
+    // it started with.
+    return OkStatus();
+  }
+
+  const PrimitiveType bin_op_type = bin_op_instr->shape().element_type();
+  if (!primitive_util::IsIntegralType(final_type) ||
+      !primitive_util::IsIntegralType(bin_op_type) ||
+      (primitive_util::IsSignedIntegralType(final_type) !=
+       primitive_util::IsSignedIntegralType(bin_op_type)) ||
+      (primitive_util::IsUnsignedIntegralType(final_type) !=
+       primitive_util::IsUnsignedIntegralType(bin_op_type))) {
+    // So far, only the safety of this transformation with same signedness
+    // integer types has been verified.
+    // TODO(b/277095299): Add support for floating point types.
+    return OkStatus();
+  }
+
+  // Ensure that bin_op_type can represent everything that final_type can. This
+  // is ensuring that the pattern is matching the case when we upcast, perform
+  // the op, and then downcast.
+  if (!primitive_util::CastPreservesValues(final_type, bin_op_type)) {
+    return OkStatus();
+  }
+
+  // Change the type of the binary op to the smaller type.
+  HloComputation* computation = convert_instruction->parent();
+  HloInstruction* new_bin_op =
+      computation->AddInstruction(bin_op_instr->CloneWithNewOperands(
+          ShapeUtil::ChangeElementType(bin_op_instr->shape(), final_type),
+          {arg_1, arg_2}));
+  TF_RETURN_IF_ERROR(ReplaceInstruction(final_convert_instr, new_bin_op));
+  return OkStatus();
+}
+
 static HloInstruction* BuildTupleConstant(HloComputation* computation,
                                           const LiteralSlice& literal,
                                           AlgebraicSimplifier* simplifier) {
@@ -1954,7 +2031,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A/sqrt(B) => A*rsqrt(X).
-  if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b))))) {
+  if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b)).WithOneUse()))) {
     auto* rsqrt = divide->mutable_operand(1)->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kRsqrt, b));
     return ReplaceWithNewInstruction(
@@ -1963,7 +2040,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A/rsqrt(B) => A*sqrt(B).
-  if (Match(divide, m::Divide(m::Op(&a), m::Rsqrt(m::Op(&b))))) {
+  if (Match(divide, m::Divide(m::Op(&a), m::Rsqrt(m::Op(&b)).WithOneUse()))) {
     auto* sqrt = divide->mutable_operand(1)->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kSqrt, b));
     return ReplaceWithNewInstruction(
@@ -3787,7 +3864,8 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
     return ReplaceInstruction(convert,
                               convert->mutable_operand(0)->mutable_operand(0));
   }
-  return OkStatus();
+
+  return TryRemoveUpcastAndDowncastSurroundingBinaryOp(convert);
 }
 
 // Complex(Real(c), Imag(c)) -> c

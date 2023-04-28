@@ -31,6 +31,10 @@ load(
     "if_mkl",
     "mkl_deps",
 )
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_onednn_v3",
+)
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -517,6 +521,15 @@ cc_library(
         # TODO(b/202546057) get rid of this once fused_conv is moved out of
         # contrib.
         "//tensorflow/compiler/xla/stream_executor:lazy_op_runner.h",
+    ],
+)
+
+cc_library(
+    name = "numeric_options_utils",
+    hdrs = ["numeric_options_utils.h"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:numeric_options",
+        "//tensorflow/core/util:determinism_for_kernels",
     ],
 )
 
@@ -3940,13 +3953,15 @@ tf_kernel_library(
     name = "conv_ops",
     srcs = [
         "conv_grad_filter_ops.cc",
+        "conv_grad_filter_ops_3d.cc",
+        "conv_grad_filter_ops_launcher.cc",
         "conv_grad_input_ops.cc",
+        "conv_grad_input_ops_3d.cc",
         "conv_grad_input_ops_bfloat16.cc",
         "conv_grad_input_ops_double.cc",
         "conv_grad_input_ops_float.cc",
         "conv_grad_input_ops_half.cc",
         "conv_grad_input_ops_int32.cc",
-        "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
     ],
     hdrs = [
@@ -3989,6 +4004,7 @@ tf_kernel_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + if_cuda([
+        ":numeric_options_utils",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
@@ -4415,6 +4431,7 @@ tf_kernel_library(
         ":conv_ops",
         ":eigen_helpers",
         ":loose_headers",
+        ":numeric_options_utils",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -4422,7 +4439,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -4675,6 +4691,7 @@ cc_library(
     name = "stateless_random_ops_v2_util",
     hdrs = ["stateless_random_ops_v2_util.h"],
     deps = [
+        ":random_op",
         ":stateless_random_ops_v2_header",
         "//tensorflow/core:framework",
     ],
@@ -6422,14 +6439,16 @@ filegroup(
         "control_flow_ops.cc",
         "conv_2d.h",
         "conv_grad_filter_ops.cc",
+        "conv_grad_filter_ops_3d.cc",
+        "conv_grad_filter_ops_launcher.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_input_ops.h",
+        "conv_grad_input_ops_3d.cc",
         "conv_grad_input_ops_double.cc",
         "conv_grad_input_ops_float.cc",
         "conv_grad_input_ops_half.cc",
         "conv_grad_input_ops_int32.cc",
         "conv_grad_ops.h",
-        "conv_grad_ops_3d.cc",
         "conv_grad_shape_utils.cc",
         "conv_grad_shape_utils.h",
         "conv_ops.cc",
@@ -7799,7 +7818,7 @@ tf_cc_shared_library(
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
         # copybara:comment_end
-    ],
+    ] + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_platform_strings",

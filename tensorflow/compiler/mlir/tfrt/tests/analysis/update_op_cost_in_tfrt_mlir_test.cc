@@ -61,15 +61,17 @@ TEST(CostUpdateTest, Basic) {
   ASSERT_TRUE(module);
 
   // Create a cost recorder with fake cost records.
-  auto expected_op_cost_map = GetOpCostMap(module.get());
-  EXPECT_EQ(expected_op_cost_map.size(), 1);
+  auto fake_recorded_op_cost_map = GetOpCostMap(module.get());
+  EXPECT_EQ(fake_recorded_op_cost_map.size(), 1);
   unsigned int seed = 23579;
-  for (auto& [op_key, cost] : expected_op_cost_map) {
-    cost = rand_r(&seed) % 1000;
+  for (auto& [op_key, cost] : fake_recorded_op_cost_map) {
+    cost = rand_r(&seed) % 10000;
   }
   tensorflow::tfrt_stub::CostRecorder cost_recorder;
-  for (const auto& [op_key, cost] : expected_op_cost_map) {
-    cost_recorder.RecordCostNanosecond(op_key, cost);
+  absl::flat_hash_map<int64_t, uint64_t> expected_op_cost_map;
+  for (const auto& [op_key, cost] : fake_recorded_op_cost_map) {
+    cost_recorder.RecordCostCpuCycle(op_key, cost);
+    expected_op_cost_map[op_key] = cost_recorder.GetCost(op_key);
   }
 
   // Update the TFRT MLIR with the cost recorder.

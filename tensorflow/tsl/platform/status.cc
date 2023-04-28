@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/functional/function_ref.h"
@@ -46,26 +47,7 @@ limitations under the License.
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
-namespace error {
-// TODO(aminim): figure out the protobuf migration story
-using tensorflow::error::ABORTED;
-using tensorflow::error::ALREADY_EXISTS;
-using tensorflow::error::CANCELLED;
-using tensorflow::error::DATA_LOSS;
-using tensorflow::error::DEADLINE_EXCEEDED;
-using tensorflow::error::FAILED_PRECONDITION;
-using tensorflow::error::INTERNAL;
-using tensorflow::error::INVALID_ARGUMENT;
-using tensorflow::error::NOT_FOUND;
-using tensorflow::error::OK;
-using tensorflow::error::OUT_OF_RANGE;
-using tensorflow::error::PERMISSION_DENIED;
-using tensorflow::error::RESOURCE_EXHAUSTED;
-using tensorflow::error::UNAUTHENTICATED;
-using tensorflow::error::UNAVAILABLE;
-using tensorflow::error::UNIMPLEMENTED;
-using tensorflow::error::UNKNOWN;
-}  // namespace error
+
 namespace {
 
 // Log sink is used to collect recent warning and error log messages to be
@@ -173,69 +155,14 @@ std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
 
 }  // namespace errors
 
-Status::~Status() {}
+const absl::string_view kEmptyString = "";
 
-absl::Span<const SourceLocation> Status::GetSourceLocations() const {
-  return state_ != nullptr ? state_->source_locations
-                           : absl::Span<const SourceLocation>();
-}
-
-void Status::MaybeAddSourceLocation(SourceLocation loc) {
-  if (state_ == nullptr) {
-    return;
+const char* NullTerminatedMessage(const Status& status) {
+  auto message = status.message();
+  if (message.empty()) {
+    return kEmptyString.data();
   }
-  if (loc.line() <= 0) {
-    return;
-  }
-  if (loc.file_name() == nullptr) {
-    return;
-  }
-  if (loc.file_name()[0] == '\0') {
-    return;
-  }
-  state_->source_locations.push_back(loc);
-}
-
-Status::Status(absl::StatusCode code, absl::string_view msg,
-               SourceLocation loc) {
-  assert(code != absl::StatusCode::kOk);
-  state_ = std::make_unique<State>();
-  state_->code = code;
-  state_->msg = std::string(msg);
-  MaybeAddSourceLocation(loc);
-  VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
-          << CurrentStackTrace();
-}
-
-void Status::Update(const Status& new_status) {
-  if (ok()) {
-    *this = new_status;
-  }
-}
-
-void Status::SlowCopyFrom(const State* src) {
-  if (src == nullptr) {
-    state_ = nullptr;
-  } else {
-    state_ = std::make_unique<State>(*src);
-  }
-}
-
-Status::State* Status::NewStateFromNonOKStatus(const Status& s) {
-  return new State(*s.state_);
-}
-
-const std::string& Status::empty_string() {
-  static string* empty = new string;
-  return *empty;
-}
-
-absl::string_view Status::message() const {
-  if (ok()) {
-    return absl::string_view();
-  } else {
-    return absl::string_view(state_->msg);
-  }
+  return message.data();
 }
 
 std::string error_name(absl::StatusCode code) {
@@ -299,95 +226,16 @@ std::string error_name(absl::StatusCode code) {
   }
 }
 
-std::string Status::ToString() const {
-  if (state_ == nullptr) {
-    return "OK";
-  } else {
-    std::string result(error_name(state_->code));
-    result += ": ";
-    result += state_->msg;
-
-    for (const std::pair<const std::string, absl::Cord>& element :
-         state_->payloads) {
-      absl::StrAppend(&result, " [", element.first, "='",
-                      absl::CHexEscape(std::string(element.second)), "']");
-    }
-
-    return result;
-  }
-}
-
-void Status::IgnoreError() const {
-  // no-op
-}
-
-void Status::SetPayload(absl::string_view type_url, absl::Cord payload) {
-  if (ok()) return;
-  state_->payloads[std::string(type_url)] = payload;
-}
-
-absl::optional<absl::Cord> Status::GetPayload(
-    absl::string_view type_url) const {
-  if (ok()) return absl::nullopt;
-  auto payload_iter = state_->payloads.find(std::string(type_url));
-  if (payload_iter == state_->payloads.end()) return absl::nullopt;
-  return payload_iter->second;
-}
-
-bool Status::ErasePayload(absl::string_view type_url) {
-  if (ok()) return false;
-  auto payload_iter = state_->payloads.find(std::string(type_url));
-  if (payload_iter == state_->payloads.end()) return false;
-  state_->payloads.erase(payload_iter);
-  return true;
-}
-
-void Status::ForEachPayload(
-    absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
-    const {
-  if (ok()) return;
-  for (const auto& payload : state_->payloads) {
-    visitor(payload.first, payload.second);
-  }
-}
-
-std::ostream& operator<<(std::ostream& os, const Status& x) {
-  os << x.ToString();
-  return os;
-}
+// std::ostream& operator<<(std::ostream& os, const Status& x) {
+//   os << x.ToString();
+//   return os;
+// }
 
 Status OkStatus() { return Status(); }
 
-Status FromAbslStatus(const absl::Status& s, SourceLocation loc) {
-  if (s.ok()) {
-    return Status();
-  }
-  absl::Span<const SourceLocation> locs = internal::GetSourceLocations(s);
-  const SourceLocation first_loc = locs.empty() ? loc : locs[0];
-  Status converted(s.code(), s.message(), first_loc);
-  for (int i = 1; i < locs.size(); ++i) {
-    converted.MaybeAddSourceLocation(locs[i]);
-  }
-  s.ForEachPayload(
-      [&converted](absl::string_view key, const absl::Cord& value) {
-        converted.SetPayload(key, value);
-      });
-  return converted;
-}
+Status FromAbslStatus(const absl::Status& s) { return s; }
 
-absl::Status ToAbslStatus(const ::tsl::Status& s, SourceLocation loc) {
-  if (s.ok()) {
-    return absl::OkStatus();
-  }
-
-  absl::Status converted = internal::MakeAbslStatus(
-      s.code(), s.message(), s.GetSourceLocations(), loc);
-  s.ForEachPayload([&converted](tsl::StringPiece key, const absl::Cord& value) {
-    converted.SetPayload(key, value);
-  });
-
-  return converted;
-}
+absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
 
 std::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v, const char* msg) {
   std::string r("Non-OK-status: ");

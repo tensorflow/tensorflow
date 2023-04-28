@@ -640,8 +640,8 @@ LogicalResult ConstantOp::inferReturnTypes(
 
 bool ConstantOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   if (l.size() != r.size() || l.size() != 1) return false;
-  auto lhsTy = l.front().cast<TensorType>();
-  auto rhsTy = r.front().cast<TensorType>();
+  auto lhsTy = l.front().cast<ShapedType>();
+  auto rhsTy = r.front().cast<ShapedType>();
   // For comparisons of the uniform quantized element based tensor type, use the
   // storage type since the constant value will be stored through the underlying
   // storage type.
@@ -5040,21 +5040,21 @@ OpFoldResult ClampOp::fold(FoldAdaptor adaptor) {
   if (!operand || !min || !max) {
     return {};
   }
-  if (min.getType().getRank() == 0) {
-    min = DenseElementsAttr::get(operand.getType(),
+  if (min.getShapedType().getRank() == 0) {
+    min = DenseElementsAttr::get(operand.getShapedType(),
                                  min.getValues<Attribute>()[0]);
   }
-  if (max.getType().getRank() == 0) {
-    max = DenseElementsAttr::get(operand.getType(),
+  if (max.getShapedType().getRank() == 0) {
+    max = DenseElementsAttr::get(operand.getShapedType(),
                                  max.getValues<Attribute>()[0]);
   }
   Attribute result = {};
-  if (operand.getType().getElementType().isa<FloatType>()) {
+  if (operand.getShapedType().getElementType().isa<FloatType>()) {
     result = BinaryFolder<ClampOp, FloatType, APFloat, Max<APFloat>>(
         this, ArrayRef<Attribute>{min, operand});
     result = BinaryFolder<ClampOp, FloatType, APFloat, Min<APFloat>>(
         this, ArrayRef<Attribute>{max, result});
-  } else if (operand.getType().getElementType().isa<IntegerType>()) {
+  } else if (operand.getShapedType().getElementType().isa<IntegerType>()) {
     result = BinaryFolder<ClampOp, IntegerType, APInt, Max<APSInt>>(
         this, ArrayRef<Attribute>{min, operand});
     result = BinaryFolder<ClampOp, IntegerType, APInt, Min<APSInt>>(

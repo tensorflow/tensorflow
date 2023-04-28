@@ -51,6 +51,7 @@ load(
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
+    "if_onednn_v3",
 )
 load(
     "//third_party/compute_library:build_defs.bzl",
@@ -433,6 +434,7 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        if_onednn_v3(["-DENABLE_ONEDNN_V3"]) +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
@@ -3247,6 +3249,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@com_google_benchmark//:__subpackages__",
         "@com_google_googletest//:__subpackages__",
     ]
+    static_deps += if_onednn_v3(["@onednn_v3//:__subpackages__"])
     return if_oss(static_deps)
 
 # buildozer: enable=function-docstring-args

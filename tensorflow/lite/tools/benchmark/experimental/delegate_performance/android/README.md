@@ -128,6 +128,7 @@ to the file directory of Delegate Performance Benchmark:
 
     ```
     adb shell 'echo "{
+      \"delegate\": \"NONE\",  // Replace NONE with the test target delegate type.
       \"stable_delegate_loader_settings\": {
         \"delegate_path\": \"/data/data/org.tensorflow.lite.benchmark.delegateperformance/files/libtensorflowlite_sample_stable_delegate.so\"
       }
@@ -178,7 +179,8 @@ of the test target delegate and a reference delegate breach the thresholds:
 1.  Average inference latency: average time for the inferences after warmup in
     the benchmark run.
 
-Please see
+When the test target delegate type is the same as the reference delegate, the
+checks are more strict. Otherwise, the checks are relaxed. Please see
 [BenchmarkResultType.java](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java)
 for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
 
@@ -244,7 +246,7 @@ for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
     mobilenet_v1_1.0_224       | overall_memory_total_allocated_mebibyte        | 0.0                                                            | 0.0                               | 0.0%      | N/A
     mobilenet_v1_1.0_224       | overall_memory_in_use_mebibyte                 | 28.22168                                                       | 23.295578                         | 21.1%     | N/A
     mobilenet_v1_1.0_224       | startup_overhead_latency_us                    | 533227.9                                                       | 1880926.5                         | -71.7%    | PASS
-    mobilenet_v1_1.0_224       | delegate_summary                               |                                                                |                                   |           | PASS
+    mobilenet_v1_1.0_224       | delegate_summary                               |                                                                |                                   |           | PASS (strict)
     mobilenet_v1_1.0_224       | model_summary                                  | PASS                                                           |                                   |           |
     mobilenet_v1_1.0_224_quant | model_size_megabyte                            | -1.0E-6                                                        | -1.0E-6                           | 0.0%      | N/A
     mobilenet_v1_1.0_224_quant | initialization_latency_us                      | 25318.0                                                        | 8271.0                            | 206.1%    | N/A
@@ -263,7 +265,7 @@ for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
     mobilenet_v1_1.0_224_quant | overall_memory_total_allocated_mebibyte        | 0.0                                                            | 0.0                               | 0.0%      | N/A
     mobilenet_v1_1.0_224_quant | overall_memory_in_use_mebibyte                 | 3.3774261                                                      | 3.38266                           | -0.2%     | N/A
     mobilenet_v1_1.0_224_quant | startup_overhead_latency_us                    | 35977.797                                                      | 17407.312                         | 106.7%    | FAIL
-    mobilenet_v1_1.0_224_quant | delegate_summary                               |                                                                |                                   |           | FAIL
+    mobilenet_v1_1.0_224_quant | delegate_summary                               |                                                                |                                   |           | FAIL (strict)
     mobilenet_v1_1.0_224_quant | model_summary                                  | FAIL                                                           |                                   |           |
 
 #### Accuracy benchmarking
@@ -285,7 +287,8 @@ models. The metric scripts generate an "ok" result by aggregating the outcomes
 for every model and every delegate. The accuracy benchmark generates a `PASS`,
 `PASS_WITH_WARNING`, or `FAIL` recommendation by aggregating the "ok" results.
 
-Please see
+When the test target delegate type is the same as the reference delegate, the
+checks are more strict. Otherwise, the checks are relaxed. Please see
 [BenchmarkResultType.java](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java)
 for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
 
@@ -325,11 +328,25 @@ for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
     mobilenet_v1_1.0_224_quant_with_validation | symmetric_kl_divergence(average) | 0.049423933                                                    | 0.049423933                       | 0.0%   | N/A
     mobilenet_v1_1.0_224_quant_with_validation | ok                               | 0.0                                                            | 0.0                               | N/A    | PASS
     mobilenet_v1_1.0_224_quant_with_validation | max_memory_kb                    | 0.0                                                            | 0.0                               | 0.0%   | N/A
-    mobilenet_v1_1.0_224_quant_with_validation | delegate_summary                 |                                                                |                                   |        | PASS
+    mobilenet_v1_1.0_224_quant_with_validation | delegate_summary                 |                                                                |                                   |        | PASS (strict)
     mobilenet_v1_1.0_224_quant_with_validation | model_summary                    | PASS                                                           |                                   |        |
     mobilenet_v1_1.0_224_with_validation       | mse(average)                     | 1.0577066E-16                                                  | 1.0577066E-16                     | 0.0%   | N/A
     mobilenet_v1_1.0_224_with_validation       | symmetric_kl_divergence(average) | 7.2540787E-9                                                   | 7.2540787E-9                      | 0.0%   | N/A
     mobilenet_v1_1.0_224_with_validation       | ok                               | 0.0                                                            | 0.0                               | N/A    | PASS
     mobilenet_v1_1.0_224_with_validation       | max_memory_kb                    | 0.0                                                            | 0.0                               | 0.0%   | N/A
-    mobilenet_v1_1.0_224_with_validation       | delegate_summary                 |                                                                |                                   |        | PASS
+    mobilenet_v1_1.0_224_with_validation       | delegate_summary                 |                                                                |                                   |        | PASS (strict)
     mobilenet_v1_1.0_224_with_validation       | model_summary                    | PASS                                                           |                                   |        |
+
+## FAQ
+
+### 1. What does a delegate summary result with a `(strict)` suffix mean?
+
+The `(strict)` suffix is added to reference delegates that have the same
+delegate type as the test target delegate. The purpose of the suffix is to let a
+user know that the performance metrics are being checked to a higher standard.
+The expectation is that the test target delegate is better, or at least not
+substantially worse, than the reference delegate in all metrics.
+
+Please see
+[BenchmarkResultType.java](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java)
+for more details.

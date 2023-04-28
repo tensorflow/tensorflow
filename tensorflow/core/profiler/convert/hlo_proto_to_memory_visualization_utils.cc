@@ -1038,7 +1038,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
       ProcessHeapSimulatorTrace(wrapper, memory_color, &simulator_stats);
   if (!status.ok()) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Failed to process heap simulator trace: ", status.error_message()));
+        "Failed to process heap simulator trace: ", status.message()));
   }
 
   // Process buffers with indefinite lifetime.

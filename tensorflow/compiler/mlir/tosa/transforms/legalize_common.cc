@@ -4481,12 +4481,12 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers Sign operator to a sequence of TOSA ops.
-llvm::Optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
-                                    Value input, RankedTensorType output_type) {
+std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, RankedTensorType output_type) {
   auto output_elem_type = output_type.getElementType();
   if (output_elem_type.isa<mlir::quant::QuantizedType>()) {
     (void)rewriter.notifyMatchFailure(op, "tfl quantization not yet supported");
-    return llvm::None;
+    return std::nullopt;
   }
 
   // TOSA greater and select can both broadcast, so simply create a tensor with

@@ -168,7 +168,7 @@ TEST_F(BufRendezvousTest, ErrorDuplicatePut) {
   EXPECT_FALSE(bad_status.ok());
   EXPECT_EQ(absl::StrCat("BufRendezvous::ProvideBuf already called for key ",
                          *kDefaultKey),
-            bad_status.error_message());
+            bad_status.message());
   EXPECT_FALSE(prod_callback_called);
   br_.reset();
 }
@@ -185,8 +185,7 @@ TEST_F(BufRendezvousTest, ErrorDeleteNonEmpty) {
   EXPECT_TRUE(cons_status.ok());
   br_.reset();
   EXPECT_FALSE(cons_status.ok());
-  EXPECT_EQ("Delete called on non-empty BufRendezvous",
-            cons_status.error_message());
+  EXPECT_EQ("Delete called on non-empty BufRendezvous", cons_status.message());
 }
 
 TEST_F(BufRendezvousTest, AbortNonEmpty) {
@@ -212,9 +211,9 @@ TEST_F(BufRendezvousTest, AbortNonEmpty) {
   prod_note.WaitForNotification();
   cons_note.WaitForNotification();
   EXPECT_FALSE(prod_status.ok());
-  EXPECT_EQ(prod_status.error_message(), "Falling sky detected");
+  EXPECT_EQ(prod_status.message(), "Falling sky detected");
   EXPECT_FALSE(cons_status.ok());
-  EXPECT_EQ(cons_status.error_message(), "Falling sky detected");
+  EXPECT_EQ(cons_status.message(), "Falling sky detected");
 }
 
 TEST_F(BufRendezvousTest, AbortEmpty) {
@@ -244,11 +243,9 @@ TEST_F(BufRendezvousTest, UseAfterAbort) {
   prod_note.WaitForNotification();
   cons_note.WaitForNotification();
   EXPECT_FALSE(prod_status.ok());
-  EXPECT_NE(prod_status.error_message().find("Falling sky detected"),
-            string::npos);
+  EXPECT_NE(prod_status.message().find("Falling sky detected"), string::npos);
   EXPECT_FALSE(cons_status.ok());
-  EXPECT_NE(cons_status.error_message().find("Falling sky detected"),
-            string::npos);
+  EXPECT_NE(cons_status.message().find("Falling sky detected"), string::npos);
 }
 
 TEST_F(BufRendezvousTest, DeviceIncarnationMismatch) {
@@ -283,7 +280,7 @@ TEST_F(BufRendezvousTest, ProvideThenCancel) {
   note.WaitForNotification();
   EXPECT_TRUE(errors::IsCancelled(status));
   EXPECT_NE(
-      status.error_message().find(absl::StrCat(
+      status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
       string::npos);
 }
@@ -302,7 +299,7 @@ TEST_F(BufRendezvousTest, CancelThenProvide) {
   note.WaitForNotification();
   EXPECT_TRUE(errors::IsCancelled(status));
   EXPECT_NE(
-      status.error_message().find(absl::StrCat(
+      status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
       string::npos);
 }
@@ -321,7 +318,7 @@ TEST_F(BufRendezvousTest, ConsumeThenCancel) {
   note.WaitForNotification();
   EXPECT_TRUE(errors::IsCancelled(status));
   EXPECT_NE(
-      status.error_message().find(absl::StrCat(
+      status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
       string::npos);
 }
@@ -340,7 +337,7 @@ TEST_F(BufRendezvousTest, CancelThenConsume) {
   note.WaitForNotification();
   EXPECT_TRUE(errors::IsCancelled(status));
   EXPECT_NE(
-      status.error_message().find(absl::StrCat(
+      status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
       string::npos);
 }

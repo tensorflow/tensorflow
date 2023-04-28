@@ -27,13 +27,32 @@ DebugDataDumper* DebugDataDumper::Global() {
   return global_instance_;
 }
 
-bool DebugDataDumper::ShouldDump(const std::string& name) const {
-  // Do not dump data for the wrapped functions.
-  if (absl::StartsWith(name, "__wrapped__")) return false;
+DebugDataDumper::DebugDataDumper() { LoadEnvvars(); }
 
-  // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
+void DebugDataDumper::LoadEnvvars() {
+  // Load TF_DUMP_GRAPH_PREFIX.
+  const char* dump_wrapped = getenv("TF_DUMP_GRAPH_WRAPPED");
+  dump_wrapped_ = static_cast<bool>(dump_wrapped);
+
+  // Load the name filter. Default value is null.
   const char* name_filter = getenv("TF_DUMP_GRAPH_NAME_FILTER");
-  if (name_filter == nullptr) {
+  name_filter_ =
+      name_filter ? std::optional<std::string>{name_filter} : std::nullopt;
+
+  // Load the groups filter. Default value is "main".
+  const char* groups_filter = getenv("TF_DUMP_GRAPH_GROUPS");
+  groups_filter_ =
+      groups_filter ? std::set<std::string>(absl::StrSplit(groups_filter, ','))
+                    : std::set<std::string>({kDebugGroupMain});
+}
+
+bool DebugDataDumper::ShouldDump(const std::string& name,
+                                 const std::string& group) const {
+  // Skip dumping wrapped functions if needed.
+  if (!dump_wrapped_ && absl::StartsWith(name, "__wrapped__")) return false;
+
+  // Check the name filter.
+  if (name_filter_ == std::nullopt) {
     VLOG(1) << "Skip dumping graph '" << name
             << "', because TF_DUMP_GRAPH_NAME_FILTER is not set";
     return false;
@@ -41,39 +60,39 @@ bool DebugDataDumper::ShouldDump(const std::string& name) const {
 
   // If name_filter is not '*' or name doesn't contain the name_filter,
   // skip the dump.
-  std::string str_name_filter = std::string(name_filter);
-  if (str_name_filter != "*" &&
-      name.find(str_name_filter) == std::string::npos) {
+  if (!absl::EqualsIgnoreCase(*name_filter_, "*") &&
+      !absl::StrContains(name, *name_filter_)) {
     VLOG(1) << "Skip dumping graph '" << name
             << "', because TF_DUMP_GRAPH_NAME_FILTER is not '*' and "
             << "it is not contained by the graph name";
     return false;
   }
 
+  // Check the group filter.
+  if (groups_filter_.find(group) == groups_filter_.end() &&
+      groups_filter_.find("*") == groups_filter_.end())
+    return false;
+
   // If all conditions are met, return true to allow the dump.
   return true;
 }
 
 void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
+                                                const std::string& group,
                                                 const std::string& tag,
                                                 const Graph* graph) {
-  const char* dump_stacktraces = getenv("TF_DUMP_OP_CREATION_STACKTRACES");
-  if (dump_stacktraces == nullptr) {
-    VLOG(1) << "Skip dumping op creation stacktraces for '" << name
-            << "', because TF_DUMP_OP_CREATION_STACKTRACES is not set";
-    return;
-  }
+  // Check if we should take the dump.
+  if (!ShouldDump(name, group)) return;
 
   // Construct the dump filename.
-  std::string dump_filename = GetDumpFilename(name, tag);
+  std::string dump_filename = GetDumpFilename(name, group, tag);
 
-  // Dump module txt to file.
   DumpToFile(dump_filename, "", ".csv", "StackTrace",
-             [&graph, &dump_filename](WritableFile* file) {
+             [graph, &dump_filename](WritableFile* file) {
                auto status = file->Append("node_id,node_name,stackframes\n");
                if (!status.ok()) {
                  LOG(WARNING) << "error writing to file to " << dump_filename
-                              << ": " << status.error_message();
+                              << ": " << status.message();
                  return status;
                }
 
@@ -82,8 +101,9 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
                  if (stack_trace == nullptr) continue;
 
                  int node_id = node->id();
-                 std::string node_name = node->name();
+                 const std::string& node_name = node->name();
                  std::vector<std::string> stackframes;
+                 stackframes.reserve(stack_trace->ToFrames().size());
 
                  for (auto& frame : stack_trace->ToFrames()) {
                    stackframes.push_back(
@@ -97,7 +117,7 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
 
                  if (!status.ok()) {
                    LOG(WARNING) << "error writing to file to " << dump_filename
-                                << ": " << status.error_message();
+                                << ": " << status.message();
                    return status;
                  }
                }
@@ -106,11 +126,15 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
              });
 }
 
-void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
-                                const Graph* graph,
-                                const FunctionLibraryDefinition* func_lib_def) {
+void DebugDataDumper::DumpGraph(const std::string& name,
+                                const std::string& group,
+                                const std::string& tag, const Graph* graph,
+                                const FunctionLibraryDefinition* func_lib_def,
+                                bool bypass_filter) {
+  if (!ShouldDump(name, group) && !bypass_filter) return;
+
   // Construct the dump filename.
-  std::string dump_filename = GetDumpFilename(name, tag);
+  std::string dump_filename = GetDumpFilename(name, group, tag);
 
   // Make sure the dump filename is not longer than 255,
   // because Linux won't take filename that long.
@@ -124,16 +148,22 @@ void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
 
-  if (func_lib_def) *graph_def.mutable_library() = func_lib_def->ToProto();
+  if (func_lib_def) {
+    FunctionLibraryDefinition reachable_lib_def =
+        func_lib_def->ReachableDefinitions(graph_def);
+    *graph_def.mutable_library() = reachable_lib_def.ToProto();
+  }
 
   // Now dump the graph into the target file.
   DumpGraphDefToFile(dump_filename, graph_def);
 }
 
 std::string DebugDataDumper::GetDumpFilename(const std::string& name,
+                                             const std::string& group,
                                              const std::string& tag) {
   std::string dump_name = name.empty() ? "unknown_graph" : name;
-  return absl::StrFormat("%s.%04d.%s", dump_name, GetNextDumpId(name), tag);
+  return absl::StrFormat("%s.%04d.%s.%s", dump_name, GetNextDumpId(name), group,
+                         tag);
 }
 
 }  // namespace tensorflow

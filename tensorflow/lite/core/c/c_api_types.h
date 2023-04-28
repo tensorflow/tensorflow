@@ -21,6 +21,7 @@ limitations under the License.
 /// "third_party/tensorflow/lite/c/c_api_types.h".
 /// Only the TensorFlow Lite implementation itself should include this
 /// file directly.
+// IWYU pragma: private, include "third_party/tensorflow/lite/c/c_api_types.h"
 
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_

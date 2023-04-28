@@ -95,7 +95,7 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
   if (!status.ok()) {
     return op.emitError()
            << "attribute 'host_mlir_module' can not be deserialized. "
-           << status.error_message();
+           << status.message();
   }
 
   func::FuncOp func = module_for_func->lookupSymbol<func::FuncOp>("host_func");

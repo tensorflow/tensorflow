@@ -79,8 +79,8 @@ void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
                                  XlaCustomCallStatus* status) {
   auto s = PrepareAndCallInternal(result, arg_ptrs);
   if (!s.ok()) {
-    XlaCustomCallStatusSetFailure(status, s.error_message().c_str(),
-                                  s.error_message().length());
+    auto msg = s.message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return;
   }
 }
@@ -143,9 +143,8 @@ std::optional<py::tuple> CpuCallback::Call(py::tuple args,
                                            XlaCustomCallStatus* status) {
   auto statusor = CallInternal(std::move(args));
   if (!statusor.ok()) {
-    XlaCustomCallStatusSetFailure(status,
-                                  statusor.status().error_message().c_str(),
-                                  statusor.status().error_message().length());
+    absl::string_view msg = statusor.status().message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return std::nullopt;
   }
   return std::move(statusor).value();

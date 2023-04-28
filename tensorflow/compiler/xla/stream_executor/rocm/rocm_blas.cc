@@ -1244,8 +1244,7 @@ void initialize_rocblas() {
                 });
 
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to register rocBLAS factory: "
-                 << status.error_message();
+      LOG(ERROR) << "Unable to register rocBLAS factory: " << status.message();
     }
 
     PluginRegistry::Instance()->SetDefaultFactory(

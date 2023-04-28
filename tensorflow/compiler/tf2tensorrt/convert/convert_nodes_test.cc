@@ -1457,7 +1457,7 @@ class OpConverterTest : public ::testing::Test {
 
   void RunConversion(const Node* node,
                      absl::StatusCode expected_code = absl::StatusCode::kOk,
-                     const std::string& expected_msg_substr = "") {
+                     absl::string_view expected_msg_substr = "") {
     EXPECT_THAT(converter_->ConvertNode(node->def()),
                 StatusIs(expected_code, HasSubstr(expected_msg_substr)));
     if (expected_code == absl::StatusCode::kOk) {
@@ -1470,7 +1470,7 @@ class OpConverterTest : public ::testing::Test {
   void RunValidationAndConversion(
       const NodeDef& node_def,
       absl::StatusCode expected_code = absl::StatusCode::kOk,
-      const std::string& expected_msg_substr = "",
+      absl::string_view expected_msg_substr = "",
       bool should_run_conversion = true) {
     // Add the node to the graph.
     // TODO(laigd): we should accept a function that adds the node using
@@ -1505,7 +1505,7 @@ class OpConverterTest : public ::testing::Test {
       const std::vector<std::vector<int>>& exp_out_dims) {
     RunValidationAndConversion(node_def,
                                static_cast<absl::StatusCode>(status.code()),
-                               status.error_message(), true);
+                               status.message(), true);
 
     if (status.ok()) {
       // TODO(tfeher): Enable this check in explicit_batch_mode.
@@ -9880,6 +9880,48 @@ INSTANTIATE_TEST_CASE_P(
 TEST_P(OpConverter_Select, ConvertSelectV2) { RunTest("SelectV2"); }
 
 TEST_P(OpConverter_Select, Convert_Select) { RunTest("Select"); }
+
+TEST_F(OpConverterTest, DuplicateSqueeze) {
+  // Define a custom converter which performs multiple squeezes.
+  auto op_converter = [](const OpConverterParams* params) -> Status {
+    if (params->validation_only) return OkStatus();
+    auto input = params->inputs.at(0).tensor();
+    ITensorProxyPtr output;
+    // Squeeze the first dimension.
+    std::vector<int> new_dims = {0, 1, 2, 3};
+    TF_EXPECT_OK(params->converter->SqueezeTensor(
+        /*input=*/input, /*input_dims=*/&new_dims, /*params=*/params,
+        /*output=*/&output, /*op_instance=*/0));
+    // Squeeze the second dimension.
+    new_dims = {0, 2, 3};
+    TF_EXPECT_OK(params->converter->SqueezeTensor(
+        /*input=*/output, /*input_dims=*/&new_dims, /*params=*/params,
+        /*output=*/&output, /*op_instance=*/1));
+    params->outputs->push_back(TRT_TensorOrWeights(output));
+    return OkStatus();
+  };
+  // Use a simple unary op for the custom converter and add an input.
+  NodeDef node_def = CreateUnaryOp<ops::Abs>(DataType::DT_FLOAT);
+  AddTestTensor("input", {1, 1, 2, 3});
+  // Override the converter for Abs to use the custom converter for this test
+  // only, and run conversion.
+  GetOpConverterRegistry()->Register("Abs", kDefaultConverterPriority + 1,
+                                     op_converter);
+  RunValidationAndConversion(node_def);
+  // Set up the inputs and outputs.
+  DataVec input_data;
+  DataVec output_data;
+  InputOutputData abs_input{
+      "input", ConstructTensor<float>(/*data_size=*/6, /*value=*/0,
+                                      /*tf_type=*/DataType::DT_FLOAT)};
+  InputOutputData abs_output{
+      "my_unary", ConstructTensor<float>(/*data_size=*/6, /*value=*/0,
+                                         /*tf_type=*/DataType::DT_FLOAT)};
+  input_data.push_back(abs_input);
+  output_data.push_back(abs_output);
+  // Build and run the cuda engine.
+  TF_EXPECT_OK(BuildAndRun(input_data, &output_data));
+}
 
 #endif
 

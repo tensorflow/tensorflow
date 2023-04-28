@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -92,17 +93,17 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
                    Tensor* val, bool* is_dead) override;
 
   // Removes rendezvous for "step_id".
-  void Cleanup(int64_t step_id) override { cache_.Remove(step_id); }
+  void Cleanup(int64_t step_id) override { cache_->RemoveAndAbort(step_id); }
 
   // Remove all rendezvous instances owned by the rendezvous_mgr.
-  void CleanupAll() override { cache_.RemoveAll(); }
+  void CleanupAll() override { cache_->RemoveAll(); }
 
  protected:
   virtual tsl::core::RefCountPtr<BaseRemoteRendezvous> Create(
       int64_t step_id, const WorkerEnv* worker_env) = 0;
 
  private:
-  RendezvousCache<BaseRemoteRendezvous> cache_;
+  tsl::core::RefCountPtr<RendezvousCache<BaseRemoteRendezvous>> cache_;
 
   // Not owned.
   const WorkerEnv* const worker_env_;

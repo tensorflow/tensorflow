@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -25,42 +26,86 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/runtime/cpu_event.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/errors.h"
-
 #define EIGEN_USE_THREADS
 
+#include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_xfeed.h"
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_util.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/denormal.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/setround.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/profiler/lib/connected_traceme.h"
+#include "tensorflow/tsl/profiler/lib/context_types.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
@@ -99,12 +144,6 @@ class MarkEventReadyOnExit {
 static const char kCpuPlatformName[] = "cpu";
 static constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
-static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent() {
-  static const auto* ready_event = new tfrt::AsyncValueRef<CpuEvent>(
-      tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
-  return ready_event->CopyRef();
-}
-
 static void EnqueueWork(tsl::thread::ThreadPool* pool,
                         absl::AnyInvocable<void()> callee) {
   // TSL TheadPool expects std::function that must be copyable, so we are
@@ -125,20 +164,27 @@ static void EnqueueWorkWhenReady(
   });
 }
 
-TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
-    : id_(id),
-      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int id) : id_(id) {
   debug_string_ = absl::StrCat("TFRT_CPU_", id);
   to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
 }
 
-absl::string_view TfrtCpuDevice::device_kind() const {
+absl::string_view TfrtCpuDeviceDescription::device_kind() const {
   return kCpuPlatformName;
 }
 
-absl::string_view TfrtCpuDevice::DebugString() const { return debug_string_; }
+absl::string_view TfrtCpuDeviceDescription::DebugString() const {
+  return debug_string_;
+}
 
-absl::string_view TfrtCpuDevice::ToString() const { return to_string_; }
+absl::string_view TfrtCpuDeviceDescription::ToString() const {
+  return to_string_;
+}
+
+TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
+    : description_(id),
+      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+}
 
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
@@ -1068,18 +1114,25 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   bool should_sync_copy = device_buffer_wait_avs.empty() &&
                           literal->size_bytes() < kSmallDataTransferByteSize;
+  StatusOr<Shape> device_shape = logical_on_device_shape();
+  if (!device_shape.ok()) {
+    return PjRtFuture<Status>(device_shape.status());
+  }
   if (should_sync_copy) {
     if (!on_device_shape().IsTuple()) {
       const std::shared_ptr<MaybeOwningCpuMemory>& b =
           device_buffer->Buffers()[0];
-      std::memcpy(literal->untyped_data(), b->data(), b->size());
+      std::memcpy(literal->untyped_data(), b->data(),
+                  ShapeUtil::ByteSizeOf(*device_shape));
     } else {
       // Tuple case.
       int num_leaves = literal->shape().tuple_shapes().size();
       for (int i = 0; i < num_leaves; ++i) {
         const std::shared_ptr<MaybeOwningCpuMemory>& b =
             device_buffer->Buffers()[i];
-        std::memcpy(literal->untyped_data({i}), b->data(), b->size());
+        std::memcpy(
+            literal->untyped_data({i}), b->data(),
+            ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(*device_shape, {i})));
       }
     }
     // Unblock ToLiteral caller.
@@ -1094,7 +1147,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         client()->pjrt_client_thread_pool(), device_buffer_wait_avs,
         [this, device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
          literal, ready_event = ready_event.CopyRef(), device_buffer,
-         ready_on_exit = std::move(ready_on_exit)]() mutable {
+         device_shape, ready_on_exit = std::move(ready_on_exit)]() mutable {
           tsl::profiler::TraceMe traceme("D2H Dispatch");
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
@@ -1108,14 +1161,17 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           if (!on_device_shape().IsTuple()) {
             const std::shared_ptr<MaybeOwningCpuMemory>& b =
                 device_buffer->Buffers()[0];
-            std::memcpy(literal->untyped_data(), b->data(), b->size());
+            std::memcpy(literal->untyped_data(), b->data(),
+                        ShapeUtil::ByteSizeOf(*device_shape));
           } else {
             // Tuple case.
             int num_leaves = literal->shape().tuple_shapes().size();
             for (int i = 0; i < num_leaves; ++i) {
               const std::shared_ptr<MaybeOwningCpuMemory>& b =
                   device_buffer->Buffers()[i];
-              std::memcpy(literal->untyped_data({i}), b->data(), b->size());
+              std::memcpy(literal->untyped_data({i}), b->data(),
+                          ShapeUtil::ByteSizeOf(
+                              ShapeUtil::GetSubshape(*device_shape, {i})));
             }
           }
 
@@ -1445,10 +1501,9 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
 static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
     absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
   std::vector<xla::cpu::BufferDesc> descriptor_table;
-  descriptor_table.reserve(descriptor_table.size());
+  descriptor_table.reserve(buffer_table.size());
   for (const auto& buf : buffer_table) {
-    descriptor_table.emplace_back(
-        xla::cpu::BufferDesc{buf->data(), buf->size()});
+    descriptor_table.emplace_back(buf->data(), buf->size());
   }
   return descriptor_table;
 }

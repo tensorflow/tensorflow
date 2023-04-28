@@ -51,6 +51,7 @@ mlir::LogicalResult DTensorLayout::verify() {
   DTensorLayout op = *this;
   const auto& layout = op.getLayout();
   if (layout.IsEmpty()) return mlir::success();
+  if (layout.IsSingleDevice()) return mlir::success();
 
   auto input_value = op.getInput();
 

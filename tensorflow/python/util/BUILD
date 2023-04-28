@@ -10,6 +10,7 @@ visibility = [
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
+    "//tensorflow/compiler/tf2xla:__pkg__",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
@@ -287,7 +288,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops/linalg:linear_operator_diag",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
     ],
 )
 
@@ -307,6 +308,7 @@ py_strict_library(
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow_estimator:__subpackages__",
     ],
@@ -355,6 +357,7 @@ py_strict_library(
         "//third_party/py/tf_slim:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//learning/brain/analytics:__subpackages__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         "@six_archive//:six",
@@ -475,43 +478,6 @@ tf_py_strict_test(
     deps = [
         ":_function_parameter_canonicalizer_binding_for_test",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_library(
-    name = "util",
-    srcs = glob(
-        ["*.py"],
-        exclude = [
-            "example_parser*",
-            "tf_contextlib.py",
-            "tf_should_use.py",
-            "tf_export.py",
-            "tf_stack.py",
-            "tf_decorator.py",
-            "*_test.py",
-        ],
-    ),
-    compatible_with = get_compatible_with_portable(),
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    visibility = util_subpackage_visibility,
-    deps = [
-        ":_pywrap_tensor_float_32_execution",
-        ":_pywrap_determinism",
-        # global_test_configuration is added here because all major tests depend on this
-        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
-        # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
-        "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
-        ":tf_export",
-        "@com_google_protobuf//:protobuf_python",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-        "@wrapt",
-        "//tensorflow/python/util/protobuf",
-        "//tensorflow/tools/docs:doc_controls",
-        "//tensorflow/tools/compatibility:all_renames_v2",
     ],
 )
 
@@ -852,7 +818,9 @@ py_strict_library(
 py_strict_library(
     name = "serialization",
     srcs = ["serialization.py"],
-    visibility = util_subpackage_visibility,
+    visibility = util_subpackage_visibility + [
+        "//tensorflow_kfac/python/kernel_tests:__subpackages__",
+    ],
     deps = [
         ":compat",
         "//tensorflow/python/framework:dtypes",
@@ -1031,20 +999,6 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
-    name = "compat_internal",
-    srcs = ["compat_internal.py"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
-    deps = [
-        ":compat",
-        # global_test_configuration is added here because all major tests depend on this
-        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
-        # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
-        "//tensorflow/python:global_test_configuration",
-    ],
-)
-
 tf_py_strict_test(
     name = "lock_util_test",
     size = "small",
@@ -1152,5 +1106,35 @@ tf_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+tf_py_strict_test(
+    name = "pywrap_xla_ops_test",
+    srcs = ["pywrap_xla_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_gpu",
+        "no_pip",
+    ],
+    deps = [
+        ":pywrap_xla_ops",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "pywrap_xla_ops",
+    srcs = ["tf2xla_opset_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/compiler/tf2xla:tf2xla_opset_hdrs",
+    ],
+    deps = [
+        "//tensorflow/python:pybind11_lib",
+        "@com_google_absl//absl/status:statusor",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )

@@ -49,6 +49,12 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
                       int64_t source_id, int64_t local_index,
                       int64_t global_index);
 
+// Returns the index of the stream. The expected format of
+// `stream_directory_name` is:
+// stream_<stream_index>
+tsl::StatusOr<int64_t> ParseStreamDirectoryName(
+    absl::string_view stream_directory_name);
+
 // Returns a pair of {local_split_index, global_split_index} of the split. The
 // expected format of `split_filename` is:
 // split_<local_split_index>_<global_split_index>
@@ -70,6 +76,10 @@ tsl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> ParseChunkFilename(
 // Returns the path of the DONE file of a snapshot stream.
 std::string StreamDoneFilePath(absl::string_view snapshot_path,
                                int64_t stream_index);
+
+// Returns the path of the owner_worker file of a snapshot stream.
+std::string StreamWorkerFilePath(absl::string_view snapshot_path,
+                                 int64_t stream_index);
 
 // Returns the path of the DONE file of a snapshot.
 std::string SnapshotDoneFilePath(absl::string_view snapshot_path);

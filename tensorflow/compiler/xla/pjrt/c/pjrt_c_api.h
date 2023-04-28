@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -433,6 +434,10 @@ typedef enum {
   PJRT_Buffer_Type_C64,
   // Paired F64 (real, imag), as in std::complex<double>.
   PJRT_Buffer_Type_C128,
+
+  // Truncated 8 bit floating-point formats.
+  PJRT_Buffer_Type_F8E5M2,
+  PJRT_Buffer_Type_F8E4M3FN,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -756,13 +761,13 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_IsDeleted_Args, is_deleted);
 typedef PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
     PJRT_LoadedExecutable_IsDeleted_Args* args);
 
-struct PJRT_Chunk {
+typedef struct PJRT_Chunk {
   void* data;
   size_t size;
   void (*deleter)(void* data, void* deleter_arg);
   // `deleter_arg` will be passed to `deleter` as `deleter_arg` argument.
   void* deleter_arg;
-};
+} PJRT_Chunk;
 
 // TODO(b/263390934) implement C API that calls `AddChunk` and other
 // `xla::CopyToDeviceStream`.
@@ -817,8 +822,8 @@ struct PJRT_ExecuteOptions {
   // functions must outlive the execution (but not the info structs or lists).
   PJRT_SendCallbackInfo** send_callbacks;
   PJRT_RecvCallbackInfo** recv_callbacks;
-  size_t num_send_ops = 0;
-  size_t num_recv_ops = 0;
+  size_t num_send_ops;
+  size_t num_recv_ops;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
@@ -1200,67 +1205,68 @@ typedef PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
 
 // ------------------------------ Device Topology ------------------------------
 
-typedef struct PJRT_DeviceTopology PJRT_DeviceTopology;
+typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
 
-struct PJRT_DeviceTopology_Create_Args {
+struct PJRT_TopologyDescription_Create_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;  // out
+  PJRT_TopologyDescription* topology;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Create_Args, topology);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Create_Args, topology);
 
-// Creates and initializes a new PJRT_DeviceTopology and returns in `topology`.
-typedef PJRT_Error* PJRT_DeviceTopology_Create(
-    PJRT_DeviceTopology_Create_Args* args);
+// Creates and initializes a new PJRT_TopologyDescription and returns in
+// `topology`.
+typedef PJRT_Error* PJRT_TopologyDescription_Create(
+    PJRT_TopologyDescription_Create_Args* args);
 
-struct PJRT_DeviceTopology_Destroy_Args {
+struct PJRT_TopologyDescription_Destroy_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;
+  PJRT_TopologyDescription* topology;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Destroy_Args, topology);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Destroy_Args, topology);
 
 // Frees `topology`. `topology` can be nullptr.
-typedef PJRT_Error* PJRT_DeviceTopology_Destroy(
-    PJRT_DeviceTopology_Destroy_Args* args);
+typedef PJRT_Error* PJRT_TopologyDescription_Destroy(
+    PJRT_TopologyDescription_Destroy_Args* args);
 
-struct PJRT_DeviceTopology_PlatformVersion_Args {
+struct PJRT_TopologyDescription_PlatformVersion_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;
+  PJRT_TopologyDescription* topology;
   // `platform_version` has the same lifetime as `topology`. It's owned by
   // `topology`.
   const char* platform_version;  // out
   size_t platform_version_size;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformVersion_Args,
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_PlatformVersion_Args,
                           platform_version_size);
 
 // Returns a string containing human-readable, platform-specific version info
 // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
-typedef PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
-    PJRT_DeviceTopology_PlatformVersion_Args* args);
+typedef PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
+    PJRT_TopologyDescription_PlatformVersion_Args* args);
 
-struct PJRT_DeviceTopology_PlatformName_Args {
+struct PJRT_TopologyDescription_PlatformName_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;
+  PJRT_TopologyDescription* topology;
   // `platform_name` has the same lifetime as `topology`. It is owned by
   // `topology`.
   const char* platform_name;  // out
   size_t platform_name_size;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformName_Args,
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_PlatformName_Args,
                           platform_name_size);
 
 // Returns a string that identifies the platform (e.g. "cpu", "gpu", "tpu").
-typedef PJRT_Error* PJRT_DeviceTopology_PlatformName(
-    PJRT_DeviceTopology_PlatformName_Args* args);
+typedef PJRT_Error* PJRT_TopologyDescription_PlatformName(
+    PJRT_TopologyDescription_PlatformName_Args* args);
 
 struct PJRT_Compile_Args {
   size_t struct_size;
   void* priv;
-  const PJRT_DeviceTopology* topology;
+  const PJRT_TopologyDescription* topology;
   // Only needs to stay alive for the duration of the Compile call.
   // `program->format` and `program->format_size` are owned by the caller.
   PJRT_Program* program;
@@ -1359,10 +1365,10 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_CurrentBytes);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Create);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformName);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformVersion);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Create);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformName);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformVersion);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 } PJRT_Api;

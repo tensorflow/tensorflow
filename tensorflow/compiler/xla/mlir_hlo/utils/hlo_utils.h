@@ -123,7 +123,7 @@ static Value getConstantLike(OpBuilder& b, Location loc, T constant,
       return complex::NumberAttr::get(complexTy, constant, 0);
     llvm_unreachable("unhandled element type");
   };
-  return b.create<ConstantLikeOp>(loc, getAttr(), val);
+  return b.create<ConstantLikeOp>(loc, cast<TypedAttr>(getAttr()), val);
 }
 
 Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,

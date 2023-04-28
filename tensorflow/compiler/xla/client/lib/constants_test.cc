@@ -40,7 +40,7 @@ XLA_TEST_F(ConstantsTest, ConstantR0WithTypeS32DoesNotAcceptFloats) {
   ConstantR0WithType(&builder, xla::S32, 4.5);
   auto statusor = builder.Build();
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(), HasSubstr("Invalid cast"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Invalid cast"));
 }
 
 XLA_TEST_F(ConstantsTest, ConstantR0WithTypeF32) {

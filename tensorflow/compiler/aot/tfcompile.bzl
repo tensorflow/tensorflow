@@ -331,6 +331,10 @@ def _tf_library(
             mlir_components.count("HloLowering") > 0 and [
                 "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
             ] or []
+        ) + (
+            include_standard_runtime_deps and mlir_components == "HloLowering" and [
+                "//tensorflow/compiler/xla/service/cpu/runtime:retain",
+            ] or []
         ) + (deps or []),
         tags = tags,
         copts = copts,

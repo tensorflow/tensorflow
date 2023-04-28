@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
 
+#include <climits>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -50,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -66,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
@@ -168,7 +171,8 @@ Value Cast(mlir::OpBuilder b, mlir::Location loc, Value value,
 }
 
 // Create a scalar constant.
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, int value) {
+ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type,
+                           int64_t value) {
   if (type.isa<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(b.getIntegerAttr(type, value));
   }
@@ -180,8 +184,8 @@ ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, int value) {
 }
 
 // Create a tensor constant.
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, int value,
-                           mlir::ArrayRef<int64_t> shape) {
+ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type,
+                           int64_t value, mlir::ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
@@ -198,7 +202,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
                           const se::CudaComputeCapability& cc, int num_warps,
                           int num_stages) {
   const int ccAsInt = cc.major * 10 + cc.minor;
-  // Based on optimize_triton_ir() in
+  // Based on optimize_ttir() in
   // @triton//:python/triton/compiler/compiler.py
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
@@ -314,13 +318,12 @@ struct GeneralizeKernelSignaturePass
   }
 };
 
-}  // namespace
-
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 // TODO(b/270937368): Split this up into smaller functions.
-StatusOr<LaunchDimensions> MatMul(
+template <typename IndexT>
+StatusOr<LaunchDimensions> MatMulImpl(
     mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
-    mlir::func::FuncOp fn,
+    mlir::triton::FuncOp fn,
     const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
@@ -328,6 +331,12 @@ StatusOr<LaunchDimensions> MatMul(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
   mlir::ImplicitLocOpBuilder b(loc, builder);
   Type i32_ty = b.getI32Type();
+  Type int_ty;
+  if constexpr (std::is_same_v<IndexT, int64_t>) {
+    int_ty = b.getI64Type();
+  } else {
+    int_ty = b.getI32Type();
+  }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
   const DotFusionAnalysis analysis(dot_instr, config.split_k());
   const HloInstruction* hlo_lhs_param = analysis.OperandToParameter(0);
@@ -373,7 +382,7 @@ StatusOr<LaunchDimensions> MatMul(
 
   // Non-contracting dimension lengths.
   // Just the fastest-varying part of it if the dimension is split.
-  const int m = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].count;
+  const int m_minor = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].count;
   const int n = analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].count;
 
   // Contracting dimension length.
@@ -386,31 +395,35 @@ StatusOr<LaunchDimensions> MatMul(
       (analysis.IterSpec(0, lhs_noncontracting_dim_idx).size() > 1);
   CHECK_EQ(analysis.IterSpec(0, lhs_noncontracting_dim_idx).size(),
            1 + lhs_nc_split);
-  // For now split noncontracting and batch are not supported simultaneously
+  // For now split non-contracting and batch are not supported simultaneously
   // because they are implemented via same mechanism.
   CHECK_LE(have_batch + lhs_nc_split, 1);
   // Splitting of the other ones is not supported yet.
   CHECK_EQ(analysis.IterSpec(1, rhs_noncontracting_dim_idx).size(), 1);
   CHECK_EQ(analysis.IterSpec(0, dims.lhs_contracting_dimensions(0)).size(), 1);
 
-  const int stride_lhs_m =
+  const IndexT stride_lhs_m =
       analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].stride;
-  const int stride_lhs_k =
+  const IndexT stride_lhs_k =
       analysis.IterSpec(0, dims.lhs_contracting_dimensions(0))[0].stride;
-  const int stride_rhs_k =
+  const IndexT stride_rhs_k =
       analysis.IterSpec(1, dims.rhs_contracting_dimensions(0))[0].stride;
-  const int stride_rhs_n =
+  const IndexT stride_rhs_n =
       analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].stride;
 
   // Either batch size or upper part of the length of a split nc dimension.
   int batch_size = 1;
-  int stride_batch_lhs = 0;
-  int stride_batch_rhs = 0;
+  IndexT stride_batch_lhs = 0;
+  IndexT stride_batch_rhs = 0;
+  // LHS non-contracting can be split, so this holds its full size unlike the
+  // m_minor.
+  int m_full = m_minor;
   if (lhs_nc_split) {
     batch_size = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].count;
     stride_batch_lhs =
         analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].stride;
     stride_batch_rhs = 0;
+    m_full *= batch_size;
   } else if (have_batch) {
     // Batch dimension should have same length left and right.
     CHECK_EQ(analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].count,
@@ -422,38 +435,73 @@ StatusOr<LaunchDimensions> MatMul(
         analysis.IterSpec(1, dims.rhs_batch_dimensions(0))[0].stride;
   }
 
-  constexpr int64_t group_m = 8;
+  constexpr int group_m = 8;
 
-  int stride_out_m, stride_out_n;
-  // The only supported deviation from non-default output layout is a swap
-  // of non-contracting LHS and RHS dimensions. For example for rank 4 it can
-  // be either {3,2,1,0} or {2,3,1,0}.
-  auto compared_output_layout =
-      LayoutUtil::GetDefaultLayoutForShape(dot_instr->shape());
-  if (dot_instr->shape().layout() == compared_output_layout) {
-    stride_out_m = n;
-    stride_out_n = 1;
-  } else {
-    std::swap(compared_output_layout.mutable_minor_to_major()->at(0),
-              compared_output_layout.mutable_minor_to_major()->at(1));
-    CHECK_EQ(dot_instr->shape().layout(), compared_output_layout);
-    stride_out_m = 1;
-    stride_out_n = m;
+  // Logical output dimensions are always ordered as:
+  //   batch, split-K, non-contracting LHS, non-contracting RHS,
+  // where batch and split-K are optional.
+  const int rhs_nc_out_logical_idx = dot_instr->shape().rank() - 1;
+  const int lhs_nc_out_logical_idx = dot_instr->shape().rank() - 2;
+  const int split_k_out_logical_idx = have_split_k ? (have_batch ? 1 : 0) : -1;
+  const int batch_out_logical_idx = have_batch ? 0 : -1;
+
+  IndexT stride_out_m = 0;
+  IndexT stride_out_n = 0;
+  IndexT stride_out_split_k = 0;
+  IndexT stride_out_batch = 0;
+
+  // Iterate over output's physical dimension starting from the fastest
+  // varying one; detect their types and populate the strides accordingly.
+  int64_t out_stride_size_accumulator = 1;
+  for (int64_t logical_idx : dot_instr->shape().layout().minor_to_major()) {
+    const int64_t dim_size = dot_instr->shape().dimensions(logical_idx);
+    if (logical_idx == rhs_nc_out_logical_idx) {
+      CHECK_EQ(dim_size, n);
+      stride_out_n = out_stride_size_accumulator;
+    } else if (logical_idx == lhs_nc_out_logical_idx) {
+      CHECK_EQ(dim_size, m_full);
+      stride_out_m = out_stride_size_accumulator;
+      if (lhs_nc_split) {
+        // Dimension of the output produced by the non-contracting LHS one
+        // is physically contiguous even if the producing LHS one is split.
+        // Because the major part of the split is implemented using the batch
+        // logic stride_out_batch is populated here as the stride of the minor
+        // part times its size.
+        stride_out_batch = out_stride_size_accumulator * m_minor;
+      }
+    } else if (logical_idx == split_k_out_logical_idx) {
+      CHECK_EQ(dim_size, config.split_k());
+      stride_out_split_k = out_stride_size_accumulator;
+    } else if (logical_idx == batch_out_logical_idx) {
+      CHECK_EQ(dim_size, batch_size);
+      stride_out_batch = out_stride_size_accumulator;
+    } else {
+      CHECK(false) << "Unexpected dimension";
+    }
+    out_stride_size_accumulator *= dim_size;
   }
-  const int stride_out_split_k = m * n;
-  const int stride_out_batch = m * n * config.split_k();
+  CHECK_GE(stride_out_m, 1);
+  CHECK_GE(stride_out_n, 1);
+  // The next two should never be minor-most, so stride > 1.
+  if (have_split_k) {
+    CHECK_GT(stride_out_split_k, 1);
+  }
+  if (have_batch || lhs_nc_split) {
+    CHECK_GT(stride_out_batch, 1);
+  }
 
   const int block_m = config.block_m();
   const int block_k = config.block_k();
   const int block_n = config.block_n();
-  CHECK_GE(block_m, 32);
-  CHECK_GE(block_k, 32);
-  CHECK_GE(block_n, 32);
+
+  CHECK_GE(block_m, 16);
+  CHECK_GE(block_k, 16);
+  CHECK_GE(block_n, 16);
 
   VLOG(3) << block_m << " " << block_k << " " << block_n << " "
           << config.num_warps() << " " << config.num_stages();
 
-  const int grid_m = ceil(1.0 * m / block_m);
+  const int grid_m = ceil(1.0 * m_minor / block_m);
   const int grid_n = ceil(1.0 * n / block_n);
   const int width = group_m * grid_n;
 
@@ -474,10 +522,9 @@ StatusOr<LaunchDimensions> MatMul(
   const int required_shmem_size = (block_m * lhs_ty.getIntOrFloatBitWidth() +
                                    block_n * rhs_ty.getIntOrFloatBitWidth()) *
                                   block_k * config.num_stages() / 8;
-  // TODO(b/266857785): Add dynamic shared memory size.
   if (required_shmem_size > shmem_budget) {
-    return ResourceExhausted("Requires too much shared memory: %d",
-                             required_shmem_size);
+    return ResourceExhausted("Requires too much shared memory: %d > %d",
+                             required_shmem_size, shmem_budget);
   }
 
   // TODO(b/266862493): Accumulator can be integer too.
@@ -508,9 +555,9 @@ StatusOr<LaunchDimensions> MatMul(
     return b.create<mt::SplatOp>(type, value);
   };
 
-  auto build_range = [&](uint32_t start, uint32_t end) {
-    auto type = mlir::RankedTensorType::get(end - start, b.getI32Type());
-    return b.create<mt::MakeRangeOp>(type, start, end);
+  auto build_range = [&](int32_t limit) {
+    auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
+    return b.create<mt::MakeRangeOp>(type, 0, limit);
   };
 
   using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
@@ -524,6 +571,22 @@ StatusOr<LaunchDimensions> MatMul(
     return b.create<mt::AddPtrOp>(ptr.getType(), ptr, offset);
   };
 
+  // Extend int32 indexes to int64, if necessary.
+  auto convert_scalar = [&](Value value) -> Value {
+    if constexpr (std::is_same_v<IndexT, int64_t>) {
+      return b.create<ma::ExtSIOp>(int_ty, value);
+    }
+    return value;
+  };
+  auto convert_range = [&](Value value) -> Value {
+    if constexpr (std::is_same_v<IndexT, int64_t>) {
+      auto type = mlir::RankedTensorType::get(
+          value.dyn_cast<TensorValue>().getType().getShape(), int_ty);
+      return b.create<ma::ExtSIOp>(type, value);
+    }
+    return value;
+  };
+
   auto pid_m = b.create<ma::AddIOp>(first_pid_m,
                                     b.create<ma::RemSIOp>(pid0, group_size));
   auto pid_m_stride =
@@ -531,55 +594,59 @@ StatusOr<LaunchDimensions> MatMul(
   // TODO(b/270351731): Consider regenerating range_m to reduce register
   // pressure if we figure out how to make this optimization survive CSE.
   auto range_m = b.create<ma::AddIOp>(build_splat(pid_m_stride, block_m),
-                                      build_range(0, block_m));
+                                      build_range(block_m));
 
   auto pid_n = b.create<ma::DivSIOp>(
       b.create<ma::RemSIOp>(pid0, CreateConst(b, i32_ty, width)), group_size);
   auto pid_n_stride =
       b.create<ma::MulIOp>(pid_n, CreateConst(b, i32_ty, block_n));
   auto range_n = b.create<ma::AddIOp>(build_splat(pid_n_stride, block_n),
-                                      build_range(0, block_n));
+                                      build_range(block_n));
 
   auto range_k = b.create<ma::AddIOp>(
       build_splat(b.create<ma::MulIOp>(pid1, CreateConst(b, i32_ty, block_k)),
                   block_k),
-      build_range(0, block_k));
+      build_range(block_k));
 
   SmallVector<int64_t, 2> shape_m_1{block_m, 1};
-  auto range_lhs_m =
-      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m, block_m));
+  auto range_lhs_m = convert_range(
+      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m_minor, block_m)));
   auto lhs_offset_m =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_lhs_m, 1),
-                           CreateConst(b, i32_ty, stride_lhs_m, shape_m_1));
+                           CreateConst(b, int_ty, stride_lhs_m, shape_m_1));
   SmallVector<int64_t, 2> shape_1_k{1, block_k};
-  auto lhs_offset_k =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_k, 0),
-                           CreateConst(b, i32_ty, stride_lhs_k, shape_1_k));
+  auto lhs_offset_k = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_k), 0),
+      CreateConst(b, int_ty, stride_lhs_k, shape_1_k));
   SmallVector<int64_t, 2> shape_m_k{block_m, block_k};
   auto lhs_offset = b.create<ma::AddIOp>(
-      build_bcast(lhs_offset_m.getResult().cast<TensorValue>(), shape_m_k),
-      build_bcast(lhs_offset_k.getResult().cast<TensorValue>(), shape_m_k));
-  auto lhs_offset_batch =
-      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, stride_batch_lhs));
+      build_bcast(lhs_offset_m.getResult().template cast<TensorValue>(),
+                  shape_m_k),
+      build_bcast(lhs_offset_k.getResult().template cast<TensorValue>(),
+                  shape_m_k));
+  auto lhs_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid2), CreateConst(b, int_ty, stride_batch_lhs));
   mt::AddPtrOp lhs_ptrs_base = build_addptr(
       build_splat(build_addptr(lhs, lhs_offset_batch), shape_m_k), lhs_offset);
 
   SmallVector<int64_t, 2> shape_k_1{block_k, 1};
-  auto rhs_off_k =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_k, 1),
-                           CreateConst(b, i32_ty, stride_rhs_k, shape_k_1));
+  auto rhs_off_k = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_k), 1),
+      CreateConst(b, int_ty, stride_rhs_k, shape_k_1));
   SmallVector<int64_t, 2> shape_1_n{1, block_n};
-  auto range_rhs_n =
-      b.create<ma::RemSIOp>(range_n, CreateConst(b, i32_ty, n, block_n));
+  auto range_rhs_n = convert_range(
+      b.create<ma::RemSIOp>(range_n, CreateConst(b, i32_ty, n, block_n)));
   auto rhs_offset_n =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_rhs_n, 0),
-                           CreateConst(b, i32_ty, stride_rhs_n, shape_1_n));
+                           CreateConst(b, int_ty, stride_rhs_n, shape_1_n));
   SmallVector<int64_t, 2> shape_k_n{block_k, block_n};
   auto rhs_offset = b.create<ma::AddIOp>(
-      build_bcast(rhs_off_k.getResult().cast<TensorValue>(), shape_k_n),
-      build_bcast(rhs_offset_n.getResult().cast<TensorValue>(), shape_k_n));
-  auto rhs_offset_batch =
-      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, stride_batch_rhs));
+      build_bcast(rhs_off_k.getResult().template cast<TensorValue>(),
+                  shape_k_n),
+      build_bcast(rhs_offset_n.getResult().template cast<TensorValue>(),
+                  shape_k_n));
+  auto rhs_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid2), CreateConst(b, int_ty, stride_batch_rhs));
   mt::AddPtrOp rhs_ptrs_base = build_addptr(
       build_splat(build_addptr(rhs, rhs_offset_batch), shape_k_n), rhs_offset);
   SmallVector<int64_t, 2> shape_m_n{block_m, block_n};
@@ -606,14 +673,14 @@ StatusOr<LaunchDimensions> MatMul(
                                b.create<mt::ExpandDimsOp>(range_k, 0),
                                build_splat(elements_in_tile, shape_1_k))
               .getResult()
-              .cast<TensorValue>(),
+              .template cast<TensorValue>(),
           shape_m_k);
       rhs_mask = build_bcast(
           b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
                                b.create<mt::ExpandDimsOp>(range_k, 1),
                                build_splat(elements_in_tile, shape_k_1))
               .getResult()
-              .cast<TensorValue>(),
+              .template cast<TensorValue>(),
           shape_k_n);
     }
     auto lhs_tile = b.create<mt::LoadOp>(lhs_ptrs, lhs_mask, zeros_like_lhs,
@@ -632,11 +699,11 @@ StatusOr<LaunchDimensions> MatMul(
 
     mt::AddPtrOp lhs_ptrs_inc = build_addptr(
         lhs_ptrs,
-        CreateConst(b, i32_ty, block_k * config.split_k() * stride_lhs_k,
+        CreateConst(b, int_ty, block_k * config.split_k() * stride_lhs_k,
                     shape_m_k));
     mt::AddPtrOp rhs_ptrs_inc = build_addptr(
         rhs_ptrs,
-        CreateConst(b, i32_ty, block_k * config.split_k() * stride_rhs_k,
+        CreateConst(b, int_ty, block_k * config.split_k() * stride_rhs_k,
                     shape_k_n));
 
     b.create<mlir::scf::YieldOp>(
@@ -655,49 +722,68 @@ StatusOr<LaunchDimensions> MatMul(
           .getResult(2);
 
   // Output tile offsets.
-  auto out_offset_batch =
-      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, stride_out_batch));
-  auto out_offset_split_k =
-      b.create<ma::MulIOp>(pid1, CreateConst(b, i32_ty, stride_out_split_k));
-  auto out_offset_m =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_m, 1),
-                           CreateConst(b, i32_ty, stride_out_m, shape_m_1));
+  auto out_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid2), CreateConst(b, int_ty, stride_out_batch));
+  auto out_offset_split_k = b.create<ma::MulIOp>(
+      convert_scalar(pid1), CreateConst(b, int_ty, stride_out_split_k));
+  auto out_offset_m = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_m), 1),
+      CreateConst(b, int_ty, stride_out_m, shape_m_1));
   mt::AddPtrOp out_ptrs_m = build_addptr(
       build_splat(
           build_addptr(build_addptr(out, out_offset_batch), out_offset_split_k),
           shape_m_1),
       out_offset_m);
 
-  auto out_offset_n =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_n, 0),
-                           CreateConst(b, i32_ty, stride_out_n, shape_1_n));
+  auto out_offset_n = b.create<ma::MulIOp>(
+      b.create<mt::ExpandDimsOp>(convert_range(range_n), 0),
+      CreateConst(b, int_ty, stride_out_n, shape_1_n));
   mt::AddPtrOp out_ptrs = build_addptr(
       build_bcast(out_ptrs_m.getResult().cast<TensorValue>(), shape_m_n),
-      build_bcast(out_offset_n.getResult().cast<TensorValue>(), shape_m_n));
+      build_bcast(out_offset_n.getResult().template cast<TensorValue>(),
+                  shape_m_n));
 
   // Output tile store mask: check that the indices are within [M, N].
-  auto rm_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
-                                     b.create<mt::ExpandDimsOp>(range_m, 1),
-                                     CreateConst(b, i32_ty, m, shape_m_1));
+  auto rm_cmp = b.create<ma::CmpIOp>(
+      ma::CmpIPredicate::slt, b.create<mt::ExpandDimsOp>(range_m, 1),
+      CreateConst(b, i32_ty, m_minor, shape_m_1));
   auto rn_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
                                      b.create<mt::ExpandDimsOp>(range_n, 0),
                                      CreateConst(b, i32_ty, n, shape_1_n));
   auto mask = b.create<ma::AndIOp>(
-      build_bcast(rm_cmp.getResult().cast<TensorValue>(), shape_m_n),
-      build_bcast(rn_cmp.getResult().cast<TensorValue>(), shape_m_n));
+      build_bcast(rm_cmp.getResult().template cast<TensorValue>(), shape_m_n),
+      build_bcast(rn_cmp.getResult().template cast<TensorValue>(), shape_m_n));
 
   b.create<mt::StoreOp>(out_ptrs, Cast(b, loc, acc_final, root_ty), mask,
                         mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   return launch_dimensions;
 }
 
+}  // namespace
+
+StatusOr<LaunchDimensions> MatMul(
+    mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
+    mlir::triton::FuncOp fn,
+    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+  // Use 32-bit indexing if addressing any of the inputs or the output (which
+  // could grow if split_k is set) does not cross the INT_MAX boundary.
+  // Otherwise, fall back to 64-bit indexing, which is slower.
+  bool use_64bit_indexing =
+      ShapeUtil::ElementsIn(dot_instr->operand(0)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr->operand(1)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k() > INT_MAX;
+  if (use_64bit_indexing) {
+    return MatMulImpl<int64_t>(builder, dot_instr, fn, config, shmem_budget);
+  } else {
+    return MatMulImpl<int32_t>(builder, dot_instr, fn, config, shmem_budget);
+  }
+}
+
 StatusOr<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    LaunchDimensionsGenerator generator) {
-  // TODO(b/264317991): Pass in a context instead if this becomes to slow.
-  mlir::MLIRContext mlir_context;
+    LaunchDimensionsGenerator generator, mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<mt::TritonDialect>();
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
@@ -724,19 +810,20 @@ StatusOr<LaunchDimensions> TritonWrapper(
 
   fn_arg_types.push_back(mt::PointerType::get(root_ty, mn::kGlobalMemorySpace));
 
-  auto fn = b.create<mlir::func::FuncOp>(
-      loc, fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
+  auto fn = b.create<mt::FuncOp>(loc, fn_name,
+                                 b.getFunctionType(fn_arg_types, std::nullopt));
   for (int i = 0; i < fn.getNumArguments(); ++i) {
     fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
   }
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      generator(b, xla::Cast<HloDotInstruction>(root), fn,
-                                config, device_info.shared_memory_per_block));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      generator(b, xla::Cast<HloDotInstruction>(root), fn, config,
+                device_info.shared_memory_per_block_optin));
 
-  b.create<mlir::func::ReturnOp>(loc);
+  b.create<mt::ReturnOp>(loc);
   CHECK(mlir::succeeded(mlir::verify(triton_module)));
 
   VLOG(4) << llvm_ir::DumpToString(triton_module);
@@ -751,20 +838,28 @@ StatusOr<LaunchDimensions> TritonWrapper(
         absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
                      ".triton-passes.log");
     std::string outputs_dir;
-    tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
-    std::string path = tsl::io::JoinPath(outputs_dir, basename);
-    std::error_code err;
-    log_stream.emplace(path, err, llvm::sys::fs::OF_None);
-    if (err) {
-      log_stream.reset();
+    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
+      outputs_dir = hlo_module->config().debug_options().xla_dump_to();
     }
-    auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
-    auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
-    pm.getContext()->disableMultithreading();
-    pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
-                        /*printAfterOnlyOnChange=*/true,
-                        /*printAfterOnlyOnFailure=*/false, *log_stream,
-                        /*opPrintingFlags=*/{});
+    if (!outputs_dir.empty()) {
+      std::string path = tsl::io::JoinPath(outputs_dir, basename);
+      std::error_code err;
+      log_stream.emplace(path, err, llvm::sys::fs::OF_None);
+      if (err) {
+        log_stream.reset();
+      }
+      auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
+      auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
+      pm.getContext()->disableMultithreading();
+      pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
+                          /*printAfterOnlyOnChange=*/true,
+                          /*printAfterOnlyOnFailure=*/false, *log_stream,
+                          /*opPrintingFlags=*/{});
+    } else {
+      LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
+                 << "variable TEST_UNDECLARED_OUTPUTS_DIR nor the flag "
+                 << "--xla_dump_to is set, so the llvm dumps are disabled.";
+    }
   }
 
   CreateTritonPipeline(pm, cc, config.num_warps(), config.num_stages());
@@ -785,8 +880,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
       triton_module->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  // TODO(b/266857785): Add dynamic shared memory size.
-  if (shared_mem_bytes > device_info.shared_memory_per_block) {
+  if (shared_mem_bytes > device_info.shared_memory_per_block_optin) {
     return ResourceExhausted("Shared memory size limit exceeded.");
   }
   launch_dimensions.SetSharedMemBytes(shared_mem_bytes);

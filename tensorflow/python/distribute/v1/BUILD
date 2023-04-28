@@ -70,9 +70,9 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -90,7 +90,7 @@ pytype_strict_library(
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:deprecation",
     ],
 )

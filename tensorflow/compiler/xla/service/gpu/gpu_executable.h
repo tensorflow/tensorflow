@@ -92,6 +92,7 @@ class GpuExecutable : public Executable {
     std::string module_name;
     xla::Shape output_shape;
     std::vector<BufferAllocation> allocations;
+    bool enable_persistent_temp_buffers;
     std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment = nullptr;
 
     // A callable that dumps out a debug string upon device OOM. It's not the
@@ -220,6 +221,11 @@ class GpuExecutable : public Executable {
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
 
+  // Allocate the temp buffers and store them with the GpuExecutable. This
+  // function only allocates buffers on the first run for each executor.
+  Status PopulatePersistentTempBuffers(se::StreamExecutor* executor)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(persistent_temp_buffers_mu_);
+
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
@@ -228,7 +234,9 @@ class GpuExecutable : public Executable {
   StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal);
+      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      const BufferAllocToDeviceMemoryMap&
+          buffer_alloc_to_persistent_memory_map);
 
   StatusOr<se::DeviceMemoryBase> BufferForAllocation(
       VariantArguments arguments,
@@ -276,17 +284,26 @@ class GpuExecutable : public Executable {
   // memory for every output/temp buffers.
   const std::vector<BufferAllocation> allocations_;
 
+  bool enable_persistent_temp_buffers_ = false;
+
+  absl::Mutex persistent_temp_buffers_mu_;
+  // Temp buffers can be allocated once and be reused whenever the GpuExecutable
+  // is executed. The persistent temp buffer is stored in a map that maps from
+  // a BufferAllocation to the temp buffer.
+  absl::flat_hash_map<stream_executor::StreamExecutor*,
+                      BufferAllocToDeviceMemoryMap>
+      persistent_temp_buffers_ ABSL_GUARDED_BY(persistent_temp_buffers_mu_);
+
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
   std::function<std::string()> verbose_buffer_assignment_string_dumper_;
 
   absl::Mutex module_handle_mutex_;
   // Cache of module handles. Required to keep loaded modules alive until this
   // executable is destroyed.
-  absl::flat_hash_map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+  std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
       module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
   // Cache of constant buffer allocation maps used by `ResolveConstantGlobals`.
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      BufferAllocToDeviceMemoryMap>
+  std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
       module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;

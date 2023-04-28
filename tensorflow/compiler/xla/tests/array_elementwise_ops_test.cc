@@ -3290,7 +3290,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
 
   auto computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_THAT(computation_status.status().error_message(),
+  EXPECT_THAT(computation_status.status().message(),
               ::testing::ContainsRegex("must.*be the identity"));
 }
 

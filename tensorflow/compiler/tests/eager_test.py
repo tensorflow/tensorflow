@@ -21,7 +21,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -345,12 +344,12 @@ class EagerFunctionTest(xla_test.XLATestCase):
       v = resource_variable_ops.ResourceVariable(1.0)
       w = resource_variable_ops.ResourceVariable(0.0)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def g(x):
         w.assign(w.read_value() + x)
         return v.read_value() + x * w.read_value()
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def f():
         return g(1.0) + g(2.0) + g(3.0) + g(4.0) + g(5.0)
 
@@ -362,11 +361,11 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(10.0)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def g():
         return v.read_value()
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def f():
         return g() + g() + g() + g() + g()
 
@@ -376,11 +375,11 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(0.0)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def g(x):
         v.assign(x)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def f():
         g(1.0)
         g(2.0)

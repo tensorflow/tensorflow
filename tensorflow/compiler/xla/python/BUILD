@@ -15,6 +15,7 @@ load(
     "if_cuda_or_rocm",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_library")
 
@@ -304,6 +305,7 @@ cc_library(
         "py_array.cc",
         "py_buffer.cc",
         "py_client.cc",
+        "py_compile_only_client.cc",
         "py_executable.cc",
         "py_values.cc",
         "sharding.cc",
@@ -315,6 +317,7 @@ cc_library(
         "py_array.h",
         "py_buffer.h",
         "py_client.h",
+        "py_compile_only_client.h",
         "py_executable.h",
         "py_values.h",
         "sharded_device_array.h",
@@ -327,7 +330,9 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
+    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
@@ -349,6 +354,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/pjrt:transpose",
@@ -375,6 +381,8 @@ cc_library(
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
@@ -448,6 +456,19 @@ cc_library(
 )
 
 cc_library(
+    name = "inspect_sharding",
+    srcs = ["inspect_sharding.cc"],
+    hdrs = ["inspect_sharding.h"],
+    deps = [
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
+        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
+    ],
+    # Always register 'InspectSharding' custom partitioning handler.
+    alwayslink = 1,
+)
+
+cc_library(
     name = "custom_call_sharding",
     srcs = ["custom_call_sharding.cc"],
     hdrs = ["custom_call_sharding.h"],
@@ -459,6 +480,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":inspect_sharding",
         ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",

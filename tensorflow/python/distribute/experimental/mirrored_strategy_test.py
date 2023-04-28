@@ -24,7 +24,6 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import mirrored_strategy
@@ -32,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -280,14 +280,14 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
 
     @def_function.function
     def replica_fn(inputs):
-      replica_context = distribution_strategy_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       self.assertIsInstance(replica_context, dtensor_util.DTensorReplicaContext)
       return inputs * replica_context.num_replicas_in_sync
 
     # Default replica context
-    self.assertIsNotNone(distribution_strategy_context.get_replica_context())
+    self.assertIsNotNone(distribute_lib.get_replica_context())
     with strategy.scope():
-      self.assertIsNone(distribution_strategy_context.get_replica_context())
+      self.assertIsNone(distribute_lib.get_replica_context())
 
       result = strategy.run(replica_fn, args=(d_tensor_input,))
 
@@ -625,9 +625,16 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     distributed_dataset = strategy.distribute_datasets_from_function(
         dataset_fn, None)
+    iterator = iter(distributed_dataset)
 
-    element = next(iter(distributed_dataset))
-    batched_image, batched_label = element
+    self.assertEqual(distributed_dataset.element_spec,
+                     (tensor_spec.TensorSpec(shape=(8, 8, 8, 3),
+                                             dtype=dtypes.float32, name=None),
+                      tensor_spec.TensorSpec(shape=(8, 1),
+                                             dtype=dtypes.float32, name=None)))
+    self.assertEqual(distributed_dataset.element_spec, iterator.element_spec)
+
+    batched_image, batched_label = next(iterator)
     self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
     self.assertEqual(batched_label.shape, [global_batch_size, 1])
 

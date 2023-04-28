@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_SAVEDMODEL_EXPORT_H_
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace mlir {

@@ -98,7 +98,8 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(const std::string& module_name,
+                                          func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
@@ -106,7 +107,8 @@ LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
-      ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
+      ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()),
+                       absl::StrCat("module_", module_name));
   auto parent_module = entry_func->getParentOfType<ModuleOp>();
   auto versions_attr = parent_module->getAttr(kVersionsAttr);
   if (!versions_attr)
@@ -234,7 +236,7 @@ LogicalResult SetMetadataProtoArgs(
     if (!status.ok())
       return op.emitOpError(
           llvm::formatv("failed to determine operand type at index {0}: {1}",
-                        index, status.error_message()));
+                        index, status.message()));
 
     arg->set_dtype(dtype);
     // TODO(lyandy): Support other arg kinds.
@@ -396,7 +398,10 @@ Operation* BuildCompileOp(
           func_attr.getValue());
 
   std::string txt_module;
-  if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
+  if (failed(EncapsulateFuncAndSerialize(
+          module_name.empty() ? "unknown_graph" : module_name.str(), func,
+          &txt_module)))
+    return nullptr;
 
   auto compilation_status_type =
       RankedTensorType::get({}, builder->getType<TF::StringType>());
@@ -442,23 +447,23 @@ void AssignDevicesToReplicate(
   for (int core = 0; core < num_cores_per_replica; ++core) {
     llvm::SmallVector<StringRef, 8> devices_by_core;
     devices_by_core.reserve(num_replicas);
-    for (int replica = 0; replica < num_replicas; ++replica)
+    llvm::SmallVector<StringRef, 8> hosts_by_core;
+    hosts_by_core.reserve(num_replicas);
+    for (int replica = 0; replica < num_replicas; ++replica) {
       devices_by_core.push_back(tpu_devices[replica][core].device);
+      hosts_by_core.push_back(tpu_devices[replica][core].host);
+    }
 
     device_attrs.push_back(
         builder->getNamedAttr(tensorflow::GetDeviceAliasForLogicalCore(core),
                               builder->getStrArrayAttr(devices_by_core)));
+
+    // For data parallelism, also add replicated host devices, as these are
+    // necessary for outside compilation.
+    device_attrs.push_back(builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForHostOfLogicalCore(core),
+        builder->getStrArrayAttr(hosts_by_core)));
   }
-
-  // For data parallelism, also add replicated host devices, as these are
-  // necessary for outside compilation.
-  llvm::SmallVector<StringRef, 8> hosts;
-  hosts.reserve(num_replicas);
-  for (int replica = 0; replica < num_replicas; ++replica)
-    hosts.push_back(tpu_devices[replica][0].host);
-
-  device_attrs.push_back(builder->getNamedAttr(
-      tensorflow::kTPUReplicatedHost, builder->getStrArrayAttr(hosts)));
 
   replicate->setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attrs));
 }
@@ -805,7 +810,7 @@ LogicalResult Rewrite(
   if (!status_or_device_coodinates.ok())
     return cluster_func.emitError()
            << "error in fetching tpu device coordinates: "
-           << status_or_device_coodinates.status().error_message();
+           << status_or_device_coodinates.status().message();
 
   // Determine compilation and execution devices.
   auto status_or_tpu_device_assignment =
@@ -815,7 +820,7 @@ LogicalResult Rewrite(
   if (!status_or_tpu_device_assignment.ok())
     return cluster_func.emitError()
            << "error in fetching TPU compilation/execution devices: "
-           << status_or_tpu_device_assignment.status().error_message();
+           << status_or_tpu_device_assignment.status().message();
 
   // Create compile op.
   auto& tpu_device_assignment = status_or_tpu_device_assignment.value();

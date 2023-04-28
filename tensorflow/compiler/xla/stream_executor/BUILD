@@ -5,7 +5,7 @@
 # do not link against restricted binary blobs.
 
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
-load("//tensorflow/tsl:tsl.bzl", "transitive_hdrs", "tsl_gpu_library")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility", "transitive_hdrs", "tsl_gpu_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
@@ -14,9 +14,9 @@ load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         ":friends",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -43,6 +43,7 @@ cc_library(
         "kernel_cache_config.h",
         "kernel_spec.h",
         "launch_dim.h",
+        "numeric_options.h",
         "module_spec.h",
         "multi_platform_manager.h",
         "platform.h",
@@ -257,6 +258,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/stream_executor/platform",
     ],
+)
+
+cc_library(
+    name = "numeric_options",
+    hdrs = ["numeric_options.h"],
 )
 
 cc_library(
@@ -674,6 +680,7 @@ cc_library(
         ":device_description_proto_cc",
         ":device_memory",
         ":dnn_proto_cc",
+        ":numeric_options",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/lib/strings:proto_serialization",

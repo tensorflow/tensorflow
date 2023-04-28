@@ -102,6 +102,12 @@ static void SetupPassDebugging(MLIRContext* context, mlir::PassManager& pm) {
   }
 }
 
+static void PrintPassPipeline(const mlir::PassManager& pm) {
+  llvm::errs() << "MLIR Pass Pipeline:\n";
+  pm.printAsTextualPipeline(llvm::errs());
+  llvm::errs() << "\n";
+}
+
 static LogicalResult RunPipeline(
     ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
   if (!create_pipeline) return success();
@@ -120,6 +126,10 @@ static LogicalResult RunPipeline(
   }
   PassManager passes(&pm);
   create_pipeline(passes);
+
+  if (DebugJitCompiler()) {
+    PrintPassPipeline(pm);
+  }
 
   return pm.run(module);
 }
@@ -318,13 +328,18 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
         Executable::GetResultsMemoryLayout(*runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
+    bool requires_blas = false;
+    if (Attribute requires_blas_attr = func->getAttr("xla.requires_blas")) {
+      requires_blas = cast<BoolAttr>(requires_blas_attr).getValue();
+    }
+
     // Add function with an unresolved function pointer; it will be updated once
     // we compile the input module to the native executable.
     functions.push_back(Executable::Function(
         name,
         /*fptr=*/nullptr, std::move(*signature), std::move(*runtime_signature),
-        std::move(*arguments_memory_layout),
-        std::move(*results_memory_layout)));
+        std::move(*arguments_memory_layout), std::move(*results_memory_layout),
+        requires_blas));
   }
 
   // Run the compilation pipeline to lower the module to LLVM dialect.

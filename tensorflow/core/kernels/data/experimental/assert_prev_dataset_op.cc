@@ -209,7 +209,7 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
         if (!s.ok()) {
           return errors::InvalidArgument(
               "Failure checking transformations at offset ", i, ": ",
-              s.error_message());
+              s.message());
         }
 
         current_dataset = *previous_dataset;

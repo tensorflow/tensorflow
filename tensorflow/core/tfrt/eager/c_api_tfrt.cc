@@ -303,7 +303,7 @@ tfrt::Expected<const char*> ConvertTfDeviceNameToTfrt(
   tensorflow::Status s =
       eager_context->FindDeviceFromName(device_name, &tf_device);
   if (!s.ok()) {
-    return MakeStringError(s.error_message());
+    return MakeStringError(s.message());
   }
   return tf_device->name().c_str();
 }
@@ -1066,7 +1066,7 @@ ContextInterface::CopyTensorHandleToDevice(
     *status = tensorflow::errors::InvalidArgument(
         StrCat(tfrt_device_name.takeError()));
     RCReference<AsyncValue> error_av =
-        MakeErrorAsyncValueRef(status->error_message());
+        MakeErrorAsyncValueRef(status->message());
     return new TensorHandleInterface(
         Value(TensorHandle::CreateError(std::move(error_av))),
         GetTfrtContext());

@@ -40,30 +40,3 @@ func.func @retain_something(%arg0: memref<2xf32>, %arg1: !deallocation.ownership
 // CHECK-NEXT:    deallocation.free %[[RET]]#0
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return %[[RET]]#2
-
-func.func @retain_multiple(%arg0: memref<?xi32>, %arg1: memref<?xi32>,
-        %arg2: !deallocation.ownership, %arg3: !deallocation.ownership)
-    -> (!deallocation.ownership, !deallocation.ownership) {
-  %ret:2 = deallocation.retain(%arg0, %arg1) of (%arg2, %arg3)
-    : (memref<?xi32>, memref<?xi32>, !deallocation.ownership, !deallocation.ownership)
-    -> (!deallocation.ownership, !deallocation.ownership)
-  return %ret#0, %ret#1 : !deallocation.ownership, !deallocation.ownership
-}
-
-// CHECK-LABEL: @retain_multiple
-// CHECK-SAME:     %[[ARG0:.*]]: memref<?xi32>, %[[ARG1:.*]]: memref<?xi32>
-// CHECK-SAME:     %[[ARG2:.*]]: {{.*}}, %[[ARG3:.*]]:
-// CHECK-NEXT:  %[[ZERO:.*]] = arith.constant 0 : index
-// CHECK-NEXT:  %[[BUF2:.*]] = deallocation.get_buffer %[[ARG2]]
-// CHECK-NEXT:  %[[BUF3:.*]] = deallocation.get_buffer %[[ARG3]]
-// CHECK-NEXT:  %[[NULL:.*]] = deallocation.null
-// CHECK-NEXT:  %[[BUF0:.*]] = deallocation.get_buffer %[[ARG0]]
-// CHECK:       %[[CMP:.*]] = arith.cmpi eq, %[[BUF0]], %[[BUF2]] : index
-// CHECK:       %[[T0:.*]]:3 = scf.if %[[CMP]]
-// CHECK:       %[[CMP:.*]] = arith.cmpi eq, %[[BUF0]], %[[BUF3]] : index
-// CHECK:       %[[T1:.*]]:3 = scf.if %[[CMP]]
-// CHECK:       %[[BUF1:.*]] = deallocation.get_buffer %[[ARG1]]
-// CHECK:       %[[CMP:.*]] = arith.cmpi eq, %[[BUF1]], %[[T0]]#1 : index
-// CHECK:       scf.if %[[CMP]]
-// CHECK:       %[[CMP:.*]] = arith.cmpi eq, %[[BUF1]], %[[T1]]#1 : index
-// CHECK:       scf.if %[[CMP]]

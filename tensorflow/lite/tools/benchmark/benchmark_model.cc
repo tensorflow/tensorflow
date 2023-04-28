@@ -294,6 +294,8 @@ TfLiteStatus BenchmarkModel::Run() {
 
   if (model_size_mb > 0) {
     TFLITE_LOG(INFO) << "The input model file size (MB): " << model_size_mb;
+  } else {
+    TFLITE_LOG(WARN) << "Failed to get the input model file size.";
   }
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
                    << "ms.";

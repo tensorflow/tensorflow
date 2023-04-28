@@ -248,12 +248,18 @@ Status RunAndCompare(
   std::unique_ptr<RunHloModuleIterationLiterals> iteration_literals_proto_local;
   if (iteration_literals_proto == nullptr) {
     // User did not explicitly give input
-    if (options.input_format == "pb" || options.input_format == "pbtxt") {
+    if (!options.force_fake_data &&
+        (options.input_format == "pb" || options.input_format == "pbtxt")) {
       // User is giving a snapshot (which contains inputs)
+      LOG(INFO) << "Using input data from the user-provided snapshot.";
       TF_ASSIGN_OR_RETURN(
           iteration_literals_proto_local,
           LoadInputFromFile(hlo_filename, options.input_format));
       iteration_literals_proto = iteration_literals_proto_local.get();
+    } else if (options.input_format == "pb" ||
+               options.input_format == "pbtxt") {
+      LOG(INFO)
+          << "Ignoring input data from snapshot and using fake data instead.";
     }
   }
   return RunAndCompare(std::move(test_module), test_runner, reference_runner,

@@ -168,7 +168,9 @@ def read_fingerprint(export_dir):
   """
   try:
     fingerprint = fingerprinting_pywrap.ReadSavedModelFingerprint(export_dir)
-  except fingerprinting_pywrap.FingerprintException as e:
+  except fingerprinting_pywrap.FileNotFoundException as e:
     raise FileNotFoundError(f"SavedModel Fingerprint Error: {e}") from None  # pylint: disable=raise-missing-from
+  except fingerprinting_pywrap.FingerprintException as e:
+    raise RuntimeError(f"SavedModel Fingerprint Error: {e}") from None  # pylint: disable=raise-missing-from
   return Fingerprint.from_proto(
       fingerprint_pb2.FingerprintDef().FromString(fingerprint))

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_RENDEZVOUS_CACHE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_RENDEZVOUS_CACHE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -31,7 +32,7 @@ namespace tensorflow {
 // If the Rendezvous object is destroyed for the step, a new one will be
 // created on demand.
 template <typename T>
-class RendezvousCache {
+class RendezvousCache : public tsl::core::WeakRefCounted {
  public:
   RendezvousCache() = default;
   virtual ~RendezvousCache() {
@@ -62,9 +63,16 @@ class RendezvousCache {
       rendz = create_fn();
       VLOG(5) << "step_id:" << step_id << " "
               << "Rendezvous not found, inserting a new one." << rendz.get();
-      // TODO(b/274793840): The WeakPtr still leaks, albeit slower than
-      // leaking entire Rendezvous objects.
-      table_.insert({step_id, tsl::core::WeakPtr<T>{rendz.get()}});
+      auto cleanup_fn = [weak_cache = tsl::core::WeakPtr<RendezvousCache>(this),
+                         step_id]() {
+        tsl::core::RefCountPtr<RendezvousCache> cache = weak_cache.GetNewRef();
+        if (cache != nullptr) {
+          // If the rendezvous is released, Find() will clean it up from the
+          // map.
+          cache->Find(step_id);
+        }
+      };
+      table_.insert({step_id, tsl::core::WeakPtr<T>{rendz.get(), cleanup_fn}});
     }
     return rendz;
   }
@@ -74,11 +82,22 @@ class RendezvousCache {
     tsl::mutex_lock l(table_lock_);
     auto iter = table_.find(step_id);
     if (iter == table_.end()) return nullptr;
-    return iter->second.GetNewRef();
+    tsl::core::RefCountPtr<T> res = iter->second.GetNewRef();
+    // Cleans the record if the rendezvous is already destroyed.
+    if (res == nullptr) {
+      table_.erase(iter);
+    }
+    return res;
   }
 
   // Removes a Rendezvous weak reference from table.
   void Remove(int64_t step_id) {
+    tsl::mutex_lock l(table_lock_);
+    table_.erase(step_id);
+  }
+
+  // Removes a Rendezvous weak reference from table, and abort the rendezvous.
+  void RemoveAndAbort(int64_t step_id) {
     tsl::core::RefCountPtr<T> rendez = nullptr;
     {
       tsl::mutex_lock l(table_lock_);
@@ -102,15 +121,18 @@ class RendezvousCache {
   // at time of the call. The returned vector may contain step ids that have
   // been invalidated after the call.
   std::vector<int64_t> GetActiveStepIds() {
-    tsl::mutex_lock l(table_lock_);
     std::vector<int64_t> list;
+    tsl::mutex_lock l(table_lock_);
     list.reserve(table_.size());
     for (const auto& iter : table_) {
-      if (iter.second.GetNewRef()) {
-        list.push_back(iter.first);
-      }
+      list.push_back(iter.first);
     }
     return list;
+  }
+
+  size_t Size() const {
+    tsl::mutex_lock l(table_lock_);
+    return table_.size();
   }
 
  private:

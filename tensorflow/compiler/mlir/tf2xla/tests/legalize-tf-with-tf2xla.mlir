@@ -354,8 +354,8 @@ func.func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>
 
 // CHECK-LABEL: @xla_spmd_full_to_shard_shape
 func.func @xla_spmd_full_to_shard_shape(%arg0: tensor<2x2xi64>) -> (tensor<1x2xi64>) {
-  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
-  // CHECK: %[[MANUAL:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "{devices=[2,1]0,1}"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: %[[MANUAL:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "{manual}"} : (tensor<2x2xi64>) -> tensor<1x2xi64>
   // CHECK: return %[[MANUAL]]
   %0 = "tf.XlaSpmdFullToShardShape"(%arg0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
   func.return %0 : tensor<1x2xi64>
@@ -378,8 +378,8 @@ func.func @xla_spmd_full_to_shard_shape(%arg0: tensor<2x2xi64>) -> (tensor<1x2xi
 
 // CHECK-LABEL: @xla_spmd_shard_to_full_shape
 func.func @xla_spmd_shard_to_full_shape(%arg0: tensor<1x2xi64>) -> (tensor<2x2xi64>) {
-  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<1x2xi64>) -> tensor<1x2xi64>
-  // CHECK: %[[FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "{manual}"} : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  // CHECK: %[[FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "{devices=[2,1]0,1}"} : (tensor<1x2xi64>) -> tensor<2x2xi64>
   // CHECK: return %[[FULL]]
   %0 = "tf.XlaSpmdShardToFullShape"(%arg0) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
   func.return %0 : tensor<2x2xi64>
@@ -474,6 +474,21 @@ func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
 
   // CHECK: return %[[RESULT]]
   func.return %bounded : tensor<i32>
+}
+
+// CHECK-LABEL: @XlaScatterOpNotSupported
+func.func @XlaScatterOpNotSupported(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<8xi32> {
+  // CHECK: tf.XlaScatter
+  %0 = "tf.XlaScatter"(%arg0, %arg1, %arg2) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", indices_are_sorted = false, update_computation = @no_reducer} : (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+}
+
+// CHECK-LABEL: approx_topk
+func.func @approx_topk(%arg0: tensor<!tf_type.resource<tensor<10x500xbf16>>> {tf._user_specified_name = "db"}) -> (tensor<10x10xbf16>) {
+  %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf_type.resource<tensor<10x500xbf16>>>) -> tensor<10x500xbf16>
+  // CHECK: mhlo.compare  GT
+  %values, %indices = "tf.ApproxTopK"(%0) {aggregate_to_topk = true, device = "", is_max_k = true, k = 10 : i64, recall_target = 0.949999988 : f32, reduction_dimension = -1 : i64, reduction_input_size_override = -1 : i64} : (tensor<10x500xbf16>) -> (tensor<10x10xbf16>, tensor<10x10xi32>)
+  return %values : tensor<10x10xbf16>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

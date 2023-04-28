@@ -91,6 +91,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::AdjustHueOp>(),
             TypeID::get<TF::AdjustSaturationOp>(),
             TypeID::get<TF::ApproximateEqualOp>(),
+            TypeID::get<TF::ApproxTopKOp>(),
             TypeID::get<TF::ArgMaxOp>(),
             TypeID::get<TF::ArgMinOp>(),
             TypeID::get<TF::AsinhOp>(),
@@ -339,6 +340,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::FusedBatchNormGradOp>(),
     TypeID::get<TF::FusedBatchNormGradV2Op>(),
     TypeID::get<TF::FusedBatchNormV2Op>(),
+    TypeID::get<TF::_FusedConv2DOp>(),
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GatherV2Op>(),
     TypeID::get<TF::GreaterEqualOp>(),
@@ -357,7 +359,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::MaximumOp>(),
     TypeID::get<TF::MaxPoolOp>(),
     TypeID::get<TF::MaxPool3DOp>(),
-    TypeID::get<TF::MaxPoolGradOp>(),
     TypeID::get<TF::MeanOp>(),
     TypeID::get<TF::MinOp>(),
     TypeID::get<TF::MinimumOp>(),
@@ -420,20 +421,8 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
 }
 // LINT.ThenChange()
 
-// List of ops that require falling back to XlaOpKernel legalizations and also
-// require the ability to create functions.
-bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
-  static auto* ops = new llvm::SmallDenseSet<mlir::TypeID, 16>{
-      TypeID::get<TF::ApproxTopKOp>(),
-  };
-  auto abstractOp = op->getRegisteredInfo();
-  if (!abstractOp) return false;
-  return ops->count(abstractOp->getTypeID());
-}
-
 bool HasTf2XlaFallback(Operation* op) {
   return IsOpAllowedTf2XlaFallback(op) ||
-         IsOpAllowedTf2XlaFallbackAndCreateFunctions(op) ||
          IsOpAllowedTf2XlaPreferred(op);
 }
 
@@ -478,12 +467,11 @@ class Tf2XlaRewritePattern : public ConversionPattern {
  public:
   explicit Tf2XlaRewritePattern(MLIRContext* ctx, TypeConverter& converter,
                                 const std::string& device_type,
-                                bool prefer_tf2xla, bool is_module_pass,
+                                bool prefer_tf2xla,
                                 bool use_tf2xla_hlo_importer)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
-        is_module_pass_(is_module_pass),
         use_tf2xla_hlo_importer_(use_tf2xla_hlo_importer) {}
 
   LogicalResult matchAndRewrite(
@@ -497,25 +485,18 @@ class Tf2XlaRewritePattern : public ConversionPattern {
       if (old_val.getType() != new_val.getType()) return failure();
     }
 
-    if (is_module_pass_) {
-      // Module passes should only ever legalize ops that have been specifically
-      // whitelisted for legalization within a module pass. They will never
-      // legalize any ops whitelisted for legalization within a func pass.
-      if (!IsOpAllowedTf2XlaFallbackAndCreateFunctions(op)) {
-        return failure();
-      }
-    } else if (!(IsOpAllowedTf2XlaFallback(op) ||
-                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)))) {
+    if (!(IsOpAllowedTf2XlaFallback(op) ||
+          (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)))) {
       return failure();
     }
+
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
-                                     is_module_pass_, use_tf2xla_hlo_importer_);
+                                     use_tf2xla_hlo_importer_);
   }
 
  private:
   std::string device_type_;
   bool prefer_tf2xla_;
-  bool is_module_pass_;
   bool use_tf2xla_hlo_importer_;
 };
 
@@ -605,14 +586,15 @@ Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
   addSourceMaterialization(cast_value);
 }
 
-void PopulateLegalizeTfWithTf2XlaPatterns(
-    llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
-    Tf2XlaTypeConverter& converter, bool prefer_tf2xla, bool is_module_pass,
-    bool use_tf2xla_hlo_importer) {
+void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
+                                          RewritePatternSet& patterns,
+                                          MLIRContext* ctx,
+                                          Tf2XlaTypeConverter& converter,
+                                          bool prefer_tf2xla,
+                                          bool use_tf2xla_hlo_importer) {
   patterns.add<TypePropagator>(ctx);
   patterns.add<Tf2XlaRewritePattern>(ctx, converter, device_type.str(),
-                                     prefer_tf2xla, is_module_pass,
-                                     use_tf2xla_hlo_importer);
+                                     prefer_tf2xla, use_tf2xla_hlo_importer);
 }
 
 }  // end namespace mhlo

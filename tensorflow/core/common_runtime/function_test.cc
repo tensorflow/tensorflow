@@ -71,7 +71,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 
 void HasError(const Status& s, const error::Code code, StringPiece substr) {
   EXPECT_EQ(s.code(), code) << s;
-  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
+  EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -171,11 +171,12 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         device_mgr_.get(), Env::Default(), &options.config,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
-        Rendezvous::Factory{
-            [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-              *r = new IntraProcessRendezvous(device_mgr);
-              return OkStatus();
-            }}));
+        Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                               tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              new IntraProcessRendezvous(device_mgr));
+          return OkStatus();
+        }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -251,8 +252,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -309,8 +310,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }

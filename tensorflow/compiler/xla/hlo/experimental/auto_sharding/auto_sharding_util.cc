@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -1510,8 +1511,7 @@ AliasMap BuildAliasMap(const HloModule* module) {
       module->input_output_alias_config();
 
   HloComputation* entry = module->entry_computation();
-  const std::vector<HloInstruction*>& parameter_instructions =
-      entry->parameter_instructions();
+  const auto& parameter_instructions = entry->parameter_instructions();
   const HloInstruction* output_tuple = entry->root_instruction();
 
   if (IsCustomCallMarker(output_tuple)) {
@@ -1550,8 +1550,7 @@ AliasSet BuildAliasSet(const HloModule* module,
       module->input_output_alias_config();
 
   HloComputation* entry = module->entry_computation();
-  const std::vector<HloInstruction*>& parameter_instructions =
-      entry->parameter_instructions();
+  const auto& parameter_instructions = entry->parameter_instructions();
   const HloInstruction* output_tuple = entry->root_instruction();
 
   AliasSet alias_set;
@@ -1595,7 +1594,8 @@ AliasSet BuildAliasSet(const HloModule* module,
     }
   });
 
-  // Uses the same sharding spec for while loop related instructions.
+  // Uses the same sharding spec for while loop and conditional related
+  // instructions.
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
@@ -1612,6 +1612,18 @@ AliasSet BuildAliasSet(const HloModule* module,
             strategy_map
                 .at(instruction->while_condition()->parameter_instruction(0))
                 .get());
+      } else if (instruction->opcode() == HloOpcode::kConditional) {
+        auto branch_computations = instruction->branch_computations();
+        for (size_t i = 0; i < branch_computations.size(); ++i) {
+          const auto& branch_computation = branch_computations[i];
+          traverse_tuple_alias(
+              strategy_map.at(instruction).get(),
+              strategy_map.at(branch_computation->root_instruction()).get());
+          traverse_tuple_alias(
+              strategy_map.at(instruction->operand(i + 1)).get(),
+              strategy_map.at(branch_computation->parameter_instruction(0))
+                  .get());
+        }
       }
     }
   }
@@ -1948,5 +1960,51 @@ bool IsEntryComputationInputOrOutput(const HloModule* module,
   }
   return false;
 }
+
+void CreateDifferentMeshShapesToTryHelper(
+    int64_t num_devices, size_t num_mesh_dims,
+    std::vector<int64_t> current_shape,
+    std::vector<std::vector<int64_t>>& all_shapes) {
+  if (current_shape.size() == num_mesh_dims - 1) {
+    current_shape.push_back(num_devices);
+    if (spmd::VectorGreaterThanOneElementCount(current_shape) <= 2) {
+      all_shapes.push_back(current_shape);
+    }
+    return;
+  } else {
+    int64_t current_dim = 1;
+    while (current_dim <= num_devices) {
+      std::vector<int64_t> new_shape(current_shape);
+      new_shape.push_back(current_dim);
+      CreateDifferentMeshShapesToTryHelper(
+          num_devices / current_dim, num_mesh_dims, new_shape, all_shapes);
+      current_dim *= 2;
+    }
+  }
+}
+
+std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
+    const int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims) {
+  std::vector<std::vector<int64_t>> result;
+  CreateDifferentMeshShapesToTryHelper(num_devices, num_mesh_dims, {}, result);
+
+  if (symmetrical_mesh_dims) {
+    absl::flat_hash_set<absl::btree_multiset<int64_t>> dedup_result;
+    for (const auto& mesh_shape : result) {
+      dedup_result.insert(
+          absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
+    }
+
+    result.clear();
+
+    for (const auto& mesh_shape_set : dedup_result) {
+      result.push_back(
+          std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
+    }
+  }
+
+  return result;
+}
+
 }  // namespace spmd
 }  // namespace xla

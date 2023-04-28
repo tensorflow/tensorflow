@@ -323,6 +323,13 @@ void TF_CreatePjRtBuffer(TF_Tensor* c_tensor, PJRT_Buffer* c_buffer,
   }
   tensorflow::AsyncValueTensor* av_tensor =
       tensorflow::AsyncValueTensor::FromTensor(&tensor);
+  if (av_tensor == nullptr) {
+    tensorflow::Set_TF_Status_from_Status(
+        status,
+        tsl::errors::Internal(
+            "The tensor to set PjRtBuffer is not an AsyncValueTensor."));
+    return;
+  }
   av_tensor->SetBuffer(
       std::make_unique<xla::PjRtCApiBuffer>(pjrt_c_api_client, c_buffer));
   TF_SetStatus(status, TF_OK, "");

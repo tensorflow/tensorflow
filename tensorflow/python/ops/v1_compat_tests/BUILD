@@ -17,7 +17,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )

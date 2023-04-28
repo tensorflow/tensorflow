@@ -308,14 +308,14 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Periodically maintains the snapshot workers to handle failed or missing
-  // workers.
-  void MaintainSnapshotWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Checks for workers that haven't heartbeated recently and alerts the
   // snapshot managers.
   void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
   Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Returns true if an iteration should be garbage collected.
+  bool ShouldGcIteration(const DispatcherState::Iteration& iteration,
+                         int64_t now_us) const;
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const std::string& dataset_id,

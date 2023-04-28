@@ -47,11 +47,16 @@ limitations under the License.
 
 namespace tsl {
 
-#if TF_HAS_CPP_ATTRIBUTE(nodiscard)
-class [[nodiscard]] Status;
-#endif
-
 typedef SourceLocationImpl SourceLocation;
+
+// Since April 2023, tensorflow::Status is an alias to absl::Status. TF 2.13 is
+// the first release including this change.
+// At the same time `tsl::errors::Code` aliases `absl::StatusCode`.
+//
+// Here is a set of correspondences:
+// - Use `absl::OkStatus()` instead of `tsl::OkStatus()`.
+// - Use absl::StatusCodeToString` instead of `tsl::error_name`.
+typedef absl::Status Status;
 
 namespace errors {
 typedef absl::StatusCode Code;
@@ -92,173 +97,21 @@ inline bool operator!=(const ::absl::StatusCode& c1,
 
 namespace tsl {
 
-/// @ingroup core
-/// Denotes success or failure of a call in Tensorflow.
-class Status {
- public:
-  /// Create a success status.
-  Status() {}
-  ~Status();  // Not inlined to save code space
-
-  /// \brief Create a status with the specified error code and msg as a
-  /// human-readable string containing more detailed information.
-  Status(absl::StatusCode code, absl::string_view msg,
-         SourceLocation loc = SourceLocation::current());
-
-  /// Copy the specified status.
-  Status(const Status& s);
-  Status& operator=(const Status& s);
-#ifndef SWIG
-  Status(Status&& s, SourceLocation loc = SourceLocation::current()) noexcept;
-  Status& operator=(Status&& s) noexcept;
-#endif  // SWIG
-
-  /// Returns true iff the status indicates success.
-  bool ok() const { return (state_ == nullptr); }
-
-  absl::StatusCode code() const {
-    return ok() ? absl::StatusCode::kOk : state_->code;
-  }
-  int raw_code() const { return static_cast<int>(code()); }
-
-  const std::string& error_message() const {
-    return ok() ? empty_string() : state_->msg;
-  }
-  // Status::message()
-  //
-  // Returns the error message associated with this error code, if available.
-  // Note that this message rarely describes the error code.  It is not unusual
-  // for the error message to be the empty string. As a result, prefer
-  // `operator<<` or `Status::ToString()` for debug logging.
-  absl::string_view message() const;
-
-  bool operator==(const Status& x) const;
-  bool operator!=(const Status& x) const;
-
-  /// \brief If `ok()`, stores `new_status` into `*this`.  If `!ok()`,
-  /// preserves the current status, but may augment with additional
-  /// information about `new_status`.
-  ///
-  /// Convenient way of keeping track of the first error encountered.
-  /// Instead of:
-  ///   `if (overall_status.ok()) overall_status = new_status`
-  /// Use:
-  ///   `overall_status.Update(new_status);`
-  void Update(const Status& new_status);
-
-  /// \brief Return a string representation of this status suitable for
-  /// printing. Returns the string `"OK"` for success.
-  ///
-  /// By default, it returns combination of the error code name, the message and
-  /// any associated payload messages. This string is designed simply to be
-  /// human readable and its exact format should not be load bearing. Do not
-  /// depend on the exact format of the result of `ToString()` which is subject
-  /// to change.
-  std::string ToString() const;
-
-  // Ignores any errors. This method does nothing except potentially suppress
-  // complaints from any tools that are checking that errors are not dropped on
-  // the floor.
-  void IgnoreError() const;
-
-  //----------------------------------------------------------------------------
-  // Payload Management APIs (Cloned from absl::Status)
-  //----------------------------------------------------------------------------
-  // A payload may be attached to a status to provide additional context to an
-  // error that may not be satisfied by an existing `tsl::error::Code`.
-  // Typically, this payload serves one of several purposes:
-  //
-  //   * It may provide more fine-grained semantic information about the error
-  //     to facilitate actionable remedies.
-  //   * It may provide human-readable contexual information that is more
-  //     appropriate to display to an end user.
-  //
-  // A payload consists of a [key,value] pair, where the key is a string
-  // referring to a unique "type URL" and the value is an object of type
-  // `absl::Cord` to hold the contextual data.
-  //
-  // The "type URL" should be unique and follow the format of a URL
-  // (https://en.wikipedia.org/wiki/URL) and, ideally, provide some
-  // documentation or schema on how to interpret its associated data. For
-  // example, the default type URL for a protobuf message type is
-  // "type.googleapis.com/packagename.messagename". Other custom wire formats
-  // should define the format of type URL in a similar practice so as to
-  // minimize the chance of conflict between type URLs.
-  // Users should ensure that the type URL can be mapped to a concrete
-  // C++ type if they want to deserialize the payload and read it effectively.
-  //
-  // To attach a payload to a status object, call `Status::SetPayload()`,
-  // passing it the type URL and an `absl::Cord` of associated data. Similarly,
-  // to extract the payload from a status, call `Status::GetPayload()`. You
-  // may attach multiple payloads (with differing type URLs) to any given
-  // status object, provided that the status is currently exhibiting an error
-  // code (i.e. is not OK).
-  // TODO(b/197552541): Use absl::Cord for payload value type.
-
-  // The Payload-related APIs are cloned from absl::Status.
-  //
-  // Returns the payload of a status given its unique `type_url` key, if
-  // present.
-  absl::optional<absl::Cord> GetPayload(absl::string_view type_url) const;
-
-  // Sets the payload for a non-ok status using a `type_url` key, overwriting
-  // any existing payload for that `type_url`.
-  //
-  // This function does nothing if the Status is ok.
-  void SetPayload(absl::string_view type_url, absl::Cord payload);
-
-  // Erases the payload corresponding to the `type_url` key.  Returns `true` if
-  // the payload was present.
-  bool ErasePayload(absl::string_view type_url);
-
-  // Iterates over the stored payloads and calls the
-  // `visitor(type_key, payload)` callable for each one.
-  //
-  // The order of calls to `visitor()` is not specified and may change at
-  // any time and any mutation on the same Status object during visitation is
-  // forbidden and could result in undefined behavior.
-  void ForEachPayload(
-      absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
-      const;
-
-  absl::Span<const SourceLocation> GetSourceLocations() const;
-
- private:
-  friend Status FromAbslStatus(const absl::Status& s, SourceLocation loc);
-
-  void MaybeAddSourceLocation(SourceLocation loc);
-
-  static const std::string& empty_string();
-  struct State {
-    State() TF_ATTRIBUTE_NOINLINE = default;
-    ~State() TF_ATTRIBUTE_NOINLINE = default;
-    State(const State&) TF_ATTRIBUTE_NOINLINE = default;
-    State& operator=(const State&) TF_ATTRIBUTE_NOINLINE = default;
-
-    absl::StatusCode code;
-    std::string msg;
-    std::unordered_map<std::string, absl::Cord> payloads;
-    absl::InlinedVector<SourceLocation, 4> source_locations;
-  };
-
-  // OK status has a `NULL` state_.  Otherwise, `state_` points to
-  // a `State` structure containing the error code and message(s)
-  std::unique_ptr<State> state_;
-
-  void SlowCopyFrom(const State* src);
-  State* NewStateFromNonOKStatus(const Status& s);
-};
-
 // OkStatus()
 //
 // Returns an OK status, equivalent to a default constructed instance. Prefer
 // usage of `OkStatus()` when constructing such an OK status.
 Status OkStatus();
 
-Status FromAbslStatus(const absl::Status& s,
-                      SourceLocation loc = SourceLocation::current());
-absl::Status ToAbslStatus(const ::tsl::Status& s,
-                          SourceLocation loc = SourceLocation::current());
+absl::Status FromAbslStatus(const absl::Status& s);
+absl::Status ToAbslStatus(const ::absl::Status& s);
+
+// Given `Status.message()` does not guarantee to be always backed by a
+// null-terminated string, we have this utility function when it's needed for
+// the Tensorflow C-API.
+// A more robust API would be to get both a `char*` of the beginning of the
+// string, plus the size (see e.g. `XlaCustomCallStatusSetFailure`).
+const char* NullTerminatedMessage(const Status& status);
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
@@ -325,40 +178,6 @@ class StatusGroup {
   std::vector<std::string> recent_logs_;  // recent warning and error logs
 };
 
-inline Status::Status(const Status& s)
-    : state_((s.state_ == nullptr) ? nullptr : NewStateFromNonOKStatus(s)) {}
-
-inline Status& Status::operator=(const Status& s) {
-  // The following condition catches both aliasing (when this == &s),
-  // and the common case where both s and *this are ok.
-  if (state_ != s.state_) {
-    SlowCopyFrom(s.state_.get());
-  }
-  return *this;
-}
-
-#ifndef SWIG
-inline Status::Status(Status&& s, SourceLocation loc) noexcept
-    : state_(std::move(s.state_)) {
-  MaybeAddSourceLocation(loc);
-}
-
-inline Status& Status::operator=(Status&& s) noexcept {
-  if (state_ != s.state_) {
-    state_ = std::move(s.state_);
-  }
-  return *this;
-}
-#endif  // SWIG
-
-inline bool Status::operator==(const Status& x) const {
-  return (this->state_ == x.state_) || (ToString() == x.ToString());
-}
-
-inline bool Status::operator!=(const Status& x) const { return !(*this == x); }
-
-/// @ingroup core
-std::ostream& operator<<(std::ostream& os, const Status& x);
 
 typedef std::function<void(const Status&)> StatusCallback;
 

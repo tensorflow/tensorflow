@@ -1816,7 +1816,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
       TritonWrapper(impl_fn_name, hlo_computation,
                     ir_emitter_context_->cuda_compute_capability(),
                     ir_emitter_context_->gpu_device_info(), config, module_,
-                    &MatMul));
+                    &MatMul, *ir_emitter_context_->mlir_context()));
   llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
   TF_RET_CHECK(impl_fn);
 
@@ -2123,8 +2123,9 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 
   // Compute all extra output values before writing them. This avoids
   // overwriting aliased input/output buffers before all reads occurred.
-  absl::flat_hash_map<const HloInstruction*, llvm::Value*>
+  std::vector<std::pair<const HloInstruction*, llvm::Value*>>
       extra_output_ir_values;
+  extra_output_ir_values.reserve(extra_output_gens.size());
 
   auto get_index = [&](const HloInstruction* instr) {
     const Shape& s = instr->shape();
@@ -2136,7 +2137,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
   for (const auto& [instr, generator] : extra_output_gens) {
     TF_ASSIGN_OR_RETURN(llvm::Value* const extra_output_ir_value,
                         generator(get_index(instr)));
-    extra_output_ir_values[instr] = extra_output_ir_value;
+    extra_output_ir_values.emplace_back(instr, extra_output_ir_value);
   }
 
   for (const auto& [instr, generator] : extra_output_ir_values) {
