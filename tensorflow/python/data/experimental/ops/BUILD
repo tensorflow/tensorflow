@@ -85,7 +85,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -210,7 +210,6 @@ py_strict_library(
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:tf_export",
     ],
 )
