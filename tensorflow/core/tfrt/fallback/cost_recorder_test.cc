@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
-#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -30,7 +29,6 @@ namespace {
 constexpr int64_t kTestOpKey = 1;
 constexpr uint64_t kTestCost = 1234;
 constexpr uint64_t kTestAvgCost = 1851;
-constexpr uint64_t kTestNormalizedCost = 13;
 
 TEST(CostRecorderTest, RecordCostTest) {
   CostRecorder recorder;
@@ -48,14 +46,15 @@ TEST(CostRecorderTest, GetCostTest) {
   recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
-  EXPECT_EQ(recorder.GetCost(kTestOpKey), kTestNormalizedCost);
+  EXPECT_EQ(recorder.GetCostNanosecond(kTestOpKey), kTestAvgCost);
 }
 
 TEST(CostRecorderTest, GetCostDefaultValueTest) {
   CostRecorder recorder;
   ASSERT_EQ(recorder.size(), 0);
 
-  EXPECT_EQ(recorder.GetCost(kTestOpKey), std::numeric_limits<uint32_t>::max());
+  EXPECT_EQ(recorder.GetCostNanosecond(kTestOpKey),
+            std::numeric_limits<uint32_t>::max());
 }
 
 TEST(CostRecorderTest, WriteToFileTest) {
