@@ -1228,7 +1228,7 @@ class DataHandler(object):
       yield
       self.sync()
     except (StopIteration, errors.OutOfRangeError):
-      if self._inferred_steps is None:
+      if self._inferred_steps is None and self._current_step is not None:
         self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
