@@ -28,15 +28,15 @@ namespace tfrt_stub {
 namespace {
 
 constexpr int64_t kTestOpKey = 1;
-constexpr uint64_t kTestCost = 12345;
-constexpr uint64_t kTestAvgCost = 18517;
-constexpr uint64_t kTestNormalizedCost = 10;
+constexpr uint64_t kTestCost = 1234;
+constexpr uint64_t kTestAvgCost = 1851;
+constexpr uint64_t kTestNormalizedCost = 13;
 
 TEST(CostRecorderTest, RecordCostTest) {
   CostRecorder recorder;
 
-  recorder.RecordCostCpuCycle(kTestOpKey, kTestCost);
-  recorder.RecordCostCpuCycle(kTestOpKey, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
 }
@@ -44,8 +44,8 @@ TEST(CostRecorderTest, RecordCostTest) {
 TEST(CostRecorderTest, GetCostTest) {
   CostRecorder recorder;
 
-  recorder.RecordCostCpuCycle(kTestOpKey, kTestCost);
-  recorder.RecordCostCpuCycle(kTestOpKey, 2 * kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
   EXPECT_EQ(recorder.GetCost(kTestOpKey), kTestNormalizedCost);
@@ -79,8 +79,8 @@ TEST(CostRecorderTest, ProtoRecordsTest) {
   CostRecorder recorder;
 
   // Records the cost of op.
-  recorder.RecordCostCpuCycle(kTestOpKey, kTestCost);
-  recorder.RecordCostCpuCycle(kTestOpKey, 2 * kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
   ASSERT_EQ(recorder.size(), 1);
 
   // Writes op's cost to the disk.

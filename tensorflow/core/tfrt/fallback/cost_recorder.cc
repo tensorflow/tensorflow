@@ -31,11 +31,12 @@ namespace tensorflow {
 namespace tfrt_stub {
 
 // Normalize profiled costs to the scale of costs inferred from input sizes.
-constexpr uint32_t kCostNormalizationRatio = 1800;
+constexpr uint32_t kCostNormalizationRatio = 140;
 
-void CostRecorder::RecordCostCpuCycle(int64_t op_key, uint64_t execution_time) {
+void CostRecorder::RecordCostNanosecond(int64_t op_key,
+                                        uint64_t execution_time_ns) {
   mutex_lock l(op_cost_map_mutex_);
-  op_cost_map_[op_key].first += execution_time;
+  op_cost_map_[op_key].first += execution_time_ns;
   op_cost_map_[op_key].second += 1;
 }
 

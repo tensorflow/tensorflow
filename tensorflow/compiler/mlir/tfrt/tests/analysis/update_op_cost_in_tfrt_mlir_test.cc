@@ -65,12 +65,12 @@ TEST(CostUpdateTest, Basic) {
   EXPECT_EQ(fake_recorded_op_cost_map.size(), 1);
   unsigned int seed = 23579;
   for (auto& [op_key, cost] : fake_recorded_op_cost_map) {
-    cost = rand_r(&seed) % 10000;
+    cost = rand_r(&seed) % 1000;
   }
   tensorflow::tfrt_stub::CostRecorder cost_recorder;
   absl::flat_hash_map<int64_t, uint64_t> expected_op_cost_map;
   for (const auto& [op_key, cost] : fake_recorded_op_cost_map) {
-    cost_recorder.RecordCostCpuCycle(op_key, cost);
+    cost_recorder.RecordCostNanosecond(op_key, cost);
     expected_op_cost_map[op_key] = cost_recorder.GetCost(op_key);
   }
 
