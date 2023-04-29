@@ -196,6 +196,33 @@ void HloModule::MarkFusionDuplications(
   }
 }
 
+void HloModule::MoveComputationsFrom(HloModule* module) {
+  for (size_t i = 0; i < module->computation_count(); ++i) {
+    for (auto* instruction : module->computations_[i]->instructions()) {
+      instruction->ClearUniqueIdInternal();
+    }
+    module->computations_[i]->ClearUniqueIdInternal();
+    auto computation_raw_ptr = module->computations_[i].get();
+    if (computation_raw_ptr->IsEntryComputation()) {
+      this->entry_computation_ = nullptr;
+    }
+    this->AddComputationInternal(
+        std::move(module->computations_[i]),
+        /*is_entry=*/computation_raw_ptr->IsEntryComputation(),
+        /*uniquify_identifiers=*/false,
+        /*preserve_entry_layouts=*/false);
+    // Pick unique IDs for each instruction.
+    for (auto* instruction : computation_raw_ptr->instructions()) {
+      instruction->SetUniqueId(NewUniqueInstructionId());
+    }
+    // Set unique id to this computation_raw_ptr.
+    CHECK_NE(computation_raw_ptr->root_instruction()->unique_id(), -1)
+        << "Root has no valid id: " << computation_raw_ptr->ToString();
+    computation_raw_ptr->SetUniqueId(
+        computation_raw_ptr->root_instruction()->unique_id());
+  }
+}
+
 void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
