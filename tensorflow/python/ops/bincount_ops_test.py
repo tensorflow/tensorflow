@@ -1005,6 +1005,44 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
         ),
     )
 
+    def test_GPU_validation(
+        self,
+        tid,
+        x_factory,
+        weights_factory,
+        minlength,
+        maxlength,
+        expected,
+        axis,
+    ):
+        if "GPU" not in set([d.device_type for d in tf_config.list_physical_devices()]):
+            self.skipTest(
+                "Only run this test for GPU configs."
+                "See https://github.com/tensorflow/tensorflow/issues/58178 for more info."
+            )
+        else:
+            x = x_factory()
+            weights = weights_factory()
+            if axis == -1:
+                expected = _adjust_expected_rank2(expected, minlength, maxlength)
+            else:
+                expected = _adjust_expected_rank1(expected, minlength, maxlength)
+            with self.assertRaisesRegex(errors.UnimplementedError, 
+                "The DenseBincount GPU kernel does not support weights."
+                "tf.math.unsorted_segment_sum should be used instead on GPU."
+            ):
+                self.evaluate(
+                    bincount_ops.bincount(
+                        x,
+                        weights=weights,
+                        minlength=minlength,
+                        maxlength=maxlength,
+                        axis=axis,
+                        )
+                    )   
+              
+                
+
 
 class TestSparseCountFailureModes(test.TestCase):
 
