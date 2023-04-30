@@ -15,7 +15,9 @@
 """bincount ops."""
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -215,6 +217,12 @@ def bincount(arr,
           binary_output=binary_output)
     else:
       weights = validate_dense_weights(arr, weights, dtype)
+      # check if we are using DenseBincount with GPU config
+      if "GPU" in set([d.device_type for d in tf_config.list_physical_devices()]):
+        raise errors.UnimplementedError(
+                "The DenseBincount GPU kernel does not support weights."
+                "tf.math.unsorted_segment_sum should be used instead on GPU."
+              ) 
       return gen_math_ops.dense_bincount(
           input=arr,
           size=output_size,
