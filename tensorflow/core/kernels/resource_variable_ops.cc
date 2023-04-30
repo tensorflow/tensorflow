@@ -592,6 +592,14 @@ class AssignUpdateVariableOp : public OpKernel {
     // PrepareToUpdateVariable() for commutative operations like Op ==
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
+    OP_REQUIRES(context,
+                (variable->tensor()->dtype() == DT_INVALID &&
+                 !variable->is_initialized) ||
+                    variable->tensor()->dtype() == value.dtype(),
+                errors::InvalidArgument(
+                    "Trying to assign update var with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(value.dtype())));
     Tensor* var_tensor = variable->tensor();
     OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
                                 var_tensor->shape(), value.shape()));
@@ -1106,6 +1114,11 @@ class ResourceScatterUpdateOp : public OpKernel {
                     "updates.shape ", updates.shape().DebugString(),
                     ", indices.shape ", indices.shape().DebugString(),
                     ", params.shape ", params->shape().DebugString()));
+    OP_REQUIRES(c, params->dtype() == updates.dtype(),
+                errors::InvalidArgument(
+                    "Trying to scatter update var with wrong dtype. Expected ",
+                    DataTypeString(params->dtype()), " got ",
+                    DataTypeString(updates.dtype())));
 
     // Check that we have enough index space
     const int64_t N_big = indices.NumElements();
