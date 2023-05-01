@@ -199,6 +199,9 @@
     *   Deprecated API `tf.nest.is_sequence` has now been deleted.
         Please use `tf.nest.is_nested` instead.
 
+*   `tf.lite`:
+    *   Add UINT32 support to tfl.pack
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
