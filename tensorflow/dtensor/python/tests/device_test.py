@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_collective_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -402,13 +403,51 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     cpu0_mesh = Mesh.from_device("/job:localhost/replica:0/task:0/device:CPU:0")
     with api.default_mesh(cpu0_mesh):
       a = constant_op.constant(1.0)
-      b = array_ops.ones(shape=(3, 3))
 
     self.assertFalse(api.is_dtensor(a))
     self.assertIn("CPU:0", a.device)
 
+    with api.default_mesh(cpu0_mesh):
+      b = array_ops.ones(shape=(3, 3))
+
     self.assertTrue(api.is_dtensor(b))
     self.assertEqual(api.fetch_layout(b).mesh, cpu0_mesh)
+
+  def testUnsupportedOpReplicatedInput(self):
+    with api.default_mesh(self.mesh):
+      t = array_ops.ones(shape=(8, 3))
+      a = gen_collective_ops.collective_reduce_v2(
+          t,
+          group_size=1,
+          group_key=1030,
+          instance_key=1,
+          merge_op="Add",
+          final_op="Id",
+          ordering_token=[],
+      )
+
+    self.assertFalse(api.is_dtensor(a))
+    self.assertAllClose(a.numpy(), t.numpy())
+
+  def testUnsupportedOpShardedInput(self):
+    with api.default_mesh(self.mesh):
+      t = array_ops.ones(shape=(8, 3))
+      t = api.relayout(
+          t, Layout.batch_sharded(mesh=self.mesh, batch_dim=_BATCH_DIM, rank=2)
+      )
+      with self.assertRaisesRegex(
+          errors_impl.UnimplementedError, "not supported"
+      ):
+        # This is an Op that we don't have a SPMD expander.
+        gen_collective_ops.collective_reduce_v2(
+            t,
+            group_size=1,
+            group_key=1030,
+            instance_key=1,
+            merge_op="Add",
+            final_op="Id",
+            ordering_token=[],
+        )
 
 
 class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):

@@ -392,6 +392,12 @@ REGISTER_SPMD(DTensorShardedPrefix, TF::DTensorShardedPrefixOp,
               DTensorShardPrefixSPMDExpander);
 
 // DTensor Virtual ops
+REGISTER_SPMD(
+    CopyToMesh, TF::CopyToMeshOp, UnsupportedOpSPMDExpander,
+    "CopyToMesh should have been lowered to DTensorSend and DTensorRecv.");
+REGISTER_SPMD(
+    CopyToMeshGrad, TF::CopyToMeshGradOp, UnsupportedOpSPMDExpander,
+    "CopyToMesh should have been lowered to DTensorSend and DTensorRecv.");
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
 REGISTER_SPMD(RelayoutGrad, TF::RelayoutGradOp, RelayoutGradSPMDExpander);
 REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);

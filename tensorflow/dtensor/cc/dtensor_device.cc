@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -84,6 +85,8 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
+#include "tensorflow/dtensor/mlir/op_utils.h"
+#include "tensorflow/dtensor/mlir/spmd_expander.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -93,6 +96,27 @@ using tensorflow::EagerExecutor;
 
 namespace tensorflow {
 namespace dtensor {
+
+bool ShouldRunAsSingleDevice(const DTensorOperation& dtensor_operation) {
+  // Functions shall always run via the rewrites.
+  if (dtensor_operation.function_def != nullptr) return false;
+
+  static auto* unsupported_ops = new std::unordered_set<std::string>({
+      // Op-by-op const has no obvious layout. DTensor skips SPMD expansion and
+      // runs
+      // them on TensorFlow's default placement logic,
+      // Relying on copy-on-use when the value is used later.
+      // Except a single device mesh will override this placement logic.
+      // TODO(feyu): I think we shall change this to always broadcast to
+      // the default mesh, to make it consistent with the rest of DTensor.
+      "_EagerConst",
+  });
+  if (unsupported_ops->find(dtensor_operation.name) != unsupported_ops->end()) {
+    return true;
+  }
+  return !SPMDExpanderRegistry::Global()->IsOpSupported(
+      GetFullOpName(dtensor_operation.name));
+}
 
 class DTensorDevice {
  public:
@@ -141,8 +165,7 @@ class DTensorDevice {
     if (!mesh_to_device_map_.insert({mesh_config, std::move(parallel)}).second)
       return;
     if (!GetDefaultMesh().has_value()) {
-      global_default_mesh_ = mesh_to_device_map_.begin()->first;
-      SetDefaultMesh(global_default_mesh_.value());
+      SetDefaultMesh(mesh_to_device_map_.begin()->first);
     }
   }
 
@@ -184,6 +207,9 @@ class DTensorDevice {
   void SetDefaultMesh(Mesh mesh) {
     mutex_lock lock(mu_default_mesh_);
     default_mesh_ = mesh;
+    if (!global_default_mesh_.has_value()) {
+      global_default_mesh_ = mesh;
+    }
   }
   std::optional<Mesh> GetDefaultMesh() const {
     mutex_lock lock(mu_default_mesh_);
@@ -1802,8 +1828,26 @@ void DTensorDevice::ExecuteSingleDeviceOperation(
   if (TF_GetCode(status) != TF_OK) return;
   new_op->AddAttrs(tensorflow::unwrap(attributes));
   for (int input_index = 0; input_index < inputs.size(); ++input_index) {
-    Set_TF_Status_from_Status(
-        status, new_op->AddInput(tensorflow::unwrap(inputs[input_index])));
+    auto input = inputs[input_index];
+    const char* input_device = TFE_TensorHandleDeviceName(input, status);
+    if (TF_GetCode(status) != TF_OK) return;
+    if (input_device == name_) {
+      TensorWithLayout* t = reinterpret_cast<TensorWithLayout*>(
+          TFE_TensorHandleDevicePointer(input, status));
+      if (!t->layout().IsSingleDevice() && !t->layout().IsFullyReplicated()) {
+        TF_SetStatus(status, TF_UNIMPLEMENTED,
+                     absl::StrCat("Trying to copy a non-single-device and "
+                                  "non-replicated DTensor is not "
+                                  "supported. Input tensor is: ",
+                                  t->DebugString())
+                         .c_str());
+
+        return;
+      }
+      input = t->get_tensor(0);
+    }
+    Set_TF_Status_from_Status(status,
+                              new_op->AddInput(tensorflow::unwrap(input)));
     if (TF_GetCode(status) != TF_OK) return;
   }
   new_op->SetCancellationManager(cancellation_manager_.get());
@@ -2321,13 +2365,12 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
 
   const std::optional<Mesh> mesh = ChooseBroadcastingMesh(input_meshes, dtypes);
 
-  // Op-by-op const has no obvious layout. DTensor skips SPMD expansion and runs
-  // them on TensorFlow's default placement logic,
-  // Relying on copy-on-use when the value is used later.
-  // Except a single device mesh will override this placement logic.
-  // TODO(feyu): I think we shall change this to always broadcast to
-  // the default mesh, to make it consistent with the rest of DTensor.
-  if (operation_name == std::string("_EagerConst")) {
+  // TODO(feyu): This short circuit only allows running unsupported op
+  // via DTensorDevice in eager mode. for tf.function and its graph, we will
+  // need to build single device mesh placement rules in mesh propagation.
+  // Then we can consolidate this eager mode short-circuit with the rewrite
+  // passes. (If the performance regression is acceptable).
+  if (ShouldRunAsSingleDevice(dtensor_operation)) {
     std::string device_name = "";
     if (mesh.has_value()) {
       device_name = std::string{mesh->single_device()};
@@ -2464,8 +2507,8 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   }
   TensorWithLayout* typed_input = reinterpret_cast<TensorWithLayout*>(
       TFE_TensorHandleDevicePointer(tensor, status));
-  if (!tensorflow::dtensor::Layout(typed_input->layout()).IsSingleDevice() &&
-      !tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
+  if (!typed_input->layout().IsSingleDevice() &&
+      !typed_input->layout().IsFullyReplicated()) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
                  absl::StrCat("Trying to copy a non-single-device and "
                               "non-replicated DTensor is not "

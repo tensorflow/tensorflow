@@ -14,12 +14,14 @@
 # ==============================================================================
 """Tests for DTensor input pipeline utilities."""
 
+import contextlib
 import threading
 
 from absl.testing import parameterized
 
 import numpy as np
 
+from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import input_util
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.dtensor.python import mesh_util
@@ -479,35 +481,45 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
           ),
       ),
       is_graph=[False, True],
+      through_dtensor=[False, True],
   )
-  def testIterWithLayouts(self, images_sharding, labels_sharding, is_graph):
-    batch_size = 32
-    dataset = dataset_ops.DatasetV2.from_tensors(
-        (self.images, self.labels)
-    ).repeat()
-    batched_dataset = dataset.batch(batch_size, drop_remainder=True)
+  def testIterWithLayouts(
+      self, images_sharding, labels_sharding, is_graph, through_dtensor
+  ):
+    if through_dtensor:
+      scope = api.default_mesh(self.mesh)
+    else:
+      scope = contextlib.nullcontext()
 
-    images_layout = Layout(images_sharding, self.mesh)
-    labels_layout = Layout(labels_sharding, self.mesh)
-    layouts = (images_layout, labels_layout)
-    batch_dim = None
-    if MESH_DIM_BATCH in images_sharding or MESH_DIM_BATCH in labels_sharding:
-      batch_dim = MESH_DIM_BATCH
+    with scope:
+      batch_size = 32
+      dataset = dataset_ops.DatasetV2.from_tensors(
+          (self.images, self.labels)
+      ).repeat()
+      batched_dataset = dataset.batch(batch_size, drop_remainder=True)
 
-    d_dataset = input_util.DTensorDataset(
-        dataset=dataset,
-        global_batch_size=batch_size,
-        mesh=self.mesh,
-        layouts=layouts,
-        batch_dim=batch_dim)
+      images_layout = Layout(images_sharding, self.mesh)
+      labels_layout = Layout(labels_sharding, self.mesh)
+      layouts = (images_layout, labels_layout)
+      batch_dim = None
+      if MESH_DIM_BATCH in images_sharding or MESH_DIM_BATCH in labels_sharding:
+        batch_dim = MESH_DIM_BATCH
 
-    def train(iterator):
-      return next(iterator)
+      d_dataset = input_util.DTensorDataset(
+          dataset=dataset,
+          global_batch_size=batch_size,
+          mesh=self.mesh,
+          layouts=layouts,
+          batch_dim=batch_dim,
+      )
 
-    train_fn = polymorphic_function.function(train) if is_graph else train
+      def train(iterator):
+        return next(iterator)
 
-    d_iterator = iter(d_dataset)
-    d_images, d_labels = train_fn(d_iterator)
+      train_fn = polymorphic_function.function(train) if is_graph else train
+
+      d_iterator = iter(d_dataset)
+      d_images, d_labels = train_fn(d_iterator)
 
     iterator = iter(batched_dataset)
     images, labels = train_fn(iterator)

@@ -344,6 +344,8 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/dtensor/mlir:layout_parsing",
+        "//tensorflow/dtensor/mlir:op_utils",
+        "//tensorflow/dtensor/mlir:spmd_expander",
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/util:env_var",

@@ -167,15 +167,15 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
   def tearDown(self):
     # Make sure all async ops finish.
-    context.async_wait()
+    try:
+      context.async_wait()
+    finally:
+      # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
+      # DefaultMesh placement issue.
+      reset_dtensor()
 
-    # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
-    # DefaultMesh placement issue.
-    reset_dtensor()
-
-    self._backend_configurator.tearDown()
-
-    super().tearDown()
+      self._backend_configurator.tearDown()
+      super().tearDown()
 
   @staticmethod
   def configTestMesh(  # pylint: disable=invalid-name
