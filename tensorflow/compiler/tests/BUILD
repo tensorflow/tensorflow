@@ -2475,7 +2475,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",
     ],
     use_xla_device = False,  # Uses tf.function(jit_compile=True)
     deps = [
