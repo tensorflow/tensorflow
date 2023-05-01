@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,9 +69,6 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1Bmm2Pattern) {
   stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-  if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-    GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-  }
   const char* module_str = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,40,64]{2,1,0}}
 

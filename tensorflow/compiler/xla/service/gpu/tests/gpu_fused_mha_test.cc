@@ -79,7 +79,7 @@ protected:
     for (auto inst :
          optimized_verified_module->entry_computation()->instructions()) {
       if (inst->opcode() == HloOpcode::kCustomCall &&
-          inst->custom_call_target().rfind(prefix, 0) != std::string::npos) {
+          absl::StrContains(inst->custom_call_target(), prefix)) {
         count++;
       }
     }
