@@ -103,6 +103,10 @@ class ShardingParam {
            minor_to_major_ == other.minor_to_major_;
   }
 
+  bool operator!=(const ShardingParam& other) const {
+    return !(*this == other);
+  }
+
   llvm::hash_code hash_value() const {
     return llvm::hash_combine(
         dim_shards(), llvm::ArrayRef<int64_t>(minor_to_major_.permutation),
