@@ -26,5 +26,8 @@ platform(
         properties:{
           name: "Pool" value: "default"
         }
+        properties:{
+          name: "dockerNetwork" value: "off"
+        }
         """,
 )
