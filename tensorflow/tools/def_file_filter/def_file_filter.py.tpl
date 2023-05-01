@@ -54,6 +54,9 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"absl::lts_[0-9]+::Status::UnrefNonInlined|"  # for absl::Status
                            r"absl::lts_[0-9]+::Status::Status|" # for absl::Status
                            r"absl::lts_[0-9]+::Status::ForEachPayload|" # for absl::Status
+                           r"absl::lts_[0-9]+::internal_statusor::Helper::Crash|"  # for absl::StatusOr
+                           r"absl::lts_[0-9]+::internal_statusor::Helper::HandleInvalidStatusCtorArg|"
+                           r"absl::lts_[0-9]+::internal_statusor::ThrowBadStatusOrAccess|"
                            r"absl::lts_[0-9]+::Cord|" # for tensorflow::Status
                            r"absl::lts_[0-9]+::Cord::DestroyCordSlow|" # for tensorflow::Status
                            r"absl::lts_[0-9]+::cord_internal::CordzInfo::MaybeTrackCordImpl" # tensorflow::Status usage of absl::Cord

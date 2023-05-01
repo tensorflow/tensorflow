@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
