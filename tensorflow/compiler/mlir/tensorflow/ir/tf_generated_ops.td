@@ -21143,7 +21143,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     StrAttr:$module,
     TF_ShapeAttrArray:$Sout,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
-    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
+    DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list
   );
 
   let results = (outs

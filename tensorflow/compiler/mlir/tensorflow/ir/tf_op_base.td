@@ -294,6 +294,13 @@ def TF_ShapeAttr : TF_TensorFlowAttr<"Shape", "shape"> {
 def TF_ShapeAttrArray :
     TypedArrayAttrBase<TF_ShapeAttr, "tensorflow shape attribute array">;
 
+// An array of FlatSymbolRef attributes that can be used as a default valued
+// attribute.
+def TF_SymbolRefArrayAttr :
+  TypedArrayAttrBase<SymbolRefAttr, "tensorflow symbol ref array attribute"> {
+  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
+
 //===----------------------------------------------------------------------===//
 // TensorFlow type definitions
 //===----------------------------------------------------------------------===//
