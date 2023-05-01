@@ -16,7 +16,12 @@ limitations under the License.
 #if defined(ENABLE_MKL) && !defined(INTEL_MKL_DNN_ONLY)
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 
-#include "dnnl.hpp"
+#ifndef ENABLE_ONEDNN_V3
+#include "external/mkl_dnn_v1/include/dnnl.hpp"
+#else
+#include "external/onednn_v3/include/dnnl.hpp"
+#endif
+
 #include "tensorflow/compiler/xla/executable_run_options.h"
 
 #define EIGEN_USE_THREADS

@@ -19,7 +19,11 @@ limitations under the License.
 #include <iostream>
 
 #ifdef ENABLE_MKL
-#include "dnnl.hpp"
+#ifndef ENABLE_ONEDNN_V3
+#include "external/mkl_dnn_v1/include/dnnl.hpp"
+#else
+#include "external/onednn_v3/include/dnnl.hpp"
+#endif
 
 extern void __xla_cpu_runtime_MKLMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
