@@ -84,7 +84,7 @@ std::vector<TestData> CreateTestCases() {
 // ax + y
 {
 "AxpyParam",
-R"(HloModule axpy_module, entry_computation_layout={(f32[],f32[2,4]{1,0},f32[2,4]{1,0})->f32[2,4]{1,0}}
+R"(HloModule axpy_module, entry_computation_layout={(f32[], f32[2,4]{1,0}, f32[2,4]{1,0})->f32[2,4]{1,0}}
 
 ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %alpha = f32[] parameter(0)
@@ -100,7 +100,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 // parameter replication
 {
 "ParamReplication",
-R"(HloModule param_replication_module, entry_computation_layout={(f32[],(f32[2,4]{1,0}, (f32[2,4]{1,0})))->(f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0})))}
+R"(HloModule param_replication_module, entry_computation_layout={(f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0})))->(f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0})))}
 
 ENTRY %param_replication (a: f32[], b: (f32[2,4], (f32[2,4]))) -> (f32[], (f32[2,4], (f32[2,4]))) {
   %a = f32[] parameter(0), parameter_replication={true}
@@ -260,7 +260,7 @@ ENTRY %TupleConstant.v1 () -> (f32[2,1], f32[2]) {
 // v1 > v2 ? v1 : v2
 {
 "SelectR1F32",
-R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module, entry_computation_layout={(f32[4]{0},f32[4]{0})->f32[4]{0}}
+R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module, entry_computation_layout={(f32[4]{0}, f32[4]{0})->f32[4]{0}}
 
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
@@ -285,7 +285,7 @@ ENTRY %EmptyTupleCreate.v1 () -> () {
 // tuple
 {
 "TupleCreate",
-R"(HloModule TupleCreate_module, entry_computation_layout={(f32[],f32[3]{0},f32[2,3]{1,0})->(f32[], f32[3]{0}, f32[2,3]{1,0})}
+R"(HloModule TupleCreate_module, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->(f32[], f32[3]{0}, f32[2,3]{1,0})}
 
 ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
   %v1 = f32[] parameter(0)
@@ -310,7 +310,7 @@ ENTRY %TupleCreate.v4 (v: f32[]) -> (f32[], f32[], f32[], f32[], f32[], /*index=
 },
 {
 "ShardedTupleCreate",
-R"(HloModule ShardedTupleCreate_module, entry_computation_layout={(f32[],f32[3]{0},f32[2,3]{1,0})->(f32[], f32[3]{0}, f32[2,3]{1,0})}
+R"(HloModule ShardedTupleCreate_module, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->(f32[], f32[3]{0}, f32[2,3]{1,0})}
 
 ENTRY %ShardedTupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
   %v1 = f32[] parameter(0), sharding={manual}
@@ -361,7 +361,7 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 {
 "CopyStartAndCopyDone",
 
-R"(HloModule CopyStartAndCopyDone_module, entry_computation_layout={(f32[],f32[2,3]{1,0:S(1)})->(f32[], f32[2,3]{1,0:S(2)})}
+R"(HloModule CopyStartAndCopyDone_module, entry_computation_layout={(f32[], f32[2,3]{1,0:S(1)})->(f32[], f32[2,3]{1,0:S(2)})}
 
 ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
   %v1 = f32[] parameter(0)
@@ -551,7 +551,7 @@ ENTRY %R4UnitWindowScalar () -> (f32[], f32[]) {
 // convolution
 {
 "Convolution",
-R"(HloModule Convolve1D1Window_0_module, entry_computation_layout={(f32[1,2,1]{2,1,0},f32[1,1,1]{2,1,0})->f32[1,2,1]{2,0,1}}
+R"(HloModule Convolve1D1Window_0_module, entry_computation_layout={(f32[1,2,1]{2,1,0}, f32[1,1,1]{2,1,0})->f32[1,2,1]{2,0,1}}
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
   %input = f32[1,2,1]{2,1,0} parameter(0)
@@ -565,7 +565,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 // convolution dynamic
 {
 "ConvolutionDynamic",
-R"(HloModule Convolve1D1Window_0_module, entry_computation_layout={(f32[1,2,1]{2,1,0},f32[1,1,1]{2,1,0})->f32[1,2,1]{2,0,1}}
+R"(HloModule Convolve1D1Window_0_module, entry_computation_layout={(f32[1,2,1]{2,1,0}, f32[1,1,1]{2,1,0})->f32[1,2,1]{2,0,1}}
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
   %input = f32[1,2,1]{2,1,0} parameter(0)
@@ -579,7 +579,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 // convolution rank 2
 {
 "ConvolutionR2",
-R"(HloModule ConvolveR2_module, entry_computation_layout={(f32[1,2]{1,0},f32[2,2]{1,0})->f32[1,2]{0,1}}
+R"(HloModule ConvolveR2_module, entry_computation_layout={(f32[1,2]{1,0}, f32[2,2]{1,0})->f32[1,2]{0,1}}
 
 ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[2,2]) -> f32[1,2] {
   %input = f32[1,2]{1,0} parameter(0)
@@ -592,7 +592,7 @@ ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[2,2]) -> f32[1,2] {
 // convolution backward
 {
 "ConvolutionBackward",
-R"(HloModule ConvolveBackward_module, entry_computation_layout={(f32[128,7,7,512]{0,3,2,1},f32[3,3,512,512]{3,2,1,0})->f32[128,14,14,512]{0,3,2,1}}
+R"(HloModule ConvolveBackward_module, entry_computation_layout={(f32[128,7,7,512]{0,3,2,1}, f32[3,3,512,512]{3,2,1,0})->f32[128,14,14,512]{0,3,2,1}}
 
 ENTRY %ConvolveBackward (input: f32[128,7,7,512], filter: f32[3,3,512,512]) -> f32[128,14,14,512] {
   %input = f32[128,7,7,512]{0,3,2,1} parameter(0)
@@ -741,7 +741,7 @@ ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
 // Triangular solve
 {
 "TriangularSolve",
-R"(HloModule TriangularSolve_module, entry_computation_layout={(f32[4,4]{1,0},f32[3,4]{1,0})->f32[3,4]{1,0}}
+R"(HloModule TriangularSolve_module, entry_computation_layout={(f32[4,4]{1,0}, f32[3,4]{1,0})->f32[3,4]{1,0}}
 
 ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] {
   %a.1 = f32[4,4]{1,0} parameter(0)
@@ -754,7 +754,7 @@ ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] 
 // Dynamic slice
 {
 "DynamicSlice",
-R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[2,2,258]{2,1,0},s32[1]{0})->s32[2,2,258]{2,1,0}}
+R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[2,2,258]{2,1,0}, s32[1]{0})->s32[2,2,258]{2,1,0}}
 
 ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[1]) -> s32[2,2,258] {
   %original_parameter = s32[2,2,258]{2,1,0} parameter(0)
@@ -769,7 +769,7 @@ ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[1]) -
 // Dynamic slice with scalar indices
 {
 "DynamicSliceScalarIndices",
-R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[2,2,258]{2,1,0},s32[])->s32[2,2,258]{2,1,0}}
+R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[2,2,258]{2,1,0}, s32[])->s32[2,2,258]{2,1,0}}
 
 ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) -> s32[2,2,258] {
   %original_parameter = s32[2,2,258]{2,1,0} parameter(0)
@@ -783,7 +783,7 @@ ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) ->
 // Dynamic update slice
 {
 "DynamicUpdateSlice",
-R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[1,1,25,1]{3,2,1,0},s32[1,1,2,1]{3,2,1,0},s32[4]{0})->s32[1,1,25,1]{3,2,1,0}}
+R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[1,1,25,1]{3,2,1,0}, s32[1,1,2,1]{3,2,1,0}, s32[4]{0})->s32[1,1,25,1]{3,2,1,0}}
 
 ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_indices: s32[4]) -> s32[1,1,25,1] {
   %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
@@ -797,7 +797,7 @@ ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_
 // Dynamic update slice with scalar indices
 {
 "DynamicUpdateSliceScalarIndex",
-R"(HloModule DynamicUpdateSlice_module, entry_computation_layout={(s32[1,1,25,1]{3,2,1,0},s32[1,1,2,1]{3,2,1,0},s32[],s32[],s32[],s32[])->s32[1,1,25,1]{3,2,1,0}}
+R"(HloModule DynamicUpdateSlice_module, entry_computation_layout={(s32[1,1,25,1]{3,2,1,0}, s32[1,1,2,1]{3,2,1,0}, s32[], s32[], s32[], /*index=5*/s32[])->s32[1,1,25,1]{3,2,1,0}}
 
 ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_index.0: s32[], start_index.1: s32[], start_index.2: s32[], start_index.3: s32[]) -> s32[1,1,25,1] {
   %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
@@ -828,7 +828,7 @@ ENTRY %BasicTraining.v4 () -> (f32[2,2,1,2], f32[2], f32[2]) {
 // batch norm inference
 {
 "BatchNormInference",
-R"(HloModule BatchNormInference_module, entry_computation_layout={(f32[2,2,2,2]{3,2,1,0},f32[2]{0},f32[2]{0},f32[2]{0},f32[2]{0})->f32[2,2,2,2]{3,2,1,0}}
+R"(HloModule BatchNormInference_module, entry_computation_layout={(f32[2,2,2,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}, f32[2]{0}, f32[2]{0})->f32[2,2,2,2]{3,2,1,0}}
 
 ENTRY %BatchNormInference.v6 (input: f32[2,2,2,2], offset: f32[2], scale: f32[2], mean: f32[2], variance: f32[2]) -> f32[2,2,2,2] {
   %input = f32[2,2,2,2]{3,2,1,0} parameter(0)
@@ -844,7 +844,7 @@ ENTRY %BatchNormInference.v6 (input: f32[2,2,2,2], offset: f32[2], scale: f32[2]
 // batch norm grad
 {
 "BatchNormGrad",
-R"(HloModule BatchNormGrad_module, entry_computation_layout={(f32[2,2,2,2]{3,2,1,0},f32[2]{0},f32[2]{0},f32[2]{0},f32[2,2,2,2]{3,2,1,0})->(f32[2,2,2,2]{3,2,1,0}, f32[2]{0}, f32[2]{0})}
+R"(HloModule BatchNormGrad_module, entry_computation_layout={(f32[2,2,2,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}, f32[2]{0}, f32[2,2,2,2]{3,2,1,0})->(f32[2,2,2,2]{3,2,1,0}, f32[2]{0}, f32[2]{0})}
 
 ENTRY %BatchNormGrad.v4 (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
   %input = f32[2,2,2,2]{3,2,1,0} parameter(0)
@@ -979,7 +979,7 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 // FusionWithAliasing
 {
 "FusionWithAliasing",
-R"(HloModule FusionWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
+R"(HloModule FusionWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}), f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
 
 %FusedComp (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
   %p1 = f32[123,4]{0,1} parameter(1)
@@ -1000,7 +1000,7 @@ ENTRY %FusionWithAliasing (p0.1: (f32[2,2], f32[42,2,3]), p1.1: f32[123,4]) -> (
 },
 {
 "Gather",
-R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
+R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
 
 ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
   %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
@@ -1012,7 +1012,7 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]
 },
 {
 "SortedGather",
-R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
+R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
 
 ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
   %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
@@ -1024,7 +1024,7 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]
 },
 {
 "Scatter",
-R"(HloModule StringifyScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
+R"(HloModule StringifyScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0}, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -1043,7 +1043,7 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
 },
 {
 "TupleScatter",
-R"(HloModule TupleScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},bf16[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0},bf16[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->(f32[50,49,48,47,46]{4,3,2,1,0}, bf16[50,49,48,47,46]{4,3,2,1,0})}
+R"(HloModule TupleScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, bf16[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0}, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}, bf16[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->(f32[50,49,48,47,46]{4,3,2,1,0}, bf16[50,49,48,47,46]{4,3,2,1,0})}
 
 %add_F32_mul_BF16 (lhs_0: f32[], lhs_1: bf16[], rhs_0: f32[], rhs_1: bf16[]) -> (f32[], bf16[]) {
   %lhs_0 = f32[] parameter(0)
@@ -1068,7 +1068,7 @@ ENTRY %Scatter (input_0: f32[50,49,48,47,46], input_1: bf16[50,49,48,47,46], sca
 },
 {
 "SortedScatter",
-R"(HloModule StringifySortedScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
+R"(HloModule StringifySortedScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0}, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -1087,7 +1087,7 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
 },
 {
 "UniqueIndicesScatter",
-R"(HloModule StringifyUniqueIndicesScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
+R"(HloModule StringifyUniqueIndicesScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0}, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -1128,7 +1128,7 @@ ENTRY %ConstantUnsignedNoOverflow () -> u64[] {
 // CustomCallWithLayoutConstraints
 {
 "CustomCallWithLayoutConstraints",
-R"(HloModule CustomCallWithLayoutConstraints, entry_computation_layout={(f32[42,2,3]{0,1,2},f32[123,4]{0,1})->f32[1,2,3]{0,2,1}}
+R"(HloModule CustomCallWithLayoutConstraints, entry_computation_layout={(f32[42,2,3]{0,1,2}, f32[123,4]{0,1})->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCallWithLayoutConstraints (p0: f32[42,2,3], p1: f32[123,4]) -> f32[1,2,3] {
   %p0 = f32[42,2,3]{0,1,2} parameter(0)
@@ -1152,7 +1152,7 @@ ENTRY %CustomCallWithLayoutConstraints () -> f32[1,2,3] {
 // CustomCallWithLayoutConstraintsTupleShapes
 {
 "CustomCallWithLayoutConstraintsTupleShapes",
-R"(HloModule CustomCallWithLayoutConstraintsTupleShapes, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0})}
+R"(HloModule CustomCallWithLayoutConstraintsTupleShapes, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}), f32[123,4]{0,1})->(f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0})}
 
 ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
@@ -1165,7 +1165,7 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
 // CustomCallWithHasSideEffect
 {
 "CustomCallWithHasSideEffect",
-R"(HloModule CustomCallWithHasSideEffect, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0})}
+R"(HloModule CustomCallWithHasSideEffect, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}), f32[123,4]{0,1})->(f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0})}
 
 ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
@@ -1178,7 +1178,7 @@ ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4])
 // CustomCallWithAliasing
 {
 "CustomCallWithAliasing",
-R"(HloModule CustomCallWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
+R"(HloModule CustomCallWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}), f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
 
 ENTRY %CustomCallWithAliasing (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
@@ -1364,7 +1364,7 @@ std::vector<TestData> CreateShortTestCases() {
 // map
 {
 "Map",
-R"(HloModule MapBinaryAdder_module, entry_computation_layout={(f32[4]{0},f32[4]{0})->f32[4]{0}}
+R"(HloModule MapBinaryAdder_module, entry_computation_layout={(f32[4]{0}, f32[4]{0})->f32[4]{0}}
 
 add_F32.v3 {
   lhs = f32[] parameter(0)
@@ -1402,7 +1402,7 @@ ENTRY ReduceR3ToR2.v3 {
 // tuple reduce
 {
 "TupleReduce",
-R"(HloModule TupleReduce, entry_computation_layout={(f32[1024]{0},s32[1024]{0})->(f32[], s32[])}
+R"(HloModule TupleReduce, entry_computation_layout={(f32[1024]{0}, s32[1024]{0})->(f32[], s32[])}
 
 max_argmax {
   value = f32[] parameter(2)
@@ -1489,7 +1489,7 @@ ENTRY Sort {
 // Sort (Key, Value)
 {
 "SortKeyValue",
-R"(HloModule sort, entry_computation_layout={(f32[1024]{0},s32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
+R"(HloModule sort, entry_computation_layout={(f32[1024]{0}, s32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -1528,7 +1528,7 @@ ENTRY Sort {
 // R2 Sort (Key, Value)
 {
 "SortKeyValueR2",
-R"(HloModule sort, entry_computation_layout={(f32[1024,16]{0,1},s32[1024,16]{0,1})->(f32[1024,16]{0,1}, s32[1024,16]{0,1})}
+R"(HloModule sort, entry_computation_layout={(f32[1024,16]{0,1}, s32[1024,16]{0,1})->(f32[1024,16]{0,1}, s32[1024,16]{0,1})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -1549,7 +1549,7 @@ ENTRY Sort {
 // Sort (Key, Value, Value, Value)
 {
 "SortManyValues",
-R"(HloModule sort, entry_computation_layout={(f32[1024,16]{0,1},s32[1024,16]{0,1},u32[1024,16]{0,1},f32[1024,16]{0,1})->(f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1})}
+R"(HloModule sort, entry_computation_layout={(f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1})->(f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -1707,7 +1707,7 @@ ENTRY add_constants {
 },
 {
 "Dot",
-R"(HloModule dot, entry_computation_layout={(f32[2,10]{1,0},f32[10,2]{1,0})->f32[2]{0}}
+R"(HloModule dot, entry_computation_layout={(f32[2,10]{1,0}, f32[10,2]{1,0})->f32[2]{0}}
 
 ENTRY dot {
   a = f32[2,10]{1,0} parameter(0)
@@ -1719,7 +1719,7 @@ ENTRY dot {
 },
 {
 "gather",
-R"(HloModule gather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
+R"(HloModule gather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
 
 ENTRY Gather {
   input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
@@ -1892,7 +1892,7 @@ ENTRY AllToAll {
 // all-to-all with subgroups
 {
 "AllToAllWithSubgroups",
-R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1},f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}
+R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}
 
 ENTRY AllToAllWithSubgroups {
   p0 = f32[128,32]{0,1} parameter(0)
@@ -2107,7 +2107,7 @@ ENTRY Computation {
 // is_scheduled=true attribute
 {
 "ScheduledModule",
-R"(HloModule scheduled_module, is_scheduled=true, entry_computation_layout={(f32[1024]{0},s32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
+R"(HloModule scheduled_module, is_scheduled=true, entry_computation_layout={(f32[1024]{0}, s32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -2208,7 +2208,7 @@ R"(HloModule test
 ENTRY test {
     ROOT root = add(f32[10] parameter(0), multiply(f32[10] parameter(1), f32[10] parameter(2)))
 })",
-R"(HloModule test, entry_computation_layout={(f32[10]{0},f32[10]{0},f32[10]{0})->f32[10]{0}}
+R"(HloModule test, entry_computation_layout={(f32[10]{0}, f32[10]{0}, f32[10]{0})->f32[10]{0}}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
@@ -2226,7 +2226,7 @@ ENTRY test {
   add = add(f32[10] parameter(0), f32[10] parameter(1))
   ROOT add2 = add(add, add(add, add))
 })",
-R"(HloModule test, entry_computation_layout={(f32[10]{0},f32[10]{0})->f32[10]{0}}
+R"(HloModule test, entry_computation_layout={(f32[10]{0}, f32[10]{0})->f32[10]{0}}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
@@ -2246,7 +2246,7 @@ ENTRY test {
     (f32[10], f16[10]) tuple(f32[10] parameter(0), f16[10] parameter(1))
   ), index=0
 })",
-R"(HloModule test, entry_computation_layout={(f32[10]{0},f16[10]{0})->f32[10]{0}}
+R"(HloModule test, entry_computation_layout={(f32[10]{0}, f16[10]{0})->f32[10]{0}}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
@@ -2264,7 +2264,7 @@ ENTRY test {
   add = add(f32[10] parameter(0), f32[10] parameter(1))
   ROOT root = tuple(add, add(add, add), add)
 })",
-R"(HloModule test, entry_computation_layout={(f32[10]{0},f32[10]{0})->(f32[10]{0}, f32[10]{0}, f32[10]{0})}
+R"(HloModule test, entry_computation_layout={(f32[10]{0}, f32[10]{0})->(f32[10]{0}, f32[10]{0}, f32[10]{0})}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
