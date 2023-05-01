@@ -2356,6 +2356,7 @@ cc_library(
     srcs = ["utils/tpu_rewrite_device_util.cc"],
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
+        ":device_util",
         ":tensorflow",
         ":tensorflow_types",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
@@ -2378,6 +2379,8 @@ tf_cc_test(
     srcs = ["utils/tpu_rewrite_device_util_test.cc"],
     deps = [
         ":device_util",
+        ":serialize_mlir_module_utils",
+        ":tensorflow",
         ":tpu_rewrite_device_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
