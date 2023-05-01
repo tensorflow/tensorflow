@@ -217,8 +217,8 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
         cuda_compute_capability, gpu_target_config.dnn_version_info);
   }
-  AlgebraicSimplifierOptions options({}, {});
-  mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(options);
+  AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
+  mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(algebraic_simplifier_options);
   mha_fusion_pipeline.AddPass<HloDCE>();
 
   TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
