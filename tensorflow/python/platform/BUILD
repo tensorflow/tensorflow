@@ -5,7 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
 )
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_test", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 
 visibility = [
@@ -92,7 +92,7 @@ py_strict_library(
     ]),
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "resource_loader_test",
     size = "small",
     srcs = ["resource_loader_test.py"],
@@ -110,7 +110,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "sysconfig_test",
     size = "small",
     srcs = ["sysconfig_test.py"],
@@ -132,7 +132,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "flags_test",
     size = "small",
     srcs = ["flags_test.py"],
@@ -148,7 +148,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "stacktrace_handler_test",
     size = "small",
     srcs = ["stacktrace_handler_test.py"],
@@ -164,7 +164,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "app_test",
     size = "small",
     srcs = ["app_test.py"],
@@ -316,7 +316,7 @@ py_strict_library(
     ]),
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "build_info_test",
     size = "small",
     srcs = [
@@ -336,7 +336,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "benchmark_test",
     size = "small",
     srcs = [
