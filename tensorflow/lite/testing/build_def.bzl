@@ -64,6 +64,7 @@ def generated_test_models():
         "floor_div",
         "floor_mod",
         "fully_connected",
+        "fully_connected_4bit_hybrid",
         "fused_batch_norm",
         "gather",
         "gather_nd",
