@@ -3,6 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/python/compiler/tensorrt:tensorrt.bzl", "tensorrt_py_test")
 
 package(
@@ -15,7 +16,7 @@ exports_files(
     glob(["*test.py"]),
 )
 
-py_library(
+py_strict_library(
     name = "test_utils",
     srcs = [
         "test_utils.py",
