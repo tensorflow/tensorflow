@@ -1000,6 +1000,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                    "matrix bias with element type other than BF16 or F16.";
         return OkStatus();
       } else {
+#if CUDA_VERSION >= 12000
+        HloInstruction *c = instr->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::Zero(BF16)));
+        TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c));
+#else
         Literal c_literal = LiteralUtil::Zero(BF16);
         HloInstruction *c = instr->AddInstruction(
             HloInstruction::CreateConstant(c_literal.Clone()));
@@ -1007,6 +1012,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             instr->AddInstruction(HloInstruction::CreateBroadcast(
                 ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
         TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
+#endif  // CUDA_VERSION >= 12000
       }
     }
 
