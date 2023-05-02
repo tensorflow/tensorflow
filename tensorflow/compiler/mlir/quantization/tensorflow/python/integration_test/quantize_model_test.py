@@ -135,6 +135,14 @@ class MultipleSignatureModel(module.Module):
   Used to test where the quantizer has to handle multiple signatures.
   """
 
+  def __init__(self):
+    self.matmul_filters = random_ops.random_uniform(
+        shape=(4, 3), minval=-1.0, maxval=1.0
+    )
+    self.conv_filters = np.random.uniform(
+        low=-10, high=10, size=(2, 3, 3, 2)
+    ).astype('f4')
+
   @def_function.function(
       input_signature=[
           tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
@@ -149,8 +157,7 @@ class MultipleSignatureModel(module.Module):
     Returns:
       A map of: output key -> output result.
     """
-    filters = random_ops.random_uniform(shape=(4, 3), minval=-1.0, maxval=1.0)
-    out = math_ops.matmul(matmul_input, filters)
+    out = math_ops.matmul(matmul_input, self.matmul_filters)
 
     return {'output': out}
 
@@ -168,12 +175,9 @@ class MultipleSignatureModel(module.Module):
     Returns:
       A map of: output key -> output result.
     """
-    filters = np.random.uniform(low=-10, high=10, size=(2, 3, 3, 2)).astype(
-        'f4'
-    )
     out = nn_ops.conv2d(
         conv_input,
-        filters,
+        self.conv_filters,
         strides=[1, 1, 2, 1],
         dilations=[1, 1, 1, 1],
         padding='SAME',
@@ -183,6 +187,8 @@ class MultipleSignatureModel(module.Module):
     return {'output': out}
 
 
+# TODO(b/280208261): Add unit tests for comparing unquantized and
+# quantized results
 @test_util.run_all_in_graph_and_eager_modes
 class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   """Test cases regarding the use of QuantizationOptions proto.
@@ -192,6 +198,10 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   """
 
   class SimpleModel(module.Module):
+    def __init__(self):
+      self.filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3)).astype(
+          'f4'
+      )
 
     @def_function.function(
         input_signature=[
@@ -207,9 +217,8 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
       Returns:
         A map of: output key -> output result.
       """
-      filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3)).astype('f4')
 
-      out = math_ops.matmul(input_tensor, filters)
+      out = math_ops.matmul(input_tensor, self.filters)
       return {'output': out}
 
   def _simple_model_data_gen(self) -> repr_dataset.RepresentativeDataset:
@@ -2831,6 +2840,21 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     class IfModel(module.Module):
       """A model that contains a branching op."""
 
+      def __init__(self):
+        self.filters_0 = np.random.uniform(
+            low=-1.0, high=1.0, size=(4, 3)
+        ).astype('f4')
+        self.bias_0 = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype(
+            'f4'
+        )
+
+        self.filters_1 = np.random.uniform(
+            low=-1.0, high=1.0, size=(4, 3)
+        ).astype('f4')
+        self.bias_1 = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype(
+            'f4'
+        )
+
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
@@ -2849,20 +2873,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           A map of: output key -> output result.
         """
         if math_ops.reduce_sum(x) > 10.0:
-          filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3)).astype(
-              'f4'
-          )
-          bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
-          out = math_ops.matmul(x, filters)
-          out = nn_ops.bias_add(out, bias)
+          out = math_ops.matmul(x, self.filters_0)
+          out = nn_ops.bias_add(out, self.bias_0)
           return {'output': out}
 
-        filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3)).astype(
-            'f4'
-        )
-        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
-        out = math_ops.matmul(x, filters)
-        out = nn_ops.bias_add(out, bias)
+        out = math_ops.matmul(x, self.filters_1)
+        out = nn_ops.bias_add(out, self.bias_1)
         return {'output': out}
 
     model = IfModel()
