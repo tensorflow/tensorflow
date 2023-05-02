@@ -61,7 +61,6 @@ bool IsColocatedTask(const TaskInfo& task) {
   });
 }
 
-
 }  // namespace
 
 DataServiceClient::DataServiceClient(const DataServiceParams& params)
