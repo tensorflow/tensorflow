@@ -994,37 +994,56 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   int ops_num = custom_call->operand_count();
+#if CUDA_VERSION >= 12000
+  TF_RET_CHECK(ops_num == 6 || ops_num == 7 || ops_num == 8);
+#else
   TF_RET_CHECK(ops_num == 7 || ops_num == 8);
-
+#endif
+   
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
       xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   bool has_damax = custom_call->shape().IsTuple();
+  bool has_matrix_bias = config.beta() != 0.;
   xla::ShapeIndex output_index =
       has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
-
   llvm::SmallVector<Value, 10> operands;
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(3), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(4), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));//A
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));//B
+#if CUDA_VERSION >= 12000
+  int a_scale_index = has_matrix_bias? 3 : 2;
+  if (has_matrix_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));//C
+  } else {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  }
+#else
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));//C
+    int a_scale_index = 3;
+#endif
+  // a_scale_index = 2;
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(a_scale_index), &operands));//as
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(a_scale_index+1), &operands));//bs
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(a_scale_index+2), &operands));//cs
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(a_scale_index+3), &operands));//ds
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));//D
+
   if (has_vector_bias) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(7), &operands));
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(a_scale_index+4), &operands));
   }
   if (has_damax) {
     TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, {1}));
   }
+
   auto op = CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulF8Op>(custom_call,
                                                                 operands);
 
   SetMatmulAttributes(op, config, builder_);
   int32_t operand_sizes[] = {
       1, 1, 1, 1, 1, 1, 1, 1, has_vector_bias ? 1 : 0, has_damax ? 1 : 0};
+
+  std::cout << "wwww mhl_to_lhlo after op_sizes.\n";
   op->setAttr(op.getOperandSegmentSizeAttr(),
               builder_.getDenseI32ArrayAttr(operand_sizes));
   TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
@@ -1037,7 +1056,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
       xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
     op.setAlgorithmAttr(builder_.getI64IntegerAttr(0));
   }
-
+  std::cout << "wwww finish mhl_to_lhlo.\n";
   return op.getOperation();
 }
 

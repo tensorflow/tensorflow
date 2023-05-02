@@ -1165,11 +1165,11 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSlice(matmul.getB()));
   BufferAllocation::Slice c;
-#if CUDA_VERSION > 12000
+#if CUDA_VERSION >= 12000
   if (matmul.getBetaAttr().getValueAsDouble() != 0.0) {
 #endif  // CUDA_VERSION > 12000
     TF_ASSIGN_OR_RETURN(c, GetAllocationSlice(matmul.getC()));
-#if CUDA_VERSION > 12000
+#if CUDA_VERSION >= 12000
   }
 #endif  // CUDA_VERSION > 12000
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
@@ -1191,7 +1191,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   }
 
   BufferAllocation::Slice aux;  // Not used.
-
+  std::cout << "wwwww ir_emitter before plan\n";
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
 
@@ -1200,6 +1200,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
       bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
+  std::cout << "wwwww finish ir_emitter\n";
   return OkStatus();
 }
 

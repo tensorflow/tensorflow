@@ -186,7 +186,7 @@ class MatmulPlan {
             GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
             dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
             dot_dims.getRhsBatchingDimensions(),
-            dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+            dot_dims.getRhsContractingDimensions(), GetShape(op.getD()),      
             GetShape(op.getD()), op.getAlphaReal().convertToDouble(),
             op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
             op.getAlgorithm(), compute_precision));

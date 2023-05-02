@@ -58,7 +58,7 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
     algorithm_ = algorithms[algorithm_idx_];
   }
-
+  VLOG(1) << "Starts cublaslt_matmul_thunk!\n";
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
 
@@ -98,7 +98,7 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if CUDA_VERSION >= 12000
   }
 #endif  // CUDA_VERSION >= 12000
-
+  VLOG(1) << "ends cublaslt_matmul_thunk!\n";
   return plan_.ExecuteOnStream(
       params.stream, allocs.GetDeviceAddress(a_buffer_),
       allocs.GetDeviceAddress(b_buffer_), c_buffer_maybe_null,
