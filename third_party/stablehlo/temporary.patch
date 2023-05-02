@@ -25,4 +25,54 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py 
 +    is still forward compatible with.
 +  """
 +  return "0.9.0"
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
+--- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
++++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
+@@ -33,6 +33,24 @@
+   %2:2 = stablehlo.custom_call @foo(%0, %arg0, %1) {
+     indices_of_shape_operands = dense<[0, 2]> : tensor<2xi64>
+   } : (tensor<2xi64>, tensor<4xf32>, tensor<2xi64>) -> (tensor<1x2xf32>, tensor<3x4xf32>)
++  return %2#0, %2#1 : tensor<1x2xf32>, tensor<3x4xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @custom_call_success_mixed_positions_layouts
++func.func @custom_call_success_mixed_positions_layouts(%arg0: tensor<4x3xf32>) -> (tensor<1x2xf32>, tensor<3x4xf32>) {
++  // CHECK: stablehlo.custom_call @foo(%arg0)
++  // CHECK-SAME: operand_layouts = [dense<[1, 0]> : tensor<2xindex>]
++  // CHECK-SAME: result_layouts = [dense<[1, 0]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>]
++  // CHECK-SAME: : (tensor<4x3xf32>) -> (tensor<1x2xf32>, tensor<3x4xf32>)
++  %0 = stablehlo.constant dense<[1, 2]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
++  %2:2 = stablehlo.custom_call @foo(%0, %arg0, %1) {
++    indices_of_shape_operands = dense<[0, 2]> : tensor<2xi64>,
++    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<[1, 0]> : tensor<2xindex>, dense<[0]> : tensor<1xindex>],
++    result_layouts = [dense<[1, 0]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>]
++  } : (tensor<2xi64>, tensor<4x3xf32>, tensor<2xi64>) -> (tensor<1x2xf32>, tensor<3x4xf32>)
+   return %2#0, %2#1 : tensor<1x2xf32>, tensor<3x4xf32>
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -56,6 +56,18 @@
+     SmallVector<NamedAttribute> newAttrs;
+     for (auto attr : op->getAttrs()) {
+       if (attr.getName() == "indices_of_shape_operands") continue;
++      if (attr.getName() == "operand_layouts") {
++        // Drop the operand_layouts that correspond to indices_of_shape_operands
++        ArrayAttr operandLayouts = op.getOperandLayoutsAttr();
++        SmallVector<Attribute> newOperandLayouts;
++        for (unsigned i = 0; i < operandLayouts.size(); ++i) {
++          if (indices.contains(i)) continue;
++          newOperandLayouts.push_back(operandLayouts[i]);
++        }
++        attr = NamedAttribute(
++            attr.getName(),
++            rewriter.getArrayAttr(newOperandLayouts));
++      }
+       newAttrs.push_back(attr);
+     }
+ 
 
