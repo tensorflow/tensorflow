@@ -633,7 +633,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
       metrics::UpdateFunctionGraphOptimizationSavingTime(
           optimized_function_graph_info->optimization_duration_usecs,
           metrics::GraphOptimizationSource::kJit);
-      metrics::IncrementFunctinGraphOptimizationCacheHitCount(
+      metrics::IncrementFunctionGraphOptimizationCacheHitCount(
           1, metrics::GraphOptimizationSource::kJit);
       return optimized_function_graph_info;
     }
@@ -652,7 +652,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Scenario (3): No file cache exists for this function.
   // Run the optimization (Step 1) then write to the cache if eligible (Step 2).
-  metrics::IncrementFunctinGraphOptimizationCacheMissCount(
+  metrics::IncrementFunctionGraphOptimizationCacheMissCount(
       1, metrics::GraphOptimizationSource::kJit);
   VLOG(3) << "No cache existed; run the optimization passes. function name:"
           << " " << function_name;
