@@ -779,14 +779,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
-  {
-    HloPassPipeline pipeline("hlo normalization");
-    pipeline.AddPass<ReshapeDecomposer>();
-    pipeline.AddPass<ReduceDecomposer>();
-    pipeline.AddPass<BroadcastCanonicalizer>();
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-  }
-
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   // CopyInsertion is still needed by BufferAssignment. MLIR passes will handle
@@ -795,6 +787,14 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (is_mlir_compile) {
     pipeline.AddPass<CopyInsertion>();
     return pipeline.Run(module).status();
+  }
+
+  {
+    HloPassPipeline normalization_pipeline("hlo normalization");
+    normalization_pipeline.AddPass<ReshapeDecomposer>();
+    normalization_pipeline.AddPass<ReduceDecomposer>();
+    normalization_pipeline.AddPass<BroadcastCanonicalizer>();
+    TF_RETURN_IF_ERROR(normalization_pipeline.Run(module).status());
   }
 
   // After layout assignment, use a layout-sensitive verifier.
