@@ -245,6 +245,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
   def _get_local_replica_id(self, replica_id_in_sync_group):
     return replica_id_in_sync_group
 
+  def _default_device_scope(self):
+    return d_api.default_mesh(self._mesh)
+
   def _experimental_distribute_dataset(self, dataset, options):
     # Strategy always assume the user input data is a batched dataset for
     # experimental_distribute_dataset().
@@ -380,10 +383,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     d_args = nest.map_structure(map_fn, args)
     d_kwargs = nest.map_structure(map_fn, kwargs)
 
-    with d_api.default_mesh(self._mesh):
-      with self._container_strategy().scope():
-        with dtensor_util.DTensorReplicaContext(self._container_strategy()):
-          dtensor_result = fn(*d_args, **d_kwargs)
+    with self._container_strategy().scope():
+      with dtensor_util.DTensorReplicaContext(self._container_strategy()):
+        dtensor_result = fn(*d_args, **d_kwargs)
 
     return nest.map_structure(
         dtensor_util.DTensorDistributedValue,

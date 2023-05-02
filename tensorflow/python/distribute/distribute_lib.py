@@ -726,19 +726,21 @@ class _CurrentDistributionContext(object):
   Also: overrides the variable creator and optionally the current device.
   """
 
-  def __init__(self,
-               strategy,
-               var_creator_scope,
-               var_scope=None,
-               resource_creator_scope=None,
-               default_device=None):
+  def __init__(
+      self,
+      strategy,
+      var_creator_scope,
+      var_scope=None,
+      resource_creator_scope=None,
+      default_device_scope=None,
+  ):
     self._context = _CrossReplicaThreadMode(  # pylint: disable=protected-access
         strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
     self._resource_creator_scope = resource_creator_scope
-    if default_device:
-      self._device_scope = ops.device(default_device)
+    if default_device_scope:
+      self._device_scope = default_device_scope
     else:
       self._device_scope = None
     self._same_scope_again_count = 0
@@ -2469,6 +2471,11 @@ class StrategyExtendedV2(object):
     """Returns one or a list of ops.resource_creator_scope for some Strategy."""
     return None
 
+  def _default_device_scope(self):
+    if self._default_device:
+      return ops.device(self._default_device)
+    return None
+
   def _container_strategy(self):
     """Get the containing `tf.distribute.Strategy`.
 
@@ -2549,9 +2556,11 @@ class StrategyExtendedV2(object):
         variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=distributed_getter),
+            custom_getter=distributed_getter,
+        ),
         strategy.extended._resource_creator_scope(),  # pylint: disable=protected-access
-        self._default_device)
+        self._default_device_scope(),
+    )
 
   def _allow_variable_partition(self):
     return False
