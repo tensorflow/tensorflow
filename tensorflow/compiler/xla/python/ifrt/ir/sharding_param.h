@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -121,6 +122,8 @@ class ShardingParam {
 llvm::hash_code hash_value(ShardingParam sharding);
 
 mlir::AsmPrinter& operator<<(mlir::AsmPrinter& os, ShardingParam sharding);
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding);
 
 }  // namespace ifrt
 }  // namespace xla

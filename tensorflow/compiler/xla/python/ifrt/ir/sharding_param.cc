@@ -29,7 +29,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-void PrintDims(mlir::AsmPrinter& os, llvm::ArrayRef<int64_t> dims) {
+void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<int64_t> dims) {
   os << dims[0];
   for (int i = 1; i < dims.size(); ++i) {
     os << "x" << dims[i];
@@ -152,10 +152,16 @@ llvm::hash_code hash_value(ShardingParam sharding) {
 }
 
 mlir::AsmPrinter& operator<<(mlir::AsmPrinter& os, ShardingParam sharding) {
+  os.getStream() << sharding;
+  return os;
+}
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
   PrintDims(os, sharding.dim_shards());
-  os << " to ["
-     << llvm::ArrayRef<int64_t>(sharding.minor_to_major().permutation)
-     << "] on ";
+  os << " to [";
+  llvm::interleaveComma(
+      llvm::ArrayRef<int64_t>(sharding.minor_to_major().permutation), os);
+  os << "] on ";
   PrintDims(os, sharding.minor_to_major().axis_sizes);
   return os;
 }
