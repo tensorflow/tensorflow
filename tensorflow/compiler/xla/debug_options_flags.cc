@@ -78,6 +78,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // TODO(b/258036887): Enable once CUDA Graphs are fully supported.
   opts.set_xla_gpu_cuda_graph_level(0);
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
+  opts.set_xla_gpu_enable_persistent_temp_buffers(false);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -805,7 +806,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graphs_level",
+      "xla_gpu_cuda_graph_level",
       int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_level),
       debug_options->xla_gpu_cuda_graph_level(),
       "Set CUDA graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
@@ -817,6 +818,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cuda_graph_instantiation_threshold(),
       "Instantiate a cuda graph after the time a captured function is executed "
       "reaches the threshold."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_persistent_temp_buffers",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_persistent_temp_buffers),
+      debug_options->xla_gpu_enable_persistent_temp_buffers(),
+      "Allocate temp buffers once during the first execution of an executable. "
+      "Reuse the allocated buffers in subsequent executions. Executables cannot"
+      " run concurrently if this is enabled."));
   flag_list->push_back(
       tsl::Flag("xla_dump_disable_metadata",
                 bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),

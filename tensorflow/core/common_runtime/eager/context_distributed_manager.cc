@@ -402,7 +402,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   do {                                                \
     const tensorflow::Status _status = (__VA_ARGS__); \
     if (TF_PREDICT_FALSE(!_status.ok())) {            \
-      LOG(ERROR) << _status.error_message();          \
+      LOG(ERROR) << _status.message();                \
       return _status;                                 \
     }                                                 \
   } while (0);
@@ -561,7 +561,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     // see additional errors if ops are subsequently sent to the failed workers.
     if (TF_PREDICT_FALSE(!s.ok())) {
       LOG(ERROR) << "Error when creating contexts on remote targets: "
-                 << s.error_message()
+                 << s.message()
                  << "\nExecuting remote ops or functions on these remote "
                     "targets will fail.";
     }
@@ -623,7 +623,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(context->InitializeRemoteMaster(
         std::move(new_server), server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
-        remote_workers, context_id, r.release(), device_mgr, keep_alive_secs,
+        remote_workers, context_id, std::move(r), device_mgr, keep_alive_secs,
         cluster_flr, std::move(remote_mgr)));
 
     // NOTE: We start the server after all other initialization, because the
@@ -688,7 +688,7 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
   do {                                                \
     const tensorflow::Status _status = (__VA_ARGS__); \
     if (TF_PREDICT_FALSE(!_status.ok())) {            \
-      LOG(ERROR) << _status.error_message();          \
+      LOG(ERROR) << _status.message();                \
       return _status;                                 \
     }                                                 \
   } while (0);
@@ -817,7 +817,7 @@ Status EagerContextDistributedManager::CheckRemoteAlive(
     *is_alive = true;
   } else {
     LOG(INFO) << "Remote worker " << remote_task_name
-              << " is not alive: " << remote_status.error_message();
+              << " is not alive: " << remote_status.message();
   }
   return OkStatus();
 }

@@ -497,7 +497,7 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       }
       auto status = toco::tflite::Export(model, output_file_contents, params);
       if (!status.ok()) {
-        LOG(ERROR) << status.error_message();
+        LOG(ERROR) << status.message();
       }
       return status;
     } break;

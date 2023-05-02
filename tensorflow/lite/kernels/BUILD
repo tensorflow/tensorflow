@@ -2838,7 +2838,7 @@ exports_files(
         "builtin_op_kernels.h",
         "fully_connected.h",
     ],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 cc_test(

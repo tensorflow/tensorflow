@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_IR_TF_FRAMEWORK_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_IR_TF_FRAMEWORK_OPS_H_
 
+#include "absl/status/status.h"
 #include "mlir/Dialect/Bufferization/IR/AllocationOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -48,7 +49,7 @@ class JITCallableType
   using Base::Base;
 };
 
-::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code);
+absl::StatusCode ConvertAttrToEnumValue(ErrorCode error_code);
 
 }  // namespace tf_framework
 }  // namespace kernel_gen

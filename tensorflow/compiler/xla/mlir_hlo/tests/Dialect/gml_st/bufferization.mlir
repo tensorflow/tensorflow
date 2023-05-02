@@ -188,3 +188,116 @@ func.func @scf.forall_private_var(%t: tensor<10xf32>) -> f32 {
   return %r : f32
 }
 
+// -----
+
+func.func @gml_st_fusion(%arg0: tensor<?xf32>,
+    %init: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = gml_st.fusion ins(%a0 = %arg0 : tensor<?xf32>)
+                     inits(%in = %init : tensor<?xf32>) {
+    %res = linalg.map { math.exp }
+      ins(%a0 : tensor<?xf32>)
+      outs(%in : tensor<?xf32>)
+    gml_st.yield %res : tensor<?xf32>
+  } : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @gml_st_fusion
+// CHECK-SAME:      %[[ARG0:.*]]: memref<?xf32>, %[[ARG1:.*]]: memref<?xf32>
+// CHECK:         gml_st.fusion
+// CHECK-SAME:        ins(%[[ARG0_:.*]] = %[[ARG0]]: memref<?xf32>)
+// CHECK-SAME:        inits(%[[ARG1_:.*]] = %[[ARG1]]: memref<?xf32>)
+// CHECK:           linalg.map { math.exp }
+// CHECK-SAME:          ins(%[[ARG0_]] : memref<?xf32>)
+// CHECK-SAME:          outs(%[[ARG1_]] : memref<?xf32>)
+// CHECK:            gml_st.yield %[[ARG1_]] : memref<?xf32>
+// CHECK:         return %[[ARG1]] : memref<?xf32>
+
+// -----
+
+func.func @gml_st_fusion_temp_tensor(
+    %arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+  %c0 = arith.constant 0 : index
+  %dim0 = tensor.dim %arg0, %c0 : tensor<?xf32>
+  %init = tensor.empty(%dim0) : tensor<?xf32>
+  %0 = gml_st.fusion ins(%arg0_ = %arg0 : tensor<?xf32>,
+                         %arg1_ = %arg1 : tensor<?xf32>)
+                     inits(%init_ = %init : tensor<?xf32>) {
+    %c0_ = arith.constant 0 : index
+    %dim0_ = tensor.dim %arg0_, %c0_ : tensor<?xf32>
+    %temp = tensor.empty(%dim0_) : tensor<?xf32>
+    %map0 = linalg.map { math.exp }
+      ins(%arg0_ : tensor<?xf32>)
+      outs(%temp : tensor<?xf32>)
+    %map1 = linalg.map { arith.mulf }
+      ins(%map0, %arg1_ : tensor<?xf32>, tensor<?xf32>)
+      outs(%init_ : tensor<?xf32>)
+    gml_st.yield %map1 : tensor<?xf32>
+  } : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL:  func @gml_st_fusion_temp_tensor
+// CHECK-SAME:       (%[[ARG0:.*]]: memref<?xf32>, %[[ARG1:.*]]: memref<?xf32>)
+// CHECK:          %[[C0:.*]] = arith.constant 0 : index
+// CHECK:          %[[DIM:.*]] = memref.dim %[[ARG0]], %[[C0]] : memref<?xf32>
+// CHECK:          %[[ALLOC:.*]] = memref.alloc(%[[DIM]])
+// CHECK:          gml_st.fusion
+// CHECK-SAME:         ins(%[[ARG0_:.*]] = %[[ARG0]]: memref<?xf32>,
+// CHECK-SAME:             %[[ARG1_:.*]] = %[[ARG1]]: memref<?xf32>)
+// CHECK-SAME:         inits(%[[INIT_:.*]] = %[[ALLOC]]: memref<?xf32>)
+// CHECK-DAG:        %[[C0_:.*]] = arith.constant 0 : index
+// CHECK:            %[[DIM_:.*]] = memref.dim %[[ARG0_]], %[[C0_]]
+// CHECK:            %[[ALLOC_:.*]] = memref.alloc(%[[DIM_]])
+// CHECK:            linalg.map { math.exp }
+// CHECK-SAME:         ins(%[[ARG0_]]
+// CHECK-SAME:         outs(%[[ALLOC_]]
+// CHECK:            linalg.map { arith.mulf }
+// CHECK-SAME:         ins(%[[ALLOC_]], %[[ARG1_]]
+// CHECK-SAME:         outs(%[[INIT_]]
+// CHECK:            gml_st.yield %[[INIT_]] : memref<?xf32>
+// CHECK:          return %[[ALLOC]] : memref<?xf32>
+
+// -----
+
+func.func @gml_st_fusion_scalar_scf_for(%arg0: tensor<?xi64>) -> tensor<i64> {
+  %0 = tensor.empty() : tensor<i64>
+  %1 = gml_st.fusion
+         ins(%arg1 = %arg0: tensor<?xi64>)
+         inits(%arg2 = %0: tensor<i64>) {
+    %c1_i64 = arith.constant 1 : i64
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %dim = tensor.dim %arg1, %c0 : tensor<?xi64>
+    %2 = scf.for %arg3 = %c0 to %dim step %c1
+           iter_args(%arg4 = %c1_i64) -> (i64) {
+      %extracted = tensor.extract %arg1[%arg3] : tensor<?xi64>
+      %3 = arith.muli %arg4, %extracted : i64
+      scf.yield %3 : i64
+    }
+    %from_elements = tensor.from_elements %2 : tensor<i64>
+    gml_st.yield %from_elements : tensor<i64>
+  } : tensor<i64>
+  return %1 : tensor<i64>
+}
+
+// CHECK-LABEL:  func.func @gml_st_fusion_scalar_scf_for
+// CHECK-SAME:       (%[[ARG0:.*]]: memref<?xi64>)
+// CHECK:          %[[ALLOC:.*]] = memref.alloc()
+// CHECK:          gml_st.fusion
+// CHECK-SAME:         ins(%[[ARG0_:.*]] = %[[ARG0]]: memref<?xi64>)
+// CHECK-SAME:         inits(%[[ALLOC_:.*]] = %[[ALLOC]]: memref<i64>)
+// CHECK-DAG:        %[[C1_I64:.*]] = arith.constant 1 : i64
+// CHECK-DAG:        %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : index
+// CHECK:            %[[DIM:.*]] = memref.dim %[[ARG0_]], %[[C0]]
+// CHECK:            %[[FOR:.*]] = scf.for %[[ARG3:.*]] = %[[C0]] to %[[DIM]]
+// CHECK-SAME:           step %[[C1]] iter_args(%[[ARG4:.*]] = %[[C1_I64]])
+// CHECK:              %[[LOAD:.*]] = memref.load %[[ARG0_]][%[[ARG3]]]
+// CHECK:              %[[MULI:.*]] = arith.muli %[[ARG4]], %[[LOAD]]
+// CHECK:              scf.yield %[[MULI]] : i64
+// CHECK:            %[[ALLOC_0:.*]] = memref.alloc()
+// CHECK:            memref.store %[[FOR]], %[[ALLOC_0]][]
+// CHECK:            memref.copy %[[ALLOC_0]], %[[ALLOC_]]
+// CHECK:            gml_st.yield %[[ALLOC_]] : memref<i64>
+// CHECK:          return %[[ALLOC]] : memref<i64>

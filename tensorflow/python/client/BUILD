@@ -123,12 +123,13 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_pywrap_device_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:session_ops",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/platform:build_info",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -248,16 +249,20 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":pywrap_tf_session",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:mixed_precision_global_state",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:session_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:c_api_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:stack",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
@@ -272,7 +277,8 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:build_info",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -431,6 +437,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 

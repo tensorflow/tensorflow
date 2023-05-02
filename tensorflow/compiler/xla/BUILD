@@ -771,6 +771,9 @@ cc_library(
     hdrs = ["executable_run_options.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
@@ -1178,7 +1181,9 @@ filegroup(
         "runlit.cfg.py",
         "runlit.site.cfg.py",
     ],
-    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler/xla:__subpackages__",  # Scheuklappen: keep
+    ],
 )
 
 # -----------------------------------------------------------------------------

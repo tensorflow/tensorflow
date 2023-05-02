@@ -56,5 +56,6 @@ jobs:
       - name: Build binary and run non-pip tests
         shell: bash
         run: |
-          CI_DOCKER_BUILD_EXTRA_PARAMS='--build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg is_nightly=${is_nightly}' \
+          is_nightly=0 && tf_project_name='tf_ci_ext' && ${{ github.event_name == 'schedule' }} && is_nightly=1 && tf_project_name='tf_nightly_ci_ext'
+          CI_DOCKER_BUILD_EXTRA_PARAMS="--build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg is_nightly=${is_nightly} --build-arg tf_project_name=${tf_project_name}" \
           ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_nonpip.sh

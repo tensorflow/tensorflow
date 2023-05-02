@@ -1,4 +1,4 @@
-load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -150,7 +150,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":config_cc_proto",
+        ":config_proto_cc",
         "//google/protobuf:any_cc_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -172,30 +172,17 @@ tf_cc_test(
     ],
 )
 
-proto_library(
+tf_proto_library(
     name = "config_proto",
     srcs = ["config.proto"],
-    compatible_with = get_compatible_with_portable(),
-    deps = ["//google/protobuf:any"],
+    protodeps = ["//google/protobuf:any"],
+    visibility = ["//visibility:public"],
 )
 
-proto_library(
+tf_proto_library(
     name = "test_config_proto",
     testonly = True,
     srcs = ["test_config.proto"],
-)
-
-cc_proto_library(
-    name = "test_config_cc_proto",
-    testonly = True,
-    deps = [":test_config_proto"],
-)
-
-cc_proto_library(
-    name = "config_cc_proto",
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
-    deps = [":config_proto"],
 )
 
 tf_cc_test(
@@ -203,8 +190,8 @@ tf_cc_test(
     srcs = ["config_test.cc"],
     deps = [
         ":config",
-        ":config_cc_proto",
-        ":test_config_cc_proto",
+        ":config_proto_cc",
+        ":test_config_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )

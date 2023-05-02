@@ -170,8 +170,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
              options.use_bridge_for_gpu) {
-    TF_RETURN_IF_ERROR(
-        mlir::TF::RunTFXLABridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
 
     // GPU XLA clusters are wrapped in functions, which could be transformed by
     // bridge. Hence, the MLIR functions for XLA clusters are exported and added

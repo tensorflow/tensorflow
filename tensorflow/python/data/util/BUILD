@@ -170,9 +170,12 @@ py_library(
     srcs = ["random_seed.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:random_seed",
     ],
 )
 

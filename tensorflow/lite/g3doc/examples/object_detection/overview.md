@@ -58,7 +58,7 @@ build your own custom inference pipeline using the
 [TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
 
 The Android example below demonstrates the implementation for both methods as
-[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_task_api)
+[lib_task_api](https://github.com/tensorflow/examples/tree/r2.12/lite/examples/object_detection/android/lib_task_api)
 and
 [lib_interpreter](https://github.com/tensorflow/examples/tree/eb925e460f761f5ed643d17f0c449e040ac2ac45/lite/examples/object_detection/android/lib_interpreter),
 respectively.

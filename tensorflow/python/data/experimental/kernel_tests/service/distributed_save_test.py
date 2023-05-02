@@ -185,6 +185,19 @@ class DistributedSaveTest(
         dataset, list(range(10)) * num_workers, assert_items_equal=ignore_order)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testSnapshotDoesNotExist(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    with self.assertRaises(errors.NotFoundError):
+      dataset = dataset_ops.Dataset.load(self._test_dir)
+      dataset = dataset.apply(
+          data_service_ops.distribute(
+              data_service_ops.ShardingPolicy.OFF,
+              cluster.dispatcher_address(),
+          )
+      )
+      self.getDatasetOutput(dataset)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testDuplicateSnapshot(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)

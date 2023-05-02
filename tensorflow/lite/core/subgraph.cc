@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/core/subgraph.h"
 
-#include <stdarg.h>
-#include <stddef.h>
-
 #include <algorithm>
 #include <atomic>
+#include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -39,8 +38,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"

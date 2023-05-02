@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
@@ -203,20 +204,13 @@ StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(const string& file_name,
   return optimized_function_graph_info_restored;
 }
 
-// Retrieve the plain function name without the UUID suffix.
-// Example:
-// input: "_inference_train_fn_1234"
-// output: "_inference_train_fn"
-string GetPlainFunctionName(const string& function_name) {
-  string plain_func_name = function_name;
-  // Remove the random UUID in the function name.
-  if (absl::StrContains(function_name, "_")) {
-    std::vector<string> func_name_tokens = absl::StrSplit(function_name, '_');
-    func_name_tokens.pop_back();
-    plain_func_name = absl::StrJoin(func_name_tokens, "_");
-  }
-
-  return plain_func_name;
+// Gets the full path name of the file cache.
+// TODO(b/276813768) Include more runtime specific info like env/flag
+// values, or line number. An alternative is to use the fingerprint of the
+// graph once graph building cache is enabled.
+string GetFileCacheName(const string& dir_name, const string& function_name) {
+  return absl::StrCat(dir_name, "/", tsl::port::JobName(), "_",
+                      tsl::port::TaskId(), "_", function_name);
 }
 }  // namespace
 
@@ -627,12 +621,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
                                  OptimizedFunctionGraph::JIT);
   }
 
-  const string plain_func_name = GetPlainFunctionName(function_name);
-  // Make the file name as the cache key.
-  // TODO(b/276813768) Include more runtime specific info like env/flag
-  // values, or line number.
-  const string file_name =
-      absl::StrCat(dir_name, "/", tsl::port::JobName(), "_", plain_func_name);
+  const string file_name = GetFileCacheName(dir_name, function_name);
 
   // Scenario (2): File cache exists for this function; restore from the cache.
   if (env->FileExists(file_name).ok()) {
@@ -641,10 +630,17 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
     StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
         ReadFromCache(file_name, env);
     if (optimized_function_graph_info.ok()) {
+      metrics::UpdateFunctionGraphOptimizationSavingTime(
+          optimized_function_graph_info->optimization_duration_usecs,
+          metrics::GraphOptimizationSource::kJit);
+      metrics::IncrementFunctinGraphOptimizationCacheHitCount(
+          1, metrics::GraphOptimizationSource::kJit);
       return optimized_function_graph_info;
     }
 
     // Run the optimization passes if reading from cache fails.
+    metrics::IncrementFunctionGraphOptimizationCacheFailureCount(
+        1, metrics::GraphOptimizationSource::kJit);
     LOG(ERROR) << "Reading from file cache failed. Continue to run the "
                   "optimization passes instead. Error message: "
                << optimized_function_graph_info.status().ToString();
@@ -656,6 +652,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Scenario (3): No file cache exists for this function.
   // Run the optimization (Step 1) then write to the cache if eligible (Step 2).
+  metrics::IncrementFunctinGraphOptimizationCacheMissCount(
+      1, metrics::GraphOptimizationSource::kJit);
   VLOG(3) << "No cache existed; run the optimization passes. function name:"
           << " " << function_name;
 

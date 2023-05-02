@@ -2,6 +2,7 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/tsl:tsl.bzl", "if_cuda_or_rocm")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
@@ -19,7 +20,7 @@ build_test(
     name = "hlo_runner_main_build_test",
     tags = [
         "gpu",
-        "no_rocm"
+        "no_rocm",
     ],
     targets = [
         ":hlo_runner_main",
@@ -50,6 +51,8 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([
         "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+    ]) + if_rocm([
+        "//tensorflow/compiler/xla/stream_executor:rocm_platform",
     ]),
 )
 

@@ -17,6 +17,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/debug/lib:debug_utils",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
     ],
@@ -30,8 +31,8 @@ py_library(
     deps = [
         ":framework",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
         "//tensorflow/python/debug/lib:debug_data",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -123,12 +124,12 @@ py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_v1",
         "//tensorflow/python/debug/lib:debug_data",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 

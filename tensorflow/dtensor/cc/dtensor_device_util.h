@@ -67,7 +67,7 @@ using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
     if (!return_if_not_ok_status.ok()) {                                  \
       RETURN_STATUS((c_status),                                           \
                     static_cast<TF_Code>(return_if_not_ok_status.code()), \
-                    NullTerminatedMessage(return_if_not_ok_status));      \
+                    tsl::NullTerminatedMessage(return_if_not_ok_status)); \
     }                                                                     \
   }
 
@@ -141,41 +141,6 @@ struct DTensorOperation {
   inline bool is_func() const { return function_def != nullptr; }
 };
 
-// Contains a mesh bundled with a parallel device over all of the devices in
-// that mesh.
-class MeshWithParallelDevice {
- public:
-  MeshWithParallelDevice(
-      const Mesh& mesh_config,
-      std::unique_ptr<parallel_device::ParallelDevice> parallel_device)
-      : mesh_config_(mesh_config),
-        parallel_device_(std::move(parallel_device)),
-        // Device IDs are constructed lazily because we don't have a context
-        // until we start executing ops.
-        device_ids_tensor_(nullptr) {}
-
-  // A parallel tensor containing scalar integer device IDs for underlying
-  // devices, each placed on its corresponding device.
-  //
-  // TODO(allenl): It would be nice if DeviceID worked as an op inside the
-  // function's graph. Then we wouldn't need to feed it as an argument.
-  parallel_device::ParallelTensor* DeviceIDs(TFE_Context* context,
-                                             TF_Status* status) const;
-  const parallel_device::ParallelDevice& parallel_device() const {
-    return *parallel_device_;
-  }
-
-  const dtensor::Mesh& mesh_config() const { return mesh_config_; }
-
- private:
-  dtensor::Mesh mesh_config_;
-  std::unique_ptr<parallel_device::ParallelDevice> parallel_device_;
-
-  // Constructed lazily; contains a parallel tensor with scalar integer device
-  // IDs for each device.
-  mutable std::unique_ptr<parallel_device::ParallelTensor> device_ids_tensor_;
-};
-
 class TensorWithLayoutTf
     : public llvm::RTTIExtends<TensorWithLayoutTf, TensorWithLayout> {
  public:
@@ -183,8 +148,9 @@ class TensorWithLayoutTf
   // sharding spec. Does not take ownership of `tensor`. The tensor must not
   // already be on a DTensorDevice.
   static std::unique_ptr<TensorWithLayoutTf> Broadcast(
-      TFE_Context* context, TFE_TensorHandle* tensor,
-      const MeshWithParallelDevice& mesh, TF_Status* status);
+      TFE_Context* context, TFE_TensorHandle* tensor, const Mesh& target_mesh,
+      const parallel_device::ParallelDevice& parallel_device,
+      TF_Status* status);
 
   // Given an already-parallel tensor, wraps it with a mesh and a layout.
   static StatusOr<std::unique_ptr<TensorWithLayoutTf>> Wrap(

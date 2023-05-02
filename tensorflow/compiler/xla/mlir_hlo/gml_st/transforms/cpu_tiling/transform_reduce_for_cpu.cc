@@ -285,7 +285,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     bindSymbols(b.getContext(), sym0);
 
     auto modMap = AffineMap::get(0, 1, {sym0 - sym0 % tileSize});
-    return makeComposedFoldedAffineApply(b, loc, modMap, inputSizeOfr);
+    return affine::makeComposedFoldedAffineApply(b, loc, modMap, inputSizeOfr);
   }
 
   OpFoldResult getRemainderSize(OpBuilder &b, Location loc,
@@ -294,8 +294,8 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     AffineExpr sym0, sym1;
     bindSymbols(b.getContext(), sym0, sym1);
     auto diffMap = AffineMap::get(0, 2, {sym1 - sym0});
-    return makeComposedFoldedAffineApply(b, loc, diffMap,
-                                         {tileableBoundOfr, inputSize});
+    return affine::makeComposedFoldedAffineApply(b, loc, diffMap,
+                                                 {tileableBoundOfr, inputSize});
   }
 
   tensor::ExtractSliceOp create1DSlice(OpBuilder &b, Location loc, Value source,

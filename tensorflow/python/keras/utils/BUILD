@@ -236,7 +236,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:tf_export",
     ],
 )

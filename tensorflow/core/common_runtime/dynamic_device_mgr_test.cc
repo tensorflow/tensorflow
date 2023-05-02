@@ -63,8 +63,8 @@ static Device* CreateDevice(const char* type, const char* name,
 }
 
 TEST(DynamicDeviceMgrTest, AddDeviceToMgr) {
-  std::unique_ptr<Device> d0(CreateDevice("CPU", "/device:CPU:0"));
-  std::unique_ptr<Device> d1(CreateDevice("CPU", "/device:CPU:1"));
+  std::unique_ptr<Device> d0(CreateDevice("CPU", "/device:CPU:1"));
+  std::unique_ptr<Device> d1(CreateDevice("CPU", "/device:CPU:0"));
 
   auto dm = std::make_unique<DynamicDeviceMgr>();
   EXPECT_EQ(dm->ListDevices().size(), 0);
@@ -74,6 +74,10 @@ TEST(DynamicDeviceMgrTest, AddDeviceToMgr) {
   added_devices.emplace_back(std::move(d1));
   TF_CHECK_OK(dm->AddDevices(std::move(added_devices)));
   EXPECT_EQ(dm->ListDevices().size(), 2);
+  // Checks that list is sorted by the device name order, not insertion order.
+  // Insertion order is flipped above.
+  EXPECT_EQ(dm->ListDevices()[0]->name(), "/device:CPU:0");
+  EXPECT_EQ(dm->ListDevices()[1]->name(), "/device:CPU:1");
 }
 
 TEST(DynamicDeviceMgrTest, RemoveDeviceFromMgr) {

@@ -63,9 +63,9 @@ tflite_cc_shared_object(
     deps = [
         ":stable_delegate_interface",
         ":version_script.lds",
-        "//tensorflow/lite/core/shims:c_api",
-        "//tensorflow/lite/core/shims:xnnpack_plugin",
+        "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:xnnpack_plugin",
     ],
 )
 

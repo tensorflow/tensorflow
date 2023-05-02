@@ -433,6 +433,11 @@ message DebugOptions {
   // large number of CUDA graph instances in memory.
   int32 xla_gpu_cuda_graph_instantiation_threshold = 202;
 
+  // Allocate temp buffers once during the first execution of an executable.
+  // Reuse the allocated buffers in subsequent executions. Executables cannot
+  // run concurrently if this is enabled.
+  bool xla_gpu_enable_persistent_temp_buffers = 206;
+
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
@@ -496,7 +501,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 206
+  // Next id: 207
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

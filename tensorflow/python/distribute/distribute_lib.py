@@ -220,6 +220,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
@@ -4172,7 +4173,7 @@ class _DefaultReplicaContext(ReplicaContext):
 # So here we catch any attempts to deserialize variables
 # when using distribution strategies.
 # pylint: disable=protected-access
-_original_from_proto = variable_scope._from_proto_fn
+_original_from_proto = ref_variable._from_proto_fn
 
 
 def _from_proto_fn(v, import_scope=None):
@@ -4183,7 +4184,7 @@ def _from_proto_fn(v, import_scope=None):
   else:
     return _original_from_proto(v, import_scope=import_scope)
 
-variable_scope._from_proto_fn = _from_proto_fn
+ref_variable._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
 
 

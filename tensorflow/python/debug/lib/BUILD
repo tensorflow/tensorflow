@@ -23,6 +23,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:op_callbacks",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -40,6 +41,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:op_callbacks",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_stack",
@@ -107,8 +109,8 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:op_def_registry",
-        "//tensorflow/python:platform",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -125,8 +127,9 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:op_def_registry",
-        "//tensorflow/python:platform",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
@@ -141,7 +144,6 @@ py_library(
         ":debug_graphs",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
     ],
 )
 
@@ -167,8 +169,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -190,6 +192,7 @@ py_library(
         ":common",
         ":debug_service_pb2_grpc",
         "//tensorflow/core/debug:debug_service_proto_py",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler:tfprof_logger",
     ],
 )
@@ -233,6 +236,7 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -253,6 +257,7 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -281,8 +286,8 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -303,6 +308,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -326,6 +332,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -514,6 +522,7 @@ py_library(
         ":debug_graphs",
         ":debug_service_pb2_grpc",
         "//tensorflow/core/debug:debug_service_proto_py",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
     ],
 )

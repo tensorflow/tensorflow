@@ -92,6 +92,7 @@ class GpuExecutable : public Executable {
     std::string module_name;
     xla::Shape output_shape;
     std::vector<BufferAllocation> allocations;
+    bool enable_persistent_temp_buffers;
     std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment = nullptr;
 
     // A callable that dumps out a debug string upon device OOM. It's not the
@@ -283,7 +284,6 @@ class GpuExecutable : public Executable {
   // memory for every output/temp buffers.
   const std::vector<BufferAllocation> allocations_;
 
-  // TODO(anlunx): Make this a configurable flag.
   bool enable_persistent_temp_buffers_ = false;
 
   absl::Mutex persistent_temp_buffers_mu_;

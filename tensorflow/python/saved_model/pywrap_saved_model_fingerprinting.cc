@@ -37,19 +37,40 @@ class FingerprintException : public std::exception {
   std::string message_ = "";
 };
 
+class FileNotFoundException : public std::exception {
+ public:
+  explicit FileNotFoundException(const char *m) : message_{m} {}
+  const char *what() const noexcept override { return message_.c_str(); }
+
+ private:
+  std::string message_ = "";
+};
+
 void DefineFingerprintingModule(py::module main_module) {
   auto m = main_module.def_submodule("fingerprinting");
 
   m.doc() = "Python bindings for TensorFlow SavedModel Fingerprinting.";
 
-  static py::exception<FingerprintException> ex(m, "FingerprintException");
+  static py::exception<FingerprintException> fp_ex(m, "FingerprintException");
   py::register_exception_translator([](std::exception_ptr p) {
     try {
       if (p) {
         std::rethrow_exception(p);
       }
     } catch (const FingerprintException &e) {
-      ex(e.what());
+      fp_ex(e.what());
+    }
+  });
+
+  static py::exception<FileNotFoundException> fnf_ex(m,
+                                                     "FileNotFoundException");
+  py::register_exception_translator([](std::exception_ptr p) {
+    try {
+      if (p) {
+        std::rethrow_exception(p);
+      }
+    } catch (const FileNotFoundException &e) {
+      fnf_ex(e.what());
     }
   });
 
@@ -81,11 +102,18 @@ void DefineFingerprintingModule(py::module main_module) {
             fingerprinting::ReadSavedModelFingerprint(export_dir);
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
+        } else if (fingerprint.status().code() == absl::StatusCode::kNotFound) {
+          throw FileNotFoundException(
+              std::string("Could not find fingerprint in directory: " +
+                          export_dir)
+                  .c_str());
+        } else {
+          throw FingerprintException(
+              std::string("Could not read fingerprint from fingerprint.pb file "
+                          "in directory: " +
+                          export_dir)
+                  .c_str());
         }
-        throw FingerprintException(
-            std::string("Could not read fingerprint from directory: " +
-                        export_dir)
-                .c_str());
       },
       py::arg("export_dir"),
       py::doc(

@@ -25,6 +25,8 @@ GpuDeviceInfo GetGpuDeviceInfo(
   device_info.threads_per_block_limit = device.threads_per_block_limit();
   device_info.threads_per_warp = device.threads_per_warp();
   device_info.shared_memory_per_block = device.shared_memory_per_block();
+  device_info.shared_memory_per_block_optin =
+      device.shared_memory_per_block_optin();
   device_info.shared_memory_per_core = device.shared_memory_per_core();
   device_info.threads_per_core_limit = device.threads_per_core_limit();
   device_info.core_count = device.core_count();

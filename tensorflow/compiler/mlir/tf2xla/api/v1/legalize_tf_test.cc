@@ -58,9 +58,10 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   mlir_to_hlo_args.rollout_state = rollout_state;
   mlir_to_hlo_args.mlir_module = kMlirModuleStr;
 
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("Host").value();
   auto client =
-      xla::ClientLibrary::GetOrCreateCompileOnlyClient(/*platform=*/nullptr)
-          .value();
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
   std::vector<TensorShape> arg_shapes;
   TPUCompileMetadataProto metadata_proto;

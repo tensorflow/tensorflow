@@ -1208,6 +1208,7 @@ cc_library(
         "transforms/device_index_selector.cc",
         "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
+        "transforms/embedding_pipelining.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
         "transforms/executor_tpuv1_island_coarsening.cc",

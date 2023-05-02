@@ -363,7 +363,7 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
   if (env_->collective_executor_mgr) {
     env_->collective_executor_mgr->Cleanup(step_id);
   }
-  for (Device* d : env_->local_devices) {
+  for (Device* d : env_->device_mgr->ListDevices()) {
     ScopedAllocatorMgr* sam = d->GetScopedAllocatorMgr();
     if (sam) {
       sam->Cleanup(step_id);

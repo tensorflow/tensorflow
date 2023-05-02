@@ -20,7 +20,6 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -28,7 +27,6 @@ from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import composite_tensor
@@ -188,7 +186,7 @@ class TPUTest(test.TestCase):
     with ops.device("/device:TPU:0"):
       a = variables.Variable(1)
 
-    @function.defun_with_attributes(attributes={"_noinline": True})
+    @def_function.function(experimental_attributes={"_noinline": True})
     def get_a_plus_one():
       return a + 1
 
@@ -224,11 +222,11 @@ class TPUTest(test.TestCase):
     def foo():
       return 1 + 1
 
-    func1 = function.defun_with_attributes(foo, jit_compile=False)
-    func2 = function.defun_with_attributes(
+    func1 = def_function.function(foo, jit_compile=False)
+    func2 = def_function.function(
         foo,
         jit_compile=False,
-        attributes={
+        experimental_attributes={
             "_OutputsOnOpDevice": True,
         },
     )
@@ -777,7 +775,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         return w
 
       def all_reduce(x):
-        ctx = distribution_strategy_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         return ctx.all_reduce("SUM", w) + x
 
       outputs = strategy.run(computation, args=(next(iterator),))

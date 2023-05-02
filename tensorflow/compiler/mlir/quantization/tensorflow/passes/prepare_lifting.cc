@@ -150,8 +150,12 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
       is_supported_affine_op = data_format.getValue().equals("NHWC") ||
                                data_format.getValue().equals("NDHWC");
     }
-  } else if (llvm::isa<TF::MatMulOp, TF::BatchMatMulV2Op>(op)) {
+  } else if (llvm::isa<TF::BatchMatMulV2Op>(op)) {
     if (const auto adj_y = op->getAttrOfType<BoolAttr>("adj_y")) {
+      is_supported_affine_op = !adj_y.getValue();
+    }
+  } else if (llvm::isa<TF::MatMulOp>(op)) {
+    if (const auto adj_y = op->getAttrOfType<BoolAttr>("transpose_b")) {
       is_supported_affine_op = !adj_y.getValue();
     }
   }

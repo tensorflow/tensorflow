@@ -3103,7 +3103,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   auto computation_or =
       return_value.valid() ? builder->Build(return_value) : builder->Build();
   if (!computation_or.ok()) {
-    block->back().emitError(llvm::Twine(computation_or.status().message()));
+    block->back().emitError() << computation_or.status().message();
     return failure();
   }
   *result = std::move(computation_or.value());

@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -402,6 +403,7 @@ GraphExecutor::GraphExecutor(
       graph_execution_state_(std::move(graph_execution_state)),
       req_deadline_tracker_(options_.runtime->core_runtime()->GetHostContext()),
       kernel_registry_(std::move(kernel_registry)) {
+  SetSessionCreatedMetric();
   // Creates a ResourceContext and populate it with per model resource from
   // Runtime.
   options_.runtime->CreateRuntimeResources(options_, &resource_context_);

@@ -43,6 +43,8 @@
         clustering.
     *   Add int16x8 support for the built-in op `exp`
     *   Add int16x8 support for the built-in op `mirror_pad`
+    *   Add int16x8 support for the built-in ops `space_to_batch_nd` and
+        `batch_to_space_nd`
     *   Add 16-bit int type support for built-in op `less`, `greater_than`,
         `equal`
     *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
@@ -53,6 +55,7 @@
     *   Add reference implementation for 16-bit int unquantized `add`.
     *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.
     *   `add_op` supports broadcasting up to 6 dimensions.
+    *   Add 16-bit support for `top_k`.
 
 *   `tf.keras`
 

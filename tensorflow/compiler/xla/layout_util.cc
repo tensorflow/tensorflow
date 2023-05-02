@@ -701,6 +701,7 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
       return dim_unique && dim_ordered;
     case DIM_COMPRESSED:
     case DIM_SINGLETON:
+    case DIM_COMPRESSED_WITH_HI:
       return true;
     default:
       return false;

@@ -291,6 +291,11 @@ class FunctionCaptures(object):
       self._tuple_cache.append((external, internal))
 
   @property
+  def capture_types(self):
+    # TODO(panzf): Maintain and return by val tracetypes as well
+    return self._by_ref_tracetype
+
+  @property
   def by_val_capture_tuples(self):
     if self._by_val_internal.mutated or self._by_val_external.mutated:
       self. _recompute_tuple_cache()

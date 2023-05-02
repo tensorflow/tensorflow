@@ -122,6 +122,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
+#include "tensorflow/compiler/xla/service/gpu/topk_specializer.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
@@ -430,6 +431,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("optimization");
     AddHloVerifier(&pipeline);
+    pipeline.AddPass<TopkSpecializer>();
     pipeline.AddPass<TopkDecomposer>();
     pipeline.AddPass<AllToAllDecomposer>();
 
@@ -496,8 +498,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
 
-    pipeline.AddPass<LogisticExpander>(
-        /*expansion_type=*/LogisticExpansionType::kExp);
+    pipeline.AddPass<LogisticExpander>();
     pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicDimensionSimplifier>();
 
@@ -1361,6 +1362,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
            compile_module_results.module_name,
            compile_module_results.output_shape,
            std::move(compile_module_results.allocations),
+           module->config()
+               .debug_options()
+               .xla_gpu_enable_persistent_temp_buffers(),
            std::move(buffer_assignment_proto),
            [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
            std::move(module)}));
@@ -1583,6 +1587,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
                                         ir_emitter_context->constants());
   }
 
+  bool enable_persistent_temp_buffers =
+      module_config.debug_options().xla_gpu_enable_persistent_temp_buffers();
   using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
                       compiler->CompileToTargetBinary(
@@ -1605,7 +1611,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
         {std::move(backend_result.first), std::move(backend_result.second),
          gpu_version, std::move(executable), entry_func_attrs,
          std::move(ir_emitter_context->constants()), std::move(output_info),
-         module_name, output_shape, std::move(allocations)});
+         module_name, output_shape, std::move(allocations),
+         enable_persistent_temp_buffers});
   }
 
   auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
@@ -1615,7 +1622,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
        gpu_version, std::move(thunk_sequence), entry_func_attrs,
        std::move(ir_emitter_context->constants()), std::move(output_info),
-       module_name, output_shape, std::move(allocations)});
+       module_name, output_shape, std::move(allocations),
+       enable_persistent_temp_buffers});
 }
 
 }  // namespace gpu

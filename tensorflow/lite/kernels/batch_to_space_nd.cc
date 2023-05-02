@@ -103,6 +103,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  NumDimensions(op_context.input) <= kInputMaxDimensionNum);
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
+  if (op_context.input->type == kTfLiteUInt8 ||
+      op_context.input->type == kTfLiteInt8 ||
+      op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.scale,
+                      op_context.output->params.scale);
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point,
+                      op_context.output->params.zero_point);
+  }
+
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
+  }
+
   if (!IsConstantOrPersistentTensor(op_context.block_shape) ||
       !IsConstantOrPersistentTensor(op_context.crops)) {
     SetTensorToDynamic(op_context.output);
@@ -149,6 +163,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_BATCH_TO_SPACE_ND(reference_ops, int8_t);
       } else {
         TF_LITE_BATCH_TO_SPACE_ND(optimized_ops, int8_t);
+      }
+      break;
+    case kTfLiteInt16:
+      if (kernel_type == kReference) {
+        TF_LITE_BATCH_TO_SPACE_ND(reference_ops, int16_t);
+      } else {
+        TF_LITE_BATCH_TO_SPACE_ND(optimized_ops, int16_t);
       }
       break;
     case kTfLiteInt32:

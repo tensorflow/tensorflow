@@ -77,24 +77,24 @@ StatusOr<std::string> AotCompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     const gpu::GpuTargetConfig& gpu_target_config,
     const AutotuneResults& autotune_results = AutotuneResults()) {
-#if GOOGLE_CUDA  
-  gpu::NVPTXCompiler nvptx_compiler;
-#else
-  gpu::AMDGPUCompiler nvptx_compiler;
+#if GOOGLE_CUDA
+  auto gpu_compiler = gpu::NVPTXCompiler();
+#elif TENSORFLOW_USE_ROCM
+  auto gpu_compiler = gpu::AMDGPUCompiler();
 #endif
   Compiler::CompileOptions compile_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module_after_opt,
-                      nvptx_compiler.RunHloPassesWithoutDevice(
+                      gpu_compiler.RunHloPassesWithoutDevice(
                           std::move(hlo_module), compile_options,
                           gpu_target_config, autotune_results));
 
   auto module_group =
       std::make_unique<HloModuleGroup>(std::move(module_after_opt));
-  AotCompilationOptions aot_options(nvptx_compiler.PlatformId());
+  AotCompilationOptions aot_options(gpu_compiler.PlatformId());
   aot_options.set_target_config(gpu_target_config);
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      nvptx_compiler.CompileAheadOfTime(std::move(module_group), aot_options));
+      gpu_compiler.CompileAheadOfTime(std::move(module_group), aot_options));
   TF_ASSIGN_OR_RETURN(std::string result, aot_results[0]->SerializeAsString());
   return result;
 }

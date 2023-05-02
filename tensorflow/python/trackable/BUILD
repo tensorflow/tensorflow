@@ -151,7 +151,7 @@ py_strict_library(
         ":data_structures",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],

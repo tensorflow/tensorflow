@@ -29,7 +29,6 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
@@ -568,7 +567,7 @@ class MirroredStrategyVariableCreatorStackTest(
         v = variable_scope.variable(1.0)
 
         # This will pause the current thread, and execute the other thread.
-        ds_context.get_replica_context().merge_call(lambda _: _)
+        distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
     def main_thread_creator(next_creator, **kwargs):
@@ -619,7 +618,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
     @def_function.function
     def model_fn():
       traces.append(1)
-      return ds_context.get_replica_context().replica_id_in_sync_group
+      return distribute_lib.get_replica_context().replica_id_in_sync_group
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
@@ -633,7 +632,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
     @def_function.function
     def model_fn():
       traces.append(1)
-      return ds_context.get_replica_context().replica_id_in_sync_group
+      return distribute_lib.get_replica_context().replica_id_in_sync_group
 
     @def_function.function
     def step():
@@ -656,7 +655,8 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
     def model_fn():
 
       def body_fn(i):
-        return ds_context.get_replica_context().merge_call(merge_fn, args=(i,))
+        return distribute_lib.get_replica_context().merge_call(
+            merge_fn, args=(i,))
 
       return while_loop.while_loop_v2(lambda i: i < 2, body_fn, [0])
 
@@ -675,7 +675,8 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       @def_function.function
       def model_fn_nested():
         t = constant_op.constant(1)
-        return ds_context.get_replica_context().merge_call(merge_fn, args=(t,))
+        return distribute_lib.get_replica_context().merge_call(
+            merge_fn, args=(t,))
 
       return model_fn_nested()
 
@@ -690,7 +691,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
 
     @def_function.function
     def model_fn():
-      ds_context.get_replica_context().merge_call(merge_fn)
+      distribute_lib.get_replica_context().merge_call(merge_fn)
       return 0.
 
     with distribution.scope():
@@ -733,7 +734,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
     def model_fn():
       with ops.name_scope("foo"):
         a = constant_op.constant(1.0, name="a")
-        ds_context.get_replica_context().merge_call(lambda _: _)
+        distribute_lib.get_replica_context().merge_call(lambda _: _)
         b = constant_op.constant(1.0, name="b")
       return a, b
 
@@ -751,7 +752,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
     def model_fn():
       with ops.name_scope(None, "foo"):
         a = constant_op.constant(1.0, name="a")
-        ds_context.get_replica_context().merge_call(lambda _: _)
+        distribute_lib.get_replica_context().merge_call(lambda _: _)
         b = constant_op.constant(2.0, name="b")
       return a, b
 
@@ -777,7 +778,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
     def model_fn():
       b = variable_scope.variable(1.0, name="b")
       with ops.name_scope("foo"):
-        c = ds_context.get_replica_context().merge_call(in_cross_replica)
+        c = distribute_lib.get_replica_context().merge_call(in_cross_replica)
       return b, c
 
     with context.graph_mode(), distribution.scope():
@@ -806,7 +807,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
     def model_fn():
       b = variable_scope.get_variable("b", [1])
       with ops.name_scope("foo"):
-        c = ds_context.get_replica_context().merge_call(in_cross_replica)
+        c = distribute_lib.get_replica_context().merge_call(in_cross_replica)
       return b, c
 
     with context.graph_mode(), distribution.scope():
@@ -836,7 +837,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
     def model_fn():
       b = variable_scope.get_variable("b", [1])
       with variable_scope.variable_scope("foo"):
-        c = ds_context.get_replica_context().merge_call(in_cross_replica)
+        c = distribute_lib.get_replica_context().merge_call(in_cross_replica)
       return b, c
 
     with context.graph_mode(), distribution.scope():
@@ -876,7 +877,7 @@ class MirroredThreeDeviceDistributionTest(
   def testThreeDevices(self, distribution):
     def model_fn():
       v = variable_scope.variable(1.0, name="foo")
-      ds_context.get_replica_context().merge_call(lambda _: _)
+      distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
     with distribution.scope():
@@ -966,7 +967,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       def model_fn():
         value = math_ops.cast(
-            ds_context.get_replica_context().replica_id_in_sync_group,
+            distribute_lib.get_replica_context().replica_id_in_sync_group,
             mirrored_var.dtype)
         return mirrored_var.assign(value)
 
@@ -1047,7 +1048,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       def model_fn():
         value = math_ops.cast(
-            ds_context.get_replica_context().replica_id_in_sync_group,
+            distribute_lib.get_replica_context().replica_id_in_sync_group,
             mirrored_var.dtype)
         return mirrored_var.assign_add(value)
 
@@ -1110,7 +1111,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       def model_fn():
         value = math_ops.cast(
-            ds_context.get_replica_context().replica_id_in_sync_group,
+            distribute_lib.get_replica_context().replica_id_in_sync_group,
             mirrored_var.dtype)
         return mirrored_var.assign_sub(value)
 
@@ -1545,14 +1546,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
 
 def _replica_id():
-  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
   return array_ops.identity(replica_id)
 
 
 def _replica_id_as_int():
-  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
   if isinstance(replica_id, ops.Tensor):
     replica_id = tensor_util.constant_value(replica_id)
   return replica_id

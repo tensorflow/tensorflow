@@ -50,9 +50,8 @@ class SessionMgrTest : public ::testing::Test {
       : mgr_(&env_, "/job:mnist/replica:0/task:0",
              std::unique_ptr<WorkerCacheInterface>(), factory_,
              /*coordination_handler=*/nullptr) {
-    device_mgr_ = std::make_unique<StaticDeviceMgr>(
+    device_mgr_ = std::make_unique<DynamicDeviceMgr>(
         FakeDevice::MakeCPU("/job:mnist/replica:0/task:0/device:fakecpu:0"));
-    env_.local_devices = device_mgr_->ListDevices();
     env_.device_mgr = device_mgr_.get();
   }
 

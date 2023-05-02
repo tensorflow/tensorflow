@@ -352,7 +352,8 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       CancellationManager* cancellation_manager,
       const absl::optional<EagerFunctionParams>& eager_func_params,
       const absl::optional<ManagedStackTrace>& stack_trace,
-      tsl::CoordinationServiceAgent* coordination_service_agent);
+      tsl::CoordinationServiceAgent* coordination_service_agent,
+      tsl::core::RefCountPtr<Rendezvous>* rendezvous);
 
   ProcessFunctionLibraryRuntime* const pflr_;  // non-null
   FunctionLibraryRuntime::Handle handle_;

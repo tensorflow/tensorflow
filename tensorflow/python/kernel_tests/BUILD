@@ -20,8 +20,8 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -102,6 +102,7 @@ tf_py_test(
         "//tensorflow/python:composite_tensor_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -127,6 +128,7 @@ cuda_py_test(
         "//tensorflow/python/data/experimental/ops:prefetching_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform:tf_logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -171,6 +173,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:logging_ops",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 

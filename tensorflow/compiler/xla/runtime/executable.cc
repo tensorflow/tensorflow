@@ -448,7 +448,8 @@ Status Executable::ReturnResults(unsigned ordinal,
     functions.push_back(Executable::Function(
         std::move(fn.name), (*engine)->exported(indexed.index()),
         std::move(fn.signature), std::move(fn.runtime_signature),
-        std::move(*args_memory_layout), std::move(*results_memory_layout)));
+        std::move(*args_memory_layout), std::move(*results_memory_layout),
+        true));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),

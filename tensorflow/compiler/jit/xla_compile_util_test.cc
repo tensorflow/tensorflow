@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -71,6 +72,50 @@ TEST_F(OpsTestBase, CreateSingleOpGraph) {
   const Node* retval_input_node = nullptr;
   TF_EXPECT_OK(retval_node->input_node(0, &retval_input_node));
   EXPECT_EQ(retval_input_node->name(), "identity_op");
+}
+
+TEST(XlaCompileUtilTest, PjRtXlaLaunchFlagTest) {
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // Flag is turned on, but no device is allowlisted.
+  auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+  rollout_config.enabled_for_xla_launch_ = true;
+
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // Flag is turned on, some device is allowlisted, but the requested one isn't.
+  rollout_config.AllowForDeviceInXlaLaunch(DeviceType(DEVICE_GPU));
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // Flag is turned on and the requested device is allowlisted.
+  rollout_config.AllowForDeviceInXlaLaunch(DeviceType(DEVICE_CPU));
+  EXPECT_TRUE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // The requested device is allowlisted, but the flag is turned off.
+  rollout_config.enabled_for_xla_launch_ = false;
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+}
+
+TEST(XlaCompileUtilTest, PjRtXlaCompileOnDemandFlagTest) {
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // Flag is turned on, but no device is allowlisted.
+  auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+  rollout_config.enabled_for_compile_on_demand_ = true;
+
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // Flag is turned on, some device is allowlisted, but the requested one isn't.
+  rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(DEVICE_GPU));
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // Flag is turned on and the requested device is allowlisted.
+  rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(DEVICE_CPU));
+  EXPECT_TRUE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+
+  // The requested device is allowlisted, but the flag is turned off.
+  rollout_config.enabled_for_compile_on_demand_ = false;
+  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
 }
 
 }  // namespace

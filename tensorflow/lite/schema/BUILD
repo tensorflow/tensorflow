@@ -46,7 +46,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 

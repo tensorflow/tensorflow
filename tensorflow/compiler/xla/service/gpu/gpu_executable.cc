@@ -131,6 +131,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       module_name_(params.module_name),
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
+      enable_persistent_temp_buffers_(params.enable_persistent_temp_buffers),
       debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
       verbose_buffer_assignment_string_dumper_(
           params.verbose_buffer_assignment_string_dumper),
