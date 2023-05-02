@@ -76,7 +76,7 @@
 
 ## Keras
 
- Keras is a framework built on top of the TensorFlow. See more details on the Keras [website](https://keras.io/).
+Keras is a framework built on top of the TensorFlow. See more details on the [Keras website](https://keras.io/).
 
 ### Breaking Changes
 
