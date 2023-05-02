@@ -259,6 +259,21 @@ dtensor_test(
     ],
 )
 
+pytype_library(
+    name = "multi_client_test_util",
+    testonly = if_google(
+        True,
+        oss_value = False,  # build_pip_package depends on this target.
+    ),
+    srcs = ["multi_client_test_util.py"],
+    deps = [
+        ":test_util",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/flags",
+    ],
+)
+
 dtensor_test(
     name = "multi_client_test",
     srcs = ["multi_client_test.py"],
@@ -279,6 +294,7 @@ dtensor_test(
         "nosan",
     ],  # b/195537906
     deps = [
+        ":multi_client_test_util",
         ":test_util",
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
@@ -310,7 +326,7 @@ dtensor_test(
     ],
     args = [
         "--num_clients=0",
-        "--num_devices=2",
+        "--num_local_devices=2",
         "--model_dim_size=2",
     ],
     disable = ALL_BACKENDS,
@@ -324,6 +340,7 @@ dtensor_test(
         "nosan",  # b/195537906
     ],
     deps = [
+        ":multi_client_test_util",
         ":test_util",
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
@@ -355,7 +372,7 @@ dtensor_test(
     ],
     args = [
         "--num_clients=2",
-        "--num_devices=1",
+        "--num_local_devices=1",
         "--model_dim_size=2",
     ],
     disable = ALL_BACKENDS,
@@ -369,6 +386,7 @@ dtensor_test(
         "nosan",  # b/195537906
     ],
     deps = [
+        ":multi_client_test_util",
         ":test_util",
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
