@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/abstract_tfrt_cpu_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -303,189 +304,34 @@ class TfrtCpuClient final : public PjRtClient {
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 };
 
-class TfrtCpuBuffer final : public PjRtBuffer {
+class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
  public:
   TfrtCpuBuffer(
       Shape on_device_shape,
       std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
       TfrtCpuClient* client, TfrtCpuDevice* device);
-  ~TfrtCpuBuffer() override;
 
   TfrtCpuBuffer(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer(TfrtCpuBuffer&&) = delete;
   TfrtCpuBuffer& operator=(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer& operator=(TfrtCpuBuffer&&) = delete;
 
-  const Shape& on_device_shape() const override { return on_device_shape_; }
   TfrtCpuDevice* device() const override { return device_; }
   TfrtCpuClient* client() const override { return client_; }
 
   StatusOr<Shape> logical_on_device_shape() override;
 
-  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
-      override;
-
-  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
-      bool wait_for_operations_to_complete) override;
-
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
-
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
-
-  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override {
-    return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
-  }
-
-  void Delete() override;
-
-  bool IsDeleted() override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) override {
-    on_done(Unimplemented("CopyToRemoteDevice not implemented."),
-            /*sends_were_enqueued=*/false);
-  }
-
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
-    for (const auto& on_done : callbacks) {
-      on_done(Unimplemented("Implement CopyToRemoteDeviceScattered."),
-              /*sends_were_enqueued=*/false);
-    }
-  }
-
-  PjRtFuture<Status> GetReadyFuture() override;
-
-  bool IsOnCpu() const override { return true; }
-
  private:
-  bool IsEmptyTuple() const {
-    return on_device_shape_.IsTuple() &&
-           on_device_shape_.tuple_shapes_size() == 0;
-  }
-
-  // Acquires the device buffer for shared read-only usages, and it also adds
-  // the `usage_event` to it. Any donation event in the future is expected to be
-  // serialized after all the usage events added through this method. Returns
-  // nullptr if the buffer is already donated or there is outstanding external
-  // references.
-  TrackedTfrtCpuDeviceBuffer* AcquireUsage(
-      tfrt::AsyncValueRef<runtime::CpuEvent> usage_event);
-
-  // A helper class for managing a pending donation. It should be committed upon
-  // success. Otherwise, the donated buffer is returned to the TfrtCpuBuffer.
-  class DonationTransaction {
-   public:
-    explicit DonationTransaction(
-        TfrtCpuBuffer* buffer,
-        std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer)
-        : buffer_(buffer), device_buffer_(std::move(device_buffer)) {
-      CHECK(buffer_);
-    }
-    DonationTransaction(const DonationTransaction&) = delete;
-    DonationTransaction& operator=(const DonationTransaction&) = delete;
-    DonationTransaction(DonationTransaction&&) = default;
-    DonationTransaction& operator=(DonationTransaction&& other) {
-      Abort();
-
-      buffer_ = other.buffer_;
-      device_buffer_ = std::move(other.device_buffer_);
-      return *this;
-    }
-
-    ~DonationTransaction() { Abort(); }
-
-    // Commit the donation. The rvalue ref qualifier is used to ensure the
-    // semantic that it can be committed at most once.
-    void Commit() && {
-      buffer_->CommitDonation();
-      device_buffer_.reset();
-    }
-
-    TrackedTfrtCpuDeviceBuffer* device_buffer() const {
-      return device_buffer_.get();
-    }
-
-   private:
-    void Abort() {
-      if (device_buffer_) buffer_->AbortDonation(std::move(device_buffer_));
-    }
-
-    TfrtCpuBuffer* buffer_ = nullptr;
-    std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer_;
-  };
-
-  // Acquires the device buffer for exclusive donation. The caller of this
-  // method is expected to use the usage events and definition events to
-  // serialize this donation with previous usages. After this method is called,
-  // calls to AcquireUsage() will fail. Returns error status if the buffer is
-  // already donated or there is outstanding external references.
-  StatusOr<DonationTransaction> AcquireDonation();
-
-  void DropExternalReference() {
-    absl::MutexLock lock(&mu_);
-    CHECK_GT(external_reference_counter_, 0);
-    --external_reference_counter_;
-  }
-
-  // Commits the pending donation by setting `pending_donation_` to false.
-  // `pending_donation_` must be true before calling this method.
-  void CommitDonation();
-
-  // Aborts the pending donation by returning the donated buffer, and setting
-  // `pending_donation_` to false. `pending_donation_` must be true before
-  // calling this method.
-  void AbortDonation(std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer);
-
-  // Similar to Delete, drops the buffer's reference to its associated device
-  // memory, leaving the buffer in an invalid state, but returns the
-  // TrackedTfrtCpuDeviceBuffer rather than freeing the device memory, so that
-  // another framework can take ownership of it. The buffer returned from
-  // Release may be safely dropped at any time even if it still has pending
-  // async operations. The client should call Await before calling Release with
-  // wait_for_operations_to_complete=false, to ensure that the host has
-  // synchronized past any outstanding write operations to the buffer. If
-  // wait_for_operations_to_complete=true the host will block until any
-  // potentially outstanding asynchronous operations have completed before
-  // returning, in which case it is safe to read or mutate the returned buffer.
-  // If the buffer was shared via an external reference it is the client's
-  // responsibility that accesses via that reference do not interfere with
-  // accesses via the buffer returned from Release.
-  StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> Release(
-      bool wait_for_operations_to_complete);
-
-  // Releases the device buffer by returning a unique_ptr of it. If there is
-  // outstanding donation or usage holds, this method blocks until those holds
-  // are commited or dropped.
-  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> ReleaseBufferLocked()
-      ABSL_LOCKS_EXCLUDED(mu_);
+  absl::string_view buffer_name() const override { return "TfrtCpuBuffer"; }
 
   TfrtCpuClient* client_;
-  const Shape on_device_shape_;
   TfrtCpuDevice* const device_;
-
-  mutable absl::Mutex mu_;
-  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_
-      ABSL_GUARDED_BY(mu_);
-  // Count of external references on the buffer.
-  int external_reference_counter_ ABSL_GUARDED_BY(mu_) = 0;
-
-  // `pending_donation_` indicates whether a donation is pending. The destructor
-  // of the TfrtCpuBuffer will wait for a pending donation, as the donation
-  // might fail. Note that concurrent calls to AcquireUsage() and
-  // AcquireDonation() might fail even if the pending donation is aborted later.
-  bool pending_donation_ ABSL_GUARDED_BY(mu_) = false;
-
-  friend class TfrtCpuClient;
-  friend class TfrtCpuExecutable;
 };
 
 class TfrtCpuExecutable final : public PjRtLoadedExecutable {
