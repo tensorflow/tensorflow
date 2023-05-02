@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags"
+)
+
 filegroup(
     name = "LICENSE",
     visibility = ["//visibility:public"],
@@ -12,10 +17,7 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
     ],
-    linkopts = [
-        "-Wl,-rpath='$$ORIGIN/../../nvidia/nccl/lib'",
-        "-Wl,-rpath='$$ORIGIN/../nvidia/nccl/lib'",
-    ],
+    linkopts = cuda_rpath_flags("nvidia/nccl/lib"),
 )
 
 genrule(

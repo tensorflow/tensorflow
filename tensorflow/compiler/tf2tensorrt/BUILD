@@ -19,6 +19,10 @@ load(
     "tf_additional_all_protos",
     "tf_proto_library",
 )
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 # Platform specific build config
@@ -71,10 +75,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ]),
-    linkopts = if_tensorrt([
-        "-Wl,-rpath,$$ORIGIN/../../tensorrt",
-        "-Wl,-rpath,$$ORIGIN/../tensorrt",
-    ]),
+    linkopts = if_tensorrt(cuda_rpath_flags("tensorrt")),
 )
 
 alias(
