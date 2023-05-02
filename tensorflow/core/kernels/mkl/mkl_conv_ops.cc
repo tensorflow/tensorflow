@@ -914,10 +914,6 @@ class MklConvOp : public OpKernel {
         // Tensorflow format to MKL format by caching the filter when it is
         // converted for the first time. This cached filter can then be reused
         // in subsequent iterations.
-        // TODO(intel-tf): When oneDNN major version changes to v4.x, weight
-        // caching may not work as expected if the underlying memory descriptor
-        // has changed (i.e. compared to v3.x). We have to return a status here
-        // to catch oneDNN major version change to avoid unexpected results.
         if (is_filter_const_) {
           if (IsFilterCacheEmpty(context)) {
             // Cache filter if it is not already cached.

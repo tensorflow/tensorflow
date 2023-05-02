@@ -50,6 +50,11 @@ class MklTestingUtil {
 // Since oneDNN v3.x exposes only an opaque memory descriptor, it is no longer
 // possible to cache the entire filter memory descriptor as is. So we store
 // all relevant information about it in the following class.
+//
+// TODO(intel-tf): When oneDNN major version changes to v4.x, weight
+// caching may not work as expected if the underlying memory descriptor
+// has changed (i.e. compared to v3.x). We have to return a status here
+// to catch oneDNN major version change to avoid unexpected results.
 class FilterMemoryDesc {
  public:
   FilterMemoryDesc() {}
