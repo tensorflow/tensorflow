@@ -1450,10 +1450,16 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
       elif isinstance(func, polymorphic_function.Function):
         for fdef in func._list_all_concrete_functions():  # pylint: disable=protected-access
           function_aliases[fdef.name] = alias
+      elif isinstance(func, collections.abc.Iterable) and all(
+          isinstance(x, types_core.ConcreteFunction) for x in func
+      ):
+        for entry in func:
+          function_aliases[entry.name] = alias
       else:
         raise TypeError(
             f"Unsupported type f{type(func)}. Functions in `function_aliases`"
-            " should be created by tf.function, or concrete functions."
+            " should be created by tf.function, or concrete functions, or"
+            " collections of concrete functions."
         )
   object_graph_proto = _serialize_object_graph(saveable_view,
                                                asset_info.asset_index)
