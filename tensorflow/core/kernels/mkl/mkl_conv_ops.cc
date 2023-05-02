@@ -377,7 +377,6 @@ class MklConvFwdPrimitive : public MklPrimitive {
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
           post_ops.APPEND_ELTWISE(op_scale, post_op_param.alg, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "sum") {

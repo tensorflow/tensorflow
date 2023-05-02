@@ -162,28 +162,14 @@ inline void execute_primitives(
 #ifndef ENABLE_ONEDNN_V3
 #define ARE_MEMORY_DESCS_EQUAL(md1, md2) dnnl_memory_desc_equal(&md1, &md2)
 #define CREATE_MEMORY_DESC_USING_STRIDES dnnl_memory_desc_init_by_strides
-#define GET_DATA_TYPE data_type
-#define GET_DIMS dims
-#define GET_INNER_BLKS format_desc.blocking.inner_blks
-#define GET_INNER_INDICES format_desc.blocking.inner_idxs
-#define GET_INNER_NBLKS format_desc.blocking.inner_nblks
 #define GET_MEMORY_DESC get_desc().data
 #define GET_MEMORY_DESC_USING_MKLDNN_SHAPE_PTR GetMklLayout().data
-#define GET_NDIMS ndims
-#define GET_STRIDES format_desc.blocking.strides
 #define MEMORY_DESC dnnl_memory_desc_t
 #else
 #define ARE_MEMORY_DESCS_EQUAL(md1, md2) md1 == md2
 #define CREATE_MEMORY_DESC_USING_STRIDES dnnl_memory_desc_create_with_strides
-#define GET_DATA_TYPE get_data_type()
-#define GET_DIMS get_dims()
-#define GET_INNER_BLKS get_inner_blks()
-#define GET_INNER_INDICES get_inner_idxs()
-#define GET_INNER_NBLKS get_inner_nblks()
 #define GET_MEMORY_DESC get_desc()
 #define GET_MEMORY_DESC_USING_MKLDNN_SHAPE_PTR GetMklLayout()
-#define GET_NDIMS get_ndims()
-#define GET_STRIDES get_strides()
 #define MEMORY_DESC memory::desc
 #endif  // !ENABLE_ONEDNN_V3
 
@@ -2129,7 +2115,6 @@ template <typename T>
 class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
   static MklReorderPrimitive* Get(const memory* from, const memory* to) {
-#ifndef ENABLE_ONEDNN_V3
     auto reorderPrim = static_cast<MklReorderPrimitive*>(
         MklReorderPrimitiveFactory<T>::GetInstance().GetReorder(from, to));
     if (reorderPrim == nullptr) {
@@ -2139,14 +2124,8 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     }
     reorderPrim->SetMemory(from, to);
     return reorderPrim;
-#else
-    // TODO(bhavanis): enable ReorderPrimitive cache for v3.x
-    auto reorderPrim = new MklReorderPrimitive(from, to);
-    return reorderPrim;
-#endif  // !ENABLE_ONEDNN_V3
   }
 
-#ifndef ENABLE_ONEDNN_V3
   static MklReorderPrimitiveFactory& GetInstance() {
     static MklReorderPrimitiveFactory instance_;
     return instance_;
@@ -2157,34 +2136,46 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     FactoryKeyCreator key_creator;
     auto const& from_desc = from->GET_MEMORY_DESC;
     auto const& to_desc = to->GET_MEMORY_DESC;
-    memory::dims from_dims(from_desc.GET_DIMS,
-                           &from_desc.GET_DIMS[from_desc.GET_NDIMS]);
-    memory::dims to_dims(to_desc.GET_DIMS,
-                         &to_desc.GET_DIMS[to_desc.GET_NDIMS]);
-    auto from_strides = from_desc.GET_STRIDES;
+#ifndef ENABLE_ONEDNN_V3
+    memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
+    memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
+    auto from_strides = from_desc.format_desc.blocking.strides;
 
     // As DNNL memory desc has C style array and only init the used
     // part, so need use the valid part as key.
-    auto from_inner_nblks = from_desc.GET_INNER_NBLKS;
-    auto from_inner_blks = from_desc.GET_INNER_BLKS;
-    auto from_inner_idxs = from_desc.GET_INNER_INDICES;
+    auto from_inner_nblks = from_desc.format_desc.blocking.inner_nblks;
+    auto from_inner_blks = from_desc.format_desc.blocking.inner_blks;
+    auto from_inner_idxs = from_desc.format_desc.blocking.inner_idxs;
 
     memory::dims from_inner_blks_1(from_inner_blks,
                                    &from_inner_blks[from_inner_nblks]);
     memory::dims from_inner_idxs_1(from_inner_idxs,
                                    &from_inner_idxs[from_inner_nblks]);
-    auto to_inner_nblks = to_desc.GET_INNER_NBLKS;
-    auto to_inner_blks = to_desc.GET_INNER_BLKS;
-    auto to_inner_idxs = to_desc.GET_INNER_INDICES;
+    auto to_inner_nblks = to_desc.format_desc.blocking.inner_nblks;
+    auto to_inner_blks = to_desc.format_desc.blocking.inner_blks;
+    auto to_inner_idxs = to_desc.format_desc.blocking.inner_idxs;
 
     memory::dims to_inner_blks_1(to_inner_blks, &to_inner_blks[to_inner_nblks]);
     memory::dims to_inner_idxs_1(to_inner_idxs, &to_inner_idxs[to_inner_nblks]);
 
-    auto to_strides = to_desc.GET_STRIDES;
+    auto to_strides = to_desc.format_desc.blocking.strides;
     memory::dims from_strides_outer_blocks(from_strides,
-                                           &from_strides[from_desc.GET_NDIMS]);
+                                           &from_strides[from_desc.ndims]);
     memory::dims to_strides_outer_blocks(to_strides,
-                                         &to_strides[to_desc.GET_NDIMS]);
+                                         &to_strides[to_desc.ndims]);
+#else
+    memory::dims from_dims = from_desc.get_dims();
+    memory::dims from_strides = from_desc.get_strides();
+    int from_inner_nblks = from_desc.get_inner_nblks();
+    memory::dims from_inner_blks = from_desc.get_inner_blks();
+    memory::dims from_inner_idxs = from_desc.get_inner_idxs();
+
+    memory::dims to_dims = to_desc.get_dims();
+    int to_inner_nblks = to_desc.get_inner_nblks();
+    memory::dims to_inner_blks = to_desc.get_inner_blks();
+    memory::dims to_inner_idxs = to_desc.get_inner_idxs();
+    memory::dims to_strides = to_desc.get_strides();
+#endif  // !ENABLE_ONEDNN_V3
 
     key_creator.AddAsKey(prefix);
 #ifdef DNNL_AARCH64_USE_ACL
@@ -2192,29 +2183,44 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     // need to make sure that memory for those primitives is cached per thread.
     key_creator.AddAsKey(std::this_thread::get_id());
 #endif
+#ifndef ENABLE_ONEDNN_V3
     key_creator.AddAsKey(static_cast<int>(from_desc.extra.flags));
     key_creator.AddAsKey(static_cast<int>(from_inner_nblks));
     key_creator.AddAsKey(from_inner_blks_1);
     key_creator.AddAsKey(from_inner_idxs_1);
-    key_creator.AddAsKey(static_cast<int>(from_desc.GET_DATA_TYPE));
+    key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
     key_creator.AddAsKey(from_dims);
     key_creator.AddAsKey(from_strides_outer_blocks);
     key_creator.AddAsKey(static_cast<int>(to_desc.extra.flags));
     key_creator.AddAsKey(static_cast<int>(to_inner_nblks));
     key_creator.AddAsKey(to_inner_blks_1);
     key_creator.AddAsKey(to_inner_idxs_1);
-    key_creator.AddAsKey(static_cast<int>(to_desc.GET_DATA_TYPE));
+    key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
     key_creator.AddAsKey(to_dims);
     key_creator.AddAsKey(to_strides_outer_blocks);
+#else
+    // TODO(intel-tf): dnnl_memory_extra_desc_t (from/to_desc.extra) can no
+    // longer be queried in oneDNN v3.x. We may have to refactor reorder cache
+    // in the future to compare two dnnl::memory::desc's directly via operator==
+    // instead of storing all their fields in the reorder cache.
+    key_creator.AddAsKey(static_cast<int>(from_inner_nblks));
+    key_creator.AddAsKey(from_inner_blks);
+    key_creator.AddAsKey(from_inner_idxs);
+    key_creator.AddAsKey(static_cast<int>(from_desc.get_data_type()));
+    key_creator.AddAsKey(from_dims);
+    key_creator.AddAsKey(static_cast<int>(to_inner_nblks));
+    key_creator.AddAsKey(to_inner_blks);
+    key_creator.AddAsKey(to_inner_idxs);
+    key_creator.AddAsKey(static_cast<int>(to_desc.get_data_type()));
+    key_creator.AddAsKey(to_dims);
+#endif  // !ENABLE_ONEDNN_V3
     return key_creator.GetKey();
   }
-#endif  // !ENABLE_ONEDNN_V3
 
  private:
   MklReorderPrimitiveFactory() {}
   ~MklReorderPrimitiveFactory() {}
 
-#ifndef ENABLE_ONEDNN_V3
   MklPrimitive* GetReorder(const memory* from, const memory* to) {
     string key = CreateKey(from, to);
     return this->GetOp(key);
@@ -2224,7 +2230,6 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     string key = CreateKey(from, to);
     this->SetOp(key, op);
   }
-#endif  // !ENABLE_ONEDNN_V3
 };
 
 /// Function to find(or create) a reorder from memory pointed by
@@ -2253,15 +2258,8 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 
 #undef ARE_MEMORY_DESCS_EQUAL
 #undef CREATE_MEMORY_DESC_USING_STRIDES
-#undef GET_DATA_TYPE
-#undef GET_DIMS
-#undef GET_INNER_BLKS
-#undef GET_INNER_INDICES
-#undef GET_INNER_NBLKS
 #undef GET_MEMORY_DESC
 #undef GET_MEMORY_DESC_USING_MKLDNN_SHAPE_PTR
-#undef GET_NDIMS
-#undef GET_STRIDES
 #undef MEMORY_DESC
 
 }  // namespace tensorflow

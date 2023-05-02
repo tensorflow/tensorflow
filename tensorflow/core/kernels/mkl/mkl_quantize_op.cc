@@ -213,7 +213,6 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
   static MklReorderWithScalePrimitive* Get(
       const memory* from, const memory* to,
       const MklReorderWithScaleFwdParams& fwdParams) {
-#ifndef ENABLE_ONEDNN_V3
     // Try to find a suitable primitive from the cached pool
     auto reorderPrim = static_cast<MklReorderWithScalePrimitive*>(
         MklReorderWithScalePrimitiveFactory<T>::GetInstance().GetReorder(
@@ -224,25 +223,17 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
           from, to, reorderPrim, fwdParams);
     }
     return reorderPrim;
-#else
-    // TODO(intel-tf): enable ReorderWithScale primitive cache for v3.x
-    auto reorderPrim = new MklReorderWithScalePrimitive(fwdParams);
-    return reorderPrim;
-#endif  // !ENABLE_ONEDNN_V3
   }
 
-#ifndef ENABLE_ONEDNN_V3
   static MklReorderWithScalePrimitiveFactory& GetInstance() {
     static MklReorderWithScalePrimitiveFactory instance_;
     return instance_;
   }
-#endif  // !ENABLE_ONEDNN_V3
 
  private:
   MklReorderWithScalePrimitiveFactory() {}
   ~MklReorderWithScalePrimitiveFactory() {}
 
-#ifndef ENABLE_ONEDNN_V3
   static string CreateKey(const memory* from, const memory* to,
                           const MklReorderWithScaleFwdParams& fwdParams) {
     FactoryKeyCreator key_creator;
@@ -270,7 +261,6 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
     string key = CreateKey(from, to, fwdParams);
     this->SetOp(key, op);
   }
-#endif  // !ENABLE_ONEDNN_V3
 };
 
 // Quantizes a tensor from float to T, with user-specified min_range and
@@ -556,9 +546,9 @@ class MklQuantizeV2Op : public OpKernel {
 #else
     MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md);
     fwdParams.dtypes.append(typeid(T).name());
+#endif  // ENABLE_ONEDNN_V3
     fwdParams.post_op_params.name = "scale";
     fwdParams.post_op_params.param.push_back(scale_factor);
-#endif  // ENABLE_ONEDNN_V3
 
     MklDnnThreadPool eigen_tp(ctx);
     MklReorderWithScalePrimitive* reorder_prim =
