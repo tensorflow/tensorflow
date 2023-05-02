@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SetOperations.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
@@ -645,17 +647,18 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   SmallVector<Value> clusterResults;
   SmallVector<Value> constantOps;
   auto visitOpOperand = [&](OpOperand* operand) {
-    auto* definingOp = operand->get().getDefiningOp();
+    Value operandValue = operand->get();
+    auto* definingOp = operandValue.getDefiningOp();
 
-    if (auto constantOp = dyn_cast_or_null<arith::ConstantOp>(definingOp)) {
-      constantOps.push_back(constantOp);
+    if (definingOp && definingOp->hasTrait<OpTrait::ConstantLike>()) {
+      constantOps.push_back(operandValue);
       return;
     }
 
     if (fusionCluster.operations.contains(definingOp)) return;
-    if (llvm::is_contained(initOperands, operand->get())) return;
+    if (llvm::is_contained(initOperands, operandValue)) return;
 
-    inputOperands.insert(operand->get());
+    inputOperands.insert(operandValue);
   };
 
   for (Operation* op : fusionCluster.operations) {
@@ -695,9 +698,9 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   mapper.map(clusterOperands, block->getArguments());
 
   // 4. Copy ops into the cluster region.
-  // 4.1. Copy arith.constant ops.
+  // 4.1. Copy constant ops.
   for (auto v : constantOps) {
-    auto newOp = cast<arith::ConstantOp>(rewriter.clone(*v.getDefiningOp()));
+    auto newOp = rewriter.clone(*v.getDefiningOp())->getResult(0);
     mapper.map(v, newOp);
   }
 
