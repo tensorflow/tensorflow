@@ -15,6 +15,7 @@
 """Implementation for AtomicFunction."""
 
 import dataclasses
+import traceback
 from typing import Any
 
 from tensorflow.core.framework import attr_value_pb2
@@ -34,13 +35,40 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 
 
-class _InterpolateFunctionError(object):
-  """Context Manager that interpolates the exception from 'top_level_func'."""
+class InterpolateRuntimeError(object):
+  """Context Manager that interpolates exceptions received by AtomicFunction."""
 
-  __slots__ = ["_func"]
+  DENY_LIST_PHRASES = ["<embedded"]
 
   def __init__(self, top_level_func):
     self._func = top_level_func
+
+  def interpolate(self, message, node_names, graph_debug_info):
+    """Uses the GraphDebugInfo to generate an error message."""
+    error_message = ["Graph execution error:", ""]
+    for node_name in node_names:
+      error_message.append(
+          f"Detected at node {node_name} defined at (most recent call last):"
+      )
+      if node_name in graph_debug_info.traces:
+        stack_trace = graph_debug_info.traces[node_name]
+        tb_frames = []
+        for frame in stack_trace.file_line_cols:
+          tb_frames.append(
+              traceback.FrameSummary(
+                  graph_debug_info.files[frame.file_index],
+                  frame.line,
+                  frame.func,
+              )
+          )
+          for formatted_frame in traceback.format_list(tb_frames):
+            if not any(p in formatted_frame for p in self.DENY_LIST_PHRASES):
+              error_message.append(formatted_frame)
+      else:
+        error_message.append("<stack traces unavailable>")
+
+    error_message.append(message.strip())
+    return "\n".join(error_message)
 
   def __enter__(self):
     pass
@@ -49,18 +77,24 @@ class _InterpolateFunctionError(object):
     if not exc or not isinstance(exc, errors.OpError):
       return False
     message = compat.as_text(exc.message)
-    _, func_tags, _ = error_interpolation.parse_message(message)
-    g = None
+    parsed_message, func_tags, node_tags = error_interpolation.parse_message(
+        message
+    )
+    deepest_func = None
     for func_tag in func_tags:
       # TODO(mdan): Tests should cover this.
       if func_tag.name == compat.as_str(self._func.name):
-        g = self._func.graph
-      elif g:
-        next_func = g._get_function(func_tag.name)  # pylint: disable=protected-access
+        deepest_func = self._func
+      elif deepest_func:
+        next_func = deepest_func.graph._get_function(func_tag.name)  # pylint: disable=protected-access
         if next_func is not None and isinstance(next_func, AtomicFunction):
-          g = next_func.graph
-    if g:
-      exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
+          deepest_func = next_func
+    if deepest_func:
+      exc._message = self.interpolate(
+          parsed_message,
+          [t.name for t in node_tags],
+          deepest_func.graph_debug_info,
+      )
     return False
 
 
@@ -141,6 +175,10 @@ class AtomicFunction:
     return self._cached_definition
 
   @property
+  def graph_debug_info(self):
+    return self._bound_context.get_graph_debug_info(self.name)
+
+  @property
   def name(self):
     """Name represented in UTF-8 encoded bytes."""
     return self._name
@@ -184,7 +222,7 @@ class AtomicFunction:
           f" got: {len(args)}."
       )
 
-    with _InterpolateFunctionError(self):
+    with InterpolateRuntimeError(self):
       with ops.control_dependencies(self._graph_artifacts.control_captures):
         # The caller must use record_operation to record this operation in the
         # eager case, so we enforce the same requirement for the non-eager

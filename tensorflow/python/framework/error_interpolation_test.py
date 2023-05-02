@@ -232,14 +232,14 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       normal_string = "This is just a normal string"
-      interpolated_string = error_interpolation.interpolate(
+      interpolated_string = error_interpolation.interpolate_graph(
           normal_string, ops.get_default_graph())
       self.assertIn(normal_string, interpolated_string)
 
   def testOneTagWithAFakeNameResultsInPlaceholders(self):
     with ops.Graph().as_default():
       one_tag_string = "{{node MinusOne}}"
-      interpolated_string = error_interpolation.interpolate(
+      interpolated_string = error_interpolation.interpolate_graph(
           one_tag_string, ops.get_default_graph())
       self.assertIn(one_tag_string, interpolated_string)
 
@@ -249,7 +249,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
       one_tag_with_a_fake_function_tag = "{{function_node fake}}{{node One}}"
-      interpolated_string = error_interpolation.interpolate(
+      interpolated_string = error_interpolation.interpolate_graph(
           one_tag_with_a_fake_function_tag, ops.get_default_graph())
       # Fragments the expression to avoid matching the pattern itself.
       expected_regex = re.compile(rf"node 'One'.*{defined_at}", re.DOTALL)
@@ -264,7 +264,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(2, name="Two")
       constant_op.constant(3, name="Three")
       two_tags_no_seps = "{{node One}}{{node Three}}"
-      interpolated_string = error_interpolation.interpolate(
+      interpolated_string = error_interpolation.interpolate_graph(
           two_tags_no_seps, ops.get_default_graph())
       # Fragments the expression to avoid matching the pattern itself.
       expected_regex = re.compile(
@@ -278,7 +278,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(2, name="Two")
       constant_op.constant(3, name="Three")
       two_tags_with_seps = ";;;{{node Two}},,,{{node Three}};;;"
-      interpolated_string = error_interpolation.interpolate(
+      interpolated_string = error_interpolation.interpolate_graph(
           two_tags_with_seps, ops.get_default_graph())
       # Fragments the expression to avoid matching the pattern itself.
       expected_regex = re.compile(
@@ -291,7 +291,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
       newline = "\n\n;;;{{node One}};;;"
-      interpolated_string = error_interpolation.interpolate(
+      interpolated_string = error_interpolation.interpolate_graph(
           newline, ops.get_default_graph())
       expected_regex = re.compile(rf"node 'One'.*{defined_at}", re.DOTALL)
       self.assertRegex(interpolated_string, expected_regex)

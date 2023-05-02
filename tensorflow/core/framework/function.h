@@ -374,12 +374,21 @@ class AbstractStackTrace {
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
   virtual StackFrame LastUserFrame() const = 0;
+
+  // Returns stack trace from user code (instead of op creation ones returned in
+  // ToFrames).
+  virtual std::vector<StackFrame> GetUserFrames(int limit) const = 0;
+
   virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
 };
 
 using StackTracesMap =
     std::unordered_map<std::string,
                        std::shared_ptr<tensorflow::AbstractStackTrace>>;
+
+// Generates a GraphDebugInfo proto from a StackTracesMap object.
+tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
+    const tensorflow::StackTracesMap& map);
 
 // Holds Function information that can be shared in multiple places.
 // FunctionRecord must be explicitly finalized before being saved in

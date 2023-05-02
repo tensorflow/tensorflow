@@ -435,7 +435,7 @@ def _build_node_error_message(op):
   return "\n".join(node_error_message)
 
 
-def interpolate(message, graph):
+def interpolate_graph(message, graph):
   """Interpolates an error message.
 
   The error message can contain tags of form `{{node_type node_name}}`
