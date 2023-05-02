@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -337,6 +338,7 @@ std::string ExperimentalRunPassPipeline(const std::string& mlir_txt,
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  registry.insert<mlir::shape::ShapeDialect>();
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
@@ -372,6 +374,7 @@ void ExperimentalWriteBytecode(const std::string& filename,
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  registry.insert<mlir::shape::ShapeDialect>();
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
