@@ -943,7 +943,7 @@ class ValueContext(object):
   def __init__(self,
                replica_id_in_sync_group=0,
                num_replicas_in_sync=1):
-    """Initializes an ValueContext object.
+    """Initializes a ValueContext object.
 
     Args:
       replica_id_in_sync_group: the current replica_id, should be an int in
@@ -2512,8 +2512,8 @@ class StrategyExtendedV2(object):
         elif (isinstance(kwargs["initial_value"], functools.partial) and
               isinstance(kwargs["initial_value"].func,
                          trackable.CheckpointInitialValueCallable)):
-          # Some libraries (e.g, Keras) create partial function out of initializer
-          # to bind shape/dtype, for example:
+          # Some libraries (e.g., Keras) create partial function out of
+          # initializer to bind shape/dtype, for example:
           #  initial_val = functools.partial(initializer, shape, dtype=dtype)
           # Therefore to get the restore_uid we need to examine the "func" of
           # the partial function.
@@ -2731,16 +2731,19 @@ class StrategyExtendedV2(object):
     Returns:
       A tensor or value reduced to `destinations`.
     """
-    if options is None:
-      options = collective_util.Options()
-    _require_cross_replica_or_default_context_extended(self)
-    assert not isinstance(destinations, (list, tuple))
-    assert not isinstance(reduce_op, variable_scope.VariableAggregation)
-    if isinstance(reduce_op, six.string_types):
-      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
-    assert (reduce_op == reduce_util.ReduceOp.SUM or
-            reduce_op == reduce_util.ReduceOp.MEAN)
-    return self._reduce_to(reduce_op, value, destinations, options)
+    with monitoring.MonitoredTimer(
+        distributed_api_time_counter.get_cell(self.__class__.__name__, "Reduce_to_eagerly")
+    ) if not ops.inside_function() else contextlib.nullcontext():
+      if options is None:
+        options = collective_util.Options()
+      _require_cross_replica_or_default_context_extended(self)
+      assert not isinstance(destinations, (list, tuple))
+      assert not isinstance(reduce_op, variable_scope.VariableAggregation)
+      if isinstance(reduce_op, six.string_types):
+        reduce_op = reduce_util.ReduceOp(reduce_op.upper())
+      assert (reduce_op == reduce_util.ReduceOp.SUM or
+              reduce_op == reduce_util.ReduceOp.MEAN)
+      return self._reduce_to(reduce_op, value, destinations, options)
 
   def _reduce_to(self, reduce_op, value, destinations, options):
     raise NotImplementedError("must be implemented in descendants")
@@ -2809,13 +2812,16 @@ class StrategyExtendedV2(object):
     Returns:
       A list of reduced values, one per pair in `value_destination_pairs`.
     """
-    if options is None:
-      options = collective_util.Options()
-    _require_cross_replica_or_default_context_extended(self)
-    assert not isinstance(reduce_op, variable_scope.VariableAggregation)
-    if isinstance(reduce_op, six.string_types):
-      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
-    return self._batch_reduce_to(reduce_op, value_destination_pairs, options)
+    with monitoring.MonitoredTimer(
+        distributed_api_time_counter.get_cell(self.__class__.__name__, "Batch_reduce_to_eagerly")
+    ) if not ops.inside_function() else contextlib.nullcontext():
+      if options is None:
+        options = collective_util.Options()
+      _require_cross_replica_or_default_context_extended(self)
+      assert not isinstance(reduce_op, variable_scope.VariableAggregation)
+      if isinstance(reduce_op, six.string_types):
+        reduce_op = reduce_util.ReduceOp(reduce_op.upper())
+      return self._batch_reduce_to(reduce_op, value_destination_pairs, options)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs, options):
     return [
@@ -3525,7 +3531,7 @@ class ReplicaContextBase(object):
     NOTE: For `tf.distribute.MirroredStrategy` and
     `tf.distribute.experimental.MultiWorkerMirroredStrategy`, this returns a
     nested
-    list of device strings, e.g, [["GPU:0"]].
+    list of device strings, e.g., [["GPU:0"]].
     """
     require_replica_context(self)
     return (device_util.current(),)
@@ -4215,3 +4221,6 @@ distribution_strategy_input_api_counter = monitoring.Counter(
 distributed_variable_creation_time_counter = monitoring.Counter(
     "/tensorflow/api/distribution_strategy/distributed_variable_creation_time_usecs",
     "Time to create distributed variables (us).", "strategy", "if_graph_building")
+distributed_api_time_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/distributed_variable_api_time_usecs",
+    "Time spent on an API (us).", "strategy", "api")
