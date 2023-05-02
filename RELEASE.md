@@ -1,56 +1,15 @@
 # Release 2.13.0
 
-## Breaking Changes
+## TensorFlow
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-*  `tf.keras`
-
-    *  Removed the Keras scikit-learn API wrappers (`KerasClassifier` and
-       `KerasRegressor`), which had been deprecated in August 2021.
-       We recommend using [SciKeras](https://github.com/adriangb/scikeras)
-       instead.
-    *  The default Keras model saving format is now the Keras v3 format:
-       calling `model.save("xyz.keras")` will no longer create a H5 file,
-       it will create a native Keras model file.
-       This will only be breaking for you if you were manually inspecting or
-       modifying H5 files saved by Keras under a `.keras` extension.
-       If this breaks you, simply add `save_format="h5"` to your `.save()` call
-       to revert back to the prior behavior.
-    *  Added `keras.utils.TimedThread` utility to run a timed thread every x
-       seconds. It can be used to run a threaded function alongside model
-       training or any other snippet of code.
-    *  In the `keras` PyPI package, accessible symbols are now restricted to
-       symbols that are intended to be public.
-       This may affect your code if you were using `import keras` and you used
-       `keras` functions that were not public APIs, but were accessible in
-       earlier versions with direct imports. In those cases, please use the
-       following guideline:
-        -  The API may be available in the public Keras API under a different
-           name, so make sure to look for it on keras.io or TensorFlow docs
-           and switch to the public version.
-        -  It could also be a simple python or TF utility that you could easily
-           copy over to your own codebase. In those case, just make it your own!
-        -  If you believe it should definitely be a public Keras API,
-           please open a feature request in keras GitHub repo.
-        -  As a workaround, you could import the same private symbol keras
-           `keras.src`, but keep in mind the `src` namespace is not stable and
-           those APIs may change or be removed in the future.
-
+### Breaking Changes
 
 * The LMDB kernels have been changed to return an error. This is in preparation
   for completely removing them from TensorFlow. The LMDB dependency that these
   kernels are bringing to TensorFlow has been dropped, thus making the build
   slightly faster and more secure.
 
-## Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
-## Major Features and Improvements
+### Major Features and Improvements
 
 *   `tf.lite`:
 
@@ -159,11 +118,7 @@
         `tf.saved_model.experimental.Fingerprint.singleprint()`, which provides
         a convenient way to uniquely identify a SavedModel.
 
-## Bug Fixes and Other Changes
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
+### Bug Fixes and Other Changes
 
 *   `tf.Variable`
 
@@ -199,9 +154,104 @@
     *   Deprecated API `tf.nest.is_sequence` has now been deleted.
         Please use `tf.nest.is_nested` instead.
 
+
+## Keras
+
+ Keras is a framework built on top of the TensorFlow. See more details on the Keras [website](https://keras.io/).
+
+### Breaking Changes
+
+ *  `tf.keras`
+
+    *  Removed the Keras scikit-learn API wrappers (`KerasClassifier` and
+       `KerasRegressor`), which had been deprecated in August 2021.
+       We recommend using [SciKeras](https://github.com/adriangb/scikeras)
+       instead.
+    *  The default Keras model saving format is now the Keras v3 format:
+       calling `model.save("xyz.keras")` will no longer create a H5 file,
+       it will create a native Keras model file.
+       This will only be breaking for you if you were manually inspecting or
+       modifying H5 files saved by Keras under a `.keras` extension.
+       If this breaks you, simply add `save_format="h5"` to your `.save()` call
+       to revert back to the prior behavior.
+    *  Added `keras.utils.TimedThread` utility to run a timed thread every x
+       seconds. It can be used to run a threaded function alongside model
+       training or any other snippet of code.
+    *  In the `keras` PyPI package, accessible symbols are now restricted to
+       symbols that are intended to be public.
+       This may affect your code if you were using `import keras` and you used
+       `keras` functions that were not public APIs, but were accessible in
+       earlier versions with direct imports. In those cases, please use the
+       following guideline:
+        -  The API may be available in the public Keras API under a different
+           name, so make sure to look for it on keras.io or TensorFlow docs
+           and switch to the public version.
+        -  It could also be a simple python or TF utility that you could easily
+           copy over to your own codebase. In those case, just make it your own!
+        -  If you believe it should definitely be a public Keras API,
+           please open a feature request in keras GitHub repo.
+        -  As a workaround, you could import the same private symbol keras
+           `keras.src`, but keep in mind the `src` namespace is not stable and
+           those APIs may change or be removed in the future.
+
+### Major Features and Improvements
+
+*   `tf.keras`
+
+    *   Added F-Score metrics `tf.keras.metrics.FBetaScore`,
+        `tf.keras.metrics.F1Score`, and `tf.keras.metrics.R2Score`.
+    *   Added activation function `tf.keras.activations.mish`.
+    *   Added experimental `keras.metrics.experimental.PyMetric` API for metrics
+        that run Python code on the host CPU (compiled outside of the TensorFlow
+        graph). This can be used for integrating metrics from external Python
+        libraries (like sklearn or pycocotools) into Keras as first-class Keras
+        metrics.
+    *   Added `tf.keras.optimizers.Lion` optimizer.
+    *   Added `tf.keras.layers.SpectralNormalization` layer wrapper to perform
+        spectral normalization on the weights of a target layer.
+    *   The `SidecarEvaluatorModelExport` callback has been added to Keras as
+        `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for
+        exporting the model the best-scoring model as evaluated by a
+        `SidecarEvaluator` evaluator. The evaluator regularly evaluates the
+        model and exports it if the user-defined comparison function determines
+        that it is an improvement.
+    *   Added warmup capabilities to `tf.keras.optimizers.schedules.CosineDecay`
+        learning rate scheduler. You can now specify an initial and target
+        learning rate, and our scheduler will perform a linear interpolation
+        between the two after which it will begin a decay phase.
+    *   Added experimental support for an exactly-once visitation guarantee for
+        evaluating Keras models trained with
+        `tf.distribute.ParameterServerStrategy`, via the
+        `exact_evaluation_shards` argument in `Model.fit` and `Model.evaluate`.
+    *   Added `tf.keras.__internal__.KerasTensor`,
+        `tf.keras.__internal__.SparseKerasTensor`, and
+        `tf.keras.__internal__.RaggedKerasTensor` classes. You can use these
+        classes to do instance type checking and type annotations for
+        layer/model inputs and outputs.
+    *   All the `tf.keras.dtensor.experimental.optimizers` classes have been 
+        merged with `tf.keras.optimizers`. You can migrate your code to use
+        `tf.keras.optimizers` directly. The API namespace for
+        `tf.keras.dtensor.experimental.optimizers` will be removed in future
+        releases.
+    *   Added support for `class_weight` for 3+ dimensional targets (e.g.
+        image segmentation masks) in `Model.fit`.
+    *   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
+    *   Remove the `tf.keras.dtensor.experimental.layout_map_scope()`. You can
+        user the `tf.keras.dtensor.experimental.LayoutMap.scope()` instead.
+
+### Bug Fixes and Other Changes
+
+*   N/A
+
+## Security
+
+*   N/A
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
+
+103yiran, 8bitmp3, Aakar, Aakar Dwivedi, Abinash Satapathy, Aditya Kane, ag.ramesh, Alexander Grund, Andrei Pikas, andreii, Andrew Goodbody, angerson, Anthony_256, Ashay Rane, Ashiq Imran, Awsaf, Balint Cristian, Banikumar Maiti (Intel Aipg), Ben Barsdell, bhack, cfRod, Chao Chen, chenchongsong, Chris Mc, Daniil Kutz, David Rubinstein, dianjiaogit, dixr, Dongfeng Yu, dongfengy, drah, Eric Kunze, Feiyue Chen, Frederic Bastien, Gauri1 Deshpande, guozhong.zhuang, hDn248, HYChou, ingkarat, James Hilliard, Jason Furmanek, Jaya, Jens Glaser, Jerry Ge, Jiao Dian'S Power Plant, Jie Fu, Jinzhe Zeng, Jukyy, Kaixi Hou, Kanvi Khanna, Karel Ha, karllessard, Koan-Sin Tan, Konstantin Beluchenko, Kulin Seth, Kun Lu, Kyle Gerard Felker, Leopold Cambier, Lianmin Zheng, linlifan, liuyuanqiang, Lukas Geiger, Luke Hutton, Mahmoud Abuzaina, Manas Mohanty, Mateo Fidabel, Maxiwell S. Garcia, Mayank Raunak, mdfaijul, meatybobby, Meenakshi Venkataraman, Michael Holman, Nathan John Sircombe, Nathan Luehr, nitins17, Om Thakkar, Patrice Vignola, Pavani Majety, per1234, Philipp Hack, pollfly, Prianka Liz Kariat, Rahul Batra, rahulbatra85, ratnam.parikh, Rickard Hallerbäck, Roger Iyengar, Rohit Santhanam, Roman Baranchuk, Sachin Muradi, sanadani, Saoirse Stewart, seanshpark, Shawn Wang, shuw, Srinivasan Narayanamoorthy, Stewart Miles, Sunita Nadampalli, SuryanarayanaY, Takahashi Shuuji, Tatwai Chong, Thibaut Goetghebuer-Planchon, tilakrayal, Tirumalesh, TJ, Tony Sung, Trevor Morris, unda, Vertexwahn, venkat2469, William Muir, Xavier Bonaventura, xiang.zhang, Xiao-Yong Jin, yleeeee, Yong Tang, Yuriy Chernyshov, Zhang, Xiangze, zhaozheng09
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
