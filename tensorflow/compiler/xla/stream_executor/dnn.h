@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -1574,12 +1575,6 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  // Return a list of algorithms supported by the forward convolution pass.
-  // cc_major and cc_minor are the compute capabilities of the device.
-  virtual bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<AlgorithmDesc>* out_algorithms);
-
   virtual tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -1590,6 +1585,7 @@ class DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -1612,6 +1608,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
   virtual tsl::Status GetFusedMatmulRunners(
@@ -1620,6 +1617,7 @@ class DnnSupport {
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
       int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 
@@ -1741,18 +1739,6 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data) = 0;
-
-  // Return a list of algorithms supported by the backward convolution pass for
-  // data.
-  virtual bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<AlgorithmDesc>* out_algorithms);
-
-  // Return a list of algorithms supported by the backward convolution pass for
-  // filters.
-  virtual bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<AlgorithmDesc>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions
@@ -1879,6 +1865,14 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemoryBase output_data, ScratchAllocator* workspace_allocator) = 0;
 
+  virtual tsl::Status DoPoolForward(
+      DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const NumericOptions& numeric_options,
+      const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemoryBase output_data, ScratchAllocator* workspace_allocator);
+
   // Performs differentiation of the pooling operation.
   virtual tsl::Status DoPoolBackward(
       DataType element_type, Stream* stream,
@@ -1888,6 +1882,15 @@ class DnnSupport {
       DeviceMemoryBase output_data, DeviceMemoryBase input_diff_data,
       DeviceMemoryBase output_diff_data,
       ScratchAllocator* workspace_allocator) = 0;
+
+  virtual tsl::Status DoPoolBackward(
+      DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const NumericOptions& numeric_options,
+      const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemoryBase output_data, DeviceMemoryBase input_diff_data,
+      DeviceMemoryBase output_diff_data, ScratchAllocator* workspace_allocator);
 
   // Applies local response normalization to the values from input_data and
   // writes the result to output_data.
@@ -2559,12 +2562,13 @@ class DnnSupport {
                                 absl::Span<const int> labels_data,
                                 absl::Span<const int> labels_lengths_data,
                                 absl::Span<const int> input_lengths_data,
+                                const NumericOptions& numeric_options,
                                 ScratchAllocator* workspace_allocator,
                                 DeviceMemory<uint8_t>* scratch_memory,
                                 int* ctc_loss_algo_id) {
     return DoPrepareForCtcLoss(
         stream, ToDataType<ElementType>::value, probs_desc, grads_desc,
-        labels_data, labels_lengths_data, input_lengths_data,
+        labels_data, labels_lengths_data, input_lengths_data, numeric_options,
         workspace_allocator, scratch_memory, ctc_loss_algo_id);
   }
 
@@ -2885,6 +2889,7 @@ class DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
+      const NumericOptions& numeric_options,
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
     *scratch_memory = {};

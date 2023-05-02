@@ -342,14 +342,13 @@ absl::Status DelegateKernelCore::InitializeGraph(
   //
   // Similarly, TfLiteDelegateParams.output_tensors is an array of all output
   // tensors, and can contain static tensors with buggy conversion.
-  // GraphFloat32.outputs() is an array of runtime tensors that don't have a
-  // consumer (this is a bug in the assumption) and the order may not be the
-  // same as defined by TfLiteDelegateParams.output_tensors.  Again, these two
-  // sets are not the same, especially on a multi-partition delegation.  These
-  // are matched by inserting the tensors by the order defined by
-  // TfLiteDelegateParams.output_tensors.  Similarly, this logic is shared
-  // with ModelBuilder::PrecreateIOTensors() which is eventually called with
-  // BuildFinalModel() above.
+  // GraphFloat32.outputs() is an array of runtime tensors and the order may not
+  // be the same as defined by TfLiteDelegateParams.output_tensors.  Again,
+  // these two sets are not the same, especially on a multi-partition
+  // delegation.  These are matched by inserting the tensors by the order
+  // defined by TfLiteDelegateParams.output_tensors.  Similarly, this logic is
+  // shared with ModelBuilder::PrecreateIOTensors() which is eventually called
+  // with BuildFinalModel() above.
   //
   // The aforementioned matching in BuildFinalModel() is ported here to match
   // input/output_refs.

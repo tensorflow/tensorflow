@@ -18,6 +18,7 @@ package_group(
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/graph_executor/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
+        "//tensorflow/core/tfrt/utils/debug/...",
         "//tensorflow_serving/...",
         "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",

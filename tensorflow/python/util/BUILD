@@ -482,43 +482,6 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
-    name = "util",
-    srcs = glob(
-        ["*.py"],
-        exclude = [
-            "example_parser*",
-            "tf_contextlib.py",
-            "tf_should_use.py",
-            "tf_export.py",
-            "tf_stack.py",
-            "tf_decorator.py",
-            "*_test.py",
-        ],
-    ),
-    compatible_with = get_compatible_with_portable(),
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    visibility = util_subpackage_visibility,
-    deps = [
-        ":_pywrap_tensor_float_32_execution",
-        ":_pywrap_determinism",
-        # global_test_configuration is added here because all major tests depend on this
-        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
-        # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
-        "//tensorflow/python:global_test_configuration",
-        ":tf_decorator",
-        ":tf_export",
-        "@com_google_protobuf//:protobuf_python",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-        "@wrapt",
-        "//tensorflow/python/util/protobuf",
-        "//tensorflow/tools/docs:doc_controls",
-        "//tensorflow/tools/compatibility:all_renames_v2",
-    ],
-)
-
 tf_py_strict_test(
     name = "traceback_utils_test",
     size = "small",
@@ -857,7 +820,9 @@ py_strict_library(
 py_strict_library(
     name = "serialization",
     srcs = ["serialization.py"],
-    visibility = util_subpackage_visibility,
+    visibility = util_subpackage_visibility + [
+        "//tensorflow_kfac/python/kernel_tests:__subpackages__",
+    ],
     deps = [
         ":compat",
         "//tensorflow/python/framework:dtypes",

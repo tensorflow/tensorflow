@@ -30,7 +30,6 @@ py_library(
     srcs = ["mirrored_strategy.py"],
     deps = [
         ":dtensor_util",
-        "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
@@ -75,6 +74,7 @@ dtensor_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -84,6 +84,7 @@ py_library(
     name = "dtensor_util",
     srcs = ["dtensor_util.py"],
     deps = [
+        "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/python/distribute:values",
     ],

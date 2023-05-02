@@ -333,6 +333,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass(
       /*legacy_graph_export=*/true));
   pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
+  pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUColocateSplitsPass());
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
@@ -364,6 +365,7 @@ void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorUpdateControlDependenciesPass());
 
   pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
+  pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUColocateSplitsPass());
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {

@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 
 // These classes are forward declared so that ExecutableRunOptions can be linked
 // into an XLA-compiled binary without having to link all of the pointed-to
@@ -41,14 +42,10 @@ struct ThreadPoolDevice;
 
 namespace tsl {
 template <typename T>
-class StatusOr;
-template <typename T>
 class AsyncValueRef;
 }  // namespace tsl
 
 namespace xla {
-
-using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 class DeviceAssignment;
 class ExecutionProfile;
@@ -99,7 +96,7 @@ using ThenExecuteFunction =
 // copied from the `src` memory. `frontend_attrs` contains frontend specific
 // attributes for the send.
 using SendDeviceMemoryFunction =
-    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
         const stream_executor::DeviceMemoryBase& src,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
@@ -109,7 +106,7 @@ using SendDeviceMemoryFunction =
 // copied into the `dst` memory. `frontend_attrs` contains frontend specific
 // attributes for the receive.
 using RecvDeviceMemoryFunction =
-    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
         stream_executor::DeviceMemoryBase* dst,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;

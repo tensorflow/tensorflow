@@ -596,10 +596,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
-
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 4;
       }
       return 1;
 

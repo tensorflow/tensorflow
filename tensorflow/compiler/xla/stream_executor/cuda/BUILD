@@ -398,7 +398,6 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/tsl/cuda:cudnn_version",
         "//tensorflow/tsl/platform:tensor_float_32_utils",
-        "//tensorflow/tsl/util:determinism",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:plugin_registry",

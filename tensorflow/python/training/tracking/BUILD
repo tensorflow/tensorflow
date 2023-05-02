@@ -165,7 +165,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/checkpoint:checkpoint_core",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model:utils",

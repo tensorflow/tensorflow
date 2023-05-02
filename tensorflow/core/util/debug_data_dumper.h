@@ -121,6 +121,9 @@ class DebugDataDumper {
 
   // The groups filter.
   std::set<string> groups_filter_;
+
+  // A flag indicating whether to dump wrapped graphs.
+  bool dump_wrapped_;
 };
 
 }  // namespace tensorflow

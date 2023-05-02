@@ -202,6 +202,9 @@ def tflite_jni_binary(
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end
             "-Wl,-soname," + name,
         ],
     })

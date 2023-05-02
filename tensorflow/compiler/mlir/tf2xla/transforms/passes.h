@@ -54,11 +54,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
 
-/// Legalize whitelisted Ops using TF2XLA fallback for ops that must also be
-/// able to create new functions.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
-    StringRef tf2xla_fallback_device_type = "");
-
 // Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
 // like int ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass();
@@ -82,10 +77,12 @@ class Tf2XlaTypeConverter : public TypeConverter {
 /// `prefer_tf2xla` means an op will be included iff it is not in
 /// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
 /// included if there is no native MLIR legalization for the op.
-void PopulateLegalizeTfWithTf2XlaPatterns(
-    llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
-    Tf2XlaTypeConverter& converter, bool prefer_tf2xla = false,
-    bool is_module_pass = false, bool use_tf2xla_hlo_importer = false);
+void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
+                                          RewritePatternSet& patterns,
+                                          MLIRContext* ctx,
+                                          Tf2XlaTypeConverter& converter,
+                                          bool prefer_tf2xla = false,
+                                          bool use_tf2xla_hlo_importer = false);
 
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.

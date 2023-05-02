@@ -15,6 +15,7 @@ package_group(
     packages = [
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
+        "//tensorflow/core/tfrt/utils/debug/...",
     ],
 )
 

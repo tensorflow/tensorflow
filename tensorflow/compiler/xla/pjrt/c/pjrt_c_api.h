@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -211,6 +212,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
 
 typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
+typedef struct PJRT_DeviceDescription PJRT_DeviceDescription;
 typedef struct PJRT_Executable PJRT_Executable;
 typedef struct PJRT_LoadedExecutable PJRT_LoadedExecutable;
 typedef struct PJRT_Buffer PJRT_Buffer;
@@ -321,7 +323,8 @@ struct PJRT_Client_LookupDevice_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_LookupDevice_Args, device);
 
-// Returns a PJRT_Device* with the specified ID as returned by PJRT_Device_Id.
+// Returns a PJRT_Device* with the specified ID as returned by
+// PJRT_DeviceDescription_Id.
 typedef PJRT_Error* PJRT_Client_LookupDevice(
     PJRT_Client_LookupDevice_Args* args);
 
@@ -338,7 +341,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_LookupAddressableDevice_Args,
                           addressable_device);
 
 // Returns an addressable PJRT_Device* with the specified ID as returned by
-// PJRT_Device_LocalHardwareId.
+// PJRT_DeviceDescription_LocalHardwareId.
 typedef PJRT_Error* PJRT_Client_LookupAddressableDevice(
     PJRT_Client_LookupAddressableDevice_Args* args);
 
@@ -433,6 +436,10 @@ typedef enum {
   PJRT_Buffer_Type_C64,
   // Paired F64 (real, imag), as in std::complex<double>.
   PJRT_Buffer_Type_C128,
+
+  // Truncated 8 bit floating-point formats.
+  PJRT_Buffer_Type_F8E5M2,
+  PJRT_Buffer_Type_F8E4M3FN,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -495,49 +502,118 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_BufferFromHostBuffer_Args, buffer);
 typedef PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 
-// --------------------------------- Devices -----------------------------------
+// -------------------------- Device Descriptions ------------------------------
 
-struct PJRT_Device_Id_Args {
+// Device descriptions may be associated with an actual device
+// (via PJRT_Device_GetDescription), but they can also be used to describe a
+// device that isn't currently available to the plugin. This is useful for
+// compiling executables without hardware available, which can then be
+// serialized and written somewhere durable, and then loaded and run on actual
+// hardware later.
+
+struct PJRT_DeviceDescription_Id_Args {
   size_t struct_size;
   void* priv;
-  PJRT_Device* device;
+  PJRT_DeviceDescription* device_description;
   int id;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_Id_Args, id);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_Id_Args, id);
 
 // The ID of this device. IDs are unique among devices of this type
 // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
 // hosts' devices.
-typedef PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
+typedef PJRT_Error* PJRT_DeviceDescription_Id(
+    PJRT_DeviceDescription_Id_Args* args);
 
-struct PJRT_Device_LocalHardwareId_Args {
+struct PJRT_DeviceDescription_ProcessIndex_Args {
   size_t struct_size;
   void* priv;
-  PJRT_Device* device;
-  int local_hardware_id;  // out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
-
-// Opaque hardware ID, e.g., the CUDA device number. In general, not guaranteed
-// to be dense, and -1 if undefined.
-typedef PJRT_Error* PJRT_Device_LocalHardwareId(
-    PJRT_Device_LocalHardwareId_Args* args);
-
-struct PJRT_Device_ProcessIndex_Args {
-  size_t struct_size;
-  void* priv;
-  PJRT_Device* device;
+  PJRT_DeviceDescription* device_description;
   int process_index;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_ProcessIndex_Args, process_index);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_ProcessIndex_Args,
+                          process_index);
 
 // The index of the process that this device belongs to, i.e. is addressable
 // from. This is not always identical to PJRT_Client_ProcessIndex in a
 // multi-process setting, where each client can see devices from all
 // processes, but only a subset of them are addressable and have the same
 // process_index as the client.
-typedef PJRT_Error* PJRT_Device_ProcessIndex(
-    PJRT_Device_ProcessIndex_Args* args);
+typedef PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
+    PJRT_DeviceDescription_ProcessIndex_Args* args);
+
+struct PJRT_DeviceDescription_Attributes_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceDescription* device_description;
+  size_t num_attributes;        // out
+  PJRT_NamedValue* attributes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_Attributes_Args, attributes);
+
+// Returns an array of device specific attributes with attribute name, value
+// and value type.
+typedef PJRT_Error* PJRT_DeviceDescription_Attributes(
+    PJRT_DeviceDescription_Attributes_Args* args);
+
+struct PJRT_DeviceDescription_Kind_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceDescription* device_description;
+  // `device_kind` string is owned by `device` and has same lifetime as
+  // `device`.
+  const char* device_kind;  // out
+  size_t device_kind_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_Kind_Args, device_kind_size);
+
+// A vendor-dependent string that uniquely identifies the kind of device,
+// e.g., "Tesla V100-SXM2-16GB".
+typedef PJRT_Error* PJRT_DeviceDescription_Kind(
+    PJRT_DeviceDescription_Kind_Args* args);
+
+struct PJRT_DeviceDescription_DebugString_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceDescription* device_description;
+  const char* debug_string;  // out
+  size_t debug_string_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_DebugString_Args,
+                          debug_string_size);
+
+// Debug string suitable for logging when errors occur. Should be verbose
+// enough to describe the current device unambiguously.
+typedef PJRT_Error* PJRT_DeviceDescription_DebugString(
+    PJRT_DeviceDescription_DebugString_Args* args);
+
+struct PJRT_DeviceDescription_ToString_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceDescription* device_description;
+  const char* to_string;  // out
+  size_t to_string_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_ToString_Args, to_string_size);
+
+// Debug string suitable for reading by end users, should be reasonably terse,
+// for example: "CpuDevice(id=0)".
+typedef PJRT_Error* PJRT_DeviceDescription_ToString(
+    PJRT_DeviceDescription_ToString_Args* args);
+
+// --------------------------------- Devices -----------------------------------
+
+struct PJRT_Device_GetDescription_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  PJRT_DeviceDescription* device_description;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_GetDescription_Args, device_description);
+
+// Fetch the DeviceDescription associated with this device.
+typedef PJRT_Error* PJRT_Device_GetDescription(
+    PJRT_Device_GetDescription_Args* args);
 
 struct PJRT_Device_IsAddressable_Args {
   size_t struct_size;
@@ -551,59 +627,18 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_IsAddressable_Args, is_addressable);
 typedef PJRT_Error* PJRT_Device_IsAddressable(
     PJRT_Device_IsAddressable_Args* args);
 
-struct PJRT_Device_Attributes_Args {
+struct PJRT_Device_LocalHardwareId_Args {
   size_t struct_size;
   void* priv;
   PJRT_Device* device;
-  size_t num_attributes;        // out
-  PJRT_NamedValue* attributes;  // out
+  int local_hardware_id;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_Attributes_Args, attributes);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
 
-// Returns an array of device specific attributes with attribute name, value
-// and value type.
-typedef PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
-
-struct PJRT_Device_Kind_Args {
-  size_t struct_size;
-  void* priv;
-  PJRT_Device* device;
-  // `device_kind` string is owned by `device` and has same lifetime as
-  // `device`.
-  const char* device_kind;  // out
-  size_t device_kind_size;  // out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_Kind_Args, device_kind_size);
-
-// A vendor-dependent string that uniquely identifies the kind of device,
-// e.g., "Tesla V100-SXM2-16GB".
-typedef PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
-
-struct PJRT_Device_DebugString_Args {
-  size_t struct_size;
-  void* priv;
-  PJRT_Device* device;
-  const char* debug_string;  // out
-  size_t debug_string_size;  // out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_DebugString_Args, debug_string_size);
-
-// Debug string suitable for logging when errors occur. Should be verbose
-// enough to describe the current device unambiguously.
-typedef PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args);
-
-struct PJRT_Device_ToString_Args {
-  size_t struct_size;
-  void* priv;
-  PJRT_Device* device;
-  const char* to_string;  // out
-  size_t to_string_size;  // out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_ToString_Args, to_string_size);
-
-// Debug string suitable for reading by end users, should be reasonably terse,
-// for example: "CpuDevice(id=0)".
-typedef PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
+// Opaque hardware ID, e.g., the CUDA device number. In general, not guaranteed
+// to be dense, and -1 if undefined.
+typedef PJRT_Error* PJRT_Device_LocalHardwareId(
+    PJRT_Device_LocalHardwareId_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
@@ -756,13 +791,13 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_IsDeleted_Args, is_deleted);
 typedef PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
     PJRT_LoadedExecutable_IsDeleted_Args* args);
 
-struct PJRT_Chunk {
+typedef struct PJRT_Chunk {
   void* data;
   size_t size;
   void (*deleter)(void* data, void* deleter_arg);
   // `deleter_arg` will be passed to `deleter` as `deleter_arg` argument.
   void* deleter_arg;
-};
+} PJRT_Chunk;
 
 // TODO(b/263390934) implement C API that calls `AddChunk` and other
 // `xla::CopyToDeviceStream`.
@@ -817,8 +852,8 @@ struct PJRT_ExecuteOptions {
   // functions must outlive the execution (but not the info structs or lists).
   PJRT_SendCallbackInfo** send_callbacks;
   PJRT_RecvCallbackInfo** recv_callbacks;
-  size_t num_send_ops = 0;
-  size_t num_recv_ops = 0;
+  size_t num_send_ops;
+  size_t num_recv_ops;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
@@ -1313,14 +1348,16 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_DefaultDeviceAssignment);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_BufferFromHostBuffer);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Id);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_ProcessIndex);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Attributes);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Kind);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_DebugString);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_ToString);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_GetDescription);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_Attributes);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_Kind);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_DebugString);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_ToString);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);

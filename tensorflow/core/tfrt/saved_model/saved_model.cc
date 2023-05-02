@@ -86,7 +86,6 @@ namespace {
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
-using ::tensorflow::SessionMetadata;
 using ::tensorflow::StatusOr;
 
 struct Initializer {

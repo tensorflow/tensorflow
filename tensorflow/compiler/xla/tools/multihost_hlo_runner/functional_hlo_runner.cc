@@ -1074,14 +1074,14 @@ FunctionalHloRunner::RunInternal(
       }
     }
   }
-  if (running_options.profiler != nullptr) {
-    running_options.profiler->UploadSession();
-  }
 
   TF_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
                                         running_options.log_input_output()));
+  if (running_options.profiler != nullptr) {
+    running_options.profiler->UploadSession();
+  }
   return results;
 }
 

@@ -55,10 +55,9 @@ TfLiteDelegatePtr CreateStableDelegate(const std::string& settings_file_path) {
   auto stable_delegate_pointer =
       delegates::utils::LoadDelegateFromSharedLibrary(delegate_path);
   if (!stable_delegate_pointer || !stable_delegate_pointer->delegate_plugin) {
-    TFLITE_LOG(ERROR)
-        << "Failed to load stable ABI delegate pointer from stable ABI "
-           "delegate binary ("
-        << delegate_path << ".";
+    TFLITE_LOG(ERROR) << "Failed to load stable ABI delegate from stable ABI "
+                         "delegate binary ("
+                      << delegate_path << ").";
     return null_delegate;
   }
   const TfLiteOpaqueDelegatePlugin* delegate_plugin =

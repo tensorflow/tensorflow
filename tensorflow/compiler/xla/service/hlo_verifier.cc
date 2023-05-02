@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -2782,6 +2783,8 @@ MetadataTracker::~MetadataTracker() {
       {"op_name_coverage", 1.0 * has_op_name_count_ / instruction_count_},
       {"source_file_coverage",
        1.0 * has_source_file_count_ / instruction_count_},
+      {"dummy_source_file_coverage",
+       1.0 * has_dummy_source_file_count_ / instruction_count_},
       {"source_line_coverage",
        1.0 * has_source_line_count_ / instruction_count_},
       {"creation_pass_coverage",
@@ -2809,6 +2812,9 @@ void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
   }
   if (!metadata.source_file().empty()) {
     ++has_source_file_count_;
+    if (absl::StrContains(metadata.source_file(), "dummy")) {
+      ++has_dummy_source_file_count_;
+    }
   }
   if (metadata.source_line() != 0) {
     ++has_source_line_count_;

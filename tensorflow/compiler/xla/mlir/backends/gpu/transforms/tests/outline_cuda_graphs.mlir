@@ -535,3 +535,42 @@ module attributes {gpu.container_module} {
 // CHECK: gpu.memcpy
 // CHECK: gpu.memcpy
 // CHECK-NEXT: return
+
+// -----
+// Check that memref.reinterpret_cast operations are cloned into the graph
+// capture function.
+
+module attributes {gpu.container_module} {
+
+gpu.module @gpu_module attributes {binary = "kernel binary"} {
+  gpu.func @fn0(%arg0: memref<16xi8, strided<[1], offset: 0>>) kernel { gpu.return }
+  gpu.func @fn1(%arg0: memref<16xi8, strided<[1], offset: 0>>) kernel { gpu.return }
+}
+
+// CHECK: @func(%[[ARG0:.*]]: memref<16xi8>)
+func.func @func(%arg0: memref<16xi8>) {
+  %c1 = arith.constant 1 : index
+  %view = memref.reinterpret_cast %arg0 to offset: [0], sizes: [16], strides: [1]: memref<16xi8> to memref<16xi8, strided<[1], offset: 0>>
+
+  call @external() : () -> ()
+
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK-NEXT: return
+  gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1) args(%view : memref<16xi8, strided<[1], offset: 0>>)
+  gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1) args(%view : memref<16xi8, strided<[1], offset: 0>>)
+
+  func.return
+}
+
+func.func private @external()
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK-NEXT: arith.constant 1
+// CHECK-NEXT: memref.reinterpret_cast
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
+// CHECK-NEXT: return

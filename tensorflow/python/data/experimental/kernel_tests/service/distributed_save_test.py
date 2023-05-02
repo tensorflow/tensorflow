@@ -216,10 +216,15 @@ class DistributedSaveTest(
     components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices(components)
     dataset = dataset.map(lambda x: array_ops.check_numerics(x, "message"))
-    self.evaluate(distributed_save_op.distributed_save(
-        dataset, self._test_dir, cluster.dispatcher_address()
-    ))
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, self._test_dir, cluster.dispatcher_address()))
     _wait_for_error(self._test_dir)
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "the save job failed to write it."):
+      dataset = dataset_ops.Dataset.load(self._test_dir)
+      self.getDatasetOutput(dataset)
 
   @combinations.generate(test_base.default_test_combinations())
   def testBadDispatcherAddress(self):

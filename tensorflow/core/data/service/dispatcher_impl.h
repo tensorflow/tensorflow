@@ -313,6 +313,9 @@ class DataServiceDispatcherImpl {
   void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
   Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Returns true if an iteration should be garbage collected.
+  bool ShouldGcIteration(const DispatcherState::Iteration& iteration,
+                         int64_t now_us) const;
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const std::string& dataset_id,

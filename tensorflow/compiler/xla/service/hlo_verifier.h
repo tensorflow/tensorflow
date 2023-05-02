@@ -408,6 +408,7 @@ class MetadataTracker : public DfsHloVisitorWithDefault {
   int64_t has_op_type_count_ = 0;
   int64_t has_op_name_count_ = 0;
   int64_t has_source_file_count_ = 0;
+  int64_t has_dummy_source_file_count_ = 0;
   int64_t has_source_line_count_ = 0;
   int64_t has_creation_pass_id_count_ = 0;
   int64_t has_logical_creation_pass_id_count_ = 0;

@@ -44,12 +44,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -733,11 +733,12 @@ class ClusterCoordinatorTest(
     self.assertNotAllEqual(elements_in_iterator_1, elements_in_iterator_2)
 
   def testPerWorkerValue(self):
-    self.skipTest('b/168569314')
     var_shape = tuple()
     var_dtype = dtypes.float32
     var_name = 'var'
 
+    # This should not be a tf.function, as variable creation is prohibited in
+    # tf.functions in general.
     def create_var():
       var = variables.Variable(
           initial_value=0.0, dtype=var_dtype, name=var_name)
@@ -745,16 +746,17 @@ class ClusterCoordinatorTest(
       return var
 
     worker_local_var = self.coordinator._create_per_worker_resources(create_var)
-
     # The following is a workaround to allow `worker_local_var` to be passed in
-    # as args to the `coordinator.schedule` method which requires tensor specs
-    # to trace tf.function but _create_worker_resources' return values don't
-    # have tensor specs. We can get rid of this workaround once
-    # _create_worker_resources is able to infer the tensor spec of the return
-    # value of the function passed in. See b/154675763.
+    # as args to the `coordinator.schedule` method which requires specs
+    # to trace a tf.function, but _create_worker_resources' return values don't
+    # have specs when its input function is not a tf.function. We can get rid of
+    # this workaround once _create_worker_resources is able to infer the tensor
+    # spec of the return value of the (non-tf) function passed in. See
+    # b/154675763.
     for var in worker_local_var._values:
-      var._type_spec = tensor_spec.TensorSpec(var_shape, var_dtype, var_name)
+      var._type_spec = resource_variable_ops.VariableSpec(var_shape, var_dtype)
 
+    @def_function.function
     def worker_fn(var):
       var.assign_add(1.0)
 

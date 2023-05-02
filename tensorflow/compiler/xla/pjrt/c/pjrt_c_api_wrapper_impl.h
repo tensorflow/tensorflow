@@ -45,12 +45,20 @@ struct PJRT_Client {
   absl::flat_hash_map<xla::PjRtDevice*, PJRT_Device*> c_device_from_cpp_device;
 };
 
+// PJRT_DeviceDescriptions are owned by their corresponding PJRT_Device.
+struct PJRT_DeviceDescription {
+  // The xla::PjRtDeviceDescription* is owned transitively by the
+  // corresponding xla::PjRtClient.
+  const xla::PjRtDeviceDescription* device_description;
+  // The device specific attributes which are initialized once per device.
+  std::vector<PJRT_NamedValue> attributes;
+};
+
 // PJRT_Devices are owned by their corresponding PJRT_Client.
 struct PJRT_Device {
   // The xla::PjRtDevice* is owned by the corresponding xla::PjRtClient.
   xla::PjRtDevice* device;
-  // The device specific attributes which are initialized once per device.
-  std::vector<PJRT_NamedValue> attributes;
+  PJRT_DeviceDescription description;
 };
 
 struct PJRT_Executable {
@@ -149,14 +157,20 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 
-PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
-PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);
+PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args);
+PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
+    PJRT_DeviceDescription_ProcessIndex_Args* args);
+PJRT_Error* PJRT_DeviceDescription_Attributes(
+    PJRT_DeviceDescription_Attributes_Args* args);
+PJRT_Error* PJRT_DeviceDescription_Kind(PJRT_DeviceDescription_Kind_Args* args);
+PJRT_Error* PJRT_DeviceDescription_DebugString(
+    PJRT_DeviceDescription_DebugString_Args* args);
+PJRT_Error* PJRT_DeviceDescription_ToString(
+    PJRT_DeviceDescription_ToString_Args* args);
+
+PJRT_Error* PJRT_Device_GetDescription(PJRT_Device_GetDescription_Args* args);
 PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
-PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
-PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 PJRT_Error* PJRT_Device_LocalHardwareId(PJRT_Device_LocalHardwareId_Args* args);
-PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args);
-PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
@@ -302,14 +316,19 @@ constexpr PJRT_Api CreatePjrtApi(
       .PJRT_Client_BufferFromHostBuffer =
           pjrt::PJRT_Client_BufferFromHostBuffer,
 
-      .PJRT_Device_Id = pjrt::PJRT_Device_Id,
-      .PJRT_Device_ProcessIndex = pjrt::PJRT_Device_ProcessIndex,
+      .PJRT_DeviceDescription_Id = pjrt::PJRT_DeviceDescription_Id,
+      .PJRT_DeviceDescription_ProcessIndex =
+          pjrt::PJRT_DeviceDescription_ProcessIndex,
+      .PJRT_DeviceDescription_Attributes =
+          pjrt::PJRT_DeviceDescription_Attributes,
+      .PJRT_DeviceDescription_Kind = pjrt::PJRT_DeviceDescription_Kind,
+      .PJRT_DeviceDescription_DebugString =
+          pjrt::PJRT_DeviceDescription_DebugString,
+      .PJRT_DeviceDescription_ToString = pjrt::PJRT_DeviceDescription_ToString,
+
+      .PJRT_Device_GetDescription = pjrt::PJRT_Device_GetDescription,
       .PJRT_Device_IsAddressable = pjrt::PJRT_Device_IsAddressable,
-      .PJRT_Device_Attributes = pjrt::PJRT_Device_Attributes,
-      .PJRT_Device_Kind = pjrt::PJRT_Device_Kind,
       .PJRT_Device_LocalHardwareId = pjrt::PJRT_Device_LocalHardwareId,
-      .PJRT_Device_DebugString = pjrt::PJRT_Device_DebugString,
-      .PJRT_Device_ToString = pjrt::PJRT_Device_ToString,
 
       .PJRT_Executable_Destroy = pjrt::PJRT_Executable_Destroy,
       .PJRT_Executable_Name = pjrt::PJRT_Executable_Name,

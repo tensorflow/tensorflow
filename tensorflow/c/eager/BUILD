@@ -77,6 +77,7 @@ tf_cuda_library(
         ],
     }) + [
         ":abstract_tensor_handle",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime:remote_device",

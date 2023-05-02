@@ -540,6 +540,90 @@ func.func @replicated_non_replicated_output() {
 
 // -----
 
+// TF produces Identity ops between TPUReplicatedOutput and
+// TPUPartitionedOutputV2 ops. This test ensures that they are erased
+// and not considered within the clustered computation. It also ensures that
+// the expected interleaving pattern is present in the output.
+
+func.func @partitioned_outputs(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>) {
+  %pi0 = "tf.TPUPartitionedInputV2"(%arg0) {N = 2, partition_dims = [], _XlaSharding = "", is_packed = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %pi1 = "tf.TPUPartitionedInputV2"(%arg0) {N = 2, partition_dims = [], _XlaSharding = "", is_packed = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %1 = "tf.TPUReplicatedInput"(%pi0, %pi1) {is_mirrored_variable = true, is_packed = false} : (tensor<?xi32>, tensor<?xi32>) -> (tensor<?xi32>)
+  %2 = "tf.opA"(%1) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", is_stateless = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %3:2 = "tf.TPUReplicatedOutput"(%2) : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %4 = "tf.Identity"(%3#0) : (tensor<?xi32>) -> (tensor<?xi32>)
+  %5:2 = "tf.TPUPartitionedOutputV2"(%4) {_XlaSharding = "", partition_dims = []} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %6 = "tf.Identity"(%3#1) : (tensor<?xi32>) -> (tensor<?xi32>)
+  %7:2 = "tf.TPUPartitionedOutputV2"(%6) {_XlaSharding = "", partition_dims = []} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", num_replicas = 2, num_cores_per_replica = 2, topology = "topology"} : () -> ()
+  func.return %5#0, %5#1, %7#0, %7#1 : tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>
+}
+
+// CHECK: [[REPLICATE:%.+]]:4 = tf_device.replicate
+// CHECK: return [[REPLICATE]]#0, [[REPLICATE]]#2, [[REPLICATE]]#1, [[REPLICATE]]#3
+
+// -----
+
+// Ensures that mixed partitioned and replicated outputs
+// works in the multi-replica case.
+func.func @mixed_partitioned_outputs(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xf32>) {
+  %pi0 = "tf.TPUPartitionedInputV2"(%arg0) {N = 2, partition_dims = [], _XlaSharding = "", is_packed = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %pi1 = "tf.TPUPartitionedInputV2"(%arg0) {N = 2, partition_dims = [], _XlaSharding = "", is_packed = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %1 = "tf.TPUReplicatedInput"(%pi0, %pi1) {is_mirrored_variable = true, is_packed = false} : (tensor<?xi32>, tensor<?xi32>) -> (tensor<?xi32>)
+  %2:2 = "tf.opA"(%1) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", is_stateless = true} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xf32>)
+  %3:2 = "tf.TPUReplicatedOutput"(%2#0) : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %5:2 = "tf.TPUPartitionedOutputV2"(%3#0) {_XlaSharding = "", partition_dims = []} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %7:2 = "tf.TPUPartitionedOutputV2"(%3#1) {_XlaSharding = "", partition_dims = []} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %8:2 = "tf.TPUReplicatedOutput"(%2#1) : (tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  %9 = "tf.opB"(%5#0, %5#1, %7#0, %7#1) : (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>) -> (tensor<?xi32>)
+  %10 = "tf.opC"(%8#0, %8#1) : (tensor<?xf32>, tensor<?xf32>) -> (tensor<?xf32>)
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", num_replicas = 2, num_cores_per_replica = 2, topology = "topology"} : () -> ()
+  func.return %9, %10 : tensor<?xi32>, tensor<?xf32>
+}
+
+// CHECK: [[REPLICATE:%.+]]:6 = tf_device.replicate
+// CHECK: [[OP_B:%.+]] = "tf.opB"([[REPLICATE]]#0, [[REPLICATE]]#2, [[REPLICATE]]#1, [[REPLICATE]]#3)
+// CHECK: [[OP_C:%.+]] = "tf.opC"([[REPLICATE]]#4, [[REPLICATE]]#5)
+
+// -----
+
+// For the single replica case:
+// - Ensures that Identity ops are ignored.
+// - Checks that mixing TPUPartitionedOutputV2 and TPUReplicatedOutput works.
+
+func.func @single_replica_mixed_partitioned_outputs(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>, tensor<?xf32>) {
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {N = 2, partition_dims = [], _XlaSharding = "", is_packed = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %1 = "tf.TPUReplicatedInput"(%0) {is_mirrored_variable = true, is_packed = false} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %2:2 = "tf.opA"(%1) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", is_stateless = true} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xf32>)
+  %3 = "tf.TPUReplicatedOutput"(%2#0) : (tensor<?xi32>) -> (tensor<?xi32>)
+  %4 = "tf.Identity"(%3) : (tensor<?xi32>) -> (tensor<?xi32>)
+  %5:2 = "tf.TPUPartitionedOutputV2"(%4) {_XlaSharding = "", partition_dims = []} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %6 = "tf.TPUReplicatedOutput"(%2#1) : (tensor<?xf32>) -> (tensor<?xf32>)
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", num_replicas = 1, num_cores_per_replica = 2, topology = "topology"} : () -> ()
+  func.return %5#0, %5#1, %6 : tensor<?xi32>, tensor<?xi32>, tensor<?xf32>
+}
+
+// CHECK: [[CLUSTER:%.+]]:2 = "tf_device.cluster"
+// CHECK: [[OUTPUT:%.+]]:2 = "tf.TPUPartitionedOutputV2"([[CLUSTER]]#0)
+// CHECK: return [[OUTPUT]]#0, [[OUTPUT]]#1, [[CLUSTER]]#1
+
+// -----
+
+func.func @replica_mismatch(%arg0: tensor<?xi32>) {
+  %pi0 = "tf.TPUPartitionedInputV2"(%arg0) {N = 2, partition_dims = [], _XlaSharding = "", is_packed = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %pi1 = "tf.TPUPartitionedInputV2"(%arg0) {N = 2, partition_dims = [], _XlaSharding = "", is_packed = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %1 = "tf.TPUReplicatedInput"(%pi0, %pi1) {is_mirrored_variable = true, is_packed = false} : (tensor<?xi32>, tensor<?xi32>) -> (tensor<?xi32>)
+  %2 = "tf.opA"(%1) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", is_stateless = true} : (tensor<?xi32>) -> (tensor<?xi32>)
+  %3:2 = "tf.TPUReplicatedOutput"(%2) : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %4 = "tf.Identity"(%3#0) : (tensor<?xi32>) -> (tensor<?xi32>)
+  // expected-error@+1 {{expected zero or 2 'TPUPartitionedOutput' op(s), instead got 1}}
+  %5:2 = "tf.TPUPartitionedOutputV2"(%4) {_XlaSharding = "", partition_dims = []} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", num_replicas = 2, num_cores_per_replica = 2, topology = "topology"} : () -> ()
+  func.return
+}
+
+// -----
+
 
 // Test cluster with missing `num_replicas` attribute.
 func.func @missing_num_replicas() {

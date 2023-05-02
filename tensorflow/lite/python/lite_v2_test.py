@@ -2244,6 +2244,39 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value, actual_value)
 
   @test_util.run_v2_only
+  def testKerasSequentialModelExport(self):
+    """Test a simple sequential tf.Keras model with `model.export` usage."""
+    input_data = tf.constant(1., shape=[1, 1])
+
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
+
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(1),
+    ])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+
+    export_dir = os.path.join(self.get_temp_dir(), 'exported_model')
+    model.export(export_dir)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(export_dir)
+    tflite_model = converter.convert()
+
+    # Validate endpoints following `.export` to TFLite conversion.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    self.assertLen(signature_defs, 1)
+    self.assertEqual(next(iter(signature_defs)), 'serving_default')
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value, actual_value)
+
+  @test_util.run_v2_only
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
     input_data = tf.constant(1., shape=[1])

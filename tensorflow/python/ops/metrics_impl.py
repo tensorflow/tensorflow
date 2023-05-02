@@ -29,6 +29,8 @@ from tensorflow.python.ops import sets
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
+from tensorflow.python.ops import variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.deprecation import deprecated
@@ -70,15 +72,15 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
     `DistributionStrategy` scope a sync on read variable container.
   """
   # Note that synchronization "ON_READ" implies trainable=False.
-  return variable_scope.variable(
+  return variable_v1.VariableV1(
       lambda: array_ops.zeros(shape, dtype),
       trainable=False,
       collections=[
           ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
       ],
       validate_shape=validate_shape,
-      synchronization=variable_scope.VariableSynchronization.ON_READ,
-      aggregation=variable_scope.VariableAggregation.SUM,
+      synchronization=variables.VariableSynchronization.ON_READ,
+      aggregation=variables.VariableAggregation.SUM,
       name=name)
 
 

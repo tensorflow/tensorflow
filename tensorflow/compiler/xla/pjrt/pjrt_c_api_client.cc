@@ -270,7 +270,8 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
   std::string module_bytecode;
   {
     llvm::raw_string_ostream os(module_bytecode);
-    mlir::writeBytecodeToFile(module, os);
+    if (mlir::failed(mlir::writeBytecodeToFile(module, os)))
+      return absl::UnknownError("writeBytecodeToFile() failed.");
   }
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
@@ -399,51 +400,39 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 // --------------------------------- Devices -----------------------------------
 
-PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
-    : client_(client), device_(device) {
+PjRtCApiDeviceDescription::PjRtCApiDeviceDescription(
+    const PJRT_Api* c_api, PJRT_DeviceDescription* device_description)
+    : c_api_(c_api), device_description_(device_description) {
   InitAttributes();
 }
 
-PjRtClient* PjRtCApiDevice::client() const { return client_; }
-
-int PjRtCApiDevice::id() const {
-  PJRT_Device_Id_Args args;
-  args.struct_size = PJRT_Device_Id_Args_STRUCT_SIZE;
+int PjRtCApiDeviceDescription::id() const {
+  PJRT_DeviceDescription_Id_Args args;
+  args.struct_size = PJRT_DeviceDescription_Id_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_Id(&args), api);
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Id(&args), c_api_);
   return args.id;
 }
 
-int PjRtCApiDevice::process_index() const {
-  PJRT_Device_ProcessIndex_Args args;
-  args.struct_size = PJRT_Device_ProcessIndex_Args_STRUCT_SIZE;
+int PjRtCApiDeviceDescription::process_index() const {
+  PJRT_DeviceDescription_ProcessIndex_Args args;
+  args.struct_size = PJRT_DeviceDescription_ProcessIndex_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_ProcessIndex(&args), api);
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_ProcessIndex(&args),
+                            c_api_);
   return args.process_index;
 }
 
-bool PjRtCApiDevice::IsAddressable() const {
-  PJRT_Device_IsAddressable_Args args;
-  args.struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_IsAddressable(&args), api);
-  return args.is_addressable;
-}
-
-void PjRtCApiDevice::InitAttributes() {
+void PjRtCApiDeviceDescription::InitAttributes() {
   attributes_ = {};
-  PJRT_Device_Attributes_Args args;
-  args.struct_size = PJRT_Device_Attributes_Args_STRUCT_SIZE;
+  PJRT_DeviceDescription_Attributes_Args args;
+  args.struct_size = PJRT_DeviceDescription_Attributes_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_Attributes(&args), api);
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Attributes(&args),
+                            c_api_);
 
   for (int i = 0; i < args.num_attributes; ++i) {
     const auto& attribute = args.attributes[i];
@@ -473,9 +462,10 @@ void PjRtCApiDevice::InitAttributes() {
       // PJRT library is a newer version that returns types not supported by
       // this client). Failing here to prevent undefined behavior.
       default: {
-        LOG(FATAL) << "PJRT_Device_Attributes() returned attribute '"
+        LOG(FATAL) << "PJRT_DeviceDescription_Attributes() returned attribute '"
                    << attribute_name << "' with unsupported type "
-                   << attribute.type << " to PjRtCApiDevice::InitAttributes()";
+                   << attribute.type
+                   << " to PjRtCApiDeviceDescription::InitAttributes()";
         break;
       }
     }
@@ -483,21 +473,60 @@ void PjRtCApiDevice::InitAttributes() {
 }
 
 const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-PjRtCApiDevice::Attributes() const {
+PjRtCApiDeviceDescription::Attributes() const {
   return attributes_;
 }
 
-absl::string_view PjRtCApiDevice::device_kind() const {
-  PJRT_Device_Kind_Args args;
-  args.struct_size = PJRT_Device_Kind_Args_STRUCT_SIZE;
+absl::string_view PjRtCApiDeviceDescription::device_kind() const {
+  PJRT_DeviceDescription_Kind_Args args;
+  args.struct_size = PJRT_DeviceDescription_Kind_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
+  args.device_description = device_description_;
 
-  const PJRT_Api* c_api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_Kind(&args), c_api);
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Kind(&args), c_api_);
 
   absl::string_view device_kind(args.device_kind, args.device_kind_size);
   return device_kind;
+}
+
+absl::string_view PjRtCApiDeviceDescription::DebugString() const {
+  PJRT_DeviceDescription_DebugString_Args args;
+  args.struct_size = PJRT_DeviceDescription_DebugString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_DebugString(&args),
+                            c_api_);
+  absl::string_view debug_string(args.debug_string, args.debug_string_size);
+  return debug_string;
+}
+
+absl::string_view PjRtCApiDeviceDescription::ToString() const {
+  PJRT_DeviceDescription_ToString_Args args;
+  args.struct_size = PJRT_DeviceDescription_ToString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_ToString(&args),
+                            c_api_);
+  absl::string_view to_string(args.to_string, args.to_string_size);
+  return to_string;
+}
+
+PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
+    : client_(client),
+      device_(device),
+      description_(client->pjrt_c_api(),
+                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {}
+
+PjRtClient* PjRtCApiDevice::client() const { return client_; }
+
+bool PjRtCApiDevice::IsAddressable() const {
+  PJRT_Device_IsAddressable_Args args;
+  args.struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_IsAddressable(&args), api);
+  return args.is_addressable;
 }
 
 int PjRtCApiDevice::local_hardware_id() const {
@@ -508,28 +537,6 @@ int PjRtCApiDevice::local_hardware_id() const {
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
   return args.local_hardware_id;
-}
-
-absl::string_view PjRtCApiDevice::DebugString() const {
-  PJRT_Device_DebugString_Args args;
-  args.struct_size = PJRT_Device_DebugString_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* c_api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_DebugString(&args), c_api);
-  absl::string_view debug_string(args.debug_string, args.debug_string_size);
-  return debug_string;
-}
-
-absl::string_view PjRtCApiDevice::ToString() const {
-  PJRT_Device_ToString_Args args;
-  args.struct_size = PJRT_Device_ToString_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* c_api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_ToString(&args), c_api);
-  absl::string_view to_string(args.to_string, args.to_string_size);
-  return to_string;
 }
 
 // ------------------------------- Executables ---------------------------------
@@ -1010,6 +1017,8 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   PJRT_ExecuteOptions c_options;
+  c_options.num_send_ops = 0;
+  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (returned_futures.has_value()) {
@@ -1073,6 +1082,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   PJRT_ExecuteOptions c_options;
+  c_options.num_send_ops = 0;
+  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (fill_future) {
@@ -1475,7 +1486,8 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
   std::string module_bytecode;
   {
     llvm::raw_string_ostream os(module_bytecode);
-    mlir::writeBytecodeToFile(module, os);
+    if (mlir::failed(mlir::writeBytecodeToFile(module, os)))
+      return absl::UnknownError("writeBytecodeToFile() failed.");
   }
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,

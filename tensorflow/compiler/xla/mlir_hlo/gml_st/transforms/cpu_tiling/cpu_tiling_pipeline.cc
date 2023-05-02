@@ -44,6 +44,7 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
   opts.cpuName = cpuName;
   opts.statsDetailLevel = statsDetailLevel;
   opts.fuseDegenerateReshapes = false;
+  opts.inlineFusionClusters = true;
   return opts;
 }
 
@@ -93,7 +94,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
 
-  pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
+  if (options.inlineFusionClusters)
+    pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());

@@ -141,7 +141,13 @@ class ExpandHloTuplesPass
       return;
     }
 
-    expandTupledTensorInReturnOp(entryFunction);
+    // Recursively expand tuples until all of them are gone.
+    while (
+        llvm::any_of(llvm::concat<const Type>(entryFunction.getArgumentTypes(),
+                                              entryFunction.getResultTypes()),
+                     [](Type type) { return type.isa<TupleType>(); })) {
+      expandTupledTensorInReturnOp(entryFunction);
+    }
   }
 };
 

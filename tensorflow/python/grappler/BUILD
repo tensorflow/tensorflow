@@ -508,6 +508,7 @@ cuda_py_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/platform:sysconfig",
         "//third_party/py/numpy",
     ],
 )
@@ -535,6 +536,7 @@ cuda_py_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/platform:sysconfig",
         "//third_party/py/numpy",
     ],
 )

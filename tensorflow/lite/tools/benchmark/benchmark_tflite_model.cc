@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -538,8 +539,22 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 }
 
 int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
-  std::ifstream in_file(params_.Get<std::string>("graph"),
-                        std::ios::binary | std::ios::ate);
+  std::string fd_or_graph_path = params_.Get<std::string>("graph");
+  // Path can be one of the following:
+  // 1) File descriptor path: path must be in the format of
+  // "fd:%model_fd%:%model_offset%:%model_size%".
+  // 2) File path: path to the model file.
+  // Please see tensorflow/lite/tools/model_loader.h for more information.
+  std::vector<absl::string_view> parts = absl::StrSplit(fd_or_graph_path, ':');
+  if (!parts.empty() && parts[0] == "fd") {
+    int64_t model_size = -1;
+    if (parts.size() != 4 || !absl::SimpleAtoi(parts[3], &model_size)) {
+      TFLITE_LOG(ERROR) << "Failed to parse model file size: "
+                        << fd_or_graph_path;
+    }
+    return model_size;
+  }
+  std::ifstream in_file(fd_or_graph_path, std::ios::binary | std::ios::ate);
   return in_file.tellg();
 }
 

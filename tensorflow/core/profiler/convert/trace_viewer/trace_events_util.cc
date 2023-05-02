@@ -47,5 +47,16 @@ std::vector<TraceEventFlow> SplitEventFlow(TraceEventFlow&& flow) {
   return flows;
 }
 
+void ExpandTraceSpan(const Timespan& span, Trace* trace) {
+  if (!trace->has_min_timestamp_ps() ||
+      span.begin_ps() < trace->min_timestamp_ps()) {
+    trace->set_min_timestamp_ps(span.begin_ps());
+  }
+  if (!trace->has_max_timestamp_ps() ||
+      span.end_ps() > trace->max_timestamp_ps()) {
+    trace->set_max_timestamp_ps(span.end_ps());
+  }
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

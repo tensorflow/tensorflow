@@ -34,6 +34,10 @@ inline std::string OpName(mlir::Operation* op) {
   return ref.str();
 }
 
+inline std::string GetFullOpName(const std::string& name) {
+  return "tf." + name;
+}
+
 // Returns FuncOp if `op` is a callable.
 absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op);
 

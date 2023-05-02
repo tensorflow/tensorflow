@@ -2324,9 +2324,6 @@ bool ShardingPropagation::InferShardingFromOperands(
                                              may_combine_partial_sharding);
     }
     case HloOpcode::kCustomCall: {
-      if (instruction->IsCustomCall("X64Combine")) {
-        return false;
-      }
       HloSharding inferred_operand_sharding = HloSharding::Replicate();
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target());

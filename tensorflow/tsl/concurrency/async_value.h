@@ -502,22 +502,10 @@ struct KeepAsyncValuePayloadOnError {};
 //    state holding an `absl::Status` error, or in concrete state holding a
 //    value of type `T`.
 //
-template <typename T>
-struct IsStatus : std::false_type {};
-
-template <>
-struct IsStatus<absl::Status> : std::true_type {};
-
-template <typename T>
-struct IsStatus<absl::StatusOr<T>> : std::true_type {};
-
 // Subclass for storing the payload of the AsyncValue
 template <typename T>
 class ConcreteAsyncValue : public AsyncValue {
  public:
-  // Async value does not support `absl::Status` or `absl::StatusOr` payload.
-  static_assert(!IsStatus<T>::value, "invalid payload type");
-
   // Tag type for making a ConcreteAsyncValue without calling underlying value's
   // constructor.
   struct UnconstructedPayload {

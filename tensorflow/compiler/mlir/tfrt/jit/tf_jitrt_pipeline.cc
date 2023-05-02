@@ -130,7 +130,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeSortPass());
-  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
+  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeLibraryOpsPass());
 
   if (options.vectorize) {
     pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeMHLOToTHLOPass());

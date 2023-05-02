@@ -8401,9 +8401,7 @@ ENTRY %reshape {
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "custom-call");
   ASSERT_NE(instruction, nullptr);
-  EXPECT_THAT(
-      instruction,
-      op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,2,2]0,1,2,3}"));
 }
 
 TEST_P(ParameterizedMetadataTest, PropagateThroughSingleUsers) {

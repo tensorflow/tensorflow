@@ -223,6 +223,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import distribute as ds_types
@@ -4027,8 +4028,8 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     numpy_flat = nest.flatten(numpy_input)
     vars_flat = tuple(
-        variable_scope.variable(array_ops.zeros(i.shape, i.dtype),
-                                trainable=False, use_resource=True)
+        variable_v1.VariableV1(array_ops.zeros(i.shape, i.dtype),
+                               trainable=False, use_resource=True)
         for i in numpy_flat
     )
     for v, i in zip(vars_flat, numpy_flat):

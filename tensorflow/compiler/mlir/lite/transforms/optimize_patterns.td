@@ -57,6 +57,8 @@ class HasRank<int n> : Constraint<
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
+
 def HasSameStaticShapes : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "
           "$1.getType().cast<ShapedType>().hasStaticShape() && "

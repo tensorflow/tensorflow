@@ -255,7 +255,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
   AddBuiltin(BuiltinOperator_PACK, Register_PACK(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_ONE_HOT, Register_ONE_HOT());
   AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
   AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());

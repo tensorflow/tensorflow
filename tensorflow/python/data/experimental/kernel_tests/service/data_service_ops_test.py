@@ -570,6 +570,37 @@ class DataServiceOpsTest(
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testGcDynamicShardingJobIfRequested(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            gc_dynamic_sharding_jobs=True,
+        )
+    )
+    dispatcher_address = dispatcher.target.split("://")[1]
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100
+        )
+    )
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+            service=dispatcher.target,
+        )
+    )
+    it = iter(dataset)
+    self.assertEqual(worker._num_tasks(), 1)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testGcAndRecreate(self):
     cluster = self.make_test_cluster(
         num_workers=3, job_gc_check_interval_ms=50, job_gc_timeout_ms=20

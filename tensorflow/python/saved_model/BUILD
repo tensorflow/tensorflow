@@ -444,7 +444,7 @@ tf_py_strict_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/checkpoint:checkpoint_core",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:mirrored_strategy",
@@ -585,7 +585,7 @@ cuda_py_strict_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",  # b/118513001
-        "//tensorflow/python/checkpoint:checkpoint_core",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",

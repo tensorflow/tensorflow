@@ -19,29 +19,11 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
-
-// Macro to control visibility of exported symbols in the shared library (.so,
-// .dylib, .dll).
-// This duplicates the TF_EXPORT macro definition in
-// tensorflow/core/platform/macros.h in order to keep this .h file independent
-// of any other includes.
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
@@ -283,7 +265,11 @@ TF_CAPI_EXPORT extern int64_t TF_GetIterId(TF_OpKernelContext* ctx);
 // Returns the Step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
 
-// Returns the Device ID of the device that the context possesses.
+// Returns the Device ID of the device that the context possesses. Returns the
+// PlatformDeviceId if a mapping between between TfDeviceId and PlatformDeviceId
+// is set; otherwise returns the id in the device name. Please refer to
+// tensorflow/tsl/framework/device_id.h for more details.
+// For mobile or slim build, returns the id in the device name.
 TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
 
 // Returns the graph def version of the given context.

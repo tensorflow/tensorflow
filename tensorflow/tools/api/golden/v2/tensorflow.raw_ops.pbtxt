@@ -1141,6 +1141,10 @@ tf_module {
     argspec: "args=[\'input\', \'tfdbg_context_id\', \'op_name\', \'output_slot\', \'tensor_debug_mode\', \'debug_urls\', \'circular_buffer_size\', \'tfdbg_run_id\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'-1\', \'-1\', \'[]\', \'1000\', \'\', \'None\'], "
   }
   member_method {
+    name: "DebugIdentityV3"
+    argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'io_of_node\', \'is_input\', \'io_index\', \'debug_urls\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'False\', \'-1\', \'[]\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "DebugNanCount"
     argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'debug_urls\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'False\', \'None\'], "
   }

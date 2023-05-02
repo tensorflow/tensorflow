@@ -767,6 +767,7 @@ tf_xla_py_test(
     srcs = ["ftrl_test.py"],
     enable_mlir_bridge = False,
     python_version = "PY3",
+    shard_count = 16,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1481,7 +1482,7 @@ tf_xla_py_test(
     srcs = ["ternary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 16,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1502,7 +1503,7 @@ tf_xla_py_test(
     srcs = ["unary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 32,
     tags = [
         "no_cuda_asan",  # times out
         "no_pip"  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2471,7 +2472,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",
     ],
     use_xla_device = False,  # Uses tf.function(jit_compile=True)
     deps = [

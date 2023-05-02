@@ -827,7 +827,7 @@ LogicalResult ConvertTFLSignOp::matchAndRewrite(
   RankedTensorType output_type =
       tfl_sign_op.getResult().getType().cast<RankedTensorType>();
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertSignOp(rewriter, op, tfl_sign_op.getX(), output_type);
   if (!result) return failure();
 

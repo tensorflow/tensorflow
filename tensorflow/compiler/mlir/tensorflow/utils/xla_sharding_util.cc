@@ -647,10 +647,11 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
       if (output_sharding_type == xla::OpSharding::REPLICATED) {
         for (const auto& index_and_output :
              llvm::enumerate(partitioned_output.getOutput())) {
+          auto idx = (cluster_idx + index_and_output.index()) %
+                     new_parallel_execute->getNumRegions();
           const auto output_from_logical_device =
               new_parallel_execute.GetRegionOutputs(
-                  cluster_idx +
-                  index_and_output.index())[tpu_cluster_output_index];
+                  idx)[tpu_cluster_output_index];
           index_and_output.value().replaceAllUsesWith(
               output_from_logical_device);
         }

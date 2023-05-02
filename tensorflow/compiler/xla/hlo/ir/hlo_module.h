@@ -129,6 +129,10 @@ class HloModule {
   const std::string& name() const { return name_; }
   void set_name(std::string name) { name_ = std::move(name); }
 
+  // Move computations from the input module to this one, while ensuring that
+  // the names of instructions within the computations are unchanged.
+  void MoveComputationsFrom(HloModule* module);
+
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
   std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
