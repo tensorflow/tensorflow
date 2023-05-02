@@ -318,6 +318,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     const HloModule& module) {
   runtime::CpuPipelineOptions copts;
   runtime::JitExecutable::Options opts;
+  copts.xla_cpu_sparse_cuda_threads =
+      GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
       [](xla::runtime::DialectRegistry& dialects) {
