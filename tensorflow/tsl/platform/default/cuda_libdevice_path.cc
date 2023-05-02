@@ -48,6 +48,9 @@ std::vector<std::string> CandidateCudaRoots() {
                                  info.dli_fname + strlen(info.dli_fname)};
     auto dir = dirname(lib.data());
 
+    // TF lib binaries are located in both the package's root dir and within a
+    // 'python' subdirectory (for pywrap libs). So we check two possible paths
+    // relative to the current binary for the wheel-based nvcc package.
     for (auto path : {"/../nvidia/cuda_nvcc", "/../../nvidia/cuda_nvcc"})
       roots.emplace_back(std::string(dir) + path);
   }
