@@ -1,3 +1,16 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
+--- stablehlo/stablehlo/dialect/Serialization.cpp
++++ stablehlo/stablehlo/dialect/Serialization.cpp
+@@ -57,8 +57,7 @@
+ 
+   // TODO(#1282): Consider adding a header to identify StableHLO portable
+   // artifact versions.
+-  writeBytecodeToFile(module, os);
+-  return success();
++  return writeBytecodeToFile(module, os);
+ }
+ 
+ OwningOpRef<ModuleOp> deserializePortableArtifact(StringRef sourceStr,
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
