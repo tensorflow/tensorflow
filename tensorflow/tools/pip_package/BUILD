@@ -106,6 +106,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/core/function/trace_type:serialization_test_proto_py",
     "//tensorflow/core/function/trace_type:serialization",
     "//tensorflow/core:protos_all_proto_srcs",
+    "//tensorflow/dtensor/python/tests:multi_client_test_util",
     "//tensorflow/dtensor/python/tests:test_util",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",

@@ -266,6 +266,11 @@ pytype_library(
         oss_value = False,  # build_pip_package depends on this target.
     ),
     srcs = ["multi_client_test_util.py"],
+    visibility = [
+        "//tensorflow/dtensor:dtensor-internal",
+        "//tensorflow/dtensor:dtensor-users",
+        "//tensorflow/tools/pip_package:__pkg__",
+    ],
     deps = [
         ":test_util",
         "//tensorflow/python/framework:config",
