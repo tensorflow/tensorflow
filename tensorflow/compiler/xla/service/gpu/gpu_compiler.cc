@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <any>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -130,6 +131,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -176,9 +178,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -220,23 +224,6 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
   return false;
 }
 
-// Depending on xla_gpu_force_compilation_parallelism setting either return an
-// existing thread pool, or none, or create a new one.
-tsl::thread::ThreadPool* GetThreadPool(
-    tsl::thread::ThreadPool* existing_thread_pool,
-    std::optional<tsl::thread::ThreadPool>& overriding_thread_pool,
-    int xla_gpu_force_compilation_parallelism) {
-  switch (xla_gpu_force_compilation_parallelism) {
-    case 0:
-      return existing_thread_pool;
-    case 1:
-      return nullptr;
-    default:
-      overriding_thread_pool.emplace(tsl::Env::Default(), "",
-                                     xla_gpu_force_compilation_parallelism);
-      return &*overriding_thread_pool;
-  }
-}
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -921,11 +908,24 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   }
 #if GOOGLE_CUDA
   pipeline.AddPass<GemmAlgorithmPicker>(autotune_config);
-  const HloModuleConfig& module_config = hlo_module->config();
+
+  // By default use an externally provided thread pool.
+  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  tsl::thread::ThreadPool* thread_pool = GetThreadPool(
-      options.thread_pool, overriding_thread_pool,
-      module_config.debug_options().xla_gpu_force_compilation_parallelism());
+  int num_threads = hlo_module->config()
+                        .debug_options()
+                        .xla_gpu_force_compilation_parallelism();
+  // If an external thread pool is provided or single-threaded operation is
+  // requested do not create a thread pool.
+  if (thread_pool == nullptr && num_threads != 1) {
+    // Zero means "default", treat it as "max parallelism" here.
+    if (num_threads == 0) {
+      num_threads = tsl::port::MaxParallelism();
+    }
+    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
+    thread_pool = &*overriding_thread_pool;
+  }
+
   pipeline.AddPass<TritonAutotuner>(autotune_config, thread_pool);
 #endif  // GOOGLE_CUDA
 
@@ -1144,10 +1144,24 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     return result;
   };
 
+  tsl::thread::ThreadPool* thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  tsl::thread::ThreadPool* thread_pool = GetThreadPool(
-      options.thread_pool, overriding_thread_pool,
-      module_config.debug_options().xla_gpu_force_compilation_parallelism());
+  switch (
+      module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
+    case 0:
+      thread_pool = options.thread_pool;
+      break;
+    case 1:
+      thread_pool = nullptr;
+      break;
+    default:
+      overriding_thread_pool.emplace(
+          tsl::Env::Default(), "",
+          module_config.debug_options()
+              .xla_gpu_force_compilation_parallelism());
+      thread_pool = &*overriding_thread_pool;
+      break;
+  }
 
   if (!thread_pool) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
