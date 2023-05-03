@@ -187,14 +187,13 @@ void MakeTfObjectType(PyObject** py_type) {
 
   type->tp_dealloc = [](PyObject* self) {
     VLOG(3) << "Destroy: " << T::kTypeName;
-    PyObject_GC_UnTrack(self);
-    PyObject_ClearWeakRefs(self);
-
+    PyTypeObject* tp = Py_TYPE(self);
     T* o = reinterpret_cast<T*>(self);
+    if (o->weakrefs) {
+      PyObject_ClearWeakRefs(self);
+    }
     Py_CLEAR(o->dict);
     o->~T();
-
-    PyTypeObject* tp = Py_TYPE(self);
     tp->tp_free(self);
     Py_DECREF(tp);
   };
@@ -228,7 +227,13 @@ void MakeTfObjectType(PyObject** py_type) {
   type->tp_call = nullptr;
   type->tp_vectorcall_offset = 0;
 
-  type->tp_repr = nullptr;
+  type->tp_repr = [](PyObject* self) -> PyObject* {
+    T* o = reinterpret_cast<T*>(self);
+    return py::str(absl::StrCat(T::kTypeName, "<",
+                                reinterpret_cast<intptr_t>(o), ">"))
+        .release()
+        .ptr();
+  };
 
   if (PyType_Ready(type) != 0) {
     PyErr_Print();
@@ -276,6 +281,7 @@ T* AsPyTfObject(py::handle handle) {
   if (handle.get_type() == T::py_type) {
     return reinterpret_cast<T*>(handle.ptr());
   }
+
   if (PyType_IsSubtype(Py_TYPE(handle.ptr()),
                        reinterpret_cast<PyTypeObject*>(T::py_type))) {
     return reinterpret_cast<T*>(handle.ptr());
@@ -301,13 +307,6 @@ py::object AsPyObject(T* obj) {
 }
 
 // Reference counting helper for PyTfObjects.
-//
-// Similar to the pybind holder types, this manages the Python reference
-// counting while allowing access to the underlying PyTfObject type.
-//
-// As a special case to support Dismantle(), this allows setting our underlying
-// pointer to None when clearing the type. Direct access to attributes is not
-// allowed after this point.
 template <class T>
 class tf_handle {
  public:
@@ -338,29 +337,19 @@ class tf_handle {
     return *this;
   }
 
-  void Destroy() {
-    Py_INCREF(Py_None);
-    Py_CLEAR(obj_);
-    obj_ = reinterpret_cast<T*>(Py_None);
-  }
-
-  void Reset(PyObject* obj) {
-    if (obj == reinterpret_cast<PyObject*>(obj_)) {
+  void Reset(PyObject* py_obj) {
+    T* obj = AsPyTfObject<T>(py_obj);
+    if (obj == obj_) {
       return;
     }
     Py_INCREF(obj);
     Py_CLEAR(obj_);
-    obj_ = AsPyTfObject<T>(obj);
+    obj_ = obj;
   }
 
   void Clear() { Py_CLEAR(obj_); }
 
-  T* operator->() {
-    if (reinterpret_cast<PyObject*>(obj_) == Py_None) {
-      throw std::runtime_error("Tried to deference None as a TF type.");
-    }
-    return obj_;
-  }
+  T* operator->() { return obj_; }
   PyObject* ptr() const { return reinterpret_cast<PyObject*>(obj_); }
 
   py::handle borrow() { return py::reinterpret_borrow<py::object>(ptr()); }
@@ -449,6 +438,7 @@ struct PyGraph {
       Py_CLEAR(it->second.release().ptr());
     }
     ops_by_name.clear();
+    Py_CLEAR(dict);
   }
 
   int Visit(visitproc visit, void* arg) {
@@ -559,6 +549,7 @@ struct PyOperation {
 
   void Clear() {
     Py_CLEAR(outputs.release().ptr());
+    Py_CLEAR(dict);
     graph.Clear();
   }
 
@@ -659,9 +650,9 @@ struct PyTensor {
   }
 
   ~PyTensor() { Clear(); }
-
   void Clear() {
     Py_CLEAR(py_tf_output.release().ptr());
+    Py_CLEAR(dict);
     op.Clear();
     graph.Clear();
   }
@@ -740,9 +731,10 @@ PyObject* PyTensor::py_type = nullptr;
 PyObject* PyGraph::py_type = nullptr;
 
 void PyOperation::Dismantle() {
-  outputs = py::list();
-  PyDict_Clear(dict);
-  graph.Destroy();
+  for (py::handle h : outputs) {
+    AsPyTfObject<PyTensor>(h.ptr())->Clear();
+  }
+  Clear();
 }
 
 tsl::Status PyOperation::_add_outputs(py::list dtypes, py::list shapes) {
@@ -787,10 +779,7 @@ void PyGraph::Dismantle() {
   for (auto& op : op_list) {
     AsPyTfObject<PyOperation>(op.ptr())->Dismantle();
   }
-  PyDict_Clear(dict);
-  op_list = py::list();
-  ops_by_id.clear();
-  ops_by_name.clear();
+  Clear();
 }
 
 int64_t PyGraph::add_op(py::object obj) {
