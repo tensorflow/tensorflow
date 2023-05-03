@@ -256,7 +256,8 @@ tensorflow::Status RunBytecodeInitializers(
   if (auto function = loaded_executable.GetFunction("_tfrt_fallback_init")) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        /*sync_resource_state=*/nullptr));
   }
 
   for (const auto& p : initializers_and_signatures.initializers) {
@@ -275,7 +276,8 @@ tensorflow::Status RunBytecodeInitializers(
   if (auto function = loaded_executable.GetFunction("_tfrt_resource_init")) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        /*sync_resource_state=*/nullptr));
   }
 
   return OkStatus();
