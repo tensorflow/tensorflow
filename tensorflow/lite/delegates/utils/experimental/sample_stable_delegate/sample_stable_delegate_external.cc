@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_interface.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h"
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 
 namespace {
 

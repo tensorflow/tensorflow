@@ -84,8 +84,8 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_interface",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
     ],
 )
 
@@ -115,12 +115,12 @@ cc_test(
     ],
     deps = [
         ":sample_stable_delegate_opaque_delegate",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_googletest//:gtest_main",
     ],
