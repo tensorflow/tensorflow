@@ -246,6 +246,8 @@ class DebugOptions:
   xla_cpu_enable_xprof_traceme: bool
   xla_llvm_disable_expensive_passes: bool
   xla_test_all_input_layouts: bool
+  xla_disable_hlo_passes: str
+  xla_enable_hlo_passes_only: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
