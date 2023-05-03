@@ -56,6 +56,7 @@ py_library(
         "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/platform:sysconfig",
         "//third_party/py/numpy",
     ],
 )
