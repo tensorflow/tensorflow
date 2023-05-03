@@ -3437,12 +3437,17 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
                                     #  [2, 1, 1, 2, 3, 3, 2],
                                     #  [5, 4, 4, 5, 6, 6, 5],
                                     #  [5, 4, 4, 5, 6, 6, 5]]
+
+  tf.pad(t, paddings, "WRAP")       # [[2, 3, 1, 2, 3, 1, 2],
+                                    #  [2, 3, 1, 2, 3, 1, 2],
+                                    #  [5, 6, 4, 5, 6, 4, 5],
+                                    #  [5, 6, 4, 5, 6, 4, 5]]                      
   ```
 
   Args:
     tensor: A `Tensor`.
     paddings: A `Tensor` of type `int32`.
-    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    mode: One of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC" (case-insensitive)
     name: A name for the operation (optional).
     constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
       same type as `tensor`.
@@ -3451,7 +3456,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC".
   """
 
   # Convert lower/mixed case to upper for NumPy compatibility
@@ -3473,9 +3478,13 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   elif mode == "SYMMETRIC":
     result = gen_array_ops.mirror_pad(
         tensor, paddings, mode="SYMMETRIC", name=name)
+  elif mode == "WRAP":
+    result = gen_array_ops.wrap_pad(
+      tensor, paddings, name = name
+    )
   else:
     raise ValueError("Value of argument `mode` expected to be "
-                     """one of "CONSTANT", "REFLECT", or "SYMMETRIC". """
+                     """one of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC". """
                      f"Received `mode` = {mode}")
 
   # Restore shape information where possible.
