@@ -1,86 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/ValueTracking.cpp b/llvm/lib/Analysis/ValueTracking.cpp
---- a/llvm/lib/Analysis/ValueTracking.cpp
-+++ b/llvm/lib/Analysis/ValueTracking.cpp
-@@ -6035,28 +6035,29 @@
-   case Instruction::UDiv:
-   case Instruction::URem: {
-     // x / y is undefined if y == 0.
--    const DataLayout &DL = Inst->getModule()->getDataLayout();
--    return isKnownNonZero(Inst->getOperand(1), DL, /*Depth*/ 0, AC, CtxI, DT);
-+    const APInt *V;
-+    if (match(Inst->getOperand(1), m_APInt(V)))
-+      return *V != 0;
-+    return false;
-   }
-   case Instruction::SDiv:
-   case Instruction::SRem: {
-     // x / y is undefined if y == 0 or x == INT_MIN and y == -1
--    const DataLayout &DL = Inst->getModule()->getDataLayout();
--    KnownBits KnownDenominator =
--        computeKnownBits(Inst->getOperand(1), DL, /*Depth*/ 0, AC, CtxI, DT);
-+    const APInt *Numerator, *Denominator;
-+    if (!match(Inst->getOperand(1), m_APInt(Denominator)))
-+      return false;
-     // We cannot hoist this division if the denominator is 0.
--    if (!KnownDenominator.isNonZero())
-+    if (*Denominator == 0)
-       return false;
--
-     // It's safe to hoist if the denominator is not 0 or -1.
--    if (!KnownDenominator.Zero.isZero())
-+    if (!Denominator->isAllOnes())
-       return true;
--
--    // At this point denominator may be -1.  It is safe to hoist as
-+    // At this point we know that the denominator is -1.  It is safe to hoist as
-     // long we know that the numerator is not INT_MIN.
--    KnownBits KnownNumerator =
--        computeKnownBits(Inst->getOperand(0), DL, /*Depth*/ 0, AC, CtxI, DT);
--    return !KnownNumerator.getSignedMinValue().isMinSignedValue();
-+    if (match(Inst->getOperand(0), m_APInt(Numerator)))
-+      return !Numerator->isMinSignedValue();
-+    // The numerator *might* be MinSignedValue.
-+    return false;
-   }
-   case Instruction::Load: {
-     const LoadInst *LI = dyn_cast<LoadInst>(Inst);
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LICM/speculate-div.ll b/llvm/test/Transforms/LICM/speculate-div.ll
---- a/llvm/test/Transforms/LICM/speculate-div.ll
-+++ b/llvm/test/Transforms/LICM/speculate-div.ll
-@@ -51,10 +51,10 @@
- ; CHECK-NEXT:  entry:
- ; CHECK-NEXT:    [[XO:%.*]] = or i16 [[XX:%.*]], 1
- ; CHECK-NEXT:    [[X:%.*]] = and i16 [[XO]], 123
--; CHECK-NEXT:    [[DIV:%.*]] = sdiv i16 [[N:%.*]], [[X]]
- ; CHECK-NEXT:    br label [[LOOP:%.*]]
- ; CHECK:       loop:
- ; CHECK-NEXT:    call void @maythrow()
-+; CHECK-NEXT:    [[DIV:%.*]] = sdiv i16 [[N:%.*]], [[X]]
- ; CHECK-NEXT:    call void @use(i16 [[DIV]])
- ; CHECK-NEXT:    br label [[LOOP]]
- ;
-@@ -74,10 +74,10 @@
- ; CHECK-NEXT:  entry:
- ; CHECK-NEXT:    [[N:%.*]] = and i16 [[NN:%.*]], 123
- ; CHECK-NEXT:    [[X:%.*]] = or i16 [[XX:%.*]], 1
--; CHECK-NEXT:    [[DIV:%.*]] = srem i16 [[N]], [[X]]
- ; CHECK-NEXT:    br label [[LOOP:%.*]]
- ; CHECK:       loop:
- ; CHECK-NEXT:    call void @maythrow()
-+; CHECK-NEXT:    [[DIV:%.*]] = srem i16 [[N]], [[X]]
- ; CHECK-NEXT:    call void @use(i16 [[DIV]])
- ; CHECK-NEXT:    br label [[LOOP]]
- ;
-@@ -117,10 +117,10 @@
- ; CHECK-LABEL: @udiv_ok(
- ; CHECK-NEXT:  entry:
- ; CHECK-NEXT:    [[X:%.*]] = or i16 [[XX:%.*]], 1
--; CHECK-NEXT:    [[DIV:%.*]] = udiv i16 [[N:%.*]], [[X]]
- ; CHECK-NEXT:    br label [[LOOP:%.*]]
- ; CHECK:       loop:
- ; CHECK-NEXT:    call void @maythrow()
-+; CHECK-NEXT:    [[DIV:%.*]] = udiv i16 [[N:%.*]], [[X]]
- ; CHECK-NEXT:    call void @use(i16 [[DIV]])
- ; CHECK-NEXT:    br label [[LOOP]]
- ;
+diff -ruN --strip-trailing-cr a/lldb/include/lldb/API/SBFile.h b/lldb/include/lldb/API/SBFile.h
+--- a/lldb/include/lldb/API/SBFile.h
++++ b/lldb/include/lldb/API/SBFile.h
+@@ -11,6 +11,8 @@
+ 
+ #include "lldb/API/SBDefines.h"
+ 
++#include <cstdio>
++
+ namespace lldb {
+ 
+ class LLDB_API SBFile {
