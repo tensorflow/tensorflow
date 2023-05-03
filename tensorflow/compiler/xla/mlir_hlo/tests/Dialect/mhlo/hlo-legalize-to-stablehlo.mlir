@@ -1730,6 +1730,13 @@ func.func @type_f8E4M3FNUZ(%arg0: tensor<f8E4M3FNUZ>, %arg1: tensor<f8E4M3FNUZ>)
 }
 // CHECK-LABEL: "type_f8E4M3FNUZ"
 
+func.func @type_f8E4M3B11FNUZ(%arg0: tensor<f8E4M3B11FNUZ>, %arg1: tensor<f8E4M3B11FNUZ>) -> tensor<f8E4M3B11FNUZ> {
+  // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<f8E4M3B11FNUZ>, tensor<f8E4M3B11FNUZ>) -> tensor<f8E4M3B11FNUZ>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E4M3B11FNUZ>, tensor<f8E4M3B11FNUZ>) -> tensor<f8E4M3B11FNUZ>
+  func.return %0 : tensor<f8E4M3B11FNUZ>
+}
+// CHECK-LABEL: "type_f8E4M3B11FNUZ"
+
 func.func @type_f8E5M2(%arg0: tensor<f8E5M2>, %arg1: tensor<f8E5M2>) -> tensor<f8E5M2> {
   // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<f8E5M2>, tensor<f8E5M2>) -> tensor<f8E5M2>
   %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E5M2>, tensor<f8E5M2>) -> tensor<f8E5M2>
