@@ -16,7 +16,6 @@
 """Utilities for V2 control flow."""
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.data.util import structure  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
