@@ -4,22 +4,22 @@
 # To have reproducible builds, these dependencies should be pinned always.
 # Prefer pinning to the same version as in setup.py for now.
 # This will change in the future.
-absl-py ~= 1.0.0
+absl-py == 1.4.0
 astunparse ~= 1.6.3
-flatbuffers ~= 2.0
+flatbuffers == 23.3.3
 google_pasta ~= 0.2
 h5py ~= 3.8.0 # Earliest version for Python 3.11
 # TODO(b/262592253): Support older versions of NumPy for Python 3.10 and lower
 # to support TFX. Remove when Apache Beam upgrades to newer NumPy.
 numpy ~= 1.22.0; python_version < '3.11'
-numpy ~= 1.23.2; python_version >= '3.11' # Earliest version for Python 3.11
+numpy == 1.24.3; python_version >= '3.11' # Earliest version for Python 3.11
 opt_einsum ~= 3.3.0
 packaging ~= 21.3
-protobuf ~= 3.20.3
+protobuf == 4.22.3
 six ~= 1.16.0
-termcolor ~= 2.1.1
-typing_extensions ~= 3.10.0.0
-wheel ~= 0.38.1
+termcolor == 2.3.0
+typing_extensions == 4.5.0
+wheel == 0.40.0
 wrapt ~= 1.14.1
 # We need to pin the gast dependency exactly
 gast == 0.4.0
