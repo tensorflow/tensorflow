@@ -88,15 +88,15 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "async_type_helpers",
     srcs = ["async_type_helpers.cc"],
     hdrs = ["async_type_helpers.h"],
-    deps = [
+    tflite_deps = [
         ":ret_macros",
-        "//tensorflow/lite/core/async/interop/c:attribute_map",
-        "//tensorflow/lite/core/async/interop/c:constants",
-        "//tensorflow/lite/core/async/interop/c:types",
+        "//tensorflow/lite/async/interop/c:attribute_map",
+        "//tensorflow/lite/async/interop/c:constants",
+        "//tensorflow/lite/async/interop/c:types",
     ],
 )
 
@@ -107,21 +107,21 @@ cc_library_with_tflite(
     tflite_deps = [
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
+        ":ret_macros",
     ],
     deps = [
-        ":ret_macros",
         "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/status",
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "ret_macros",
     srcs = [],
     hdrs = ["ret_macros.h"],
+    tflite_deps = ["//tensorflow/lite/c:c_api_types"],
     deps = [
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/c:c_api_types",
     ],
 )
 

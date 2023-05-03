@@ -66,6 +66,7 @@ tensorflow/lite/async/c/task.h:
 tensorflow/lite/async/c/types.h:
 tensorflow/lite/async/interop/c/BUILD:
 tensorflow/lite/async/interop/c/attribute_map.h:
+tensorflow/lite/async/interop/c/constants.h:
 tensorflow/lite/async/interop/c/types.h:
 tensorflow/lite/c/builtin_op_data.h:
 tensorflow/lite/c/c_api.h:
