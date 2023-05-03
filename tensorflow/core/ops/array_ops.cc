@@ -2001,6 +2001,15 @@ REGISTER_OP("PadV2")
     .SetShapeFn(PadShapeFn);
 
 // --------------------------------------------------------------------------
+REGISTER_OP("WrapPad")
+    .Input("input: T")
+    .Input("paddings: Tpaddings")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    .SetShapeFn(PadShapeFn);
+
+// --------------------------------------------------------------------------
 REGISTER_OP("MirrorPad")
     .Input("input: T")
     .Input("paddings: Tpaddings")
