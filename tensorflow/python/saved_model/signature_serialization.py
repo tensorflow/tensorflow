@@ -203,7 +203,7 @@ def canonicalize_signatures(signatures):
       ):
         if not default:
           continue
-        defaults[(signature_key, arg)] = default
+        defaults.setdefault(signature_key, {})[arg] = default
   return concrete_signatures, wrapped_functions, defaults
 
 
