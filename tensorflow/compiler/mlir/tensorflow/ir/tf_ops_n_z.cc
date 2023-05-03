@@ -2673,7 +2673,7 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult ToBoolOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
       tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
@@ -3482,7 +3482,8 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
@@ -3620,7 +3621,8 @@ LogicalResult XlaConvV2Op::verify() {
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 

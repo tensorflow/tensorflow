@@ -96,6 +96,7 @@ func.func @while_with_invalid_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
+  // expected-error @+2 {{'mhlo.while' op failed to infer returned types}}
   // expected-error @+1 {{inferred type(s) 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<1xf32>', 'tensor<3xf32>' are incompatible with return type(s) of operation 'tensor<1xi32>', 'tensor<2xi32>', 'tensor<3xf32>', 'tensor<1xf32>'}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):

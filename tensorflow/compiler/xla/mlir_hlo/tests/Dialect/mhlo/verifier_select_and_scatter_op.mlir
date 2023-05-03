@@ -394,6 +394,7 @@ func.func @select_and_scatter_invalid_ret_type(
     %arg1: tensor<10x12x12x64xf32>) -> () {
     %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
 
+    // expected-error @+2 {{'mhlo.select_and_scatter' op failed to infer returned types}}
     // expected-error @+1 {{inferred type(s) 'tensor<10x24x24x64xf32>' are incompatible with return type(s) of operation 'tensor<10x24x24x32xf32>'}}
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
@@ -422,6 +423,7 @@ func.func @select_and_scatter_invalid_ret_type(
     %arg1: tensor<10x12x12x64xf32>) -> () {
     %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
 
+    // expected-error @+2 {{'mhlo.select_and_scatter' op failed to infer returned types}}
     // expected-error @+1 {{inferred type(s) 'tensor<10x24x24x64xf32>' are incompatible with return type(s) of operation 'tensor<10x24x24x64xi32>'}}
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
