@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
 namespace mlir {
@@ -44,7 +45,7 @@ namespace common {
 bool IsConstantOrNone(Operation* op) {
   return (op->getNumResults() == 1 &&
           op->getResult(0).getType().isa<NoneType>()) ||
-         matchPattern(op, m_Constant());
+         matchPattern(op, m_Constant()) || isa<QConstOp>(op);
 }
 
 // Pre-order traverse, adding results and BlockArgs to `been_defined` and
