@@ -107,7 +107,8 @@ struct GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
       const Shape& output_shape, double alpha_real, double alpha_imag,
-      double beta, std::optional<int64_t> algorithm, int64_t compute_precision);
+      double beta, std::optional<int64_t> algorithm, int64_t compute_precision,
+      const Shape* bias_shape_ptr=nullptr);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
@@ -180,20 +181,25 @@ class MatmulPlan {
       }
     }
 
-    TF_ASSIGN_OR_RETURN(
-        GemmConfig config,
-        GemmConfig::For(
-            GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
-            dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
-            dot_dims.getRhsBatchingDimensions(),
-            dot_dims.getRhsContractingDimensions(), GetShape(op.getD()),      
-            GetShape(op.getD()), op.getAlphaReal().convertToDouble(),
-            op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
-            op.getAlgorithm(), compute_precision));
+  Shape bias_shape;
+  if (op.getBias() != nullptr) {
+    bias_shape = GetShape(op.getBias());
+  }
+  TF_ASSIGN_OR_RETURN(
+      GemmConfig config,
+      GemmConfig::For(
+          GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+          dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
+          dot_dims.getRhsBatchingDimensions(),
+          dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+          GetShape(op.getD()), op.getAlphaReal().convertToDouble(),
+          op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
+          op.getAlgorithm(), compute_precision,
+          op.getBias() == nullptr ? nullptr : &bias_shape));
 
-    TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
-                        AsBlasLtEpilogue(op.getEpilogue()));
-    return From(config, epilogue);
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+                      AsBlasLtEpilogue(op.getEpilogue()));
+  return From(config, epilogue);
   }
 
   static StatusOr<MatmulPlan> From(const GemmConfig& config,

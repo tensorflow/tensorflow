@@ -876,8 +876,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     Shape new_output_shape;
 #if CUDA_VERSION >= 12000
     if (c == nullptr) {
-      // c = instr->AddInstruction(
-      //     HloInstruction::CreateConstant(LiteralUtil::Zero(c_type)));
       new_output_shape = pad_shape(instr->shape());
     } else {
 #endif  // CUDA_VERSION >= 12000
@@ -900,7 +898,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             ShapeUtil::MakeShapeWithDenseLayout(
                 instr->shape().element_type(), new_output_shape.dimensions(),
                 instr->shape().layout().minor_to_major()), operands_list,
-            kCublasLtMatmulF8CallTarget));          
+            kCublasLtMatmulF8CallTarget));
 
     TF_RETURN_IF_ERROR(
         new_custom_call->set_backend_config(gemm_backend_config));
@@ -995,24 +993,23 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
 #if CUDA_VERSION >= 12000
     TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
-                      existing_gemm->backend_config<GemmBackendConfig>());
+                        existing_gemm->backend_config<GemmBackendConfig>());
     if (gemm_backend_config.beta() == 1.0) {
-           if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
-        existing_gemm->operand(2)->shape().element_type() != F16) {
-                  VLOG(1) << "The scaling and conversion of the result of "
+      if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
+          existing_gemm->operand(2)->shape().element_type() != F16) {
+        VLOG(1) << "The scaling and conversion of the result of "
                 << existing_gemm->ToShortString()
                 << " is not fused into the FP8 Custom Call because it "
                    "conflicts with the existing fusion of the addition of a "
                    "matrix bias with element type other than BF16 or F16.";
         return OkStatus();
-        }
+      }
     }
 #else
     // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
     // FP8 outputs (see cuBLASLt documentation).
     if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
         existing_gemm->operand(2)->shape().element_type() != F16) {
-
       TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
                           existing_gemm->backend_config<GemmBackendConfig>());
       if (gemm_backend_config.beta() == 1.0) {
@@ -1031,10 +1028,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             instr->AddInstruction(HloInstruction::CreateBroadcast(
                 ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
         TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
-
       }
     }
-#endif
+#endif  // CUDA_VERSION >= 12000
+
     // If necessary, invert the scaling factor of D and convert to F32.
     if (!mult_scale) {
       Literal one_literal = LiteralUtil::One(d_scale->shape().element_type());
@@ -1048,14 +1045,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           ShapeUtil::MakeScalarShape(F32), d_scale));
     }
 
-int d_scale_index = 6;
+    int d_scale_index = 6;
 #if CUDA_VERSION >= 12000
-if (gemm_backend_config.beta() == 0.0) {
-  VLOG(1)<< "using dscale at 5th.\n";
-  d_scale_index = 5;
-}
-#endif
-TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(d_scale_index, d_scale));
+    if (gemm_backend_config.beta() == 0.0) {
+      d_scale_index = 5;
+    }
+#endif  // CUDA_VERSION >= 12000
+    TF_RETURN_IF_ERROR(
+        existing_gemm->ReplaceOperandWith(d_scale_index, d_scale));
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.

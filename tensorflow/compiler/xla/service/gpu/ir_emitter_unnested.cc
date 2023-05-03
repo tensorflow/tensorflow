@@ -1191,7 +1191,6 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   }
 
   BufferAllocation::Slice aux;  // Not used.
-  std::cout << "wwwww ir_emitter before plan\n";
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
 
@@ -1200,7 +1199,6 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
       bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
-  std::cout << "wwwww finish ir_emitter\n";
   return OkStatus();
 }
 
