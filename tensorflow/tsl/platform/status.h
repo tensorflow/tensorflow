@@ -55,7 +55,6 @@ typedef SourceLocationImpl SourceLocation;
 //
 // Here is a set of correspondences:
 // - Use `absl::OkStatus()` instead of `tsl::OkStatus()`.
-// - Use absl::StatusCodeToString` instead of `tsl::error_name`.
 typedef absl::Status Status;
 
 namespace errors {
@@ -183,9 +182,6 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 extern tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
                                              const char* msg);
-
-// Prefer using `absl::StatusCodeToString`.
-std::string error_name(absl::StatusCode code);
 
 inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   if (v.ok()) return nullptr;

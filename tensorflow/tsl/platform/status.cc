@@ -165,71 +165,6 @@ const char* NullTerminatedMessage(const Status& status) {
   return message.data();
 }
 
-std::string error_name(absl::StatusCode code) {
-  switch (code) {
-    case absl::StatusCode::kOk:
-      return "OK";
-      break;
-    case absl::StatusCode::kCancelled:
-      return "CANCELLED";
-      break;
-    case absl::StatusCode::kUnknown:
-      return "UNKNOWN";
-      break;
-    case absl::StatusCode::kInvalidArgument:
-      return "INVALID_ARGUMENT";
-      break;
-    case absl::StatusCode::kDeadlineExceeded:
-      return "DEADLINE_EXCEEDED";
-      break;
-    case absl::StatusCode::kNotFound:
-      return "NOT_FOUND";
-      break;
-    case absl::StatusCode::kAlreadyExists:
-      return "ALREADY_EXISTS";
-      break;
-    case absl::StatusCode::kPermissionDenied:
-      return "PERMISSION_DENIED";
-      break;
-    case absl::StatusCode::kUnauthenticated:
-      return "UNAUTHENTICATED";
-      break;
-    case absl::StatusCode::kResourceExhausted:
-      return "RESOURCE_EXHAUSTED";
-      break;
-    case absl::StatusCode::kFailedPrecondition:
-      return "FAILED_PRECONDITION";
-      break;
-    case absl::StatusCode::kAborted:
-      return "ABORTED";
-      break;
-    case absl::StatusCode::kOutOfRange:
-      return "OUT_OF_RANGE";
-      break;
-    case absl::StatusCode::kUnimplemented:
-      return "UNIMPLEMENTED";
-      break;
-    case absl::StatusCode::kInternal:
-      return "INTERNAL";
-      break;
-    case absl::StatusCode::kUnavailable:
-      return "UNAVAILABLE";
-      break;
-    case absl::StatusCode::kDataLoss:
-      return "DATA_LOSS";
-      break;
-    default:
-      char tmp[30];
-      snprintf(tmp, sizeof(tmp), "UNKNOWN_CODE(%d)", static_cast<int>(code));
-      return tmp;
-      break;
-  }
-}
-
-// std::ostream& operator<<(std::ostream& os, const Status& x) {
-//   os << x.ToString();
-//   return os;
-// }
 
 Status OkStatus() { return Status(); }
 
@@ -325,7 +260,8 @@ Status MakeStatus(absl::StatusCode code, absl::string_view message,
 }
 
 std::string MakeString(const Status& status) {
-  return absl::StrCat(error_name(status.code()), ": ", status.message());
+  return absl::StrCat(absl::StatusCodeToString(status.code()), ": ",
+                      status.message());
 }
 
 // Summarize all the status objects in the StatusGroup. This is used when

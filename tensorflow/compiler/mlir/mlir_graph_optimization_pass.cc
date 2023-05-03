@@ -218,7 +218,7 @@ Status MlirFunctionOptimizationPass::Run(
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
   mlir_function_pass_graph_conversion_count
-      ->GetCell(tsl::error_name(module_ref_status.status().code()))
+      ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
       ->IncrementBy(1);
   timings.ReportAndStop();
 

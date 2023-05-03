@@ -222,8 +222,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
             << session_name << " took " << duration << " and "
             << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
-  metrics::UpdateTpuErrorCounter("TpuCompileOp",
-                                 error_name(compile_status.code()));
+  metrics::UpdateTpuErrorCounter(
+      "TpuCompileOp", absl::StatusCodeToString(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
 
