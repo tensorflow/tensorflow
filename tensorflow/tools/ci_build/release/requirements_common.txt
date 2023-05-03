@@ -1,7 +1,7 @@
 # To have reproducible builds, these dependencies should be pinned always.
 # Prefer pinning to the same version as in setup.py for now.
 # This will change in the future.
-absl-py ~= 1.4.0
+absl-py == 1.4.0
 astunparse ~= 1.6.3
 flatbuffers == 23.3.3
 google_pasta ~= 0.2
