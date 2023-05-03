@@ -134,8 +134,6 @@ class TfrtCpuDevice final : public PjRtDevice {
   Semaphore max_inflight_computations_semaphore_;
 };
 
-class TfrtCpuExecutable;
-
 class TfrtCpuClient final : public PjRtClient {
  public:
   TfrtCpuClient(int process_index,
@@ -198,9 +196,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    return Unimplemented("Async transfer to buffers not implemented");
-  };
+                                    PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
