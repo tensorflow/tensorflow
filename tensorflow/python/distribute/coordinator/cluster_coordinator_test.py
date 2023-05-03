@@ -769,8 +769,36 @@ class ClusterCoordinatorTest(
     var_sum = sum(self.coordinator.fetch(worker_local_var._values))
     self.assertEqual(var_sum, 10.0)
 
-  def testDisallowRemoteValueAsInput(self):
+  def testPerWorkerVariableCreation(self):
+    var_dtype = dtypes.float32
+    var_name = 'var'
 
+    with self.strategy.scope():
+      var = variables.Variable(
+          initial_value=0.0, dtype=var_dtype, name=var_name,
+          per_worker_variable=True)
+
+    # Use per-worker variable as a capture
+    @def_function.function
+    def worker_fn():
+      var.assign_add(1.0)
+      return var
+
+    num_closures = 10
+    for _ in range(num_closures):
+      self.coordinator.schedule(worker_fn)
+    self.coordinator.join()
+
+    # Verify placement of variables
+    devices = [wv._get_values().device for wv in var._per_worker_vars._values]
+    expected_devices = [f'/job:worker/replica:0/task:{ix}/device:CPU:0'
+                        for ix in range(self.strategy._num_workers)]  # pylint: disable=protected-access
+    self.assertAllEqual(devices, expected_devices)
+
+    result_sum = sum(var.read_all()).numpy()
+    self.assertEqual(result_sum, num_closures)
+
+  def testDisallowRemoteValueAsInput(self):
     @def_function.function
     def func_0():
       return 1.0
