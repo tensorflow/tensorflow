@@ -138,6 +138,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
+    "//tensorflow/python/distribute/coordinator:fault_tolerance_test_base",
     "//tensorflow/python/distribute/failure_handling:check_preemption_py",
     "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
     "//tensorflow/python/distribute/failure_handling:failure_handling_util",

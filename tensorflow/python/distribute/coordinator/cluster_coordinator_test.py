@@ -33,7 +33,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import remote_value
@@ -489,7 +489,7 @@ def make_coordinator(num_workers, num_ps):
   cluster_def['chief'] = [
       'localhost:%d' % test_util.pick_unused_port()
   ]
-  cluster_resolver = SimpleClusterResolver(
+  cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer='grpc')
   strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
       cluster_resolver)

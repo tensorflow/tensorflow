@@ -31,7 +31,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -51,7 +51,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import save as tf_save
 from tensorflow.python.trackable import autotrackable
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.training import server_lib
 
 
 class ParameterServerStrategyV2Test(test.TestCase):
@@ -656,16 +656,18 @@ class ClusterTypeNameTest(test.TestCase):
     cluster_def["some_arbitrary_name"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec(cluster_def), rpc_layer="grpc")
     with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testArbitraryCurrentTaskType(self):
     cluster_def = multi_worker_test_base.create_cluster_spec(
         num_workers=1, num_ps=1, has_chief=True)
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc", task_type="foobar")
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec(cluster_def),
+        rpc_layer="grpc", task_type="foobar",
+    )
     with self.assertRaisesRegexp(ValueError, "Unrecognized task_type: foobar"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
@@ -674,8 +676,8 @@ class ClusterTypeNameTest(test.TestCase):
         num_workers=1, num_ps=1)
     chief_ports = [multi_worker_test_base.pick_unused_port() for _ in range(3)]
     cluster_def["chief"] = ["localhost:%s" % port for port in chief_ports]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def),
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec(cluster_def),
         rpc_layer="grpc",
         task_type="chief",
         task_id=1)
@@ -686,8 +688,10 @@ class ClusterTypeNameTest(test.TestCase):
   def testLessThanOneWorker(self):
     cluster_def = multi_worker_test_base.create_cluster_spec(
         num_workers=0, num_ps=1, has_chief=True)
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc", task_type="ps", task_id=0)
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec(cluster_def),
+        rpc_layer="grpc", task_type="ps", task_id=0,
+    )
     with self.assertRaisesRegexp(ValueError,
                                  "There must be at least one worker."):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
@@ -695,8 +699,8 @@ class ClusterTypeNameTest(test.TestCase):
   def testLessThanOnePs(self):
     cluster_def = multi_worker_test_base.create_cluster_spec(
         num_workers=1, num_ps=0, has_chief=True)
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def),
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec(cluster_def),
         rpc_layer="grpc",
         task_type="worker",
         task_id=0)

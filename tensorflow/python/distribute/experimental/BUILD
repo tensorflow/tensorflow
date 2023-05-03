@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow/dtensor:build_defs.bzl",
     "dtensor_test",
@@ -9,7 +10,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "experimental",
     srcs = [
         "__init__.py",
@@ -25,7 +26,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     deps = [
@@ -40,12 +41,15 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:nest",
     ],
 )
@@ -80,13 +84,17 @@ dtensor_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "dtensor_util",
     srcs = ["dtensor_util.py"],
     deps = [
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion_registry",
     ],
 )
 
