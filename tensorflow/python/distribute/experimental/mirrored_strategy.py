@@ -41,10 +41,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
-# Default dimension name used for the mesh created when user provide a list
-# of devices. For mirrored strategy, it should be a 1D mesh with batch dim only.
-_DEFAULT_BATCH_MESH_DIM_NAME = 'batch'
-
 
 class MirroredStrategy(distribute_lib.Strategy):
   """Synchronous training across multiple replicas on one machine.
@@ -97,7 +93,7 @@ class MirroredStrategy(distribute_lib.Strategy):
       device_type = tf_device.DeviceSpec.from_string(devices[0]).device_type
       dtensor_util.initialize_accelerator_system_once(device_type)
       mesh = mesh_util.create_mesh(
-          mesh_dims=[(_DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
+          mesh_dims=[(dtensor_util.DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
           devices=devices)
     else:
       # Trying to detect if there is any GPU/TPUs attached.
@@ -105,7 +101,7 @@ class MirroredStrategy(distribute_lib.Strategy):
       devices = d_config.local_devices(device_type)
       dtensor_util.initialize_accelerator_system_once(device_type)
       mesh = mesh_util.create_mesh(
-          mesh_dims=[(_DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
+          mesh_dims=[(dtensor_util.DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
           device_type=device_type)
     return mesh
 
@@ -276,7 +272,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
       # the batched result.
       rank = len(tensor_spec.shape) + 1
       return layout.Layout.batch_sharded(
-          self._mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+          self._mesh, batch_dim=dtensor_util.DEFAULT_BATCH_MESH_DIM_NAME,
+          rank=rank)
 
     layouts = nest.map_structure(_create_batch_layout, dataset.element_spec)
 
@@ -286,7 +283,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
         layouts=layouts,
         global_batch_size=batch_size,
         dataset_already_batched=False,
-        batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME,
+        batch_dim=dtensor_util.DEFAULT_BATCH_MESH_DIM_NAME,
         # TODO(scottzhu): Add prefetch support by inspecting the input dataset.
         prefetch=None,
         tf_data_service_config=None
@@ -318,7 +315,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     def _create_batch_layout(tensor_spec):
       rank = len(tensor_spec.shape)
       return layout.Layout.batch_sharded(
-          self._mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+          self._mesh, batch_dim=dtensor_util.DEFAULT_BATCH_MESH_DIM_NAME,
+          rank=rank)
 
     layouts = nest.map_structure(_create_batch_layout, dataset.element_spec)
 
@@ -337,7 +335,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
         layouts=layouts,
         global_batch_size=global_batch_size,
         dataset_already_batched=True,
-        batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME,
+        batch_dim=dtensor_util.DEFAULT_BATCH_MESH_DIM_NAME,
         # TODO(scottzhu): Add prefetch support by inspecting the input dataset.
         prefetch=None,
         tf_data_service_config=None
@@ -484,6 +482,6 @@ def _convert_per_replica_to_dtensor(per_replica_value, mesh):
   # not always batch shard or fully replicaed. See
   # http://screenshot/6ERkXyX95KqftCw as an example.
   batch_layout = layout.Layout.batch_sharded(
-      mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+      mesh, batch_dim=dtensor_util.DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
 
   return d_api.pack(result, batch_layout)

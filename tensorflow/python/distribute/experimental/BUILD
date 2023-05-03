@@ -1,6 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow/dtensor:build_defs.bzl",
+    "GPU_2DEVS_BACKEND",
+    "TPU_V3_DONUT_BACKEND",
     "dtensor_test",
 )
 
@@ -115,5 +117,50 @@ dtensor_test(
         "//tensorflow/python/framework:constant_op",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "multi_worker_mirrored_strategy",
+    srcs = ["multi_worker_mirrored_strategy.py"],
+    deps = [
+        ":dtensor_util",
+        ":mirrored_strategy",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
+    ],
+)
+
+dtensor_test(
+    name = "multi_worker_mirrored_strategy_test",
+    srcs = ["multi_worker_mirrored_strategy_test.py"],
+    additional_backends = [
+        GPU_2DEVS_BACKEND,
+        TPU_V3_DONUT_BACKEND,
+    ],
+    disable = [
+        "gpu",  # multi-client gpu is tested via GPU_2DEVS_BACKEND.
+        "tpu",  # multi-client tpu is tested via TPU_V3_DONUT_BACKEND.
+    ],
+    disable_tfrt = [
+        "cpu",  # TODO(b/217969210): Re-enable in TFRT CPU.
+        GPU_2DEVS_BACKEND,  # TODO(b/230679405): Re-enable in TFRT GPU.
+    ],
+    tags = [
+        "no_pip",
+        "no_windows",
+        "nosan",
+    ],  # b/195537906
+    deps = [
+        ":multi_worker_mirrored_strategy",
+        "//tensorflow/dtensor/python/tests:multi_client_test_util",
+        "//tensorflow/dtensor/python/tests:test_util",
+        "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/flags",
     ],
 )

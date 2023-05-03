@@ -23,6 +23,11 @@ from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import summary_ops_v2
 
 
+# Default dimension name used for the mesh created when user provide a list
+# of devices. For mirrored strategy, it should be a 1D mesh with batch dim only.
+DEFAULT_BATCH_MESH_DIM_NAME = "batch"
+
+
 class DTensorDistributedValue(values.DistributedValues):
   """DistributedValue backed by a DTensor instance.
 
