@@ -30,9 +30,9 @@ tb-nightly ~= 2.13.0.a
 tf-estimator-nightly ~= 2.13.0.dev
 
 # Test dependencies
-grpcio ~= 1.49.1 # Earliest version for Python 3.11
-portpicker ~= 1.4.0
-scipy ~= 1.7.2; python_version < '3.11'
+grpcio == 1.49.1 # Earliest version for Python 3.11
+portpicker == 1.4.0
+scipy == 1.7.3; python_version < '3.11'
 scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
 
 # This is usually vendored in setuptools but ensure it gets installed in CI anyway
