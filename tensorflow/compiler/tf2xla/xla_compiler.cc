@@ -903,8 +903,16 @@ Status XlaCompiler::CompileFunction(
     }
   } else {
     VLOG(1) << "MLIR bridge off. Using the old bridge to compile the function";
-    TF_RETURN_IF_ERROR(
-        CompileGraph(options, function_id, std::move(graph), args, result));
+    auto status =
+        CompileGraph(options, function_id, std::move(graph), args, result);
+    if (!status.ok()) {
+      ::tsl::errors::AppendToMessage(
+          &status, "tf2xla conversion failed while converting ", function_id,
+          ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
+          "--vmodule=xla_compiler=2 to obtain a dump of the compiled "
+          "functions.");
+      return status;
+    }
   }
   VLOG(1) << "====================================================";
 
