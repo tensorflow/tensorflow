@@ -125,3 +125,36 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "sample_stable_delegate_kernel_tests",
+    timeout = "moderate",
+    args = ["--stable_delegate_settings_file=$(location stable_delegate_settings.json)"],
+    data = [
+        "stable_delegate_settings.json",
+        ":tensorflowlite_sample_stable_delegate",
+    ],
+    # This shard_count value of 30 was chosen because empirically this seems to be near the sweet
+    # spot that minimizes test time while not wasting resources with unnecessary shards.
+    # This runs roughly 30% faster than with shard_count = 20, but values beyond this show little
+    # improvement, e.g. shard_count = 40 gave only a few per cent improvement.
+    shard_count = 30,
+    deps = [
+        "//tensorflow/lite/kernels:combined_all_kernel_tests_lib",
+        "//tensorflow/lite/kernels:test_main",
+    ],
+)
+
+genrule(
+    name = "gen_stable_delegate_settings",
+    outs = ["stable_delegate_settings.json"],
+    cmd = """
+        echo '
+            {
+              "stable_delegate_loader_settings": {
+                "delegate_path": "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so"
+              }
+            }
+        ' > $@
+    """,
+)
