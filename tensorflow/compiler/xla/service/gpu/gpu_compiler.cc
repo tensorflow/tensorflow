@@ -725,7 +725,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     {
       // Convert all collectives to their async form, and then annotate the ones
-      // thet actually need to run asynchronously with an GPU specific backend
+      // that actually need to run asynchronously with an GPU specific backend
       // config.
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
       config.convert_all_reduce = HloPredicateTrue;
