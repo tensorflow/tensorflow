@@ -36,16 +36,16 @@ tf-estimator-nightly ~= 2.13.0.dev
 grpcio == 1.49.1 # Earliest version for Python 3.11
 portpicker == 1.4.0
 scipy == 1.7.3; python_version < '3.11'
-scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
+scipy == 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
 # Required for TFLite import from JAX tests
 jax == 0.3.25
 jaxlib == 0.3.25 # Earliest version for Python 3.11
 # Needs to be addressed. Unblocked 2.4 branchcut cl/338377048
-PyYAML ~= 6.0
+PyYAML == 6.0
 # For uploading
-auditwheel ~= 5.0.0
+auditwheel == 5.0.0
 twine == 3.6.0
 # For user tool scripts
 junitparser == 2.2.0
-lxml ~= 4.9.1
-pylint ~= 2.13.9
+lxml == 4.9.1
+pylint == 2.13.9
