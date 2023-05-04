@@ -2594,6 +2594,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/service:latency_hiding_scheduler",
+        "//tensorflow/compiler/xla/service:profile_guided_latency_estimator",
         "@com_google_absl//absl/memory",
     ],
 )
