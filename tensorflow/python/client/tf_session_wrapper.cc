@@ -787,7 +787,6 @@ void PyGraph::Dismantle() {
   for (auto& op : op_list) {
     AsPyTfObject<PyOperation>(op.ptr())->Dismantle();
   }
-  PyDict_Clear(dict);
   op_list = py::list();
   ops_by_id.clear();
   ops_by_name.clear();
