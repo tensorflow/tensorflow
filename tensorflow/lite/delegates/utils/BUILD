@@ -125,12 +125,14 @@ cc_library_with_tflite(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "sync_fence",
     srcs = ["sync_fence.cc"],
     hdrs = ["sync_fence.h"],
-    deps = [
+    tflite_deps = [
         ":ret_macros",
+    ],
+    deps = [
         "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/types:span",
     ],
