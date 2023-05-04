@@ -28,7 +28,9 @@ from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
+from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import multi_worker_mirrored_strategy as mwms
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import variables
@@ -41,6 +43,9 @@ class StrategyCreationTest(tf_test.TestCase, parameterized.TestCase):
     super().setUp()
     self.num_client = flags.FLAGS.num_clients
     self.num_local_devices = flags.FLAGS.num_local_devices
+
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    self.client_id = int(tf_config['task']['index'])
 
   def test_strategy_creation_with_default_cluster_resolver(self):
     strategy = mwms.MultiWorkerMirroredStrategy()
@@ -149,6 +154,32 @@ class StrategyCreationTest(tf_test.TestCase, parameterized.TestCase):
   def test_in_multi_worker_mode(self):
     strategy = mwms.MultiWorkerMirroredStrategy()
     self.assertTrue(strategy.extended._in_multi_worker_mode())
+
+  def test_run_with_distribute_value_input(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+
+    def value_fn(value_context):
+      return value_context.replica_id_in_sync_group
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+
+    @def_function.function
+    def replica_fn(inputs):
+      return inputs * 2
+
+    result = strategy.run(replica_fn, args=(distributed_values,))
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result.values, self.num_local_devices)
+    # Note that the scalar value from
+    # experimental_distribute_values_from_function will be up rank to 1D since
+    # batched shared dtensor need at least be 1D.
+
+    for i in range(self.num_local_devices):
+      self.assertAllClose(
+          result.values[i],
+          constant_op.constant(
+              [(self.client_id * self.num_local_devices + i) * 2]))
 
 
 def client_config_function(config_params):

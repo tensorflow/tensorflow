@@ -170,6 +170,7 @@ dtensor_test(
         "nosan",
     ],  # b/195537906
     deps = [
+        ":dtensor_util",
         ":multi_worker_mirrored_strategy",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:layout",
@@ -178,6 +179,7 @@ dtensor_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/platform:client_testlib",
