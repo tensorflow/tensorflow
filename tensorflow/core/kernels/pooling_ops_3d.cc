@@ -497,11 +497,6 @@ class AvgPooling3dGradOp : public OpKernel {
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
-    for (std::size_t i = 0; i < ksize_.size(); ++i) {
-      OP_REQUIRES(
-          context, ksize_[i] > 0,
-          errors::InvalidArgument("ksize must be positive, got: ", ksize_[i]));
-    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
