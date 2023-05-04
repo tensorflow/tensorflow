@@ -1624,6 +1624,7 @@ tf_cuda_cc_test(
         ":flags",
         ":xla_device",
         ":xla_gpu_device",
+        ":xla_gpu_jit",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:test",

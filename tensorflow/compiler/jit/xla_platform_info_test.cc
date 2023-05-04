@@ -107,6 +107,7 @@ TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTestGpuDevice) {
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
   TF_EXPECT_OK(BuildPjRtDeviceCompiler(platform_info, device_setup_.flr(),
                                        &pjrt_device_compiler));
+  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
 }
 #endif
 
