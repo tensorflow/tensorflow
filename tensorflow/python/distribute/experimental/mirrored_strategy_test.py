@@ -161,9 +161,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
       tensor_input = constant_op.constant(3.0)
       return strategy.run(replica_fn, args=(tensor_input,))
 
-    # TODO(b/274647196): Change to use strategy.scope() for default device/mesh.
-    # with strategy.scope():
-    with d_api.default_mesh(self.mesh):
+    with strategy.scope():
       result = run_fn()
     self.assertEqual(result, constant_op.constant(6.0))
 
