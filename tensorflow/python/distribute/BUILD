@@ -139,7 +139,6 @@ py_strict_library(
     name = "distribute_lib",
     srcs = [
         "distribute_lib.py",
-        "distribution_strategy_context.py",
     ],
     srcs_version = "PY3",
     deps = [
