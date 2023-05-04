@@ -3357,11 +3357,7 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         ":core",
-        ":core_cpu",
-        ":graph_constructor",
         ":session",
-        ":session_options",
-        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",
