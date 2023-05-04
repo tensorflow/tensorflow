@@ -83,8 +83,9 @@ int64_t FirstContractingDimensionIndex(const HloInstruction& dot,
 }
 
 // Data types that are tested to work in the triton GEMM emitter.
-bool IsTritonSupportedInputType(
-    PrimitiveType t, se::CudaComputeCapability cuda_compute_capability) {
+bool IsTritonSupportedInputType(PrimitiveType t, GpuVersion gpu_version) {
+  auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_version);
   switch (t) {
     case PRED:
     case S8:
@@ -100,11 +101,10 @@ bool IsTritonSupportedInputType(
   }
 }
 
-Status RequireTritonFusibleConvert(
-    const HloInstruction* input,
-    se::CudaComputeCapability cuda_compute_capability) {
+Status RequireTritonFusibleConvert(const HloInstruction* input,
+                                   GpuVersion gpu_version) {
   if (!IsTritonSupportedInputType(input->operand(0)->shape().element_type(),
-                                  cuda_compute_capability)) {
+                                  gpu_version)) {
     return Unimplemented("unsupported data type");
   }
   // TODO(b/266862494): Can pick up almost any
@@ -390,9 +390,9 @@ Status RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
 // Tries to transform dim_order describing the output of `hlo` into a
 // description of its input if it is supported by the triton GEMM emitter.
 Status TryToFuse(const HloInstruction* hlo, DimensionOrder& dim_order,
-                 const se::CudaComputeCapability cuda_compute_capability) {
+                 const GpuVersion gpu_version) {
   if (hlo->opcode() == HloOpcode::kConvert) {
-    return RequireTritonFusibleConvert(hlo, cuda_compute_capability);
+    return RequireTritonFusibleConvert(hlo, gpu_version);
   }
   TF_RETURN_IF_ERROR(dim_order.HandleInstruction(hlo));
   return RequireTritonGemmSupportedDimOrder(dim_order);
@@ -402,14 +402,14 @@ Status TryToFuse(const HloInstruction* hlo, DimensionOrder& dim_order,
 // operations that can target the triton GEMM emitter.
 class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterTritonVisitor(const se::CudaComputeCapability cc)
-      : cuda_compute_capability_(cc) {}
+  explicit GemmRewriterTritonVisitor(const GpuVersion gpu_version)
+      : gpu_version_(gpu_version) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
   // and replaces the original dot() with a call to the computation.
   Status HandleDot(HloInstruction* dot) override {
     VLOG(5) << dot->ToString();
-    if (!IsTritonHandledGEMM(*dot, cuda_compute_capability_)) {
+    if (!IsTritonHandledGEMM(*dot, gpu_version_)) {
       return OkStatus();
     }
 
@@ -446,8 +446,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
           }();
           // TryToFuse() makes output -> input transformation of
           // operand_dim_order if succeeds.
-          if (TryToFuse(operand, operand_dim_order, cuda_compute_capability_)
-                  .ok()) {
+          if (TryToFuse(operand, operand_dim_order, gpu_version_).ok()) {
             VLOG(3) << "Fusing " << operand->ToString();
             to_fuse.push(operand);
             // Save the dimension order description of operand's input.
@@ -508,13 +507,12 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  se::CudaComputeCapability cuda_compute_capability_;
+  GpuVersion gpu_version_;
 };
 
-StatusOr<bool> RunOnComputation(
-    HloComputation* computation,
-    se::CudaComputeCapability cuda_compute_capability) {
-  GemmRewriterTritonVisitor visitor(cuda_compute_capability);
+StatusOr<bool> RunOnComputation(HloComputation* computation,
+                                GpuVersion gpu_version) {
+  GemmRewriterTritonVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
@@ -724,9 +722,8 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
   }
 }
 
-bool IsTritonHandledGEMM(
-    const HloInstruction& dot,
-    const se::CudaComputeCapability cuda_compute_capability) {
+bool IsTritonHandledGEMM(const HloInstruction& dot,
+                         const GpuVersion gpu_version) {
   if (dot.opcode() != HloOpcode::kDot ||
       absl::c_any_of(dot.precision_config().operand_precision(),
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
@@ -734,6 +731,8 @@ bool IsTritonHandledGEMM(
   }
 
   auto supported_output_type = [&](const PrimitiveType t) {
+    auto cuda_compute_capability =
+        std::get<se::CudaComputeCapability>(gpu_version);
     switch (t) {
       case F16:
       case F32:
@@ -752,9 +751,9 @@ bool IsTritonHandledGEMM(
   }
 
   if (!IsTritonSupportedInputType(dot.operand(0)->shape().element_type(),
-                                  cuda_compute_capability) ||
+                                  gpu_version) ||
       !IsTritonSupportedInputType(dot.operand(1)->shape().element_type(),
-                                  cuda_compute_capability)) {
+                                  gpu_version)) {
     return false;
   }
 
@@ -773,7 +772,7 @@ bool IsTritonHandledGEMM(
     const HloInstruction* input = dot.operand(operand_number);
     DimensionOrder dim_order =
         DimensionOrder::FromDotOperand(dot, operand_number);
-    while (TryToFuse(input, dim_order, cuda_compute_capability).ok()) {
+    while (TryToFuse(input, dim_order, gpu_version).ok()) {
       if (input->opcode() == HloOpcode::kConvert ||
           input->opcode() == HloOpcode::kTranspose) {
         return true;
@@ -795,8 +794,8 @@ StatusOr<bool> GemmRewriterTriton::Run(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
-        bool result, RunOnComputation(computation, cuda_compute_capability_));
+    TF_ASSIGN_OR_RETURN(bool result,
+                        RunOnComputation(computation, gpu_version_));
     changed |= result;
   }
   return changed;

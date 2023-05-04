@@ -192,7 +192,9 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -836,15 +838,17 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
-    const stream_executor::CudaComputeCapability& compute_capability =
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
-        compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-      pipeline.AddPass<GemmRewriterTriton>(compute_capability);
+        std::holds_alternative<se::CudaComputeCapability>(
+            gpu_target_config.gpu_version)) {
+      auto cuda_compute_capability =
+          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
+      }
     }
-    pipeline.AddPass<GemmRewriter>(compute_capability);
+    pipeline.AddPass<GemmRewriter>(gpu_target_config.gpu_version);
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -859,7 +863,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ReductionLayoutNormalizer>();
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(compute_capability);
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        gpu_target_config.gpu_version);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -1169,13 +1174,17 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
+#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
                       CanUseLinkModules(module_config));
   if (!can_use_link_modules) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }
-
+#elif TENSORFLOW_USE_ROCM
+  return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                               /*shard_number=*/std::nullopt);
+#endif
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   int num_functions = 0;
   for (llvm::Function& func : llvm_module->functions()) {

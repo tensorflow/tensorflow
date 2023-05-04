@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -136,6 +137,13 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
           params.verbose_buffer_assignment_string_dumper),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
+#if TENSORFLOW_USE_ROCM
+  // ROCm uses hsaco hashes to distinguish between modules.
+  // Bad things happen if multiple modules with identical code are loaded.
+  binary_.reserve(binary_.size() + 272);
+  *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
+  *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
+#endif
   if (has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(
         module().unique_id(), shared_module(), debug_buffer_assignment_);
