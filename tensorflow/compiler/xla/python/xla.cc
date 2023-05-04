@@ -327,20 +327,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("serialize_executable",
            xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
       .def("deserialize_executable",
-           xla::ValueOrThrowWrapper(
-               py::overload_cast<const std::string&, CompileOptions,
-                                 std::vector<py::capsule>>(
-                   &PyClient::DeserializeExecutable)),
-           py::arg("serialized"), py::arg("compile_options"),
-           py::arg("host_callbacks") = std::vector<py::capsule>())
-      // TODO(skyewm): remove when jax stop providing hlo_module
-      .def("deserialize_executable",
-           xla::ValueOrThrowWrapper(
-               py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
-                                 CompileOptions, std::vector<py::capsule>>(
-                   &PyClient::DeserializeExecutable)),
-           py::arg("serialized"), py::arg("hlo_module"),
-           py::arg("compile_options"),
+           xla::ValueOrThrowWrapper(&PyClient::DeserializeExecutable),
+           py::arg("serialized"), py::arg("compile_options") = std::nullopt,
            py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("heap_profile", xla::ValueOrThrowWrapper(&PyClient::HeapProfile))
       // TODO(zhangqiaorjc): Experimental.

@@ -2545,9 +2545,7 @@ def TestFactory(xla_backend,
       self.assertLen(executable.hlo_modules(), 1)
 
       serialized = self.backend.serialize_executable(executable)
-      deserialized = self.backend.deserialize_executable(
-          serialized,
-          executable.hlo_modules()[0], options)
+      deserialized = self.backend.deserialize_executable(serialized, options)
 
       expected, = xla_client.execute_with_python_values(executable, (),
                                                         self.backend)
