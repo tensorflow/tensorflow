@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -145,6 +147,13 @@ mlir::LogicalResult ShardingParam::verify(
   }
 
   return mlir::success();
+}
+
+std::string ShardingParam::DebugString() const {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  os << *this;
+  return result;
 }
 
 llvm::hash_code hash_value(ShardingParam sharding) {

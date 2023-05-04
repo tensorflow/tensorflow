@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -34,6 +36,7 @@ namespace ifrt {
 char Sharding::ID = 0;
 char SingleDeviceSharding::ID = 0;
 char OpaqueSharding::ID = 0;
+char ShardingParamSharding::ID = 0;
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
   return os << sharding.DebugString();
@@ -126,6 +129,66 @@ std::string OpaqueSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
       "OpaqueSharding(%s)",
+      absl::StrJoin(devices_, ",", [](std::string* out, const Device* device) {
+        absl::StrAppend(out, device->ToString());
+      }));
+}
+
+StatusOr<std::shared_ptr<const Sharding>> ShardingParamSharding::Create(
+    ShardingParam sharding_param, DeviceList devices) {
+  int64_t device_count =
+      absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
+                         std::multiplies<int64_t>());
+  if (device_count != devices.size()) {
+    return FailedPrecondition(
+        "Device counts don't match. From ShardingParam %d vs from DeviceList "
+        "%d",
+        device_count, devices.size());
+  }
+  return std::shared_ptr<const Sharding>(
+      new ShardingParamSharding(std::move(sharding_param), std::move(devices)));
+}
+
+StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+ShardingParamSharding::Disassemble(const Shape& shape) const {
+  DCHECK(this);
+  if (shape.dims().size() != sharding_param_.dim_shards().size()) {
+    return FailedPrecondition(
+        "Ranks don't match. From Shape %d vs from ShardingParam %d",
+        shape.dims().size(), sharding_param_.dim_shards().size());
+  }
+
+  std::vector<int64_t> dims;
+  dims.reserve(shape.dims().size());
+  for (const auto [dim, dim_shards] :
+       llvm::zip(shape.dims(), sharding_param_.dim_shards())) {
+    if (dim % dim_shards != 0) {
+      return FailedPrecondition(
+          "Uneven shard is not supported. dim: %d, dim_shards: %d", dim,
+          dim_shards);
+    }
+    dims.push_back(dim / dim_shards);
+  }
+  Shape local_shape(dims);
+
+  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  for (Device* device : devices_) {
+    result.push_back({local_shape, SingleDeviceSharding::Create(device)});
+  }
+
+  return result;
+}
+
+StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
+    const Shape& shape) const {
+  DCHECK(this);
+  return Unimplemented("TODO(b/271129892)");
+}
+
+std::string ShardingParamSharding::DebugString() const {
+  DCHECK(this);
+  return absl::StrFormat(
+      "ShardingParamSharding(%s, devices: %s)", sharding_param_.DebugString(),
       absl::StrJoin(devices_, ",", [](std::string* out, const Device* device) {
         absl::StrAppend(out, device->ToString());
       }));

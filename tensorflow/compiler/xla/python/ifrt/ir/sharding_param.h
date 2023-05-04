@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_SHARDING_PARAM_H_
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
@@ -113,6 +114,8 @@ class ShardingParam {
         dim_shards(), llvm::ArrayRef<int64_t>(minor_to_major_.permutation),
         llvm::ArrayRef<int64_t>(minor_to_major_.axis_sizes));
   }
+
+  std::string DebugString() const;
 
  private:
   llvm::SmallVector<int64_t, 4> dim_shards_;
