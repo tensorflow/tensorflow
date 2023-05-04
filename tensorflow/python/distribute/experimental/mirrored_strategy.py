@@ -165,8 +165,10 @@ class MirroredStrategy(distribute_lib.Strategy):
     return value
 
 
+# TODO(scottzhu): Rename this to a more generic name and move it to a common
+# place.
 class MirroredExtended(distribute_lib.StrategyExtendedV2):
-  """Strategy extension contains the concrete logic for variable creation."""
+  """Strategy extension that support both single and multi worker strategy."""
 
   def __init__(self, container_strategy, mesh):
     super().__init__(container_strategy)
@@ -222,10 +224,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
 
   @property
   def worker_devices(self):
-    # Note that we return the local device here since this is a single worker
-    # setting, and the local devices will be all the devices in the current
-    # mesh. In the multi-worker mirrored strategy, this value should be
-    # expanded to the global device list.
+    # Note that in either single worker (MirroredStrategy) or multi worker (
+    # MultiWorkerMirroredStrategy), worker_devices refers to the local worker
+    # devices.
     return tuple(self._mesh.local_devices())
 
   @property
@@ -234,9 +235,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     return self.worker_devices
 
   def _in_multi_worker_mode(self):
-    # This method is mostly used in the input relate context and high level API.
-    # In the single client mesh DTensor context, this is False.
-    return False
+    return d_config.num_clients() > 1
 
   def _get_local_replica_id(self, replica_id_in_sync_group):
     return replica_id_in_sync_group

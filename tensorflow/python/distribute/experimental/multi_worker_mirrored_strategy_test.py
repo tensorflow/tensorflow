@@ -18,17 +18,24 @@ import json
 import os
 
 from absl import flags
+from absl.testing import parameterized
+import numpy as np
 
+from tensorflow.dtensor.python import d_variable
+from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python.tests import multi_client_test_util
 from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.distribute.experimental import multi_worker_mirrored_strategy as mwms
 from tensorflow.python.framework import config
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as tf_test
 
 
-class StrategyCreationTest(tf_test.TestCase):
+class StrategyCreationTest(tf_test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -72,6 +79,76 @@ class StrategyCreationTest(tf_test.TestCase):
                      str(self.num_client))
     self.assertEqual(dtensor_env_vars['DTENSOR_CLIENT_ID'], client_id)
     self.assertEqual(dtensor_env_vars['DTENSOR_JOB_NAME'], 'worker')
+
+  @parameterized.named_parameters([
+      ('py_floats', lambda: [1.0, 2.0], True),
+      ('np_floats', lambda: np.array([1.0, 2.0]), True),
+      ('tf_const', lambda: constant_op.constant([1.0, 2.0]), True),
+      ('py_floats_callable', lambda: [1.0, 2.0], False),
+      ('np_floats_callable', lambda: np.array([1.0, 2.0]), False),
+      ('tf_const_callable', lambda: constant_op.constant([1.0, 2.0]), False),
+  ])
+  def test_variable_creation(self, init_value, convert_callable):
+    if convert_callable:
+      init_value = init_value()
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    with strategy.scope():
+      v = variables.Variable(init_value)
+
+    self.assertIsInstance(v, d_variable.DVariable)
+    self.assertIsNotNone(v.layout)
+    self.assertEqual(v.layout, layout.Layout.replicated(strategy._mesh, rank=1))
+
+  def test_strategy_extension(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    self.assertIsInstance(strategy.extended, distribute_lib.StrategyExtendedV2)
+
+  def test_num_replica_in_sync(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    self.assertEqual(strategy.num_replicas_in_sync,
+                     self.num_client * self.num_local_devices)
+
+  def test_worker_devices(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    worker_devices = strategy.extended.worker_devices
+    self.assertLen(worker_devices, self.num_local_devices)
+    self.assertEqual(worker_devices, tuple(strategy._mesh.local_devices()))
+
+  def test_parameter_devices(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    parameter_devices = strategy.extended.parameter_devices
+    self.assertLen(parameter_devices, self.num_local_devices)
+    self.assertEqual(parameter_devices, tuple(strategy._mesh.local_devices()))
+
+  def test_variable_created_in_scope(self):
+    strategy1 = mwms.MultiWorkerMirroredStrategy()
+    with strategy1.scope():
+      v1 = variables.Variable(constant_op.constant([1.0, 2.0]))
+
+    v2 = variables.Variable(constant_op.constant([1.0, 2.0]))
+
+    strategy2 = mwms.MultiWorkerMirroredStrategy()
+    with strategy2.scope():
+      v3 = variables.Variable(constant_op.constant([1.0, 2.0]))
+
+    self.assertTrue(strategy1.extended.variable_created_in_scope(v1))
+    self.assertFalse(strategy1.extended.variable_created_in_scope(v2))
+    self.assertFalse(strategy1.extended.variable_created_in_scope(v3))
+    self.assertTrue(strategy2.extended.variable_created_in_scope(v3))
+
+  def test_colocate_vars_with(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    with strategy.scope():
+      v1 = variables.Variable(constant_op.constant([1.0, 2.0]))
+      with strategy.extended.colocate_vars_with(v1):
+        v2 = variables.Variable(constant_op.constant([2.0, 3.0]))
+
+    # We assert the layout for the variable, and make sure they are same.
+    self.assertEqual(v1.layout, v2.layout)
+
+  def test_in_multi_worker_mode(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    self.assertTrue(strategy.extended._in_multi_worker_mode())
 
 
 def client_config_function(config_params):

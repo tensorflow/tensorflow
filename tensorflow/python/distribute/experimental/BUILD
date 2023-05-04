@@ -156,11 +156,18 @@ dtensor_test(
     ],  # b/195537906
     deps = [
         ":multi_worker_mirrored_strategy",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python/tests:multi_client_test_util",
         "//tensorflow/dtensor/python/tests:test_util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/flags",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
