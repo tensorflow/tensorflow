@@ -3221,10 +3221,8 @@ py_library(
     deps = [
         ":array_ops",
         ":init_ops",
-        ":ref_variable",
         ":resource_variable_ops",
         ":tf2",
-        ":variable_v1",
         ":variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:monitoring",
@@ -3280,6 +3278,7 @@ py_library(
         ":resource_variable_ops",
         ":state_ops",
         ":state_ops_gen",
+        ":variable_scope",
         ":variable_v1",
         ":variables",
         "//tensorflow/core:protos_all_py",
@@ -3293,7 +3292,6 @@ py_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:lazy_loader",
     ],
 )
 
@@ -3304,6 +3302,7 @@ py_library(
     deps = [
         ":cond",
         ":state_ops",
+        ":variable_scope",
         ":variables",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",

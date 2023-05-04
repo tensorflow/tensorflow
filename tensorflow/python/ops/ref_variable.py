@@ -26,19 +26,14 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.deprecation import deprecated
-
-
-variable_scope = lazy_loader.LazyLoader(
-    "variable_scope", globals(),
-    "tensorflow.python.ops.variable_scope")
 
 
 def default_variable_creator(next_creator=None, **kwargs):
