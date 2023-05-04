@@ -171,6 +171,26 @@ class PoolingTest(test.TestCase):
             data_format=data_format)
         self.evaluate(t)
 
+  def testAvgPool3dGradInvalidKsize(self):
+    for data_format, use_gpu in GetTestConfigs():
+      with self.cached_session(use_gpu=use_gpu):
+        orig_input_shape = constant_op.constant(
+            [1, 1, 1, 1, 1], dtype=dtypes.int32
+        )
+        grad = [[[[[1.0]]]]]
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, r"ksize must be positive, got: *"
+        ):
+          t = gen_nn_ops.AvgPool3DGrad(
+              orig_input_shape=orig_input_shape,
+              grad=grad,
+              ksize=[1, -3, 1, 1, 1],
+              strides=[1, 1, 1, 1, 1],
+              padding="SAME",
+              data_format=data_format,
+          )
+          self.evaluate(t)
+
   def testMaxPool3dValidPadding(self):
     expected_output = [40.0, 41.0, 42.0]
     self._VerifyValues(
