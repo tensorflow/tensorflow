@@ -32,27 +32,19 @@ py_strict_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     deps = [
+        ":dtensor_strategy_extended",
         ":dtensor_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
-        "//tensorflow/dtensor/python:d_variable",
-        "//tensorflow/dtensor/python:input_util",
-        "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:mesh_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/distribute:cross_device_ops",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -92,11 +84,15 @@ py_strict_library(
     deps = [
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:input_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/framework:tensor_util",
     ],
 )
 
@@ -121,11 +117,30 @@ dtensor_test(
 )
 
 py_library(
+    name = "dtensor_strategy_extended",
+    srcs = ["dtensor_strategy_extended.py"],
+    deps = [
+        ":dtensor_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:input_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:distribute_utils",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:nest",
+    ],
+)
+
+py_library(
     name = "multi_worker_mirrored_strategy",
     srcs = ["multi_worker_mirrored_strategy.py"],
     deps = [
+        ":dtensor_strategy_extended",
         ":dtensor_util",
-        ":mirrored_strategy",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:mesh_util",
         "//tensorflow/python/distribute:distribute_lib",
