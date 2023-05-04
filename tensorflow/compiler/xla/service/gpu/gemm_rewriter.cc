@@ -651,11 +651,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1) << "FP8 Custom Calls require Hopper or newer architecture.";
       return false;
     }
-#if CUDA_VERSION < 11080
-    // FP8 GEMM kernels are only available with CUDA 11.8 and above
-    VLOG(1) << "FP8 Custom Calls require CUDA 11.8 or newer.";
+#if CUDA_VERSION < 12000
+    // FP8 GEMM kernels are only available with CUDA 12.0 and above
+    VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
     return false;
-#endif
+#endif  // CUDA_VERSION < 12000
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
@@ -726,7 +726,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // fusion of the scaling and conversion of D into the Custom Call. Fusing
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
-#if CUDA_VERSION > 12000
+
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
@@ -737,7 +737,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
       }
     }
-#endif  // CUDA_VERSION > 12000
+
     // If a matrix bias was not fused, set C to a matrix of zeros.
     if (!c) {
       Literal c_literal = LiteralUtil::Zero(c_type);
