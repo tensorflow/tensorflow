@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -503,6 +504,70 @@ int MemorySpaceAssignmentCostAnalysis::CalculateComputationNestLevel(
   return nest_level;
 }
 
+float MemorySpaceAssignmentCostAnalysis::GetDefaultMemoryAccessOverhead(
+    const HloInstruction& instruction,
+    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
+    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
+  // Calculate the pipeline overhead of accessing the default memory. We use the
+  // maximum of the window size heuristic and the actual default memory bytes
+  // accessed multiplied with the compute as the overhead. So, the math is:
+  //
+  // overhead = compute_per_iteration
+  //          = compute_elapsed / num_iterations
+  //          = compute_elapsed / (bytes_accessed / window_size)
+  //          = (window_size / bytes_accessed) * compute_elapsed
+  const float window_size_bytes =
+      options_.pipeline_overhead_window_size_mib * 1024 * 1024;
+  const float bytes_accessed = cost_analysis_.bytes_accessed(instruction);
+  const float default_memory_bytes_accessed =
+      bytes_accessed -
+      GetBytesAccessedFromAlternateMemory(
+          instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
+  const float compute_elapsed = GetInstructionElapsedDueToCompute(instruction);
+  const float effective_window_size_bytes =
+      std::min(window_size_bytes, default_memory_bytes_accessed);
+  float overhead = 0;
+  if (bytes_accessed > 0) {
+    overhead = (effective_window_size_bytes / bytes_accessed) * compute_elapsed;
+  }
+  return overhead;
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetDefaultMemoryBandwidthIdleTime(
+    const HloInstruction& instruction,
+    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
+    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
+  const float default_memory_bytes_accessed =
+      cost_analysis_.bytes_accessed(instruction) -
+      GetBytesAccessedFromAlternateMemory(
+          instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
+  const float elapsed_due_to_default_mem =
+      default_memory_bytes_accessed /
+      cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+  const float elapsed = GetInstructionElapsedInAlternateMemory(
+      instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
+  return elapsed - elapsed_due_to_default_mem;
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetBytesAccessedFromAlternateMemory(
+    const HloInstruction& instruction,
+    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
+    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
+  float bytes_accessed_from_alternate_mem = 0.0;
+  for (auto& operand : operands_in_alternate_mem) {
+    const float operand_bytes_accessed = cost_analysis_.operand_bytes_accessed(
+        instruction, operand.first, operand.second);
+    bytes_accessed_from_alternate_mem += operand_bytes_accessed;
+  }
+
+  for (auto& shape_idx : outputs_in_alternate_mem) {
+    const float output_bytes_accessed =
+        cost_analysis_.output_bytes_accessed(instruction, shape_idx);
+    bytes_accessed_from_alternate_mem += output_bytes_accessed;
+  }
+  return bytes_accessed_from_alternate_mem;
+}
+
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
     const HloInstruction& instruction) const {
   return std::max(
@@ -517,18 +582,8 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
   float total_bytes_accessed = cost_analysis_.bytes_accessed(instruction);
-  float bytes_accessed_from_alternate_mem = 0.0;
-  for (auto& operand : operands_in_alternate_mem) {
-    float operand_bytes_accessed = cost_analysis_.operand_bytes_accessed(
-        instruction, operand.first, operand.second);
-    bytes_accessed_from_alternate_mem += operand_bytes_accessed;
-  }
-
-  for (auto& shape_idx : outputs_in_alternate_mem) {
-    float output_bytes_accessed =
-        cost_analysis_.output_bytes_accessed(instruction, shape_idx);
-    bytes_accessed_from_alternate_mem += output_bytes_accessed;
-  }
+  float bytes_accessed_from_alternate_mem = GetBytesAccessedFromAlternateMemory(
+      instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
   float elapsed_due_to_alternate_mem =
       bytes_accessed_from_alternate_mem /
       options().alternate_mem_bandwidth_bytes_per_second;
@@ -579,18 +634,22 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsed(
     const HloInstruction& instruction) const {
+  float overhead = GetDefaultMemoryAccessOverhead(instruction);
   return std::max(GetInstructionElapsedDueToCompute(instruction),
-                  GetInstructionElapsedDueToMemory(instruction));
+                  GetInstructionElapsedDueToMemory(instruction) + overhead);
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
+  float overhead = GetDefaultMemoryAccessOverhead(
+      instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
   return std::max(
       GetInstructionElapsedDueToCompute(instruction),
       GetInstructionElapsedDueToMemory(instruction, operands_in_alternate_mem,
-                                       outputs_in_alternate_mem));
+                                       outputs_in_alternate_mem) +
+          overhead);
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
