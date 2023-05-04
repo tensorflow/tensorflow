@@ -421,8 +421,7 @@ class Tensor(
       raise AttributeError(
           f"{type(self).__name__} object has no attribute '{name}'. " + """
         If you are looking for numpy-related methods, please run the following:
-        from tensorflow.python.ops.numpy_ops import np_config
-        np_config.enable_numpy_behavior()
+        tf.experimental.numpy.experimental_enable_numpy_behavior()
       """)
     self.__getattribute__(name)
 
