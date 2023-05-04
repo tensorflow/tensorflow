@@ -1165,13 +1165,11 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSlice(matmul.getB()));
   BufferAllocation::Slice c;
-#if CUDA_VERSION >= 12000
+
   if (matmul.getBetaAttr().getValueAsDouble() != 0.0) {
-#endif  // CUDA_VERSION > 12000
     TF_ASSIGN_OR_RETURN(c, GetAllocationSlice(matmul.getC()));
-#if CUDA_VERSION >= 12000
   }
-#endif  // CUDA_VERSION > 12000
+
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
                       GetAllocationSlice(matmul.getD()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_scale,

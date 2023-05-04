@@ -314,7 +314,6 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                       MatrixLayout::For(output_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
   Shape c_matrix_shape = c_shape;
-#if CUDA_VERSION >= 12000
   if (lhs_shape.element_type() == F8E4M3FN ||
       lhs_shape.element_type() == F8E5M2) {
     if (beta == 0.0) {
@@ -335,7 +334,6 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       c_matrix_shape.set_element_type(c_shape.element_type());
     }
   }
-#endif
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
                       MatrixLayout::For(c_matrix_shape, output_batch_dims,

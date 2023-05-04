@@ -994,12 +994,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   int ops_num = custom_call->operand_count();
-#if CUDA_VERSION >= 12000
   TF_RET_CHECK(ops_num == 6 || ops_num == 7 || ops_num == 8);
-#else
-  TF_RET_CHECK(ops_num == 7 || ops_num == 8);
-#endif
-
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
       xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
@@ -1011,17 +1006,14 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
   llvm::SmallVector<Value, 10> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
-#if CUDA_VERSION >= 12000
+
   int a_scale_index = has_matrix_bias ? 3 : 2;
   if (has_matrix_bias) {
     TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
   } else {
     TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
   }
-#else
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
-  int a_scale_index = 3;
-#endif
+
   TF_RETURN_IF_ERROR(
       GetOrCreateView(custom_call->operand(a_scale_index), &operands));
   TF_RETURN_IF_ERROR(

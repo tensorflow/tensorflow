@@ -874,24 +874,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     pad_operand(a);
     pad_operand(b);
     Shape new_output_shape;
-#if CUDA_VERSION >= 12000
     if (c == nullptr) {
       new_output_shape = pad_shape(instr->shape());
     } else {
-#endif  // CUDA_VERSION >= 12000
       pad_operand(c);
       new_output_shape = c->shape();
-#if CUDA_VERSION >= 12000
     }
-#endif  // CUDA_VERSION >= 12000
 
     std::vector<HloInstruction *> operands_list = {
-        a, b, c, scales_f32[0], scales_f32[1], one, one};
-#if CUDA_VERSION >= 12000
-    if (c == nullptr) {
-      operands_list.erase(operands_list.begin() + 2);
+        a, b, scales_f32[0], scales_f32[1], one, one};
+    if (c != nullptr) {
+      operands_list.insert(operands_list.begin() + 2, c);
     }
-#endif  // CUDA_VERSION >= 12000
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
@@ -991,46 +985,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-#if CUDA_VERSION >= 12000
     TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
                         existing_gemm->backend_config<GemmBackendConfig>());
-    if (gemm_backend_config.beta() == 1.0) {
-      if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
-          existing_gemm->operand(2)->shape().element_type() != F16) {
-        VLOG(1) << "The scaling and conversion of the result of "
-                << existing_gemm->ToShortString()
-                << " is not fused into the FP8 Custom Call because it "
-                   "conflicts with the existing fusion of the addition of a "
-                   "matrix bias with element type other than BF16 or F16.";
-        return OkStatus();
-      }
-    }
-#else
-    // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
-    // FP8 outputs (see cuBLASLt documentation).
-    if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
+    if (gemm_backend_config.beta() == 1.0 &&
+        existing_gemm->operand(2)->shape().element_type() != BF16 &&
         existing_gemm->operand(2)->shape().element_type() != F16) {
-      TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
-      if (gemm_backend_config.beta() == 1.0) {
-        VLOG(1) << "The scaling and conversion of the result of "
-                << existing_gemm->ToShortString()
-                << " is not fused into the FP8 Custom Call because it "
-                   "conflicts with the existing fusion of the addition of a "
-                   "matrix bias with element type other than BF16 or F16.";
-        return OkStatus();
-
-      } else {
-        Literal c_literal = LiteralUtil::Zero(BF16);
-        HloInstruction *c = instr->AddInstruction(
-            HloInstruction::CreateConstant(c_literal.Clone()));
-        HloInstruction *c_bcast =
-            instr->AddInstruction(HloInstruction::CreateBroadcast(
-                ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
-        TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
-      }
+      VLOG(1) << "The scaling and conversion of the result of "
+              << existing_gemm->ToShortString()
+              << " is not fused into the FP8 Custom Call because it "
+                 "conflicts with the existing fusion of the addition of a "
+                 "matrix bias with element type other than BF16 or F16.";
+      return OkStatus();
     }
-#endif  // CUDA_VERSION >= 12000
 
     // If necessary, invert the scaling factor of D and convert to F32.
     if (!mult_scale) {
@@ -1045,14 +1011,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           ShapeUtil::MakeScalarShape(F32), d_scale));
     }
 
-    int d_scale_index = 6;
-#if CUDA_VERSION >= 12000
-    if (gemm_backend_config.beta() == 0.0) {
-      d_scale_index = 5;
-    }
-#endif  // CUDA_VERSION >= 12000
-    TF_RETURN_IF_ERROR(
-        existing_gemm->ReplaceOperandWith(d_scale_index, d_scale));
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(
+        gemm_backend_config.beta() == 0.0 ? 5 : 6, d_scale));
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
