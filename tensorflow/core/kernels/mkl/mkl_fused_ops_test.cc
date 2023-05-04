@@ -1258,7 +1258,6 @@ class BiasCacheTest : public OpsTestBase {
   }
 };
 
-#ifndef ENABLE_ONEDNN_V3
 TEST_F(BiasCacheTest, Conv2DBiasCacheTestOldAPI) {
   TestConv2DBiasCacheTest(true);
 }
@@ -1266,7 +1265,6 @@ TEST_F(BiasCacheTest, Conv2DBiasCacheTestOldAPI) {
 TEST_F(BiasCacheTest, Conv2DBiasCacheTestNewAPI) {
   TestConv2DBiasCacheTest(false);
 }
-#endif  // !ENABLE_ONEDNN_V3
 
 // Testing fusion of pad and fusedconv2d
 template <typename T>
