@@ -31,7 +31,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -51,6 +50,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tflite {
 
