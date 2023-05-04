@@ -167,6 +167,135 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/diale
      SmallVectorImpl<Type>& inferredReturnTypes) {
    Type type = attributes.get("value").cast<TypedAttr>().getType();
    inferredReturnTypes.push_back(type);
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
+--- stablehlo/stablehlo/dialect/Serialization.cpp
++++ stablehlo/stablehlo/dialect/Serialization.cpp
+@@ -15,20 +15,27 @@
+ 
+ #include "stablehlo/dialect/Serialization.h"
+ 
+-#include <sstream>
+-
+ #include "llvm/Support/raw_ostream.h"
+ #include "mlir/Bytecode/BytecodeWriter.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/Parser/Parser.h"
+ #include "mlir/Pass/PassManager.h"
+ #include "mlir/Support/LogicalResult.h"
++#include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/VhloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
++namespace {
++void loadSerializationDialects(MLIRContext* context) {
++  context->loadDialect<mlir::func::FuncDialect>();
++  context->loadDialect<mlir::stablehlo::StablehloDialect>();
++  context->loadDialect<mlir::vhlo::VhloDialect>();
++}
++}  // namespace
+ 
+ LogicalResult serializePortableArtifact(ModuleOp module,
+                                         StringRef targetVersion,
+@@ -61,6 +68,17 @@
+   return success();
+ }
+ 
++LogicalResult serializePortableArtifact(StringRef moduleStr,
++                                        StringRef targetVersion,
++                                        raw_ostream& os) {
++  MLIRContext context;
++  loadSerializationDialects(&context);
++  auto module = mlir::parseSourceString<mlir::ModuleOp>(moduleStr, &context);
++  if (!module || failed(module->verifyInvariants())) return failure();
++
++  return serializePortableArtifact(*module, targetVersion, os);
++}
++
+ OwningOpRef<ModuleOp> deserializePortableArtifact(StringRef sourceStr,
+                                                   MLIRContext* context) {
+   context->loadDialect<vhlo::VhloDialect>();
+@@ -80,6 +98,17 @@
+   return module;
+ }
+ 
++FailureOr<std::string> deserializePortableArtifact(StringRef sourceStr) {
++  MLIRContext context;
++  loadSerializationDialects(&context);
++  auto module = deserializePortableArtifact(sourceStr, &context);
++  if (!module) return failure();
++  std::string buffer;
++  llvm::raw_string_ostream os(buffer);
++  (void)writeBytecodeToFile(*module, os);
++  return buffer;
++}
++
+ std::string getCurrentVersion() {
+   return mlir::vhlo::Version::getCurrentVersion().toString();
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.h b/stablehlo/stablehlo/dialect/Serialization.h
+--- stablehlo/stablehlo/dialect/Serialization.h
++++ stablehlo/stablehlo/dialect/Serialization.h
+@@ -24,16 +24,56 @@
+ namespace stablehlo {
+ 
+ // Get current StableHLO version
++//
++// This value can be used as the `targetVersion` argument to
++// `serializePortableArtifact`.
++//
++// See `stablehlo/dialect/Version.h` for current version number.
+ std::string getCurrentVersion();
+ 
+ // Write a StableHLO program to a portable artifact
++// Writes a stable payload for `module` to `os`. If compatibility with a
++// previous version of StableHLO is required, provide the required version
++// string `#.#.#` for `targetVersion`.
++//
++// Can fail if `module` cannot be expressed in the `targetVersion` version of
++// StableHLO, e.g. if it's using new or removed features, or if it involves
++// unsupported dialects.
+ LogicalResult serializePortableArtifact(ModuleOp module,
+                                         StringRef targetVersion,
+                                         raw_ostream& os);
+ 
++// Write a StableHLO program to a portable artifact
++//
++// This string overload of the above API is provided for Python bindings.
++// Python bindings expect all dialects to be compiled together. When this is not
++// possible, passing module bytecode as a string to this overload is safer.
++//
++// Can fail if `moduleStr` cannot be parsed, or if it cannot be expressed in the
++// `targetVersion` version of StableHLO, e.g. if it's using new or removed
++// features, or if it involves unsupported dialects.
++LogicalResult serializePortableArtifact(StringRef moduleStr,
++                                        StringRef targetVersion,
++                                        raw_ostream& os);
++
+ // Read StableHLO portable artifact
++//
++// Can fail if `sourceStr` cannot be expressed in the current version of
++// StableHLO, e.g. if it's using incompatible features. Returns nullptr if
++// `sourceStr` is invalid or fails to deserialize.
+ OwningOpRef<ModuleOp> deserializePortableArtifact(StringRef sourceStr,
+                                                   MLIRContext* context);
++
++// Read a StableHLO program from a portable artifact, returning the module as
++// MLIR bytecode.
++//
++// This string overload of the above API is provided for Python bindings.
++// See the `serializePortableArtifact` `StringRef` overload for detail.
++//
++// Can fail if `sourceStr` cannot be expressed in the current version of
++// StableHLO, e.g. if it's using incompatible features. Returns failure if
++// `sourceStr` is invalid or fails to deserialize.
++FailureOr<std::string> deserializePortableArtifact(StringRef sourceStr);
+ 
+ }  // namespace stablehlo
+ }  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
@@ -790,6 +919,64 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
    return hlo::inferUniformDequantizeOp(location, adaptor.getOperand(),
                                         inferredReturnShapes);
  }
+diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
+--- stablehlo/stablehlo/dialect/Version.h
++++ stablehlo/stablehlo/dialect/Version.h
+@@ -80,7 +80,7 @@
+ 
+ /// Return the current version for StableHLO APIs.
+ /// Increments on all C++/C/Python API changes
+-inline int64_t getApiVersion() { return 1; }
++inline int64_t getApiVersion() { return 2; }
+ 
+ }  // namespace stablehlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -493,6 +493,21 @@
+ 
+   m.def(
+       "serialize_portable_artifact",
++      [](std::string module_str, std::string target) -> py::bytes {
++        std::string buffer;
++        llvm::raw_string_ostream os(buffer);
++        if (failed(mlir::stablehlo::serializePortableArtifact(module_str,
++                                                              target, os))) {
++          PyErr_SetString(PyExc_ValueError, "failed to serialize module");
++          return "";
++        }
++
++        return py::bytes(buffer);
++      },
++      py::arg("module_str"), py::arg("target"));
++
++  m.def(
++      "serialize_portable_artifact",
+       [](MlirModule module, std::string target) -> py::bytes {
+         std::string buffer;
+         llvm::raw_string_ostream os(buffer);
+@@ -508,6 +523,20 @@
+ 
+   m.def(
+       "deserialize_portable_artifact",
++      [](std::string artifact) -> py::bytes {
++        auto moduleStr = mlir::stablehlo::deserializePortableArtifact(artifact);
++
++        if (failed(moduleStr)) {
++          PyErr_SetString(PyExc_ValueError, "failed to deserialize module");
++          return {};
++        }
++
++        return {moduleStr.value()};
++      },
++      py::arg("module_str"));
++
++  m.def(
++      "deserialize_portable_artifact",
+       [](MlirContext context, std::string artifact) -> MlirModule {
+         auto module = mlir::stablehlo::deserializePortableArtifact(
+             artifact, unwrap(context));
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
@@ -804,6 +991,77 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py 
 +    is still forward compatible with.
 +  """
 +  return "0.9.0"
+diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+@@ -18,6 +18,7 @@
+ # pylint: disable=wildcard-import,undefined-variable
+ 
+ import re
++import io
+ from mlir import ir
+ from mlir.dialects import stablehlo
+ 
+@@ -205,20 +206,25 @@
+ 
+ @run
+ def test_api_version():
+-  assert stablehlo.get_api_version() == 1
+-
++  api_version = stablehlo.get_api_version()
++  assert type(api_version) == int
++  assert api_version > 0
++
++@run
++def test_current_version():
++  curr_version = stablehlo.get_current_version()
++  assert re.match('^\d+\.\d+\.\d+$', curr_version)
++
++ASM = """
++func.func @test(%arg0: tensor<2xf32>) -> tensor<2xf32> {
++  %0 = stablehlo.add %arg0, %arg0 : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
++  func.return %0 : tensor<2xf32>
++}
++"""
+ 
+ @run
+ def test_serialization_apis():
+   curr_version = stablehlo.get_current_version()
+-  assert re.match('^\d+\.\d+\.\d+$', curr_version)
+-
+-  ASM = """
+-  func.func @test(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+-    %0 = stablehlo.add %arg0, %arg0 : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+-    func.return %0 : tensor<2xf32>
+-  }
+-  """
+ 
+   with ir.Context() as context:
+     stablehlo.register_dialect(context)
+@@ -228,3 +234,23 @@
+     serialized = stablehlo.serialize_portable_artifact(m, curr_version)
+     deserialized = stablehlo.deserialize_portable_artifact(context, serialized)
+     assert module_str == str(deserialized)
++
++@run
++def test_str_serialization_apis():
++  curr_version = stablehlo.get_current_version()
++
++  def module_to_bytecode(module: ir.Module) -> bytes:
++    output = io.BytesIO()
++    module.operation.write_bytecode(file=output)
++    return output.getvalue()
++
++  with ir.Context() as context:
++    stablehlo.register_dialect(context)
++    m = ir.Module.parse(ASM)
++    module_str = str(m)
++    assert m is not None
++    bytecode = module_to_bytecode(m)
++    serialized = stablehlo.serialize_portable_artifact(bytecode, curr_version)
++    deserialized = stablehlo.deserialize_portable_artifact(serialized)
++    deserialized_module = ir.Module.parse(deserialized)
++    assert module_str == str(deserialized_module)
 diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
 --- stablehlo/stablehlo/reference/Tensor.cpp
 +++ stablehlo/stablehlo/reference/Tensor.cpp
