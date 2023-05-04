@@ -256,9 +256,9 @@ def _MeanGrad(op, grad):
     factor = constant_op.constant(factor, dtype=sum_grad.dtype)
   else:
     input_shape = array_ops.shape(op.inputs[0])
-    output_shape = array_ops.shape(op.outputs[0])
-    factor = _safe_shape_div(
-        math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
+    input_rank = array_ops.size(input_shape)
+    axes = (op.inputs[1] + input_rank) % input_rank
+    factor = math_ops.reduce_prod(array_ops.gather(input_shape, axes))
   return math_ops.truediv(sum_grad, math_ops.cast(factor, sum_grad.dtype)), None
 
 
