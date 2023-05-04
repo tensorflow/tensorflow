@@ -37,7 +37,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as tf_test
 
 
-class StrategyCreationTest(tf_test.TestCase, parameterized.TestCase):
+class MultiWorkerMirroredStrategyTest(tf_test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
