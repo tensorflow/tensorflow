@@ -178,6 +178,7 @@ py_library(
         ":proto_ops",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
+        ":random_crop_ops",
         ":ref_variable",
         ":rnn_ops_gen",
         ":script_ops",
@@ -2598,6 +2599,25 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:random_seed",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "random_crop_ops",
+    srcs = ["ops/random_crop_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":control_flow_assert",
+        ":control_flow_ops",
+        ":math_ops",
+        ":random_ops",
+        ":stateless_random_ops",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
