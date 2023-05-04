@@ -106,6 +106,12 @@ tsl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
+bool IsSyncCollective(const HloInstruction* instr) {
+  auto backend_config =
+      instr->backend_config<xla::gpu::CollectiveBackendConfig>().value();
+  return backend_config.is_sync();
+}
+
 }  // namespace
 
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
@@ -1377,6 +1383,7 @@ LhloDialectEmitter::EmitAllToAllStartOp(const xla::HloInstruction* instr) {
     all_to_all_start_op.setSplitDimensionAttr(
         builder_.getI64IntegerAttr(*all_to_all->split_dimension()));
   }
+  all_to_all_start_op.setIsSync(IsSyncCollective(instr));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_to_all_start_op.getToken()});
@@ -1425,7 +1432,7 @@ LhloDialectEmitter::EmitAllGatherStartOp(const HloInstruction* instr) {
       builder_.getBoolAttr(all_gather->use_global_device_ids()));
   all_gather_start_op.setAllGatherDimensionAttr(
       builder_.getI64IntegerAttr(all_gather->all_gather_dimension()));
-
+  all_gather_start_op.setIsSync(IsSyncCollective(instr));
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_gather_start_op.getToken()});
   TF_RET_CHECK(was_inserted) << "all-gather-start already lowered";
@@ -1471,6 +1478,8 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
       SetupCommonCollectiveOpAttributes(all_reduce_start_op, instr, builder_));
   all_reduce_start_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
+  all_reduce_start_op.setIsSync(IsSyncCollective(instr));
+
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], symbol_table_,
       &all_reduce_start_op.getComputation(), &builder_));
@@ -1560,6 +1569,7 @@ LhloDialectEmitter::EmitReduceScatterStartOp(const xla::HloInstruction* instr) {
       builder_.getBoolAttr(reduce_scatter->use_global_device_ids()));
   reduce_scatter_start_op.setScatterDimensionAttr(
       builder_.getI64IntegerAttr(reduce_scatter->scatter_dimension()));
+  reduce_scatter_start_op.setIsSync(IsSyncCollective(instr));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *reduce_scatter->to_apply(), symbol_table_,
       &reduce_scatter_start_op.getComputation(), &builder_));
@@ -1611,6 +1621,7 @@ LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
           permute->source_target_pairs(), &builder_);
   permute_start_op->setAttr(source_target_pairs_attr.getName(),
                             source_target_pairs_attr.getValue());
+  permute_start_op.setIsSync(IsSyncCollective(instr));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, permute_start_op.getToken()});

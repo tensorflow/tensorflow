@@ -42,7 +42,6 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tfrt/eager:virtual_device",
@@ -266,7 +265,7 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
-        "@com_google_absl//absl/types:variant",
+        "//tensorflow/tsl/profiler/lib:traceme",
     ],
 )
 

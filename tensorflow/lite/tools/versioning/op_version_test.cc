@@ -232,7 +232,26 @@ TEST(OpVersionTest, VersioningLogSoftmaxTest) {
 }
 
 TEST(OpVersionTest, VersioningPackTest) {
-  SimpleVersioningTest(BuiltinOperator_PACK);
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_PACK;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_PACK;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_PACK;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_PACK;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
 TEST(OpVersionTest, VersioningUnpackTest) {

@@ -43,6 +43,8 @@ TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
+// Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
+TF_CONST_INIT extern const absl::string_view kTpuNonCorePlaneNamePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
 TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.

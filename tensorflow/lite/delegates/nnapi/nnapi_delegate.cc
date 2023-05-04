@@ -1945,16 +1945,18 @@ class NNAPIOpBuilder {
         if (allocation_memory_mapping_->count(mmap_alloc) == 0) {
           ANeuralNetworksMemory* ann_memory_handle = nullptr;
           nnapi_->ANeuralNetworksMemory_createFromFd(
-              mmap_alloc->bytes(), PROT_READ, mmap_alloc->fd(), 0,
-              &ann_memory_handle);
+              mmap_alloc->mmapped_buffer_size(), PROT_READ, mmap_alloc->fd(),
+              mmap_alloc->mmapped_buffer_offset_in_file(), &ann_memory_handle);
           allocation_memory_mapping_->insert(
               std::make_pair(mmap_alloc, ann_memory_handle));
         }
         ANeuralNetworksMemory* ann_memory_handle =
             allocation_memory_mapping_->at(mmap_alloc);
-        // Compute the offset to the base pointer of the MMAPAllocation.
-        auto offset = reinterpret_cast<const uint8_t*>(tensor->data.raw) -
-                      reinterpret_cast<const uint8_t*>(mmap_alloc->base());
+        // Compute the offset to the mmapped buffer address of the
+        // MMAPAllocation.
+        auto offset =
+            reinterpret_cast<const uint8_t*>(tensor->data.raw) -
+            reinterpret_cast<const uint8_t*>(mmap_alloc->mmapped_buffer());
         RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
             context_,
             nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(

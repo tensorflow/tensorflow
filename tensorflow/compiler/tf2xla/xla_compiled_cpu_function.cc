@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 
 #include <cassert>
+#include <vector>
 
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 
@@ -24,9 +25,12 @@ namespace tensorflow {
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
     : raw_function_(static_data.raw_function_),
+      run_function_(static_data.run_function_),
+      cpu_executable_(static_data.cpu_executable_),
       result_index_(static_data.result_index_),
       buffer_table_(new void*[static_data.num_buffers_]),
       buffer_infos_(static_data.buffer_infos_),
+      num_buffers_(static_data.num_buffers_),
       arg_index_table_(static_data.arg_index_table_),
       num_args_(static_data.num_args_),
       num_variables_(static_data.num_variables_),
@@ -53,10 +57,27 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
 }
 
 bool XlaCompiledCpuFunction::Run() {
+  if (run_function_) {
+    std::vector<xla::cpu::BufferDesc> descriptor_table =
+        MakeXlaRuntimeDescriptorTable();
+    return run_function_(cpu_executable_, descriptor_table, &run_options_);
+  }
   XlaCustomCallStatus status;
   raw_function_(buffer_table_[result_index_], &run_options_, nullptr,
                 buffer_table_, &status, profile_counters_);
   return !xla::CustomCallStatusGetMessage(&status).has_value();
+}
+
+std::vector<xla::cpu::BufferDesc>
+XlaCompiledCpuFunction::MakeXlaRuntimeDescriptorTable() {
+  std::vector<xla::cpu::BufferDesc> descriptor_table;
+  descriptor_table.reserve(num_buffers_);
+  for (int32_t i = 0; i < num_buffers_; ++i) {
+    void* data = buffer_table_[i];
+    uint64_t size = buffer_infos_[i].size();
+    descriptor_table.emplace_back(data, size);
+  }
+  return descriptor_table;
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {

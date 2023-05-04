@@ -17,34 +17,15 @@ limitations under the License.
 // adding support for new shapes/dtypes, you also need to modify the rewritter
 // on topk_specializer.cc for these changes to be picked up.
 
-#include "tensorflow/compiler/xla/service/gpu/runtime/topk_kernel.h"
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 
-#include "absl/numeric/bits.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/compiler/xla/service/gpu/runtime/topk_kernel_common.h"
 
 namespace xla::gpu {
 namespace {
-
-using ::stream_executor::gpu::GpuStreamHandle;
-
-// We perform 2 32-way reductions, which means the largest number of threads per
-// block we support is 1024.
-constexpr size_t kMaxThreadsPerBlock = 1024;
-
-size_t NumThreads(size_t n, size_t k, size_t batch_size) {
-  // Estimate number of threads per block that can run concurrently given the
-  // register footprint.
-  size_t simultaneous_threads_per_block = 512 * (16 / k);
-  size_t threads_per_block =
-      std::min(simultaneous_threads_per_block, kMaxThreadsPerBlock);
-  // Minimum amount of data that each thread needs to receive for the algorithm.
-  size_t min_slice = absl::bit_floor(n / absl::bit_ceil(k));
-  return std::min(threads_per_block, min_slice);
-}
 
 // Default implementation for KV holder. Useful for testing while adding support
 // for a new type, but generally bitpacking those values is more efficient. See
@@ -359,7 +340,7 @@ class TopK {
 extern __device__ __shared__ int shmem[];
 
 template <size_t K, typename KT, typename VT>
-__launch_bounds__(kMaxThreadsPerBlock, 1) __global__
+__launch_bounds__(kTopKMaxThreadsPerBlock, 1) __global__
     void Run(KT* data, int n, KT* result, uint32_t* result_idxs, int k) {
   TopK<K, KT, VT> top_k(shmem, k);
   int slice_size = n / blockDim.x;
@@ -370,40 +351,10 @@ __launch_bounds__(kMaxThreadsPerBlock, 1) __global__
             &result_idxs[k * blockIdx.x]);
 }
 
-// Helper type for converting the untyped arguments of RunTopk to TypedTopk
-template <typename T>
-struct TopkArgs {
-  TopkArgs(GpuStreamHandle stream, PrimitiveType dtype, T* data,
-           size_t num_elements, T* top_elements, uint32_t* top_indices,
-           size_t k, size_t batch_size)
-      : stream(stream),
-        dtype(dtype),
-        data(data),
-        num_elements(num_elements),
-        top_elements(top_elements),
-        top_indices(top_indices),
-        k(k),
-        batch_size(batch_size) {}
-
-  template <typename T2>
-  TopkArgs<T2> Convert() const {
-    return TopkArgs<T2>(stream, dtype, static_cast<T2*>(data), num_elements,
-                        static_cast<T2*>(top_elements), top_indices, k,
-                        batch_size);
-  }
-
-  GpuStreamHandle stream;
-  PrimitiveType dtype;
-  T* data;
-  size_t num_elements;
-  T* top_elements;
-  uint32_t* top_indices;
-  size_t k;
-  size_t batch_size;
-};
+}  // namespace
 
 template <typename T, size_t K>
-void* GetKernelForK(int n) {
+void* GetTopKKernelForK(int n) {
   // TODO(doak): Switch to uint32_t if we don't have an efficient
   // implemementation for uint16_t.
   return n < std::numeric_limits<uint16_t>::max()
@@ -411,59 +362,15 @@ void* GetKernelForK(int n) {
              : reinterpret_cast<void*>(&Run<K, T, uint32_t>);
 }
 
-template <typename T>
-absl::StatusOr<void*> GetKernel(int n, int k) {
-  if (k <= 1) return GetKernelForK<T, 1>(n);
-  if (k <= 2) return GetKernelForK<T, 2>(n);
-  if (k <= 4) return GetKernelForK<T, 4>(n);
-  if (k <= 8) return GetKernelForK<T, 8>(n);
-  if (k <= 16) return GetKernelForK<T, 16>(n);
-  return absl::UnimplementedError(absl::StrCat("Unsupported K: ", k));
-}
-
-template <typename T>
-absl::Status TypedTopK(TopkArgs<T> args) {
-  int num_threads = NumThreads(args.num_elements, args.k, args.batch_size);
-  if (num_threads == 0) {
-    return absl::FailedPreconditionError(
-        "Invalid kernel pameters. This is likely a bug in the "
-        "TopkSpecializer.");
-  }
-  absl::StatusOr<void*> kernel = GetKernel<T>(args.num_elements, args.k);
-  if (!kernel.ok()) return kernel.status();
-  int blocks_per_grid = args.batch_size;
-  constexpr size_t max_kv_size = sizeof(uint64_t);
-  // Allocate shmem assuming we have a full reduction.
-  int shmem_size = absl::bit_ceil(args.k) * max_kv_size * 32;
-  void* kernel_args[] = {&args.data, &args.num_elements, &args.top_elements,
-                         &args.top_indices, &args.k};
-  cudaError_t launch_status =
-      cudaLaunchKernel(*kernel, blocks_per_grid, num_threads, kernel_args,
-                       shmem_size, args.stream);
-  if (launch_status != cudaSuccess) {
-    return absl::InternalError(absl::StrCat("Failed to launch kernel: ",
-                                            cudaGetErrorString(launch_status)));
-  }
-  return absl::OkStatus();
-}
-
-}  // namespace
-
-absl::Status RunTopk(GpuStreamHandle stream, PrimitiveType dtype, void* data,
-                     size_t num_elements, void* top_elements,
-                     uint32_t* top_indices, size_t k, size_t batch_size) {
-  VLOG(2) << "TopK: " << primitive_util::LowercasePrimitiveTypeName(dtype)
-          << ", n: " << num_elements << ", k: " << k << ", bs: " << batch_size;
-  auto args = TopkArgs<void>(stream, dtype, data, num_elements, top_elements,
-                             top_indices, k, batch_size);
-  switch (dtype) {
-    case PrimitiveType::F32:
-      return TypedTopK(args.Convert<float>());
-    case PrimitiveType::BF16:
-      return TypedTopK(args.Convert<Eigen::bfloat16>());
-    default:
-      return absl::UnimplementedError("GpuTopK not implemented for this dtype");
-  }
-}
+template void* GetTopKKernelForK<float, 1>(int n);
+template void* GetTopKKernelForK<float, 2>(int n);
+template void* GetTopKKernelForK<float, 4>(int n);
+template void* GetTopKKernelForK<float, 8>(int n);
+template void* GetTopKKernelForK<float, 16>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 1>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 2>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 4>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 8>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 16>(int n);
 
 }  // namespace xla::gpu

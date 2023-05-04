@@ -1,3 +1,35 @@
+# Release 2.14.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+# Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+# Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+# Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.13.0
 
 ## Breaking Changes
@@ -21,6 +53,23 @@
     *  Added `keras.utils.TimedThread` utility to run a timed thread every x
        seconds. It can be used to run a threaded function alongside model
        training or any other snippet of code.
+    *  In the `keras` PyPI package, accessible symbols are now restricted to
+       symbols that are intended to be public.
+       This may affect your code if you were using `import keras` and you used
+       `keras` functions that were not public APIs, but were accessible in
+       earlier versions with direct imports. In those cases, please use the
+       following guideline:
+        -  The API may be available in the public Keras API under a different
+           name, so make sure to look for it on keras.io or TensorFlow docs
+           and switch to the public version.
+        -  It could also be a simple python or TF utility that you could easily
+           copy over to your own codebase. In those case, just make it your own!
+        -  If you believe it should definitely be a public Keras API,
+           please open a feature request in keras GitHub repo.
+        -  As a workaround, you could import the same private symbol keras
+           `keras.src`, but keep in mind the `src` namespace is not stable and
+           those APIs may change or be removed in the future.
+
 
 * The LMDB kernels have been changed to return an error. This is in preparation
   for completely removing them from TensorFlow. The LMDB dependency that these
@@ -97,6 +146,8 @@
     *   Added support for `class_weight` for 3+ dimensional targets (e.g.
         image segmentation masks) in `Model.fit`.
     *   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
+    *   Remove the `tf.keras.dtensor.experimental.layout_map_scope()`. You can
+        user the `tf.keras.dtensor.experimental.LayoutMap.scope()` instead.
 
 *   `tf.function`:
 
@@ -116,9 +167,14 @@
         typically faster lookup procedure.
 
 *   `tf.data`
-    
+
     *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
         `Dataset.zip(a, b, c)`.
+    *   `tf.data.Dataset.shuffle` now supports full shuffling. To specify that
+        data should be fully shuffled, use
+        `dataset = dataset.shuffle(dataset.cardinality())`. This will load the
+        full dataset into memory so that it can be shuffled, so make sure to
+        only use this with datasets of filenames or other small datasets.
 
 *   `tf.math`
 
@@ -174,6 +230,9 @@
 *    `tf.nest`:
     *   Deprecated API `tf.nest.is_sequence` has now been deleted.
         Please use `tf.nest.is_nested` instead.
+
+*   `tf.lite`:
+    *   Add UINT32 support to tfl.pack
 
 ## Thanks to our Contributors
 
@@ -289,6 +348,7 @@ This release contains contributions from many people at Google, as well as:
 
 ## Security
 
+*   Moving forward, TensorFlow will no longer update [TFSAs](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/security). Please refer instead to our [GitHub security advisories](https://github.com/tensorflow/tensorflow/security/advisories), which are attached to [CVEs](https://cve.mitre.org/cve/).
 *   Fixes an FPE in TFLite in conv kernel [CVE-2023-27579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-27579)
 *   Fixes a double free in Fractional(Max/Avg)Pool [CVE-2023-25801](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25801)
 *   Fixes a null dereference on ParallelConcat with XLA [CVE-2023-25676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25676)

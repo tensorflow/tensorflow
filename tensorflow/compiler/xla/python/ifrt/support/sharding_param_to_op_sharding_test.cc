@@ -19,17 +19,23 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
 namespace {
+
+using ::tsl::testing::StatusIs;
 
 ShardingParam CreateShardingParam(std::initializer_list<int64_t> dim_shards,
                                   std::initializer_list<int64_t> permutation,
@@ -40,8 +46,10 @@ ShardingParam CreateShardingParam(std::initializer_list<int64_t> dim_shards,
   return ShardingParam(dim_shards, minor_to_major);
 }
 
-StatusOr<std::string> ToHloShardingStr(const ShardingParam& sharding_param) {
-  xla::OpSharding op_sharding = ToOpSharding(sharding_param);
+StatusOr<std::string> ToHloShardingStr(const ShardingParam& sharding_param,
+                                       absl::Span<const int64_t> device_list) {
+  TF_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
+                      ToOpSharding(sharding_param, device_list));
   TF_ASSIGN_OR_RETURN(const auto hlo_sharding,
                       xla::HloSharding::FromProto(op_sharding));
   return hlo_sharding.ToString();
@@ -52,7 +60,7 @@ TEST(ShardingParamToOpShardingTest, Replicated) {
       CreateShardingParam(/*dim_shards=*/{1, 1, 1},
                           /*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3});
   TF_ASSERT_OK_AND_ASSIGN(const std::string actual,
-                          ToHloShardingStr(sharding_param));
+                          ToHloShardingStr(sharding_param, {0, 1, 2, 3, 4, 5}));
   EXPECT_EQ(actual, "{replicated}");
 }
 
@@ -60,7 +68,7 @@ TEST(ShardingParamToOpShardingTest, Maximal) {
   ShardingParam sharding_param = CreateShardingParam(
       /*dim_shards=*/{1, 1}, /*permutation=*/{0}, /*axis_sizes=*/{1});
   TF_ASSERT_OK_AND_ASSIGN(const std::string actual,
-                          ToHloShardingStr(sharding_param));
+                          ToHloShardingStr(sharding_param, {0}));
   EXPECT_EQ(actual, "{maximal device=0}");
 }
 
@@ -68,7 +76,7 @@ TEST(ShardingParamToOpShardingTest, Permutation) {
   ShardingParam sharding_param = CreateShardingParam(
       /*dim_shards=*/{2, 1, 3}, /*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2});
   TF_ASSERT_OK_AND_ASSIGN(const std::string actual,
-                          ToHloShardingStr(sharding_param));
+                          ToHloShardingStr(sharding_param, {0, 1, 2, 3, 4, 5}));
   EXPECT_EQ(actual, "{devices=[2,1,3]0,3,1,4,2,5}");
 }
 
@@ -76,7 +84,7 @@ TEST(ShardingParamToOpShardingTest, Partial) {
   ShardingParam sharding_param = CreateShardingParam(
       /*dim_shards=*/{2, 1}, /*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3});
   TF_ASSERT_OK_AND_ASSIGN(const std::string actual,
-                          ToHloShardingStr(sharding_param));
+                          ToHloShardingStr(sharding_param, {0, 1, 2, 3, 4, 5}));
   EXPECT_EQ(actual, "{devices=[2,1,3]0,1,2,3,4,5 last_tile_dim_replicate}");
 }
 
@@ -84,8 +92,23 @@ TEST(ShardingParamToOpShardingTest, OneDimToTwoAxes) {
   ShardingParam sharding_param = CreateShardingParam(
       /*dim_shards=*/{4}, /*permutation=*/{1, 0}, /*axis_sizes=*/{2, 2});
   TF_ASSERT_OK_AND_ASSIGN(const std::string actual,
-                          ToHloShardingStr(sharding_param));
+                          ToHloShardingStr(sharding_param, {0, 1, 2, 3}));
   EXPECT_EQ(actual, "{devices=[4]0,2,1,3}");
+}
+
+TEST(ShardingParamToOpShardingTest, NonTrivialDeviceAssignment) {
+  ShardingParam sharding_param = CreateShardingParam(
+      /*dim_shards=*/{2, 1, 3}, /*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2});
+  TF_ASSERT_OK_AND_ASSIGN(const std::string actual,
+                          ToHloShardingStr(sharding_param, {6, 5, 4, 3, 2, 1}));
+  EXPECT_EQ(actual, "{devices=[2,1,3]6,3,5,2,4,1}");
+}
+
+TEST(ShardingParamToOpShardingTest, ErrorOnDeviceAssignment) {
+  ShardingParam sharding_param = CreateShardingParam(
+      /*dim_shards=*/{2, 1, 3}, /*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2});
+  EXPECT_THAT(ToHloShardingStr(sharding_param, {6, 5, 4, 3, 2}),
+              StatusIs(tsl::error::OUT_OF_RANGE, "Can't map device 5"));
 }
 
 }  // namespace

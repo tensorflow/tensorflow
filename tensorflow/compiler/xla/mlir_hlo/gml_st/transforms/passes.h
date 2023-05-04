@@ -156,6 +156,7 @@ struct GmlStCPUTilingOptions
     this->statsDetailLevel = opts.statsDetailLevel;
     this->enableFusionClusterOutlining = opts.enableFusionClusterOutlining;
     this->cpuName = opts.cpuName;
+    this->inlineFusionClusters = opts.inlineFusionClusters;
   }
 
   Option<int64_t> vectorSize{*this, "vector-size",
@@ -234,6 +235,11 @@ struct GmlStCPUTilingOptions
       *this, "fuse-degenerate-reshapes",
       llvm::cl::desc("Fuse through tensor.expand/collapse_shape"),
       llvm::cl::init(false)};
+
+  Option<bool> inlineFusionClusters{
+      *this, "inline-fusion-clusters",
+      llvm::cl::desc("Inline fusion clusters at the end of the pipeline."),
+      llvm::cl::init(true)};
 };
 
 // Returns default "optimized" tiling parameters.

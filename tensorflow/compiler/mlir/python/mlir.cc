@@ -374,8 +374,8 @@ void ExperimentalWriteBytecode(const std::string& filename,
   mlir::stablehlo::registerAllDialects(registry);
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   {
-    mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     module = mlir::parseSourceString<mlir::ModuleOp>(mlir_txt, &context);
     if (!module) {
       tsl::Set_TF_Status_from_Status(status,
@@ -394,7 +394,10 @@ void ExperimentalWriteBytecode(const std::string& filename,
     return;
   }
   outputFile->keep();
-  mlir::writeBytecodeToFile(*module, outputFile->os(), writer_config);
+  if (failed(mlir::writeBytecodeToFile(*module, outputFile->os(),
+                                       writer_config))) {
+    tsl::Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+  }
 }
 
 void ExperimentalTFLiteToTosaBytecode(
@@ -407,6 +410,7 @@ void ExperimentalTFLiteToTosaBytecode(
   registry.insert<mlir::tosa::TosaDialect>();
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   {
     mlir::Location loc = mlir::UnknownLoc::get(&context);
     std::string error;
@@ -418,7 +422,6 @@ void ExperimentalTFLiteToTosaBytecode(
       return;
     }
 
-    mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     auto buffer_view =
         std::string_view(buffer->getBufferStart(), buffer->getBufferSize());
     module = tflite::FlatBufferToMlir(
@@ -449,7 +452,10 @@ void ExperimentalTFLiteToTosaBytecode(
     return;
   }
   outputFile->keep();
-  mlir::writeBytecodeToFile(*module, outputFile->os(), writer_config);
+  if (failed(mlir::writeBytecodeToFile(*module, outputFile->os(),
+                                       writer_config))) {
+    tsl::Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+  }
 }
 
 }  // namespace tensorflow

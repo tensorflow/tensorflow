@@ -309,6 +309,7 @@ cc_library(
         "ir/tfl_ops.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
+        "utils/utils.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [

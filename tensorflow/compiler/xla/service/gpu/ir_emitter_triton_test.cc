@@ -262,7 +262,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
 }
 
-TEST_F(TritonGemmTest, NonMajorMostBatch) {
+TEST_F(TritonGemmTest, NonMajorMostInputBatchWorksCorrectly) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -1004,6 +1004,59 @@ ENTRY entry {
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
                                       ErrorSpec{1e-2, 1},
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(CompareTest, NonMajorMostOutputBatchWorksCorrectly) {
+  const std::string kHloTextTest = R"(
+HloModule m
+
+triton_gemm_dot.6 {
+  parameter_1 = f32[32,50,104]{2,1,0} parameter(1)
+  parameter_0 = s8[32,26,104]{2,1,0} parameter(0)
+  convert.22 = f32[32,26,104]{2,1,0} convert(parameter_0)
+  ROOT dot.127 = f32[32,50,26]{2,0,1} dot(parameter_1, convert.22),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+ENTRY e {
+  p0 = s8[32,26,104]{2,1,0} parameter(0)
+  p1 = f32[32,50,104]{2,1,0} parameter(1)
+  ROOT triton_gemm_dot.6 = f32[32,50,26]{2,0,1} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot.6,
+    backend_config="{\"block_m\":\"64\",\"block_n\":\"16\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+})";
+
+  const std::string kHloTextRef = R"(
+HloModule m
+
+%triton_gemm_dot.127 {
+  %parameter_1.1 = f32[32,50,104]{2,1,0} parameter(1)
+  %parameter_0.1 = s8[32,26,104]{2,1,0} parameter(0)
+  %convert.0 = f32[32,26,104]{2,1,0} convert(%parameter_0.1)
+  ROOT %dot.0 = f32[32,50,26]{2,1,0} dot(%parameter_1.1, %convert.0),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+%fused_computation {
+  %param_0.1 = f32[32,50,26]{2,1,0} parameter(0)
+  %transpose.1 = f32[50,32,26]{2,1,0} transpose(%param_0.1), dimensions={1,0,2}
+  ROOT %bitcast.7 = f32[32,50,26]{2,0,1} bitcast(%transpose.1)
+}
+
+ENTRY e {
+  %parameter_0 = s8[32,26,104]{2,1,0} parameter(0)
+  %parameter_1 = f32[32,50,104]{2,1,0} parameter(1)
+  %triton_gemm_dot.127 = f32[32,50,26]{2,1,0} fusion(%parameter_0, %parameter_1),
+    kind=kCustom, calls=%triton_gemm_dot.127,
+    backend_config="{\"block_m\":\"32\",\"block_n\":\"128\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+  ROOT %fusion.1 = f32[32,50,26]{2,0,1} fusion(%triton_gemm_dot.127), kind=kLoop, calls=%fused_computation
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+                                      ErrorSpec{1e-6, 1e-6},
                                       /*run_hlo_passes=*/false));
 }
 

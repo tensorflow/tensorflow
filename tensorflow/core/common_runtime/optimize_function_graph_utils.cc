@@ -445,7 +445,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       &ret_node_names, &ret_types, &control_ret_node_names));
 
   DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
-      function_name, kDebugGroupOpStacktrace, "initial", graph.get());
+      function_name, kDebugGroupOpStacktrace, "before_opt", graph.get());
 
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);

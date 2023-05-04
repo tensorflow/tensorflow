@@ -565,7 +565,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   return OkStatus();
 }
 
-}  // end namespace impl
+}  // namespace impl
 
 namespace functor {
 
@@ -598,7 +598,7 @@ struct TopKFunctor<GPUDevice, T, Tidx> {
   }
 };
 
-}  // end namespace functor
+}  // namespace functor
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

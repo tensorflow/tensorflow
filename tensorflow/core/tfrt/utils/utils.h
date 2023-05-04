@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_
 #define TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_
 
-#include <cstdint>
 #include <string>
 
 #include "absl/status/status.h"
@@ -72,9 +71,6 @@ tensorflow::StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
 
 // Returns a unique integer within this process.
 int64_t GetUniqueInt();
-
-// Returns current CPU time.
-uint64_t GetCpuClockCycle();
 
 // A list of macros similar to `TF_RETURN_IF_ERROR`, with additional model
 // loading stage info.

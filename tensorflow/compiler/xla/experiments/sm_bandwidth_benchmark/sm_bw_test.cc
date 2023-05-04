@@ -242,10 +242,10 @@ TEST(SMBandwidthTest, IterateOverChunkSize) {
   ForLoop<10>::iterate<IterateOverChunkSizeImpl>();
 }
 
-TEST(SMBandwidthTest, IncreaseThreadsNumber) {
+TEST(SMBandwidthTest, BestParameters) {
   constexpr size_t kSize = 1 << 28;
   constexpr int kReps = 10;
-  constexpr int kNumThreads = 256;
+  constexpr int kNumThreads = 1024;
   constexpr int kChunkSize = 32;
 
   DeviceMemory<float> d_in = MakeDeviceMemory<float>(kSize);

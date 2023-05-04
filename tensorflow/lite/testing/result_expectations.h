@@ -58,13 +58,6 @@ class DataExpectation {
     SetTensorData(values, data_.get());
   }
 
-  template <>
-  void SetData<std::string>(const std::string& csv_values) {
-    std::string s = absl::HexStringToBytes(csv_values);
-    data_ = make_type_erased_array<char>(s.size());
-    memcpy(data_.get(), s.data(), s.size());
-  }
-
   //  Checks the data against the expectation.
   //
   //  Returns true if the data matches the expectation, false otherwise.
@@ -119,6 +112,15 @@ class DataExpectation {
   double absolute_threshold_;
   int quantization_error_multiplier_;
 };
+
+// SetData specializations.
+template <>
+inline void DataExpectation::SetData<std::string>(
+    const std::string& csv_values) {
+  std::string s = absl::HexStringToBytes(csv_values);
+  data_ = make_type_erased_array<char>(s.size());
+  memcpy(data_.get(), s.data(), s.size());
+}
 
 // Class for comparing the expected shape against the shape of data computed by
 // the model.

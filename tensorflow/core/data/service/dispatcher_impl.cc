@@ -24,11 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/tsl/platform/errors.h"
-
-#ifdef PLATFORM_GOOGLE
-#include "file/logging/log_lines.h"
-#endif
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
@@ -1239,15 +1234,9 @@ Status DataServiceDispatcherImpl::GcOldIterations()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Iteration>> iterations =
       state_.ListIterations();
-  int64_t now = env_->NowMicros();
+  int64_t now_us = env_->NowMicros();
   for (const auto& iteration : iterations) {
-    if (iteration->job->processing_mode.sharding_policy() ==
-            ProcessingModeDef::DYNAMIC ||  // To preserve visitation guarantees.
-        iteration->finished ||
-        iteration->num_clients > 0 ||
-        iteration->last_client_released_micros < 0 ||
-        now < iteration->last_client_released_micros +
-                  (config_.job_gc_timeout_ms() * 1000)) {
+    if (!ShouldGcIteration(*iteration, now_us)) {
       continue;
     }
     Update update;
@@ -1257,6 +1246,21 @@ Status DataServiceDispatcherImpl::GcOldIterations()
     LOG(INFO) << "Garbage collected iteration " << iteration->DebugString();
   }
   return OkStatus();
+}
+
+bool DataServiceDispatcherImpl::ShouldGcIteration(const Iteration& iteration,
+                                                  int64_t now_us) const {
+  if (iteration.job->processing_mode.sharding_policy() ==
+          ProcessingModeDef::DYNAMIC &&
+      !config_.gc_dynamic_sharding_jobs()) {
+    // Jobs with dynamic sharding have visitation guarantees that are violated
+    // if they are garbage collected and later recreated.
+    return false;
+  }
+  return !(iteration.finished || iteration.num_clients > 0 ||
+           iteration.last_client_released_micros < 0 ||
+           now_us < iteration.last_client_released_micros +
+                        (config_.job_gc_timeout_ms() * 1000));
 }
 
 Status DataServiceDispatcherImpl::GetDatasetDef(

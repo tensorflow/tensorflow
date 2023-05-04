@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -9333,6 +9336,126 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastSkipped) {
   SCOPED_TRACE(m->ToString());
   EXPECT_FALSE(changed);
 }
+
+class AlgebraicSimplifierUpcastDowncastTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<
+          std::tuple<HloOpcode, PrimitiveType, PrimitiveType, bool>> {
+ public:
+  AlgebraicSimplifierUpcastDowncastTest()
+      : AlgebraicSimplifierTest(),
+        binary_opcode_(std::get<0>(GetParam())),
+        outer_type_(std::get<1>(GetParam())),
+        binary_op_type_(std::get<2>(GetParam())),
+        should_rewrite_(std::get<3>(GetParam())) {}
+
+ protected:
+  const HloOpcode binary_opcode_;
+  const PrimitiveType outer_type_;
+  const PrimitiveType binary_op_type_;
+  const bool should_rewrite_;
+};
+
+TEST_P(AlgebraicSimplifierUpcastDowncastTest,
+       CheckUpcastingAndDowncastingConvertsAreRemoved) {
+  const std::string& src_type_str =
+      primitive_util::LowercasePrimitiveTypeName(outer_type_);
+  const std::string& dest_type_str =
+      primitive_util::LowercasePrimitiveTypeName(binary_op_type_);
+  absl::string_view op_str = HloOpcodeString(binary_opcode_);
+  const std::string kModuleStr =
+      absl::StrFormat(R"(
+    HloModule m
+    test {
+      p1 = %s[] parameter(0)
+      p2 = %s[] parameter(1)
+      c1 = %s[] convert(p1)
+      c2 = %s[] convert(p2)
+      res = %s[] %s(c1, c2)
+      ROOT cres = %s[] convert(res)
+    }
+  )",
+                      src_type_str, src_type_str, dest_type_str, dest_type_str,
+                      dest_type_str, op_str, src_type_str);
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHloPass(AlgebraicSimplifier(default_options_), m.get()));
+  SCOPED_TRACE(m->ToString());
+  EXPECT_EQ(changed, should_rewrite_);
+  if (should_rewrite_) {
+    EXPECT_THAT(
+        m->entry_computation()->root_instruction(),
+        GmockMatch(
+            m::Op()
+                .WithOpcode(binary_opcode_)
+                .WithOperand(0, m::Parameter(0).WithElementType(outer_type_))
+                .WithOperand(1, m::Parameter(1).WithElementType(outer_type_))));
+  }
+}
+
+std::vector<std::tuple<HloOpcode, PrimitiveType, PrimitiveType, bool>>
+GetUpcastDowncastTestCases() {
+  std::vector<std::tuple<HloOpcode, PrimitiveType, PrimitiveType, bool>> result;
+  const std::vector<PrimitiveType> types = {
+      S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, BF16, F64, C64, C128};
+  for (const auto op :
+       {HloOpcode::kAdd, HloOpcode::kSubtract, HloOpcode::kMultiply,
+        HloOpcode::kDivide, HloOpcode::kRemainder}) {
+    for (const auto original_type : types) {
+      for (const auto upcast_type : types) {
+        const bool should_rewrite = [&] {
+          if (original_type == upcast_type) {
+            // Even though the function we're targeting does not support certain
+            // types, something else in AlgebraicSimplifier will handle this
+            // case.
+            return true;
+          }
+          if ((primitive_util::IsSignedIntegralType(original_type) !=
+               primitive_util::IsSignedIntegralType(upcast_type)) ||
+              (primitive_util::IsUnsignedIntegralType(original_type) !=
+               primitive_util::IsUnsignedIntegralType(upcast_type)) ||
+              (primitive_util::IsFloatingPointType(original_type) !=
+               primitive_util::IsFloatingPointType(upcast_type)) ||
+              (primitive_util::IsComplexType(original_type) !=
+               primitive_util::IsComplexType(upcast_type))) {
+            // Not yet handling conversions from one class of types to another
+            // class of types (ex. integer to floating point).
+            return false;
+          }
+          if (primitive_util::IsComplexType(original_type) ||
+              primitive_util::IsComplexType(upcast_type)) {
+            // Not yet handling complex types.
+            return false;
+          }
+          if (primitive_util::IsFloatingPointType(original_type) ||
+              primitive_util::IsFloatingPointType(upcast_type)) {
+            // Not yet handling floating point types.
+            return false;
+          }
+          if (!primitive_util::CastPreservesValues(original_type,
+                                                   upcast_type)) {
+            // We are looking for upcast->bin_op->downcast; this is the opposite
+            // direction.
+            return false;
+          }
+          if (op == HloOpcode::kDivide || op == HloOpcode::kRemainder) {
+            if (primitive_util::IsSignedIntegralType(original_type)) {
+              // This transformation is not safe for divide or remainder with
+              // signed integers.
+              return false;
+            }
+          }
+          return true;
+        }();
+        result.emplace_back(op, original_type, upcast_type, should_rewrite);
+      }
+    }
+  }
+  return result;
+}
+
+INSTANTIATE_TEST_SUITE_P(AllTypes, AlgebraicSimplifierUpcastDowncastTest,
+                         ::testing::ValuesIn(GetUpcastDowncastTestCases()));
 
 }  // namespace
 }  // namespace xla

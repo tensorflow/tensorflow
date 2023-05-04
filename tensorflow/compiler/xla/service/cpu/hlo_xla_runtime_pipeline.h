@@ -36,6 +36,9 @@ struct HloXlaRuntimePipelineOptions {
   bool outline_with_xla_framework = false;
   bool experimental_deallocation = false;
   bool enable_avx2 = true;
+  // Accelerate sparse computations with CUDA threading.
+  // This is an experimental feature, so off by default.
+  int32_t xla_cpu_sparse_cuda_threads = 0;
   // Optional CPU name, similar to llc's -mcpu flag.
   std::string cpu_name = "";
   std::vector<int64_t> matmul_tile_sizes = {};

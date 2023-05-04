@@ -4096,7 +4096,15 @@ Attribute ConstBytesAttr::parse(AsmParser& parser, Type type) {
 
 void ConstBytesAttr::print(mlir::AsmPrinter& printer) const {
   StringRef bytes_str = getValue();
-  printer << " : \"0x" << llvm::toHex(bytes_str) << "\"";
+  // Elide the attribute if flag is set.
+  std::optional<int64_t> limit = OpPrintingFlags().getLargeElementsAttrLimit();
+  printer << " : \"";
+  if (limit && limit.value() < bytes_str.size()) {
+    printer << "__elided__";
+  } else {
+    printer << "0x" << llvm::toHex(bytes_str);
+  }
+  printer << "\"";
 }
 
 //===----------------------------------------------------------------------===//

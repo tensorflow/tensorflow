@@ -1452,9 +1452,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
                           << candidate->ToShortString() << ")"
                           << " now best when compressed into "
                           << compact_shape.ToString(true);
-                  RematStrategy strategy;
-                  strategy.kind = RematStrategy::kCompress;
-                  best_strategy = strategy;
+                  best_strategy.kind = RematStrategy::kCompress;
                   best_strategy.compact_shape = compact_shape;
                   best_items = block;
                   best_cost = cost;

@@ -597,6 +597,9 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 // Creates a pass that propagates TPU devices to users.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
 
+// Create a pass that colocates each `Split` with its predecessor.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUColocateSplitsPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // bridge.
 void CreateTPUBridgePipeline(OpPassManager& pm,

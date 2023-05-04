@@ -37,6 +37,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -359,8 +360,9 @@ class CTCLossOpGPU : public OpKernel {
     bool cudnn_launch_status =
         stream
             ->ThenCtcLoss(*probs_desc, probs_data, labels_data,
-                          labels_lengths_data, input_lengths_data, &costs_data,
-                          *grads_desc, &grads_data, &workspace_allocator)
+                          labels_lengths_data, input_lengths_data,
+                          GetNumericOptions(), &costs_data, *grads_desc,
+                          &grads_data, &workspace_allocator)
             .ok();
 
     if (!cudnn_launch_status) {

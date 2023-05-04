@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/core/kernels/autotune_conv_impl.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #endif  // GOOGLE_CUDA
 
@@ -101,7 +102,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
         element_type, element_type, conv_scale, side_input_scale,
         leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,
         output_desc, conv_desc, /*use_fallback=*/false, activation_mode,
-        &runners));
+        GetNumericOptions(), &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -152,7 +153,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
           element_type, element_type, conv_scale, side_input_scale,
           leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,
           output_desc, conv_desc, /*use_fallback=*/true, activation_mode,
-          &fallback_runners));
+          GetNumericOptions(), &fallback_runners));
 
       TF_ASSIGN_OR_RETURN(auto fallback_results,
                           internal::AutotuneConvImpl(
@@ -281,7 +282,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
         CudnnUseFrontend(), kind, element_type, element_type, stream,
         input_desc, input_ptr, filter_desc, filter_ptr, output_desc, output_ptr,
-        conv_desc, /*use_fallback=*/false, &rz_allocator, &runners));
+        conv_desc, /*use_fallback=*/false, &rz_allocator, GetNumericOptions(),
+        &runners));
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::ConvRunner>& runner,
@@ -326,7 +328,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
           CudnnUseFrontend(), kind, element_type, element_type, stream,
           input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
           output_ptr, conv_desc, /*use_fallback=*/true, &rz_allocator,
-          &fallback_runners));
+          GetNumericOptions(), &fallback_runners));
 
       TF_ASSIGN_OR_RETURN(auto fallback_results,
                           internal::AutotuneConvImpl(

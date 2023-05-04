@@ -45,3 +45,16 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
     ],
 )
+
+tf_cc_test(
+    name = "spmd_expander_test",
+    srcs = ["spmd_expander_test.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:test_main",
+        "//tensorflow/dtensor/mlir:spmd_expander",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

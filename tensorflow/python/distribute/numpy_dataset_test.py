@@ -19,7 +19,7 @@ import numpy as np
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 
 
 class InitVarFromNumpyTest(test.TestCase):
@@ -29,7 +29,7 @@ class InitVarFromNumpyTest(test.TestCase):
     with self.cached_session() as session:
       x = np.asarray(np.random.random((64, 3)), dtype=np.float32)
       initial = np.zeros_like(x)
-      var_x = variable_scope.variable(initial)
+      var_x = variable_v1.VariableV1(initial)
       numpy_dataset.init_var_from_numpy(var_x, x, session)
       val = self.evaluate(var_x.value())
       # Verify that the numpy value is copied to the variable.

@@ -42,26 +42,27 @@ def enable_tensor_float_32_execution(enabled):
   """Enable or disable the use of TensorFloat-32 on supported hardware.
 
   [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format),
-  or TF32 for short, is a math mode for NVIDIA Ampere GPUs. TensorFloat-32
-  execution causes certain float32 ops, such as matrix multiplications and
-  convolutions, to run much faster on Ampere GPUs but with reduced precision.
-  This reduced precision should not impact convergence of deep learning models
-  in practice.
+  or TF32 for short, is a math mode for NVIDIA Ampere GPUs and above.
+  TensorFloat-32 execution causes certain float32 ops, such as matrix
+  multiplications and convolutions, to run much faster on such GPUs but with
+  reduced precision. This reduced precision should not impact convergence of
+  deep learning models in practice.
 
   TensorFloat-32 is enabled by default. TensorFloat-32 is only supported on
-  Ampere GPUs, so all other hardware will use the full float32 precision
-  regardless of whether TensorFloat-32 is enabled or not. If you want to use the
-  full float32 precision on Ampere, you can disable TensorFloat-32 execution
-  with this function. For example:
+  NVIDIA GPUs starting with the Ampere generation, so older NVIDIA GPUs and
+  other hardware will use the full float32 precision regardless of whether
+  TensorFloat-32 is enabled or not. If you want to use the full float32
+  precision on all GPUs, you can disable TensorFloat-32 execution with this
+  function. For example:
 
   ```python
-  x = tf.fill((2, 2), 1.0001)
-  y = tf.fill((2, 2), 1.)
+  x = tf.fill((1024, 1024), 1.0001)
+  y = tf.fill((1024, 1024), 1.)
   # TensorFloat-32 is enabled, so matmul is run with reduced precision
-  print(tf.linalg.matmul(x, y))  # [[2., 2.], [2., 2.]]
+  print(tf.linalg.matmul(x, y)[0, 0])  # 1024.0
   tf.config.experimental.enable_tensor_float_32_execution(False)
   # Matmul is run with full precision
-  print(tf.linalg.matmul(x, y))  # [[2.0002, 2.0002], [2.0002, 2.0002]]
+  print(tf.linalg.matmul(x, y)[0, 0])  # ~1024.1
   ```
 
   To check whether TensorFloat-32 execution is currently enabled, use
@@ -73,8 +74,7 @@ def enable_tensor_float_32_execution(enabled):
   utilizing the GPU's tensor cores. TensorFloat-32 has the same dynamic range as
   float32, meaning it is no more likely to underflow or overflow than float32.
   Ops still use float32 accumulation when TensorFloat-32 is enabled. Enabling or
-  disabling TensorFloat-32 only affects Ampere GPUs and subsequent GPUs that
-  support TensorFloat-32.
+  disabling TensorFloat-32 only affects Ampere GPUs and above.
 
   Note TensorFloat-32 is not always used in supported ops, as only inputs of
   certain shapes are supported. Support for more input shapes and more ops may

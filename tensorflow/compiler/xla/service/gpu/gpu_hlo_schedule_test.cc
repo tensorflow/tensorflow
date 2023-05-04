@@ -18,11 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -468,6 +470,60 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,
                          GpuHloScheduleParameterizedTest, ::testing::Bool());
+
+using GpuHloSchedulePostProcessTest = HloTestBase;
+
+TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
+  const char* hlo_text = R"(
+  HloModule AsyncModule, is_scheduled=true
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32] parameter(1)
+
+    // This is async by default, so we expect the start/done to be moved.
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    add0 = f32[32] add(p0, p0)
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    // This will be sync, so we expect the start/done to be moved next to each
+    // other.
+    ag-start = (f32[32], f32[64]) all-gather-start(p1), dimensions={0}, backend_config="{\"is_sync\":true}"
+    add1 = f32[32] add(p1, p1)
+    ag-done = f32[64] all-gather-done(ag-start)
+
+    add2 = f32[32] add(add0, add1)
+    add3 = f32[32] add(add2, ar-done)
+    ROOT result = (f32[32], f32[64]) tuple(add3, ag-done)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(hlo_text, /*replica_count=*/2));
+
+  const HloInstructionSequence& input =
+      module->schedule().sequence(module->entry_computation());
+  HloInstructionSequence result = PostProcessSchedule(input);
+
+  const std::vector<std::string_view> expected_sequence = {
+      "p0",
+      "ar-start",  // ar-start is async, should be scheduled as early as
+                   // possible.
+      "p1", "add0", "add1",
+      "ag-start",  // ag-start is sync, so its scheduled right before its done.
+      "ag-done", "add2",
+      "ar-done",  // ar-done is async, should be scheduled as late as possible.
+      "add3", "result"};
+
+  ASSERT_EQ(expected_sequence.size(), result.size());
+  for (int i = 0; i < result.size(); ++i) {
+    EXPECT_EQ(expected_sequence[i], result.instructions()[i]->name());
+  }
+}
 
 }  // namespace gpu
 }  // namespace xla

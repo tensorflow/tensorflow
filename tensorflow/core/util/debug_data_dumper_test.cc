@@ -68,6 +68,15 @@ TEST(DebugDataDumper, ShouldDumpTest) {
   DEBUG_DATA_DUMPER()->LoadEnvvars();
   EXPECT_EQ(true, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
                                                   kDebugGroupBridgePhase1));
+
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(false, DEBUG_DATA_DUMPER()->ShouldDump(
+                       "__wrapped__DumpGraphToFileTest", kDebugGroupMain));
+
+  setenv("TF_DUMP_GRAPH_WRAPPED", "true", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(true, DEBUG_DATA_DUMPER()->ShouldDump(
+                      "__wrapped__DumpGraphToFileTest", kDebugGroupMain));
 }
 
 TEST(DebugDataDumper, DumpFileBasenameTest) {
