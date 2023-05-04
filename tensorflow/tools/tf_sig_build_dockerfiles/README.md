@@ -50,7 +50,7 @@ DOCKER_BUILDKIT=1 docker build \
 For ROCM
 ```
 DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm \
-  --build-arg ROCM_VERSION=5.4.0 --build-arg PYTHON_VERSION=3.9 -t my-tf-devel . 
+  --build-arg ROCM_VERSION=5.5.0 --build-arg PYTHON_VERSION=3.9 -t my-tf-devel . 
 ```
 It will take a long time to build devtoolset and install packages. After
 it's done, you can use the commands below to test your changes. Just replace

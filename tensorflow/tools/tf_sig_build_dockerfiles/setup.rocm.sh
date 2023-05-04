@@ -61,6 +61,14 @@ echo $GPU_DEVICE_TARGETS
 # install rocm
 /setup.packages.sh /devel.packages.rocm.txt
 
+apt-get update --allow-insecure-repositories
+MIOPENKERNELS=$( \
+                    apt-cache search --names-only miopen-hip-gfx | \
+                    awk '{print $1}' | \
+                    grep -F -v . || \
+		    true )
+DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated ${MIOPENKERNELS}
+
 # Ensure the ROCm target list is set up
 printf '%s\n' ${GPU_DEVICE_TARGETS} | tee -a "$ROCM_PATH/bin/target.lst"
 touch "${ROCM_PATH}/.info/version"

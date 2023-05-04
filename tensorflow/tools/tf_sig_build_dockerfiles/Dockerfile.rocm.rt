@@ -8,7 +8,7 @@ COPY setup.packages.sh setup.packages.sh
 # Install ROCM
 ARG TF_PKGS_DIR=tmp/packages
 ARG TENSORFLOW_PACKAGE=tf_nightly_rocm
-ARG ROCM_VERSION=5.4.0
+ARG ROCM_VERSION=5.5.0
 ARG CUSTOM_INSTALL
 ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
 ENV ROCM_PATH=${ROCM_PATH}

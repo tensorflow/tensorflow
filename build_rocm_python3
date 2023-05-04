@@ -26,7 +26,7 @@ done
 shift "$((OPTIND-1))"
 
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
-ROCM_INSTALL_DIR=/opt/rocm-5.4.0
+ROCM_INSTALL_DIR=/opt/rocm-5.5.0
 if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 fi

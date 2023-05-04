@@ -3,10 +3,10 @@
 FROM ubuntu:focal
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG ROCM_DEB_REPO=https://repo.radeon.com/rocm/apt/5.4/
+ARG ROCM_DEB_REPO=https://repo.radeon.com/rocm/apt/5.5/
 ARG ROCM_BUILD_NAME=ubuntu
 ARG ROCM_BUILD_NUM=main
-ARG ROCM_PATH=/opt/rocm-5.4.0
+ARG ROCM_PATH=/opt/rocm-5.5.0
 ARG GPU_DEVICE_TARGETS="gfx900 gfx906 gfx908 gfx90a gfx1030"
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -70,7 +70,7 @@ RUN apt-get install -y software-properties-common
 # For precompiled miopen kernels search for all unversioned packages
 # if search fails it will abort so use true to avoid case where search fails
 RUN MIOPENKERNELS=$( \
-                    apt-cache search --names-only miopenkernels | \
+                    apt-cache search --names-only miopen-hip-gfx | \
                     awk '{print $1}' | \
                     grep -F -v . || \
                     true \
