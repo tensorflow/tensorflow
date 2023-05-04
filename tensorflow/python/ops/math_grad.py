@@ -1255,8 +1255,20 @@ def _Atan2Grad(op, grad):
   y = op.inputs[0]
   x = op.inputs[1]
   with ops.control_dependencies([grad]):
+    (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
+        SmartBroadcastGradientArgs(x, y, grad)
+    )
+
     grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
-    return x * grad_inv, -y * grad_inv
+
+    gx = -y * grad_inv
+    if must_reduce_x:
+      gx = array_ops.reshape(math_ops.reduce_sum(gx, rx), sx)
+
+    gy = x * grad_inv
+    if must_reduce_y:
+      gy = array_ops.reshape(math_ops.reduce_sum(gy, ry), sy)
+    return gy, gx
 
 
 @ops.RegisterGradient("AddN")
