@@ -343,6 +343,46 @@ struct SparseConvertCallRewriter {
   }
 };
 
+struct SparseReduceSumCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need one input tensor and axes");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    SmallVector<int64_t> axes;
+    getIntegersFromDenseElements(op.getInputs()[1], axes);
+    Value result = op.getResults()[0];
+    auto resultType = result.getType().dyn_cast<RankedTensorType>();
+    auto elementType = resultType.getElementType();
+
+    Location loc = op.getLoc();
+    RankedTensorType blockArgumentType = RankedTensorType::get({}, elementType);
+    Value zero = rewriter.create<mhlo::ConstantOp>(
+        loc, DenseElementsAttr::get(blockArgumentType,
+                                    rewriter.getZeroAttr(elementType)));
+
+    mhlo::ReduceOp reduce = rewriter.create<mhlo::ReduceOp>(
+        loc, result.getType(), op.getInputs()[0], zero,
+        rewriter.getI64TensorAttr(axes));
+
+    // Setup the body for mhlo.reduce.
+    Region& region = reduce.getBody();
+    Block& block = region.emplaceBlock();
+    block.addArgument(blockArgumentType, loc);
+    block.addArgument(blockArgumentType, loc);
+    auto* firstArgument = block.args_begin();
+    auto secondArgument = block.args_rbegin();
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(&block);
+      Value addResult =
+          rewriter.create<mhlo::AddOp>(loc, *firstArgument, *secondArgument);
+      rewriter.create<mhlo::ReturnOp>(loc, addResult);
+    }
+
+    rewriter.replaceOp(op, reduce.getResults());
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
@@ -377,6 +417,7 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
                      SparseDynSliceCallRewriter()),
       std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
       std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
+      std::make_pair("sparse_tensor_reduce_sum", SparseReduceSumCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to corresponding sparse_tensor operation.
