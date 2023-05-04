@@ -19,7 +19,6 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils_impl as utils
 from tensorflow.python.util import deprecation
@@ -33,19 +32,15 @@ from tensorflow.python.util.tf_export import tf_export
     ])
 @deprecation.deprecated_endpoints(
     'saved_model.signature_def_utils.build_signature_def')
-def build_signature_def(
-    inputs=None, outputs=None, method_name=None, defaults=None
-):
+def build_signature_def(inputs=None, outputs=None, method_name=None):
   """Utility function to build a SignatureDef protocol buffer.
 
   Args:
     inputs: Inputs of the SignatureDef defined as a proto map of string to
-      tensor info.
+        tensor info.
     outputs: Outputs of the SignatureDef defined as a proto map of string to
-      tensor info.
+        tensor info.
     method_name: Method name of the SignatureDef as a string.
-    defaults: Defaults of the SignatureDef defined as a proto map of string to
-      TensorProto.
 
   Returns:
     A SignatureDef protocol buffer constructed based on the supplied arguments.
@@ -59,22 +54,6 @@ def build_signature_def(
       signature_def.outputs[item].CopyFrom(outputs[item])
   if method_name is not None:
     signature_def.method_name = method_name
-  if defaults is not None:
-    for arg_name, default in defaults.items():
-      if isinstance(default, ops.EagerTensor):
-        signature_def.defaults[arg_name].CopyFrom(
-            tensor_util.make_tensor_proto(default.numpy())
-        )
-      else:
-        if default.op.type == 'Const':
-          signature_def.defaults[arg_name].CopyFrom(
-              default.op.get_attr('value')
-          )
-        else:
-          raise ValueError(
-              f'Unable to convert object {str(default)} of type {type(default)}'
-              ' to TensorProto.'
-          )
   return signature_def
 
 
@@ -233,6 +212,7 @@ def predict_signature_def(inputs, outputs):
   return signature_def
 
 
+# LINT.IfChange
 def supervised_train_signature_def(
     inputs, loss, predictions=None, metrics=None):
   return _supervised_signature_def(
@@ -287,6 +267,7 @@ def _supervised_signature_def(
       signature_inputs, signature_outputs, method_name)
 
   return signature_def
+# LINT.ThenChange(//keras/saving/utils_v1/signature_def_utils.py)
 
 
 @tf_export(

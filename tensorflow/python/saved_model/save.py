@@ -632,9 +632,7 @@ def _generate_signatures(signature_functions, object_map, defaults=None):
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_argument_placeholders),
         _tensor_dict_to_tensorinfo(outputs),
-        method_name=signature_constants.PREDICT_METHOD_NAME,
-        defaults=defaults.get(signature_key, None),
-    )
+        method_name=signature_constants.PREDICT_METHOD_NAME)
   return signatures
 
 

@@ -275,7 +275,6 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
