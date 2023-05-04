@@ -574,3 +574,53 @@ func.func private @external()
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 // CHECK-NEXT: return
+
+// -----
+// Check that the loop body of lmhlo.while is cloned into the graph.
+
+module attributes {gpu.container_module} {
+
+gpu.module @gpu_module attributes {binary = "kernel binary"} {
+  gpu.func @fn0(%arg0: memref<16xi8>)  kernel { gpu.return }
+  gpu.func @fn1(%arg0: memref<16xi8>) kernel { gpu.return }
+}
+
+// CHECK: @func(%[[ARG0:.*]]: memref<16xi8>
+func.func @func(%arg0: memref<16xi8>, %cond: memref<i1>) {
+  %c1 = arith.constant 1 : index
+
+  call @external() : () -> ()
+
+  "lmhlo.while"(%cond) ({
+    // CHECK: func.call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+    gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%arg0: memref<16xi8>)
+    gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%arg0: memref<16xi8>)
+    "lmhlo.terminator"() : () -> () }, {
+    // CHECK: func.call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture_0}
+    gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%arg0: memref<16xi8>)
+    gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%arg0: memref<16xi8>)
+    "lmhlo.terminator"() : () -> ()
+  }) : (memref<i1>) -> ()
+  func.return
+}
+
+func.func private @external()
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK-NEXT: arith.constant 1
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
+// CHECK-NEXT: return
+
+// CHECK: func @xla.gpu.cuda.graph.capture_0
+// CHECK-NEXT: arith.constant 1
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
+// CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
+// CHECK-NEXT: return
