@@ -369,8 +369,8 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   FrontendAttributes attributes;
   (*attributes.mutable_map())[kFingerprintBeforeLHS] = fingerprint;
   root->add_frontend_attributes(attributes);
-  LOG(INFO) << "Fingerprint before LHS for module " << module->name() << "("
-            << module->unique_id() << ") = " << fingerprint;
+  VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
+          << module->unique_id() << ") = " << fingerprint;
 
   const bool enable_latency_hiding_scheduler =
       module->config()
