@@ -83,9 +83,6 @@ from tensorflow.python.util.tf_export import tf_export
 tensor_spec = LazyLoader(
     "tensor_spec", globals(),
     "tensorflow.python.framework.tensor_spec")
-ag_ctx = LazyLoader(
-    "ag_ctx", globals(),
-    "tensorflow.python.autograph.core.ag_ctx")
 
 
 # Temporary global switches determining if we should enable the work-in-progress
@@ -473,55 +470,24 @@ class Tensor(
   def ndim(self):
     return self.shape.rank
 
-  def _disallow_when_autograph_unavailable(self, task):
+  def _disallow(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph is unavailable in this runtime. See"
+        f"{task} is not allowed."
+        " You can attempt the following resolutions to the problem:"
+        " If you are running in Graph mode, use Eager execution mode"
+        " or decorate this function with @tf.function."
+        " If you are using AutoGraph, you can try decorating this function"
+        " with @tf.function. If that does not work, then you may be using"
+        " an unsupported feature or your source code may not be visible"
+        " to AutoGraph. See"
         " https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code"
         " for more information.")
 
-  def _disallow_when_autograph_disabled(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph is disabled in this function."
-        " Try decorating it directly with @tf.function.")
-
-  def _disallow_when_autograph_enabled(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph did convert this function. This"
-        " might indicate you are trying to use an unsupported feature.")
-
-  def _disallow_in_graph_mode(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed in Graph execution. Use Eager execution or"
-        " decorate this function with @tf.function.")
-
   def _disallow_bool_casting(self):
-    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
-      self._disallow_when_autograph_unavailable(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_disabled(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_enabled(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    else:
-      # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
+    self._disallow("Using a symbolic `tf.Tensor` as a Python `bool`")
 
   def _disallow_iteration(self):
-    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
-      self._disallow_when_autograph_unavailable(
-          "Iterating over a symbolic `tf.Tensor`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_disabled(
-          "Iterating over a symbolic `tf.Tensor`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_enabled(
-          "Iterating over a symbolic `tf.Tensor`")
-    else:
-      # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode("Iterating over a symbolic `tf.Tensor`")
+    self._disallow("Iterating over a symbolic `tf.Tensor`")
 
   def __iter__(self):
     if not context.executing_eagerly():
