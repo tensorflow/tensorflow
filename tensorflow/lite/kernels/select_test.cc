@@ -124,6 +124,19 @@ TEST(SelectOpTest, SelectUInt8) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
+TEST(SelectOpTest, SelectUInt32) {
+  SelectOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, {1, 1, 1, 4},
+                      TensorType_UINT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
+  model.PopulateTensor<uint32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<uint32_t>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<uint32_t>(), ElementsAreArray({5, 2, 7, 8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
 TEST(SelectOpTest, SelectInt8) {
   SelectOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, {1, 1, 1, 4},
                       TensorType_INT8);
@@ -278,6 +291,19 @@ TEST(SelectV2OpTest, SelectUInt8) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<uint8_t>(), ElementsAreArray({5, 2, 7, 8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
+TEST(SelectV2OpTest, SelectUInt32) {
+  SelectV2OpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, {1, 1, 1, 4},
+                        TensorType_UINT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
+  model.PopulateTensor<uint32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<uint32_t>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<uint32_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 

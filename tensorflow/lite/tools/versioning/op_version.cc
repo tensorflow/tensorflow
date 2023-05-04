@@ -901,6 +901,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SELECT: {
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 4;
+      }
       if (op_sig.inputs.at(0).dims.size() == 5 ||
           op_sig.inputs.at(1).dims.size() == 5 ||
           op_sig.inputs.at(2).dims.size() == 5)
@@ -916,6 +919,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    }
+    case BuiltinOperator_SELECT_V2: {
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
         return 2;
       }
       return 1;
