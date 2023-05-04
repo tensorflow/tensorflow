@@ -8,7 +8,7 @@ google_pasta == 0.2.0
 h5py == 3.8.0  # Earliest version for Python 3.11
 # TODO(b/262592253): Support older versions of NumPy for Python 3.10 and lower
 # to support TFX. Remove when Apache Beam upgrades to newer NumPy.
-numpy ~= 1.22.4; python_version < '3.11'
+numpy == 1.22.4; python_version < '3.11'
 numpy == 1.23.2; python_version >= '3.11' # Earliest version for Python 3.11
 opt_einsum == 3.3.0
 protobuf == 3.20.3  # NOTE: Earliest version for Python 3.10
@@ -33,7 +33,7 @@ tf-estimator-nightly ~= 2.13.0.dev
 grpcio == 1.49.1 # Earliest version for Python 3.11
 portpicker == 1.4.0
 scipy == 1.7.3; python_version < '3.11'
-scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
+scipy == 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
 
 # This is usually vendored in setuptools but ensure it gets installed in CI anyway
 # No bound here, we prefer the one in setuptools
