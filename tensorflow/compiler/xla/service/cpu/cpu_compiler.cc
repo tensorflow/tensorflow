@@ -697,7 +697,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Run the following passes to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
-   is_mlir_compile, this] {
+   this] {
     AddHloVerifier(&pipeline, allow_sparse_shapes_, HloVerifierOpts{},
                    /*debug_only=*/true);
 
@@ -712,13 +712,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
-    // Disable TreeReductionRewriter for MLIR compiles. Reduce window is quite
-    // slow, and reduce is supposed to have similar numerics using a tree-like
-    // tiling pattern.
-    if (!is_mlir_compile) {
-      // Needs to happen after algebraic simplifier.
-      pipeline.AddPass<TreeReductionRewriter>();
-    }
+    // Needs to happen after algebraic simplifier.
+    pipeline.AddPass<TreeReductionRewriter>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
