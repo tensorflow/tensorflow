@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -34,14 +33,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
-#include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace spmd {
@@ -1226,9 +1223,9 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
   return sharded_dims <= 0;
 }
 
-std::vector<int64_t> GetTensorDimToMeshDim(const int64_t tensor_shape_rank,
-                                           const HloSharding& spec,
-                                           const Array<int64_t>& device_mesh) {
+absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
+    int64_t tensor_shape_rank, const HloSharding& spec,
+    const Array<int64_t>& device_mesh) {
   if (spec.IsReplicated()) {
     return std::vector<int64_t>(tensor_shape_rank, -1);
   }
@@ -1249,13 +1246,15 @@ std::vector<int64_t> GetTensorDimToMeshDim(const int64_t tensor_shape_rank,
     }
   } while (absl::c_next_permutation(axes));
   if (!found) {
-    LOG(FATAL) << "Could not find mapping for " << spec.ToString()
-               << " with device mesh " << device_mesh.ToString();
+    return absl::NotFoundError(
+        absl::StrCat("Could not find mapping for ", spec.ToString(),
+                     " with device mesh ", device_mesh.ToString()));
   }
 
   if (!TileAssignmentMatchesMesh(spec, mesh)) {
-    LOG(FATAL) << "Device mesh and tile assignment need to have the same "
-                  "number of sharded dims.";
+    return absl::InvalidArgumentError(
+        "Device mesh and tile assignment need to have the same number of "
+        "sharded dims.");
   }
 
   // Transform tile_assignment_dimensions using found transformation (axes).
@@ -1271,6 +1270,119 @@ std::vector<int64_t> GetTensorDimToMeshDim(const int64_t tensor_shape_rank,
     }
   }
   return tensor_dim_to_device_dim;
+}
+
+std::vector<int64_t> GetTensorDimToMeshDim(int64_t tensor_shape_rank,
+                                           const HloSharding& spec,
+                                           const Array<int64_t>& device_mesh) {
+  auto mapping_or =
+      GetTensorDimToMeshDimNoCrash(tensor_shape_rank, spec, device_mesh);
+  if (mapping_or.ok()) {
+    return mapping_or.value();
+  } else {
+    LOG(FATAL) << mapping_or.status().message();
+  }
+}
+
+Shape ComputeIntermediateShape(const HloSharding& src_sharding,
+                               const HloSharding& dst_sharding,
+                               const Shape& shape,
+                               const Array<int64_t>& device_mesh) {
+  int64_t src_n_dim = NumTileDimensions(src_sharding);
+
+  const HloSharding* sharding_1d;
+
+  if (src_n_dim == 1) {
+    sharding_1d = &src_sharding;
+  } else {
+    sharding_1d = &dst_sharding;
+  }
+
+  // Find an intermediate shape
+  std::vector<int64_t> inter_shape_dims;
+
+  for (size_t i = 0; i < shape.rank(); ++i) {
+    if (sharding_1d->tile_assignment().dim(i) == 1) {
+      inter_shape_dims.push_back(shape.dimensions(i));
+    } else {
+      CHECK(shape.dimensions(i) % device_mesh.dim(0) == 0)
+          << "Only support even partition";
+      inter_shape_dims.push_back(device_mesh.dim(0));
+      inter_shape_dims.push_back(shape.dimensions(i) / device_mesh.dim(0));
+    }
+  }
+  VLOG(3) << " SHAPE " << static_cast<int>(shape.element_type()) << " "
+          << spmd::ToString(inter_shape_dims) << " " << src_sharding.ToString()
+          << "\n"
+          << dst_sharding.ToString();
+  return ShapeUtil::MakeShape(shape.element_type(), inter_shape_dims);
+}
+
+void FixMixedMeshShapeReshardingGetTupleElement(
+    HloInstruction* inst, const HloSharding& dst_sharding,
+    const Array<int64_t>& device_mesh) {
+  HloInstruction* operand = inst->mutable_operand(0);
+  auto input_tuple_sharding = operand->sharding();
+  size_t index = inst->tuple_index();
+  if (input_tuple_sharding.tuple_elements()[index] == dst_sharding) {
+    return;
+  }
+
+  const HloSharding& src_sharding =
+      input_tuple_sharding.tuple_elements()[index];
+  CHECK(operand->shape().IsTuple());
+  const Shape& shape = operand->shape().tuple_shapes(index);
+
+  int64_t src_n_dim = NumTileDimensions(src_sharding);
+  int64_t dst_n_dim = NumTileDimensions(dst_sharding);
+
+  HloInstruction* replace_with = nullptr;
+
+  auto inst_users = inst->users();
+  if (replace_with != nullptr) {
+    // Do nothing
+  } else if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
+    Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
+                                                 shape, device_mesh);
+
+    std::optional<HloSharding> src_inter_sharding =
+        hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
+    std::optional<HloSharding> dst_inter_sharding =
+        hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
+    if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
+      src_inter_sharding = HloSharding::Replicate();
+      dst_inter_sharding = HloSharding::Replicate();
+      LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+    }
+
+    HloInstruction* src_inter = inst->parent()->AddInstruction(
+        HloInstruction::CreateReshape(inter_shape, inst));
+    src_inter->set_sharding(*src_inter_sharding);
+
+    HloInstruction* dst_inter = inst->parent()->AddInstruction(
+        HloInstruction::CreateReshape(inter_shape, src_inter));
+    dst_inter->set_sharding(*dst_inter_sharding);
+
+    replace_with = inst->parent()->AddInstruction(
+        HloInstruction::CreateReshape(shape, dst_inter));
+    replace_with->set_sharding(dst_sharding);
+  } else {
+    replace_with = inst->parent()->AddInstruction(
+        HloInstruction::CreateReshape(shape, inst));
+    replace_with->set_sharding(dst_sharding);
+  }
+  inst->set_sharding(src_sharding);
+  size_t size =
+      GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
+  if (size > 1) {
+    LOG(WARNING) << "Large reshape instruction inserted (operand of "
+                 << inst->name() << ") with size " << size
+                 << "GB: " << replace_with->ToString();
+  }
+
+  for (auto user : inst_users) {
+    TF_CHECK_OK(inst->ReplaceUseWith(user, replace_with));
+  }
 }
 
 void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
@@ -1304,29 +1416,8 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
   if (replace_with != nullptr) {
     // Do nothing
   } else if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    const HloSharding* sharding_1d;
-
-    if (src_n_dim == 1) {
-      sharding_1d = &src_sharding;
-    } else {
-      sharding_1d = &dst_sharding;
-    }
-
-    // Find an intermediate shape
-    std::vector<int64_t> inter_shape_dims;
-
-    for (size_t i = 0; i < shape.rank(); ++i) {
-      if (sharding_1d->tile_assignment().dim(i) == 1) {
-        inter_shape_dims.push_back(shape.dimensions(i));
-      } else {
-        CHECK(shape.dimensions(i) % device_mesh.dim(0) == 0)
-            << "Only support even partition";
-        inter_shape_dims.push_back(device_mesh.dim(0));
-        inter_shape_dims.push_back(shape.dimensions(i) / device_mesh.dim(0));
-      }
-    }
-    Shape inter_shape =
-        ShapeUtil::MakeShape(shape.element_type(), inter_shape_dims);
+    Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
+                                                 shape, device_mesh);
 
     std::optional<HloSharding> src_inter_sharding =
         hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
