@@ -49,3 +49,4 @@ twine ~= 3.6.0
 junitparser ~= 2.2.0
 lxml ~= 4.9.1
 pylint ~= 2.13.9
+urllib3<2
