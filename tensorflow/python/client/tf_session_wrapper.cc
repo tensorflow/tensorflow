@@ -639,37 +639,51 @@ struct PyOperation {
 struct PyTensor {
   TFObject_HEAD(PyTensor);
 
-  py::object py_tf_output = py::none();
+  py::object tf_output = py::none();
+  py::object name = py::none();
+  py::object dtype = py::none();
+  py::object shape_val = py::none();
+  py::object uid = py::none();
 
   tf_handle<PyOperation> op;
   tf_handle<PyGraph> graph;
 
   int value_index = -1;
 
-  PyTensor(PyObject* args, PyObject* kwds) {}
-
-  // We'd normally initialize in the constructor, but TF Python does weird
-  // things with multiple-inheritance and overriding the base classes. We should
-  // try to clean this up but in the meantime, we defer to a separate method.
-  void init(py::handle py_op, int64_t index, py::handle dtype) {
-    value_index = index;
-    op = py_op.ptr();
+  PyTensor(PyObject* args, PyObject* kwds) {
+    PyObject *py_op, *py_index, *py_dtype, *py_uid;
+    if (!PyArg_ParseTuple(args, "OOOO", &py_op, &py_index, &py_dtype,
+                          &py_uid)) {
+      return;
+    }
+    dtype = py::reinterpret_borrow<py::object>(py_dtype);
+    value_index = py::cast<int>(py::handle(py_index));
+    op = py_op;
     graph = op->graph;
-    py_tf_output = py::cast(TF_Output{op->tf_op, value_index});
+    name = py::str(absl::StrCat(op->name(), ":", value_index));
+    tf_output = py::cast(TF_Output{op->tf_op, value_index});
+    uid = py::reinterpret_borrow<py::object>(py_uid);
   }
-
   ~PyTensor() { Clear(); }
 
   void Clear() {
-    Py_CLEAR(py_tf_output.release().ptr());
+    Py_CLEAR(tf_output.release().ptr());
+    Py_CLEAR(name.release().ptr());
+    Py_CLEAR(dtype.release().ptr());
+    Py_CLEAR(shape_val.release().ptr());
+    Py_CLEAR(uid.release().ptr());
     op.Clear();
     graph.Clear();
   }
 
   int Visit(visitproc visit, void* arg) {
     Py_VISIT(op.ptr());
-    Py_VISIT(py_tf_output.ptr());
+    Py_VISIT(tf_output.ptr());
     Py_VISIT(graph.ptr());
+    Py_VISIT(name.ptr());
+    Py_VISIT(dtype.ptr());
+    Py_VISIT(shape_val.ptr());
+    Py_VISIT(uid.ptr());
     return 0;
   }
 
@@ -951,11 +965,6 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     py::object c_tensor = py::reinterpret_borrow<py::object>(PyTensor::py_type);
     m.attr("PyTensor") = c_tensor;
     c_tensor.attr("__module__") = module_name;
-    c_tensor.attr("_init") =
-        method(c_tensor, [](py::handle handle, py::handle operation,
-                            int64_t index, py::handle dtype) {
-          return AsPyTfObject<PyTensor>(handle)->init(operation, index, dtype);
-        });
     c_tensor.attr("device") = property_readonly([](py::handle handle) {
       return AsPyTfObject<PyTensor>(handle)->op->device();
     });
@@ -968,6 +977,27 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     c_tensor.attr("_shape") = property_readonly([](py::handle handle) {
       return AsPyTfObject<PyTensor>(handle)->shape();
     });
+    c_tensor.attr("_dtype") = property_readonly([](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->dtype;
+    });
+    c_tensor.attr("_name") = property(
+        [](py::handle handle) { return AsPyTfObject<PyTensor>(handle)->name; },
+        [](py::handle handle, py::object name) {
+          AsPyTfObject<PyTensor>(handle)->name = name;
+        });
+    c_tensor.attr("_shape_val") = property(
+        [](py::handle handle) {
+          auto py_tensor = AsPyTfObject<PyTensor>(handle);
+          return py_tensor->shape_val;
+        },
+        [](py::handle handle, py::object shape) {
+          AsPyTfObject<PyTensor>(handle)->shape_val = shape;
+        });
+    c_tensor.attr("_id") = property(
+        [](py::handle handle) { return AsPyTfObject<PyTensor>(handle)->uid; },
+        [](py::handle handle, py::object uid) {
+          AsPyTfObject<PyTensor>(handle)->uid = uid;
+        });
     c_tensor.attr("graph") =
         property_readonly([](py::handle handle) -> py::handle {
           auto& graph = AsPyTfObject<PyTensor>(handle)->graph;
@@ -977,7 +1007,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           return py::none();
         });
     c_tensor.attr("_as_tf_output") = method(c_tensor, [](py::handle handle) {
-      return AsPyTfObject<PyTensor>(handle)->py_tf_output;
+      return AsPyTfObject<PyTensor>(handle)->tf_output;
     });
     c_tensor.attr("_op") =
         property_readonly([](py::handle handle) -> py::handle {
