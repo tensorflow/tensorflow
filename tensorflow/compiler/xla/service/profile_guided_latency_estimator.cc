@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
