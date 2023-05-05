@@ -9,6 +9,7 @@ td_library(
     name = "ifrt_td",
     srcs = [
         "ifrt_dialect.td",
+        "ifrt_interfaces.td",
         "ifrt_ops.td",
     ],
     visibility = ["//tensorflow/compiler/xla/python/ifrt:friends"],
@@ -89,21 +90,42 @@ gentbl_cc_library(
     deps = [":ifrt_td"],
 )
 
+gentbl_cc_library(
+    name = "ifrt_interfaces_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "ifrt_interfaces.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "ifrt_interfaces.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ifrt_interfaces.td",
+    test = True,
+    deps = [":ifrt_td"],
+)
+
 cc_library(
     name = "ir",
     srcs = [
         "ifrt_dialect.cc",
+        "ifrt_interfaces.cc",
         "ifrt_ops.cc",
         "sharding_param.cc",
     ],
     hdrs = [
         "ifrt_dialect.h",
+        "ifrt_interfaces.h",
         "ifrt_ops.h",
         "sharding_param.h",
     ],
     visibility = ["//tensorflow/compiler/xla/python/ifrt:friends"],
     deps = [
         ":ifrt_dialect_inc_gen",
+        ":ifrt_interfaces_inc_gen",
         ":ifrt_ops_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
