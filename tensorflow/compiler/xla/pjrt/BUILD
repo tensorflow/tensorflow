@@ -737,6 +737,7 @@ cc_library(
     deps = [
         ":pjrt_client",
         ":pjrt_future",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
