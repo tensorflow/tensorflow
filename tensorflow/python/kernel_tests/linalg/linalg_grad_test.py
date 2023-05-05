@@ -240,7 +240,7 @@ if __name__ == '__main__':
                 lambda x: linalg_ops.matrix_inverse(x, adjoint=True),
                 dtype, shape))
 
-        if not test_lib.is_built_with_rocm():
+        if True: #not test_lib.is_built_with_rocm():
           # TODO(rocm) :
           # re-enable this test when upstream issues are resolved
           # see commit msg for details

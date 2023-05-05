@@ -1827,6 +1827,8 @@ miopenDataType_t ToMIOpenDataType(
       return miopenFloat;
     case dnn::DataType::kHalf:
       return miopenHalf;
+    case dnn::DataType::kInt8:
+      return miopenInt8;
     case dnn::DataType::kDouble:
       LOG(FATAL)
           << "Unsupported DNN data type: tf.float64 (dnn::DataType::kDouble)";

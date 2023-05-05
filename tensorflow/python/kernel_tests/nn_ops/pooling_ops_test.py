@@ -224,8 +224,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     # haven't initialized enough of TF to know what our hardware is!)
     if use_gpu and not test.is_gpu_available():
       self.skipTest("No GPU is available.")
-    if use_gpu and (data_type == dtypes.float64 or \
-                    data_type == dtypes.bfloat16) \
+    if use_gpu and (data_type == dtypes.float64) \
                     and test.is_built_with_rocm():
       self.skipTest("ROCm pooling ops don't support float64 and bfloat16 yet.")
     if use_gpu and data_format == "NCHW_VECT_C" and not test.is_gpu_available(
