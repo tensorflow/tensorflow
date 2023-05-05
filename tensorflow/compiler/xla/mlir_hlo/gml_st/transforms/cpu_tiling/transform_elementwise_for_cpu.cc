@@ -173,8 +173,7 @@ FusionCluster findElementwiseCluster(Operation *rootOp,
         continue;
       }
 
-      // If there are any users of this op outside of this op outside of fusion
-      // cluster, then skip.
+      // If there are any users of this op outside of fusion cluster, then skip.
       if (llvm::any_of(arg.getUsers(), [&](Operation *user) {
             return !resultOps.contains(user);
           })) {

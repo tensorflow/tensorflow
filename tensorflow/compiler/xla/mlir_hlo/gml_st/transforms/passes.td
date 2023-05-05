@@ -141,7 +141,7 @@ def TransformMmt4DForCpuPass :
 }
 
 def TransformElementwiseForCpuPass :
-    Pass <"xla-cpu-tranform-elementwise", "mlir::func::FuncOp"> {
+    Pass <"xla-cpu-transform-elementwise", "mlir::func::FuncOp"> {
   let summary = "Transform elementwise ops for running on CPU";
   let description = [{
     Transforms elementwise ops, i.e. map, transpose, broadcast, concat, reverse.
