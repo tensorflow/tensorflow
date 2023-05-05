@@ -1922,16 +1922,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
         break;
       }
-      case HloOpcode::kConditional: {
-        strategies =
-            CreateAllStrategiesVector(
-                ins, ins->shape(), instruction_id, leaf_strategies, cluster_env,
-                strategy_map, solver_option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
-                /*create_replicated_strategies*/ true)
-                .value();
-        break;
-      }
+      case HloOpcode::kConditional:
       case HloOpcode::kSort: {
         strategies =
             CreateAllStrategiesVector(
