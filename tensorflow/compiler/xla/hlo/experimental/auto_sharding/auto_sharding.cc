@@ -1942,6 +1942,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                 .value();
         break;
       }
+      case HloOpcode::kAfterAll: {
+        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                              leaf_strategies);
+        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                              strategies, replicated_penalty);
+        break;
+      }
       default:
         LOG(FATAL) << "Unhandled instruction: " + ins->ToString();
     }
