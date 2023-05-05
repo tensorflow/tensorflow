@@ -52,9 +52,9 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type,
       return true;
     case S16:
     case U16:
-      // 16-bit integer reductions are not directly suppored by NCCL and cannot
+      // 16-bit integer reductions are not directly supported by NCCL and cannot
       // be implicitly converted into other 16-bit types like ncclFloat16 as
-      // they involve actual comptation andn not just data movement.
+      // they involve actual computation and not just data movement.
       return !IsReductionCollective(reduction_op);
     default:
       return false;
