@@ -3456,7 +3456,8 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or 
+    "SYMMETRIC".
   """
 
   # Convert lower/mixed case to upper for NumPy compatibility
