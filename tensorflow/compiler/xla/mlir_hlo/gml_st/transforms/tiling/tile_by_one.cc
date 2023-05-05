@@ -101,10 +101,8 @@ struct TileByOnePass : public impl::TileByOnePassBase<TileByOnePass> {
     patterns.add<
         TileByOnePattern<thlo::ConcatenateOp>,
         TileByOnePattern<thlo::GatherOp>,
-        TileByOnePattern<thlo::ReverseOp>,
         TileByOnePattern<thlo::ScatterOp>,
-        TileByOnePattern<thlo::SortOp>,
-        TileByOnePattern<linalg::MapOp>>(ctx);
+        TileByOnePattern<thlo::SortOp>>(ctx);
     // clang-format on
 
     // Apply patterns.
