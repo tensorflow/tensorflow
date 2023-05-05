@@ -409,6 +409,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 6;
+      }
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 5;
       }

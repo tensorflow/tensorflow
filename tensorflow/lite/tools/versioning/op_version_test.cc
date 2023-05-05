@@ -381,6 +381,11 @@ TEST(OpVersionTest, VersioningSliceTest) {
   };
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8, 4);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_SLICE;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt32, 4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
 }
 
 TEST(OpVersionTest, VersioningLogisticTest) {
