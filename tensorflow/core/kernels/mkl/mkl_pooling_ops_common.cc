@@ -222,7 +222,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
 #ifdef DNNL_AARCH64_USE_ACL
   mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
   context_.diff_dst_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_stream);
   context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data),
@@ -239,7 +239,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));
   }
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
 
   execute_primitives(context_.bwd_primitives, bwd_stream, context_.net_args);
 
