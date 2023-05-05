@@ -142,7 +142,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 #ifdef DNNL_AARCH64_USE_ACL
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
     context_.weight_mem->set_data_handle(
@@ -195,7 +195,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
         }
       }
     }
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
 
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 
@@ -766,7 +766,7 @@ class MklMatMulPrimitive : public MklPrimitive {
 #ifdef DNNL_AARCH64_USE_ACL
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.a_mem->set_data_handle(
         static_cast<void*>(const_cast<Tlhs*>(a_data)), *stream);
     context_.b_mem->set_data_handle(
@@ -789,7 +789,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.sp_mem->set_data_handle(sp_data);
     if (mul_data != nullptr) context_.mul_mem->set_data_handle(mul_data);
     if (add_data != nullptr) context_.add_mem->set_data_handle(add_data);
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
     execute_primitives(context_.matmul_primitives, stream, context_.net_args);
 
     // After execution, set data handle back
