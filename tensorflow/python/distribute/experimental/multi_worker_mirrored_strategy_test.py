@@ -181,6 +181,93 @@ class MultiWorkerMirroredStrategyTest(tf_test.TestCase, parameterized.TestCase):
           constant_op.constant(
               [(self.client_id * self.num_local_devices + i) * 2]))
 
+  def test_nested_structure_output(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    def value_fn(ctx):
+      value = float(ctx.num_replicas_in_sync)
+      return {'a': value,
+              'b': constant_op.constant([value + 1.0, value + 2.0])}
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+
+    @def_function.function
+    def replica_fn(inputs):
+      result = {}
+      for key in inputs:
+        result[key] = inputs[key] * 2.0
+      return result
+
+    result = strategy.run(replica_fn, args=(distributed_values,))
+    self.assertLen(result.keys(), 2)
+    self.assertIsInstance(result['a'], dtensor_util.DTensorDistributedValue)
+    self.assertLen(result['a'].values, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertAllClose(
+          result['a'].values[i],
+          constant_op.constant([strategy.num_replicas_in_sync * 2.0]))
+
+    self.assertIsInstance(result['b'], dtensor_util.DTensorDistributedValue)
+    self.assertLen(result['b'].values, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertAllClose(
+          result['b'].values[i],
+          constant_op.constant([(strategy.num_replicas_in_sync + 1.0) * 2.0,
+                                (strategy.num_replicas_in_sync + 2.0) * 2.0]))
+
+  def test_inputs_with_dtensor_distribute_values(self):
+
+    @def_function.function
+    def replica_fn_1(inputs):
+      return inputs * 2.0
+
+    @def_function.function
+    def replica_fn_2(inputs):
+      return inputs + 1.0
+
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    tensor_input = constant_op.constant(3.0)
+    d_tensor_input = strategy.experimental_distribute_values_from_function(
+        lambda _: tensor_input)
+
+    result_1 = strategy.run(replica_fn_1, args=(d_tensor_input,))
+    self.assertIsInstance(result_1, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result_1.values, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertAllClose(result_1.values[i], constant_op.constant([6.0]))
+
+    result_2 = strategy.run(replica_fn_2, args=(result_1,))
+    self.assertIsInstance(result_2, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result_2.values, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertAllClose(result_2.values[i], constant_op.constant([7.0]))
+
+  def test_get_replica_context(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+
+    tensor_input = constant_op.constant(3)
+    d_tensor_input = strategy.experimental_distribute_values_from_function(
+        lambda _: tensor_input)
+
+    @def_function.function
+    def replica_fn(inputs):
+      replica_context = distribute_lib.get_replica_context()
+      self.assertIsInstance(replica_context, dtensor_util.DTensorReplicaContext)
+      return inputs * replica_context.num_replicas_in_sync
+
+    # Default replica context
+    self.assertIsNotNone(distribute_lib.get_replica_context())
+    with strategy.scope():
+      self.assertIsNone(distribute_lib.get_replica_context())
+
+      result = strategy.run(replica_fn, args=(d_tensor_input,))
+
+    self.assertLen(result.values, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertAllClose(
+          result.values[i],
+          constant_op.constant([3 * strategy.num_replicas_in_sync]))
+
 
 def client_config_function(config_params):
   client_id = config_params['client_id']
