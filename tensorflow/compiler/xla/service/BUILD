@@ -4150,8 +4150,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
     ],
 )
 
