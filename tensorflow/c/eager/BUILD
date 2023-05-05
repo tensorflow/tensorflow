@@ -77,6 +77,7 @@ tf_cuda_library(
         ],
     }) + [
         ":abstract_tensor_handle",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime:remote_device",
@@ -900,6 +901,26 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "c_api_experimental_reader",
+    testonly = True,
+    srcs = [
+        "c_api_experimental_reader.cc",
+    ],
+    hdrs = [
+        "c_api_experimental_reader.h",
+        "tfe_monitoring_reader_internal.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":c_api",
+        "//tensorflow/c:c_api",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,
+)
+
 tf_cuda_cc_test(
     name = "c_api_experimental_test",
     size = "small",
@@ -911,6 +932,29 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_experimental_reader_test",
+    size = "small",
+    srcs = [
+        "c_api_experimental_reader_test.cc",
+    ],
+    args = ["--heap_check="],
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_experimental_reader",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
@@ -1011,6 +1055,23 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "pywrap_headers_monitoring_reader",
+    srcs = [
+        "c_api_experimental_reader.h",
+        "tfe_monitoring_reader_internal.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "headers_monitoring_reader",
+    srcs = [
+        "c_api_experimental_reader.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 cc_library(
     name = "dlpack",
     srcs = ["dlpack.cc"],
@@ -1048,6 +1109,9 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
+            "c_api_experimental_reader.cc",
+            "c_api_experimental_reader.h",
+            "tfe_monitoring_reader_internal.h",
             "c_api_unified_experimental.cc",
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",

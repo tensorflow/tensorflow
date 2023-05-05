@@ -90,6 +90,18 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
 
+  def testReduceOnInt8(self):
+    a = constant_op.constant(
+        np.array([[1, 2, 3, 4], [5, 6, 7, 8]]), dtype=dtypes.int8
+    )
+
+    expected_result = math_ops.reduce_sum(a)
+
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
+    dtensor_result = math_ops.reduce_sum(sharded_a)
+
+    self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
+
   def testTwoReducesWithAssign(self):
     self.skipForPathways('TODO(b/260775095)')
     # FIXME(b/238384852): The purpose of this test is to validate the control

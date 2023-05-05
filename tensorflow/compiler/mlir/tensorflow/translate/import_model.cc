@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -99,6 +100,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -124,7 +126,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
@@ -1089,7 +1090,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
             return errors::InvalidArgument(
                 "Node '", node.name(), " has an invalid ",
                 kOutputShapesAttrName, " attribute (shape #", idx, " error:'",
-                s.error_message(), "')");
+                s.message(), "')");
           c->set_output(idx, h);
         }
       }
@@ -2353,7 +2354,8 @@ class GraphDefImporter : public ImporterBase {
       mlir::MLIRContext* context, const Graph& graph,
       const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-      std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
+      std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
+      bool disable_crash_analysis = false);
 
  private:
   explicit GraphDefImporter(
@@ -2395,7 +2397,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs,
-    std::unordered_map<std::string, std::string>& tf_name_to_mlir_name) {
+    std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
+    bool disable_crash_analysis) {
   LoadImporterDialects(*context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
@@ -2405,22 +2408,28 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   // via conversion to the graph def first. Convert graph to graph_def here
   // first and avoid extra copies later.
   auto graph_def = std::make_unique<GraphDef>();
-  graph.ToGraphDef(graph_def.get());
+  graph.ToGraphDef(graph_def.get(), /*include_flib_def=*/false);
 
-  static std::atomic<uint32> counter(0);
-  uint32 current_file_prefix = counter++;
-  const auto* graph_crash_handle = crash_analysis::ReportProtoDataOnCrash(
-      absl::StrCat(current_file_prefix, "_mlir_import_graph.pbtxt"),
-      *graph_def);
-  auto reachable_flib = flib_def.ReachableDefinitions(*graph_def);
-  const auto* flib_crash_handle = crash_analysis::ReportProtoDataOnCrash(
-      absl::StrCat(current_file_prefix, "_mlir_import_flib.pbtxt"),
-      reachable_flib.ToProto());
+  auto scope_exit = [&]() {
+    std::function<void()> cleanup = []() {};
+    if (!disable_crash_analysis) {
+      static std::atomic<uint32> counter(0);
+      uint32 current_file_prefix = counter++;
+      const auto* graph_crash_handle = crash_analysis::ReportProtoDataOnCrash(
+          absl::StrCat(current_file_prefix, "_mlir_import_graph.pbtxt"),
+          *graph_def);
+      auto reachable_flib = flib_def.ReachableDefinitions(*graph_def);
+      const auto* flib_crash_handle = crash_analysis::ReportProtoDataOnCrash(
+          absl::StrCat(current_file_prefix, "_mlir_import_flib.pbtxt"),
+          reachable_flib.ToProto());
+      cleanup = [=]() {
+        crash_analysis::RemoveReportData(graph_crash_handle);
+        crash_analysis::RemoveReportData(flib_crash_handle);
+      };
+    }
 
-  auto scope_exit = llvm::make_scope_exit([&]() {
-    crash_analysis::RemoveReportData(graph_crash_handle);
-    crash_analysis::RemoveReportData(flib_crash_handle);
-  });
+    return llvm::make_scope_exit(std::move(cleanup));
+  }();
 
   VLOG(2) << "Importing: "
           << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
@@ -3565,8 +3574,8 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
     TF_RETURN_IF_ERROR(PreprocessGraphDef(nullptr, &preprocessed_graphdef));
   }
 
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(options, preprocessed_graphdef, &graph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(preprocessed_graphdef), &graph));
 
   NameUniquifier function_name_uniquifier(graph.flib_def());
   SavedModelObjectGraphImporter importer(graph.flib_def(), debug_info, specs,
@@ -3620,7 +3629,7 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       const MLIRImportOptions& import_options,
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info) {
     DCHECK(meta_graph_def);
-    GraphDef graph_def = meta_graph_def->graph_def();
+    GraphDef graph_def(meta_graph_def->graph_def());
     auto graph = std::make_unique<Graph>(OpRegistry::Global());
 
     if (import_options.upgrade_legacy) {
@@ -3631,8 +3640,8 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
     GraphConstructorOptions graph_ctor_options;
     graph_ctor_options.allow_internal_ops = true;
     graph_ctor_options.add_default_attributes = true;
-    TF_RETURN_IF_ERROR(
-        ConvertGraphDefToGraph(graph_ctor_options, graph_def, graph.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        graph_ctor_options, std::move(graph_def), graph.get()));
 
     if (import_options.upgrade_legacy) {
       // TODO(jpienaar): Remove need to const_cast.
@@ -3946,7 +3955,8 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
   // Convert sub-graph to MLIR module.
   return GraphDefImporter::Convert(module_->getContext(), *subgraph,
                                    input_.debug_info(), subgraph->flib_def(),
-                                   specs, tf_name_to_mlir_name);
+                                   specs, tf_name_to_mlir_name,
+                                   /*disable_crash_analysis=*/true);
 }
 
 Status SavedModelSignatureDefImporterLite::ConvertSignature(

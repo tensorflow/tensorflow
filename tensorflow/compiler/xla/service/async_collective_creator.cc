@@ -183,6 +183,16 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
       if (should_update_schedule) {
         replaced_pairs[instruction] = *async_pair;
       }
+
+      // Update control dependencies if present.
+      for (HloInstruction* pred : instruction->control_predecessors()) {
+        TF_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_pair->start));
+      }
+      for (HloInstruction* succ : instruction->control_successors()) {
+        TF_RETURN_IF_ERROR(async_pair->done->AddControlDependencyTo(succ));
+      }
+      TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           computation->ReplaceInstruction(instruction, async_pair->done),
           "replacing ", instruction->ToShortString());

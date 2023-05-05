@@ -119,7 +119,7 @@ tsl::StatusOr<OwnedCudaGraph> CaptureCudaGraph(
 
   if (!captured.ok())
     return InternalError("failed to capture CUDA graph: %s",
-                         captured.error_message());
+                         captured.message());
 
   VLOG(5) << "Captured CUDA graph " << graph;
 

@@ -823,7 +823,7 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(
-      error_status.error_message(),
+      error_status.message(),
       ::testing::HasSubstr(
           "Unexpected bitcast operation seen during layout assignment"));
 }

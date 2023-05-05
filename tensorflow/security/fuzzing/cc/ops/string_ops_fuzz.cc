@@ -45,7 +45,7 @@ class FuzzStringOpsStringSplit : public FuzzSession<std::string, std::string> {
     Status s = RunInputsWithStatus(
         {{"input", input_tensor}, {"delimiter", separator_tensor}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };
@@ -81,7 +81,7 @@ class FuzzStringOpsStringSplitV2
     Status s = RunInputsWithStatus(
         {{"input", input_tensor}, {"separator", separator_tensor}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };
@@ -105,7 +105,7 @@ class FuzzStringOpsStringUpper : public FuzzSession<std::string> {
 
     Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };

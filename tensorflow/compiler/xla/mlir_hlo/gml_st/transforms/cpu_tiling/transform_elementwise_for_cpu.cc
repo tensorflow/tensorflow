@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
@@ -42,6 +43,9 @@ namespace {
 
 #define GEN_PASS_DEF_TRANSFORMELEMENTWISEFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
+
+constexpr llvm::StringRef kFusionPlanningLabel = "__fusion_planning_label__";
+constexpr llvm::StringRef kElementwiseLabel = "__elementwise_label__";
 
 // Indicates the the dimension is not mapped to dimensions of the root op.
 constexpr int64_t kNotMappedToRootDims = -1;
@@ -58,6 +62,8 @@ Operation *findRootElementwiseOp(Operation *op, FusionFilterFn fusionFilterFn) {
     for (OpOperand &use : rootOp->getUses()) {
       Operation *owner = use.getOwner();
       if (!fusionFilterFn(owner)) continue;
+      if (hasLabel(owner, kTransformedLabel)) continue;
+      if (hasLabel(owner, kFusionPlanningLabel)) continue;
       if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(owner)) {
         if (llvm::is_contained(dpsOp.getDpsInitOperands(), &use)) continue;
       }
@@ -167,8 +173,7 @@ FusionCluster findElementwiseCluster(Operation *rootOp,
         continue;
       }
 
-      // If there are any users of this op outside of this op outside of fusion
-      // cluster, then skip.
+      // If there are any users of this op outside of fusion cluster, then skip.
       if (llvm::any_of(arg.getUsers(), [&](Operation *user) {
             return !resultOps.contains(user);
           })) {
@@ -195,7 +200,19 @@ FusionCluster findElementwiseCluster(Operation *rootOp,
   }
   FusionCluster fusionCluster;
   fusionCluster.root = rootOp;
-  fusionCluster.operations = std::move(resultOps);
+  fusionCluster.operations = resultOps;
+
+  // Add tensor.empty ops to the cluster.
+  for (auto *op : resultOps) {
+    if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(op)) {
+      for (auto &operand : dpsOp.getDpsInitOperands()) {
+        if (auto emptyOp = dyn_cast_or_null<tensor::EmptyOp>(
+                operand->get().getDefiningOp()))
+          fusionCluster.operations.insert(emptyOp);
+      }
+    }
+  }
+
   llvm::append_range(fusionCluster.argDimsMapping, mappedArgs);
   return fusionCluster;
 }
@@ -239,10 +256,9 @@ SmallVector<int64_t> optimizeTileSizes(const FusionCluster &fusionCluster,
 }
 
 template <typename OpTy>
-struct TileElementwisePattern : public OpRewritePattern<OpTy> {
-  TileElementwisePattern(MLIRContext *context, int64_t vectorSize,
-                         bool fuseDegenerateReshapes,
-                         PatternBenefit benefit = 1)
+struct FusionClusterPattern : public OpRewritePattern<OpTy> {
+  FusionClusterPattern(MLIRContext *context, int64_t vectorSize,
+                       bool fuseDegenerateReshapes, PatternBenefit benefit = 1)
       : OpRewritePattern<OpTy>(context, benefit),
         vectorSize(vectorSize),
         fuseDegenerateReshapes(fuseDegenerateReshapes) {}
@@ -250,7 +266,9 @@ struct TileElementwisePattern : public OpRewritePattern<OpTy> {
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     if (hasSingleElementOperandsAndResults(op)) return failure();
+    if (hasLabel(op, kFusionPlanningLabel)) return failure();
     if (hasLabel(op, kTransformedLabel)) return failure();
+    if (op->template getParentOfType<gml_st::FusionOp>()) return failure();
 
     // Find the root from which to start tiling and fusion.
     auto fusionFilterFn = [&](Operation *op) {
@@ -274,25 +292,46 @@ struct TileElementwisePattern : public OpRewritePattern<OpTy> {
     SmallVector<int64_t> tileSizes =
         optimizeTileSizes(fusionCluster, vectorSize);
 
-    // Tile and fuse.
-    auto tiledLoop = tileUsingSCFForallOpAndFuseGreedily(
-        rewriter, op, getSCFTilingOptions(tileSizes),
-        [&](Operation *op) { return fusionCluster.operations.contains(op); });
-    if (failed(tiledLoop)) return failure();
+    for (auto *clusterOp : fusionCluster.operations)
+      setLabel(clusterOp, kFusionPlanningLabel);
 
-    // Peel.
-    auto peelingResult = peelAllLoops(tiledLoop->loop, rewriter);
-    setLabel(tiledLoop->loop, kPerfectlyTiledLoopLabel);
+    auto fusionOp = wrapFusionCluster(rewriter, fusionCluster);
+    if (failed(fusionOp)) return failure();
 
-    // Tile ops in the peeled loop again, to size 1, so they can be
-    // scalarized.
-    return tilePeeledOpsToScalars(rewriter, peelingResult, fusionFilterFn);
+    fusionOp->setParallelTileSizes(tileSizes);
+    setLabel(*fusionOp, kElementwiseLabel);
+
+    return success();
   }
 
  private:
   int64_t vectorSize;
   bool fuseDegenerateReshapes;
 };
+
+LogicalResult tileAndFuse(FusionOp fusionOp, PatternRewriter &rewriter) {
+  if (hasLabel(fusionOp, kTransformedLabel)) return failure();
+  if (!hasLabel(fusionOp, kElementwiseLabel)) return failure();
+
+  auto *tilingRootOp = fusionOp.getTerminator().getValues()[0].getDefiningOp();
+  auto tileSizes = *fusionOp.getParallelTileSizes();
+
+  // Tile and fuse.
+  auto tiledLoop = tileUsingSCFForallOpAndFuseGreedily(
+      rewriter, tilingRootOp, getSCFTilingOptions(tileSizes));
+  if (failed(tiledLoop)) return failure();
+
+  // Peel.
+  auto peelingResult = peelAllLoops(tiledLoop->loop, rewriter);
+  setLabel(tiledLoop->loop, kPerfectlyTiledLoopLabel);
+
+  // Tile ops in the peeled loop again, to size 1, so they can be
+  // scalarized.
+  if (failed(tilePeeledOpsToScalars(rewriter, peelingResult))) return failure();
+
+  setLabel(fusionOp, kTransformedLabel);
+  return success();
+}
 
 struct TransformElementwiseForCpuPass
     : public impl::TransformElementwiseForCpuPassBase<
@@ -310,19 +349,38 @@ struct TransformElementwiseForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    RewritePatternSet patterns(ctx);
-    // clang-format off
-    patterns.add<
-      TileElementwisePattern<linalg::BroadcastOp>,
-      TileElementwisePattern<linalg::FillOp>,
-      TileElementwisePattern<linalg::MapOp>,
-      TileElementwisePattern<linalg::TransposeOp>,
-      TileElementwisePattern<thlo::ReverseOp>
-    >(ctx, vectorSize, fuseDegenerateReshapes);
-    // clang-format on
+    // Cleanup passes to prepare ops for better clustering.
+    {
+      RewritePatternSet patterns(ctx);
+      populateDuplicateInitOpsPatterns(patterns);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
-      return signalPassFailure();
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    {
+      RewritePatternSet patterns(ctx);
+      // clang-format off
+      patterns.add<
+        FusionClusterPattern<linalg::BroadcastOp>,
+        FusionClusterPattern<linalg::FillOp>,
+        FusionClusterPattern<linalg::MapOp>,
+        FusionClusterPattern<linalg::TransposeOp>,
+        FusionClusterPattern<thlo::ReverseOp>
+      >(ctx, vectorSize, fuseDegenerateReshapes);
+      // clang-format on
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add(tileAndFuse);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
   }
 };
 

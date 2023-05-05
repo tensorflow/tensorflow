@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <any>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/transforms/hlo_constant_splitter.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
@@ -90,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
@@ -121,12 +124,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
+#include "tensorflow/compiler/xla/service/gpu/topk_specializer.h"
+#include "tensorflow/compiler/xla/service/gpu/topk_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -173,9 +179,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -185,13 +193,13 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
 namespace {
-
-
 
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
@@ -218,6 +226,7 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
   // No convolution auto-tuning candidates found in the module.
   return false;
 }
+
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -318,11 +327,11 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 }  // namespace
 
 // Runs optimization passes on the given HLO module.
-Status GpuCompiler::OptimizeHloModule(
-    HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator,
-    const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results) {
+Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
+                                      se::StreamExecutor* stream_exec,
+                                      const CompileOptions& options,
+                                      const GpuTargetConfig& gpu_target_config,
+                                      const AutotuneResults* autotune_results) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
@@ -408,6 +417,8 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline pipeline("optimization");
     AddHloVerifier(&pipeline);
+    pipeline.AddPass<TopKSplitter>();
+    pipeline.AddPass<TopkSpecializer>();
     pipeline.AddPass<TopkDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
@@ -468,8 +479,7 @@ Status GpuCompiler::OptimizeHloModule(
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
 
-    pipeline.AddPass<LogisticExpander>(
-        /*expansion_type=*/LogisticExpansionType::kExp);
+    pipeline.AddPass<LogisticExpander>();
     pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicDimensionSimplifier>();
 
@@ -573,7 +583,8 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceFolder>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
-    collectives_pipeline.AddPass<AllReduceReassociate>();
+    collectives_pipeline.AddPass<AllReduceReassociate>(
+        debug_options.xla_gpu_enable_reassociation_for_converted_ar());
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
     collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
         /*enable_reduce_scatter=*/hlo_module->config()
@@ -614,7 +625,7 @@ Status GpuCompiler::OptimizeHloModule(
   }
 
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
-      hlo_module, gpu_version, dnn_version, device_allocator));
+      hlo_module, gpu_version, dnn_version, options.device_allocator));
 
   {
     // Run layout assignment in a separate pipeline from
@@ -635,9 +646,8 @@ Status GpuCompiler::OptimizeHloModule(
   }
 
   // Run target-specific HLO optimization passes after layout assignment.
-  TF_RETURN_IF_ERROR(
-      OptimizeHloPostLayoutAssignment(hlo_module, stream_exec, device_allocator,
-                                      gpu_target_config, autotune_results));
+  TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
+      hlo_module, stream_exec, options, gpu_target_config, autotune_results));
 
   const GpuDeviceInfo& gpu_device_info = gpu_target_config.gpu_device_info;
 
@@ -703,28 +713,41 @@ Status GpuCompiler::OptimizeHloModule(
     }
 
     {
-      bool async_all_reduce = debug_options.xla_gpu_enable_async_all_reduce();
-      bool async_collective_permute =
-          debug_options.xla_gpu_enable_async_collective_permute();
-      bool async_all_gather = debug_options.xla_gpu_enable_async_all_gather();
-      bool async_reduce_scatter =
-          debug_options.xla_gpu_enable_async_reduce_scatter();
-      bool async_all_to_all = debug_options.xla_gpu_enable_async_all_to_all();
+      // Convert all collectives to their async form, and then annotate the ones
+      // that actually need to run asynchronously with an GPU specific backend
+      // config.
+      AsyncCollectiveCreator::CollectiveCreatorConfig config;
+      config.convert_all_reduce = HloPredicateTrue;
+      config.convert_collective_permute = HloPredicateTrue;
+      config.convert_all_gather = HloPredicateTrue;
+      config.convert_reduce_scatter = HloPredicateTrue;
+      config.convert_all_to_all = HloPredicateTrue;
+      pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
-      if (async_all_reduce || async_collective_permute || async_all_gather ||
-          async_reduce_scatter || async_all_to_all) {
-        AsyncCollectiveCreator::CollectiveCreatorConfig config;
-        auto convert_op = [](bool flag) {
-          return [=](const HloInstruction*) { return flag; };
-        };
-        config.convert_all_reduce = convert_op(async_all_reduce);
-        config.convert_collective_permute =
-            convert_op(async_collective_permute);
-        config.convert_all_gather = convert_op(async_all_gather);
-        config.convert_reduce_scatter = convert_op(async_reduce_scatter);
-        config.convert_all_to_all = convert_op(async_all_to_all);
-        pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
-      }
+      auto convert_to_async = [&debug_options](const HloInstruction* inst) {
+        switch (inst->opcode()) {
+          case HloOpcode::kAllReduceStart:
+            return debug_options.xla_gpu_enable_async_all_reduce();
+          case HloOpcode::kAllGatherStart:
+            return debug_options.xla_gpu_enable_async_all_gather();
+          case HloOpcode::kCollectivePermuteStart:
+            return debug_options.xla_gpu_enable_async_collective_permute();
+          case HloOpcode::kAsyncStart: {
+            auto async_inst = Cast<HloAsyncInstruction>(inst);
+            switch (async_inst->async_wrapped_opcode()) {
+              case HloOpcode::kReduceScatter:
+                return debug_options.xla_gpu_enable_async_reduce_scatter();
+              case HloOpcode::kAllToAll:
+                return debug_options.xla_gpu_enable_async_all_to_all();
+              default:
+                return false;
+            }
+          }
+          default:
+            return false;
+        }
+      };
+      pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
     }
 
     if (!hlo_module->config().use_spmd_partitioning()) {
@@ -787,8 +810,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator,
-    const GpuTargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const AutotuneResults* autotune_results) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
@@ -818,15 +840,17 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
-    const stream_executor::CudaComputeCapability& compute_capability =
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
-        compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-      pipeline.AddPass<GemmRewriterTriton>(compute_capability);
+        std::holds_alternative<se::CudaComputeCapability>(
+            gpu_target_config.gpu_version)) {
+      auto cuda_compute_capability =
+          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
+      }
     }
-    pipeline.AddPass<GemmRewriter>(compute_capability);
+    pipeline.AddPass<GemmRewriter>(gpu_target_config.gpu_version);
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -841,7 +865,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ReductionLayoutNormalizer>();
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(compute_capability);
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        gpu_target_config.gpu_version);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -856,10 +881,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                  /*debug_only=*/true);
 
   AutotuningConfig autotune_config =
-      stream_exec
-          ? AutotuningConfig{DeviceConfig{stream_exec, device_allocator}}
-          : AutotuningConfig{
-                DevicelessConfig{gpu_target_config.device_description_str}};
+      stream_exec ? AutotuningConfig{DeviceConfig{stream_exec,
+                                                  options.device_allocator}}
+                  : AutotuningConfig{DevicelessConfig{
+                        gpu_target_config.device_description_str}};
 
   // Linearize collective schedule under SPMD partitioning if online autotuning
   // of convolutions is enabled.
@@ -890,11 +915,25 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   }
 #if GOOGLE_CUDA
   pipeline.AddPass<GemmAlgorithmPicker>(autotune_config);
-  pipeline.AddPass<TritonAutotuner>(
-      autotune_config,
-      debug_options.xla_gpu_force_compilation_parallelism()
-          ? debug_options.xla_gpu_force_compilation_parallelism()
-          : tsl::port::MaxParallelism());
+
+  // By default use an externally provided thread pool.
+  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
+  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
+  int num_threads = hlo_module->config()
+                        .debug_options()
+                        .xla_gpu_force_compilation_parallelism();
+  // If an external thread pool is provided or single-threaded operation is
+  // requested do not create a thread pool.
+  if (thread_pool == nullptr && num_threads != 1) {
+    // Zero means "default", treat it as "max parallelism" here.
+    if (num_threads == 0) {
+      num_threads = tsl::port::MaxParallelism();
+    }
+    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
+    thread_pool = &*overriding_thread_pool;
+  }
+
+  pipeline.AddPass<TritonAutotuner>(autotune_config, thread_pool);
 #endif  // GOOGLE_CUDA
 
   GpuFloatSupport bf16_support(BF16);
@@ -943,9 +982,9 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       tsl::profiler::TraceMeLevel::kInfo);
 
   GpuTargetConfig gpu_target_config = GetGpuTargetConfig(stream_exec);
-  TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, options.device_allocator,
-                        gpu_target_config, /*autotune_results=*/nullptr));
+  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), stream_exec, options,
+                                       gpu_target_config,
+                                       /*autotune_results=*/nullptr));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
@@ -969,8 +1008,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
   tsl::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tsl::profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), nullptr,
-                                       options.device_allocator,
+  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), nullptr, options,
                                        gpu_target_config, &autotune_results));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
@@ -1138,13 +1176,17 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
+#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
                       CanUseLinkModules(module_config));
   if (!can_use_link_modules) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }
-
+#elif TENSORFLOW_USE_ROCM
+  return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                               /*shard_number=*/std::nullopt);
+#endif
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   int num_functions = 0;
   for (llvm::Function& func : llvm_module->functions()) {
@@ -1340,6 +1382,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
            compile_module_results.module_name,
            compile_module_results.output_shape,
            std::move(compile_module_results.allocations),
+           module->config()
+               .debug_options()
+               .xla_gpu_enable_persistent_temp_buffers(),
            std::move(buffer_assignment_proto),
            [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
            std::move(module)}));
@@ -1524,7 +1569,6 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   return result;
 }
 
-
 StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
     GpuCompiler* compiler, mlir::ModuleOp module, std::string module_name,
     const HloModuleConfig& module_config,
@@ -1562,6 +1606,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
                                         ir_emitter_context->constants());
   }
 
+  bool enable_persistent_temp_buffers =
+      module_config.debug_options().xla_gpu_enable_persistent_temp_buffers();
   using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
                       compiler->CompileToTargetBinary(
@@ -1584,7 +1630,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
         {std::move(backend_result.first), std::move(backend_result.second),
          gpu_version, std::move(executable), entry_func_attrs,
          std::move(ir_emitter_context->constants()), std::move(output_info),
-         module_name, output_shape, std::move(allocations)});
+         module_name, output_shape, std::move(allocations),
+         enable_persistent_temp_buffers});
   }
 
   auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
@@ -1594,7 +1641,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
        gpu_version, std::move(thunk_sequence), entry_func_attrs,
        std::move(ir_emitter_context->constants()), std::move(output_info),
-       module_name, output_shape, std::move(allocations)});
+       module_name, output_shape, std::move(allocations),
+       enable_persistent_temp_buffers});
 }
 
 }  // namespace gpu

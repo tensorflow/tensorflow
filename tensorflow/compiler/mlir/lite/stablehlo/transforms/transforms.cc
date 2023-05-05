@@ -65,7 +65,6 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
     pm.addNestedPass<func::FuncOp>(CreateSmuggleDisallowedOpsPass());
     pm.addPass(mlir::createCanonicalizerPass());
   }
-  pm.addPass(CreateDropSavedModelSemanticsPass());
 }
 
 void AddStablehloOptimizationPasses(OpPassManager& pm) {

@@ -46,9 +46,8 @@ bool isCanonicalGather(GatherOp gatherOp);
 //
 // For example tensor<10x4xf32> and dimsToInsert = {0, 2}
 // will result in tensor<1x10x1x4xf32>.
-TypedValue<TensorType> insertDegenerateDimensions(
-    OpBuilder& b, Location loc, TypedValue<TensorType> tensor,
-    ArrayRef<int64_t> dimsToInsert);
+Value insertDegenerateDimensions(OpBuilder& b, Location loc, Value tensor,
+                                 ArrayRef<int64_t> dimsToInsert);
 
 // Given a map from index vector positions to dimension numbers, creates a
 // permutation that when applied to the operand, let you replace the map with
@@ -65,9 +64,8 @@ makeOperandStartIndexPermutations(ArrayRef<int64_t> dimMap, int operandRank);
 //
 // [a, I, b] will be transposed to [a, b, I], then reshaped into [ab, I].
 // [a, b] will be reshaped to [a, b, I(1)] and then reshaped into [ab, I(1)].
-TypedValue<TensorType> canonicalizeStartIndices(OpBuilder& b, Location loc,
-                                                TypedValue<TensorType> indices,
-                                                int64_t indexVectorDim);
+Value canonicalizeStartIndices(OpBuilder& b, Location loc, Value indices,
+                               int64_t indexVectorDim);
 
 }  // namespace mhlo
 }  // namespace mlir

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -1452,9 +1452,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
                           << candidate->ToShortString() << ")"
                           << " now best when compressed into "
                           << compact_shape.ToString(true);
-                  RematStrategy strategy;
-                  strategy.kind = RematStrategy::kCompress;
-                  best_strategy = strategy;
+                  best_strategy.kind = RematStrategy::kCompress;
                   best_strategy.compact_shape = compact_shape;
                   best_items = block;
                   best_cost = cost;

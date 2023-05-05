@@ -268,6 +268,9 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
     std::unique_ptr<BufferAssignment> buffer_assignment,
     XlaFrameworkMapping xla_framework_mapping,
     runtime::JitExecutable::Options opts) {
+  VLOG(1) << "Load serialized Cpu executable from object file: module="
+          << hlo_module->name();
+
   runtime::DialectRegistry dialects;
   opts.compiler.register_dialects(dialects);
   auto threading = mlir::MLIRContext::Threading::DISABLED;
@@ -522,14 +525,24 @@ Status XlaRuntimeCpuExecutable::Execute(
   for (int64_t index : xla_framework_mapping_.inputs) {
     TF_RETURN_IF_ERROR(append_converted_buffer(index));
   }
-  // If we have a tuple (possibly empty) as output, then .output_is_tuple
-  // is set and .result should be ignored.
+
+  int64_t result_index = xla_framework_mapping_.result;
   if (xla_framework_mapping_.output_is_tuple) {
-    for (int64_t index : xla_framework_mapping_.flattened_outputs) {
-      TF_RETURN_IF_ERROR(append_converted_buffer(index));
+    size_t num_outputs = xla_framework_mapping_.flattened_outputs.size();
+    for (size_t i = 0; i < num_outputs; ++i) {
+      int64_t output_index = xla_framework_mapping_.flattened_outputs[i];
+
+      TF_RETURN_IF_ERROR(append_converted_buffer(output_index));
+
+      // Populate the output tuple with a pointer to this result.
+      // TODO(b/249078472): make this work with nested tuples, if needed.
+      assert(result_index != -1);
+      void** results =
+          static_cast<void**>(descriptor_table[result_index].data());
+      results[i] = descriptor_table[output_index].data();
     }
-  } else if (xla_framework_mapping_.result != -1) {
-    TF_RETURN_IF_ERROR(append_converted_buffer(xla_framework_mapping_.result));
+  } else if (result_index != -1) {
+    TF_RETURN_IF_ERROR(append_converted_buffer(result_index));
   }
 
   runtime::Executable::CallFrame call_frame;

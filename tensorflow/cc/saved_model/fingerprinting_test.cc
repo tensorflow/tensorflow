@@ -136,7 +136,8 @@ TEST(FingerprintingTest, TestReadValidFingerprint) {
 TEST(FingerprintingTest, TestReadNonexistentFingerprint) {
   const std::string export_dir = io::JoinPath(
       testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "AssetModule");
-  EXPECT_FALSE(ReadSavedModelFingerprint(export_dir).ok());
+  EXPECT_EQ(ReadSavedModelFingerprint(export_dir).status().code(),
+            absl::StatusCode::kNotFound);
 }
 
 TEST(FingerprintingTest, TestSingleprint) {

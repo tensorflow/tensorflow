@@ -34,6 +34,8 @@ namespace tensorflow {
 // created. `allowed_devices` is only used for GPU.
 // TODO(b/260802979): consider passing `XlaPlatformInfo` for the options to
 // create a client, or creating a class similar to `LocalClientOptions`.
+// TODO(b/280111106): make PjrtClientFactoryOptions an input of
+// GetOrCreatePjRtClient.
 StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
     const DeviceType& device_type,
     std::optional<std::set<int>> allowed_devices = std::nullopt);

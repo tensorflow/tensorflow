@@ -342,7 +342,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kReplicaId;
   } else if (isa<mlir::mhlo::AfterAllOp>(op)) {
     return xla::HloOpcode::kAfterAll;
-  } else if (isa<mlir::mhlo::AllReduceOp, mlir::lmhlo::AllReduceOp>(op)) {
+  } else if (isa<mlir::mhlo::AllReduceOp>(op)) {
     return xla::HloOpcode::kAllReduce;
   } else if (isa<mlir::mhlo::AllToAllOp>(op)) {
     return xla::HloOpcode::kAllToAll;
@@ -453,8 +453,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   } else if (isa<mlir::mhlo::DynamicUpdateSliceOp,
                  mlir::lmhlo::DynamicUpdateSliceOp>(op)) {
     return xla::HloOpcode::kDynamicUpdateSlice;
-  } else if (isa<mlir::mhlo::CollectivePermuteOp,
-                 mlir::lmhlo::CollectivePermuteOp>(op)) {
+  } else if (isa<mlir::mhlo::CollectivePermuteOp>(op)) {
     return xla::HloOpcode::kCollectivePermute;
   } else if (isa<mlir::mhlo::CopyOp, mlir::lmhlo::CopyOp>(op)) {
     return xla::HloOpcode::kCopy;

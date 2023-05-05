@@ -171,7 +171,7 @@ std::vector<QaAnswer> results = answerer->Answer(context_of_question, question_t
 ```
 
 Explore more advanced accelerator settings
-[here](https://github.com/tensorflow/tensorflow/blob/1a8e885b864c818198a5b2c0cbbeca5a1e833bc8/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
+[here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/acceleration/configuration/configuration.proto).
 
 ### Example usage of Coral Edge TPU in Python
 
@@ -254,7 +254,7 @@ Try out the
 [Task Library CLI demo tool](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/examples/task/vision/desktop)
 with your Coral Edge TPU devices. Explore more on the
 [pretrained Edge TPU models](https://coral.ai/models/) and
-[advanced Edge TPU settings](https://github.com/tensorflow/tensorflow/blob/1a8e885b864c818198a5b2c0cbbeca5a1e833bc8/tensorflow/lite/experimental/acceleration/configuration/configuration.proto#L275).
+[advanced Edge TPU settings](https://github.com/tensorflow/tensorflow/blob/4d999fda8d68adfdfacd4d0098124f1b2ea57927/tensorflow/lite/acceleration/configuration/configuration.proto#L594).
 
 ### Example usage of Core ML Delegate in C++
 

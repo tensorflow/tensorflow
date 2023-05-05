@@ -58,9 +58,9 @@ class ConvertToSignless : public ConversionPattern {
     if (failed(typeConverter->convertTypes(op->getResultTypes(), resultTypes)))
       return failure();
 
-    auto* newOp = Operation::create(op->getLoc(), op->getName(), resultTypes,
-                                    operands, op->getAttrs(),
-                                    op->getSuccessors(), op->getNumRegions());
+    auto* newOp = Operation::create(
+        op->getLoc(), op->getName(), resultTypes, operands, op->getAttrs(),
+        op->getPropertiesStorage(), op->getSuccessors(), op->getNumRegions());
     for (auto regions : llvm::zip(op->getRegions(), newOp->getRegions())) {
       Region& before = std::get<0>(regions);
       Region& parent = std::get<1>(regions);
@@ -90,8 +90,10 @@ class ConvertConstantToSignless
 
     auto values = llvm::to_vector(
         adaptor.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
+    Type type = typeConverter->convertType(constantOp.getType());
+    auto shapedType = type.dyn_cast<ShapedType>();
     auto newValues = DenseIntElementsAttr::get(
-        typeConverter->convertType(constantOp.getType()), values);
+        shapedType, values);
 
     rewriter.replaceOpWithNewOp<arith::ConstantOp>(constantOp, newValues);
     return success();

@@ -140,3 +140,15 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
+
+cc_library(
+    name = "hlo_query",
+    srcs = ["hlo_query.cc"],
+    hdrs = ["hlo_query.h"],
+    deps = [
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)

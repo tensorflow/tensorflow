@@ -24,9 +24,11 @@ limitations under the License.
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/tensor_utils.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
@@ -546,6 +549,7 @@ FusionCluster getFusionCluster(
 
     rootOp = users[0];
   }
+  resultOps.insert(rootOp);
 
   // Run DFS to find all ops that satisfy producerFilterFn.
   SmallVector<Operation*> remainingProducers;
@@ -555,6 +559,11 @@ FusionCluster getFusionCluster(
   while (!remainingProducers.empty()) {
     Operation* curOp = remainingProducers.pop_back_val();
     if (!curOp || resultOps.contains(curOp)) continue;
+    if (!llvm::all_of(curOp->getUsers(),
+                      [&](Operation* op) { return resultOps.contains(op); })) {
+      continue;
+    }
+
     if (curOp == op || producerFilterFn(curOp)) {
       resultOps.insert(curOp);
       for (Value operand : curOp->getOperands())
@@ -588,7 +597,8 @@ FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
 FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op, const scf::SCFTilingOptions& opts,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
-  auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, opts);
+  auto tilingResult =
+      scf::tileUsingSCFForOp(rewriter, cast<TilingInterface>(op), opts);
   if (failed(tilingResult)) return failure();
   rewriter.replaceOp(op, tilingResult->replacements);
 
@@ -629,25 +639,26 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     PatternRewriter& rewriter, const FusionCluster& fusionCluster) {
   auto loc = fusionCluster.root->getLoc();
 
+  SetVector<Value> inputOperands;
   SmallVector<Value> initOperands =
       getRootOpInitOperands(rewriter, fusionCluster);
 
   // 1. Find operands and results of the cluster op.
-  SetVector<Value> clusterOperands;
   SmallVector<Value> clusterResults;
   SmallVector<Value> constantOps;
   auto visitOpOperand = [&](OpOperand* operand) {
-    auto* definingOp = operand->get().getDefiningOp();
+    Value operandValue = operand->get();
+    auto* definingOp = operandValue.getDefiningOp();
 
-    if (auto constantOp = dyn_cast_or_null<arith::ConstantOp>(definingOp)) {
-      constantOps.push_back(constantOp);
+    if (definingOp && definingOp->hasTrait<OpTrait::ConstantLike>()) {
+      constantOps.push_back(operandValue);
       return;
     }
 
     if (fusionCluster.operations.contains(definingOp)) return;
-    if (llvm::is_contained(initOperands, operand->get())) return;
+    if (llvm::is_contained(initOperands, operandValue)) return;
 
-    clusterOperands.insert(operand->get());
+    inputOperands.insert(operandValue);
   };
 
   for (Operation* op : fusionCluster.operations) {
@@ -663,6 +674,7 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     }
   }
 
+  SetVector<Value> clusterOperands = inputOperands;
   clusterOperands.insert(initOperands.begin(), initOperands.end());
 
   // 2. Create an empty op.
@@ -670,7 +682,8 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   rewriter.setInsertionPointAfter(fusionCluster.root);
   auto fusionClusterOp = rewriter.create<gml_st::FusionOp>(
       loc, TypeRange(ValueRange(clusterResults)),
-      clusterOperands.getArrayRef());
+      ValueRange(inputOperands.getArrayRef()), ValueRange(initOperands),
+      nullptr, nullptr);
 
   // 3. Create block with mapping between operands and block arguments.
   SmallVector<Type, 4> blockArgTypes =
@@ -685,9 +698,9 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   mapper.map(clusterOperands, block->getArguments());
 
   // 4. Copy ops into the cluster region.
-  // 4.1. Copy arith.constant ops.
+  // 4.1. Copy constant ops.
   for (auto v : constantOps) {
-    auto newOp = cast<arith::ConstantOp>(rewriter.clone(*v.getDefiningOp()));
+    auto newOp = rewriter.clone(*v.getDefiningOp())->getResult(0);
     mapper.map(v, newOp);
   }
 
@@ -728,13 +741,42 @@ LogicalResult inlineFusionCluster(FusionOp fusionOp,
     rewriter.clone(op, mapper);
   }
 
-  SmallVector<Value> yieldOpOperands = llvm::to_vector(
-      llvm::map_range(fusionOp.getTerminator().getOperands(),
-                      [&](Value v) { return mapper.lookupOrDefault(v); }));
+  if (fusionOp.hasTensorSemantics()) {
+    SmallVector<Value> yieldOpOperands = llvm::to_vector(
+        llvm::map_range(fusionOp.getTerminator().getOperands(),
+                        [&](Value v) { return mapper.lookupOrDefault(v); }));
 
-  rewriter.replaceOp(fusionOp, yieldOpOperands);
+    rewriter.replaceOp(fusionOp, yieldOpOperands);
+  } else {
+    rewriter.eraseOp(fusionOp);
+  }
 
   return success();
+}
+
+// Duplicates the op so each copy has only one use as init parameter.
+template <typename OpTy>
+LogicalResult duplicateInitOps(OpTy op, PatternRewriter& rewriter) {
+  // Nothing to do, because the op has 0 or 1 users.
+  if (std::distance(op->user_begin(), op->user_end()) <= 1) return failure();
+
+  bool modified = false;
+  for (auto& use : llvm::make_early_inc_range(op->getUses())) {
+    Operation* ownerOp = use.getOwner();
+
+    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
+    if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
+
+    auto newOp = cast<OpTy>(rewriter.clone(*op));
+    use.set(newOp->getResult(0));
+    modified = true;
+  }
+  return success(modified);
+}
+
+void populateDuplicateInitOpsPatterns(RewritePatternSet& patterns) {
+  patterns.add(duplicateInitOps<linalg::FillOp>);
+  patterns.add(duplicateInitOps<tensor::EmptyOp>);
 }
 
 }  // namespace mlir::gml_st

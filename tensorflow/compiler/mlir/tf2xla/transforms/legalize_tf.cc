@@ -137,7 +137,7 @@ static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
                                         Builder *b) {
   IntegerAttr intAttr = attr.dyn_cast_or_null<IntegerAttr>();
   if (auto elementAttr = attr.dyn_cast_or_null<ElementsAttr>()) {
-    SmallVector<uint64_t, 1> index(elementAttr.getType().getRank(), 0);
+    SmallVector<uint64_t, 1> index(elementAttr.getShapedType().getRank(), 0);
     intAttr = elementAttr.getValues<IntegerAttr>()[index];
   }
 
@@ -568,7 +568,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
 // Returns interior padding to use in HLO Pad op based on the TensorFlow padding
 // in TensorFlow PadV2 op.
 static DenseIntElementsAttr GetInteriorPadding(ElementsAttr tf_padding) {
-  auto length = tf_padding.getType().getShape()[0];
+  auto length = tf_padding.getShapedType().getShape()[0];
   auto element_type = IntegerType::get(tf_padding.getContext(), 64);
   return DenseIntElementsAttr::get<int64_t>(
       tensorflow::GetTypeFromTFTensorShape({length}, element_type), 0);

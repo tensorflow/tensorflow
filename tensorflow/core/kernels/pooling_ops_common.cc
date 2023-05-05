@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #endif
@@ -405,13 +406,14 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  OP_REQUIRES_OK(context, stream->ThenPoolForward(
-                              pooling_desc, input_desc, input_data, output_desc,
-                              &output_data, &scratch_allocator));
-#else
   OP_REQUIRES_OK(context,
-                 stream->ThenPoolForward(pooling_desc, input_desc, input_data,
-                                         output_desc, &output_data));
+                 stream->ThenPoolForward(pooling_desc, GetNumericOptions(),
+                                         input_desc, input_data, output_desc,
+                                         &output_data, &scratch_allocator));
+#else
+  OP_REQUIRES_OK(context, stream->ThenPoolForward(
+                              pooling_desc, GetNumericOptions(), input_desc,
+                              input_data, output_desc, &output_data));
 #endif
 
 #if CUDNN_VERSION < 7300
@@ -801,16 +803,18 @@ void DnnPoolingGradImpl(OpKernelContext* context,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
+  OP_REQUIRES_OK(
+      context,
+      stream->ThenPoolBackward(
+          pooling_desc, GetNumericOptions(), orig_input_desc, orig_input_data,
+          orig_output_desc, orig_output_data, output_backprop_data,
+          &input_backprop_data, &scratch_allocator));
+#else
   OP_REQUIRES_OK(context,
                  stream->ThenPoolBackward(
-                     pooling_desc, orig_input_desc, orig_input_data,
-                     orig_output_desc, orig_output_data, output_backprop_data,
-                     &input_backprop_data, &scratch_allocator));
-#else
-  OP_REQUIRES_OK(context, stream->ThenPoolBackward(
-                              pooling_desc, orig_input_desc, orig_input_data,
-                              orig_output_desc, orig_output_data,
-                              output_backprop_data, &input_backprop_data));
+                     pooling_desc, GetNumericOptions(), orig_input_desc,
+                     orig_input_data, orig_output_desc, orig_output_data,
+                     output_backprop_data, &input_backprop_data));
 #endif
 
   if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||

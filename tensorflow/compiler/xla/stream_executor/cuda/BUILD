@@ -1,7 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "set_external_visibility", "tsl_copts")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_gpu_cc_test")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
@@ -28,7 +28,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = set_external_visibility([":friends"]),
     features = ["-layering_check"],
     licenses = ["notice"],
 )
@@ -146,6 +146,7 @@ tsl_gpu_cc_test(
     srcs = ["cuda_driver_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171512140): re-enable.
+        "no_rocm",
     ],
     deps = [
         ":cuda_driver",
@@ -397,7 +398,6 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/tsl/cuda:cudnn_version",
         "//tensorflow/tsl/platform:tensor_float_32_utils",
-        "//tensorflow/tsl/util:determinism",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:plugin_registry",

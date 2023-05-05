@@ -25,9 +25,9 @@ gast == 0.4.0
 # Note that here we want the latest version that matches TF major.minor version
 # Note that we must use nightly here as these are used in nightly jobs
 # For release jobs, we will pin these on the release branch
-keras-nightly ~= 2.13.0.dev
-tb-nightly ~= 2.12.0.a
-tf-estimator-nightly ~= 2.13.0.dev
+keras-nightly ~= 2.14.0.dev
+tb-nightly ~= 2.13.0.a
+tf-estimator-nightly ~= 2.14.0.dev
 
 # Test dependencies
 grpcio ~= 1.49.1 # Earliest version for Python 3.11

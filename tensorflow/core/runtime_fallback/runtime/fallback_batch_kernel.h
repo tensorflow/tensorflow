@@ -40,8 +40,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-thread::ThreadPool* GetOrCreateBatchThreadsPool();
-
 class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
  public:
   explicit BatchFunctionFallbackKernelBase(OpKernelConstruction* c);
@@ -60,6 +58,11 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   //   Read from corresponding attributes as long as they are set.
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
+
+  static int32 NumBatchThreadsFromEnvironmentWithDefault(
+      int default_num_batch_threads);
+  static thread::ThreadPool* GetOrCreateBatchThreadsPool();
+  static constexpr int64_t kBatchThreadPoolSize = 128;
 
   std::string container_;
   std::string shared_name_;
@@ -134,6 +137,21 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           adaptive_batch_scheduler_options_->max_in_flight_batches_limit;
       adaptive_shared_batch_scheduler_options.thread_pool =
           GetOrCreateBatchThreadsPool();
+
+      // When we explicitly specify 'thread_pool', you'd think ASBS would ignore
+      // 'num_batch_threads', but in fact ASBS still uses num_batch_threads as
+      // the max number of in-flight batches.  It makes no sense to have more
+      // in-flight batches than threads (it would result in strictly bad
+      // batching decisions), so we cap this parameter (which otherwise comes
+      // from the saved model) to the actual number of batch threads (which
+      // comes from a process-wide environment variable).
+      //
+      // We have to apply the same capping to min_ and initial_
+      // in_flight_batches_limit below to produce valid configurations.
+      adaptive_shared_batch_scheduler_options.num_batch_threads = std::min(
+          NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize),
+          adaptive_batch_scheduler_options_->max_in_flight_batches_limit);
+
       // adaptive_shared_batch_scheduler_options.full_batch_scheduling_boost_micros
       // is 0 (default value) intentionally, so tasks are scheduled in a FIFO
       // way.
@@ -147,9 +165,13 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
       // the batch processing latency (which varies on a model basis).
       // If a non-zero value is not set properly, it harms tail latency.
       adaptive_shared_batch_scheduler_options.min_in_flight_batches_limit =
-          adaptive_batch_scheduler_options_->min_in_flight_batches_limit;
-      adaptive_shared_batch_scheduler_options.initial_in_flight_batches_limit =
-          adaptive_batch_scheduler_options_->initial_in_flight_batches_limit;
+          std::min(
+              NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize),
+              adaptive_batch_scheduler_options_->min_in_flight_batches_limit);
+      adaptive_shared_batch_scheduler_options
+          .initial_in_flight_batches_limit = std::min(
+          NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize),
+          adaptive_batch_scheduler_options_->initial_in_flight_batches_limit);
       adaptive_shared_batch_scheduler_options.batches_to_average_over =
           adaptive_batch_scheduler_options_->batches_to_average_over;
       adaptive_shared_batch_scheduler_options.fifo_scheduling = true;

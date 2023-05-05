@@ -106,6 +106,7 @@ tf_cuda_library(
         ":custom_device",
         ":eager_executor",
         ":kernel_and_device",
+        ":rendezvous_cache",
         ":small_constants_optimizer",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:immediate_execution_context",
@@ -456,7 +457,10 @@ cc_library(
     hdrs = ["small_constants_optimizer.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -546,6 +550,7 @@ cc_library(
         ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
+        ":small_constants_optimizer",
         ":tensor_handle",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
@@ -709,6 +714,7 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":placement_utils",
+        ":small_constants_optimizer",
         ":tensor_handle",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
@@ -796,6 +802,18 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "rendezvous_cache",
+    hdrs = ["rendezvous_cache.h"],
+    deps = [
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:refcount",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
 tf_cuda_library(
     name = "attr_builder",
     srcs = ["attr_builder.cc"],
@@ -853,6 +871,7 @@ filegroup(
         "eager_executor.h",
         "eager_operation.h",
         "kernel_and_device.h",
+        "rendezvous_cache.h",
         "tensor_handle.h",
         "tensor_handle_data.h",
     ],

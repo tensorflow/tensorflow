@@ -14,14 +14,14 @@
 # ==============================================================================
 
 """Synchronize replicas for training."""
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
@@ -255,9 +255,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     # local_anchor op will be placed on this worker task by default.
     local_anchor = control_flow_ops.no_op()
     # Colocating local_step variable prevents it being placed on the PS.
-    distribution_strategy = distribution_strategy_context.get_strategy()
+    distribution_strategy = distribute_lib.get_strategy()
     with distribution_strategy.extended.colocate_vars_with(local_anchor):
-      self._local_step = variable_scope.variable(
+      self._local_step = variable_v1.VariableV1(
           initial_value=0,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],

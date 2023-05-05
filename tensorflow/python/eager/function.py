@@ -39,7 +39,3 @@ from tensorflow.python.eager.polymorphic_function.quarantine import add_function
 from tensorflow.python.eager.polymorphic_function.quarantine import clear_function_callbacks
 from tensorflow.python.eager.polymorphic_function.quarantine import remove_function_callback
 from tensorflow.python.eager.polymorphic_function.atomic_function import FUNCTION_TRANSFORMS as _function_callbacks
-
-# TODO(b/258247871): Remove in favor of tf.function.
-# QUARANTINED - Defun API
-from tensorflow.python.eager.polymorphic_function.quarantine import defun_with_attributes

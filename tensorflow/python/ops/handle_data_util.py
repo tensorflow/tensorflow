@@ -58,13 +58,18 @@ def copy_handle_data(source_t, target_t):
   if (target_t.dtype == dtypes.resource or
       target_t.dtype == dtypes.variant):
     handle_data = get_handle_data(source_t)
-    if (handle_data is not None
-        and handle_data.is_set
-        and handle_data.shape_and_type):
-      set_handle_data(target_t, handle_data)
+    set_handle_data(target_t, handle_data)
 
 
 def set_handle_data(target_t, handle_data):
+  """Sets handle data on the giver tensor."""
+  if (
+      handle_data is None
+      or not handle_data.is_set
+      or not handle_data.shape_and_type
+  ):
+    return
+
   # pylint: disable=protected-access
   if isinstance(target_t, core.Value):
     target_t._handle_data = handle_data

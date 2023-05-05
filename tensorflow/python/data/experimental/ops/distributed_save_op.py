@@ -21,15 +21,13 @@ from tensorflow.python.saved_model import nested_structure_coder
 
 
 # TODO(b/250921378): Add example to docstring and export to TF API.
-def distributed_save(dataset,
-                     directory,
-                     dispatcher_address,
-                     compression="AUTO"):
+def distributed_save(dataset, path, dispatcher_address, compression="AUTO"):
   """Initiates the process of distributedly saving a dataset to disk.
 
   Args:
     dataset: The `tf.data.Dataset` to save.
-    directory: A string indicating the directory to which to save `dataset`.
+    path: A string indicating the filepath of the directory to which to save
+      `dataset`.
     dispatcher_address: A string indicating the address of the dispatcher for
       the tf.data service instance used to save `dataset`.
     compression: (Optional.) A string indicating whether and how to compress the
@@ -57,7 +55,7 @@ def distributed_save(dataset,
 
   return gen_experimental_dataset_ops.distributed_save(
       dataset._variant_tensor,  # pylint: disable=protected-access
-      directory=directory,
+      directory=path,
       address=dispatcher_address,
       metadata=metadata.SerializeToString(),
   )

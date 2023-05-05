@@ -117,7 +117,7 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
         absl::StrCat(
             "Error getting the fetching target ",
             CompilationCacheFetchTarget_Name(call->request.fetch_target())),
-        s.error_message()));
+        std::string(s.message())));
   }
 
   TpuCompilationCacheEntry cache_entry = entry->get();

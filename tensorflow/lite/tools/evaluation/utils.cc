@@ -27,9 +27,9 @@ limitations under the License.
 #endif
 
 #ifndef TFLITE_WITHOUT_XNNPACK
-#include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #endif  // !defined(TFLITE_WITHOUT_XNNPACK)
 

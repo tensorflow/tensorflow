@@ -31,7 +31,7 @@ Event::~Event() {
   if (stream_exec_ && implementation_) {
     auto status = stream_exec_->DeallocateEvent(this);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
     }
   }
 }
@@ -39,7 +39,7 @@ Event::~Event() {
 bool Event::Init() {
   auto status = stream_exec_->AllocateEvent(this);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
     return false;
   }
 

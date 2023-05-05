@@ -255,6 +255,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_id_utils",
+    srcs = ["device_id_utils.cc"],
+    hdrs = [
+        "device_id_utils.h",
+    ],
+    deps = [
+        ":device_id_impl",
+        ":device_type",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/util:device_name_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 filegroup(
     name = "device_runtime_headers",
     srcs = [
@@ -396,5 +415,20 @@ exports_files(
         "cancellation.h",
         "numeric_types.h",
         "type_traits.h",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_id_utils_test",
+    srcs = [
+        "device_id_utils_test.cc",
+    ],
+    deps = [
+        ":device_id_impl",
+        ":device_id_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/util:device_name_utils",
     ],
 )

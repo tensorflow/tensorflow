@@ -25,9 +25,16 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace metrics {
+enum class GraphOptimizationSource {
+  kUnknown,
+  kJit,
+  kAot,
+};
+
 // Records when a data-fetching tf.data operation is executed.
 //
 // The `name` argument identifies the operation type (e.g. "ToSingleElementOp").
@@ -219,6 +226,38 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
 // Updates the metric stored for time spent optimizing function graphs.
 void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs);
+
+// Updates the metric stored for time saved by caching graph optimization.
+void UpdateFunctionGraphOptimizationSavingTime(uint64 saving_time_usec,
+                                               GraphOptimizationSource source);
+
+// Retrieves the total time saved by the graph optimization caching.
+uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
+    GraphOptimizationSource source);
+
+// Increments the hit count for the graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheHitCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the hit count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheHitCount(
+    GraphOptimizationSource source);
+
+// Increments the failure count for the graph optimization cache restoring.
+void IncrementFunctionGraphOptimizationCacheFailureCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the failure count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheFailureCount(
+    GraphOptimizationSource source);
+
+// Increments the miss count for the graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheMissCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the miss count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheMissCount(
+    GraphOptimizationSource source);
 
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.

@@ -529,9 +529,9 @@ void GrpcTpuStream::UpdateEventStatus(EventId id, Status status) {
   if (it->second.done) {
     // Done and deleted events must have already been removed.
     CHECK(!it->second.deleted);
-    VLOG(1) << "Received a second status update: " << status.error_message()
-            << ", for GrpcEvent " << id << " already done with status: "
-            << it->second.status.error_message();
+    VLOG(1) << "Received a second status update: " << status.message()
+            << ", for GrpcEvent " << id
+            << " already done with status: " << it->second.status.message();
     return;
   }
 

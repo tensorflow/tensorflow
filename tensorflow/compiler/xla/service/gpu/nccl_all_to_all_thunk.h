@@ -18,10 +18,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -46,28 +44,6 @@ class NcclAllToAllThunkBase : public NcclCollectiveThunk {
  private:
   const NcclAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
-};
-
-class NcclAllToAllThunk : public NcclAllToAllThunkBase {
- public:
-  NcclAllToAllThunk(ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
-                    std::vector<Buffer> buffers);
-
-  // Returns whether the given instruction can be lowered to a nccl all-to-all
-  // call.
-  static Status CheckImplementable(mlir::lmhlo::AllToAllOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
-
-  static const char* GetHloOpName() { return "all-to-all"; }
-  static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64_t replica_count,
-                           int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllToAllOp op);
-  static constexpr bool IsAsync() { return false; }
-
- protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
 };
 
 class NcclAllToAllStartThunk : public NcclAllToAllThunkBase {

@@ -17,16 +17,50 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/transforms/passes.h"
+#include "mlir/Dialect/Affine/ViewLikeInterfaceUtils.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/Transforms/Transforms.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir::gml_st {
 namespace {
 
+using tensor::ExtractOp;
+using tensor::ExtractSliceOp;
+
 #define GEN_PASS_DEF_COMPOSEEXTRACTINSERTSLICEPASS
 #include "gml_st/transforms/passes.h.inc"
+
+LogicalResult composeExtractOfExtractSlice(ExtractOp extractOp,
+                                           PatternRewriter& rewriter) {
+  auto sliceOp = extractOp.getTensor().getDefiningOp<ExtractSliceOp>();
+  if (!sliceOp) return failure();
+
+  Location loc = extractOp.getLoc();
+  SmallVector<OpFoldResult> combinedOffsets, combinedSizes, combinedStrides;
+
+  // ExtractOp can be viewed as ExtractSliceOp as extracts 1x...x1 slice.
+  int64_t rank = extractOp.getTensor().getType().getRank();
+  SmallVector<OpFoldResult> consumerOffsets(
+      getAsOpFoldResult(extractOp.getIndices()));
+  SmallVector<OpFoldResult> consumerSizes(rank, rewriter.getIndexAttr(1));
+  SmallVector<OpFoldResult> consumerStrides(rank, rewriter.getIndexAttr(1));
+
+  if (failed(affine::mergeOffsetsSizesAndStrides(
+          rewriter, loc, sliceOp.getMixedOffsets(), sliceOp.getMixedSizes(),
+          sliceOp.getMixedStrides(), sliceOp.getDroppedDims(), consumerOffsets,
+          consumerSizes, consumerStrides, combinedOffsets, combinedSizes,
+          combinedStrides)))
+    return failure();
+
+  rewriter.replaceOpWithNewOp<ExtractOp>(
+      extractOp, sliceOp.getSource(),
+      getValueOrCreateConstantIndexOp(rewriter, loc, combinedOffsets));
+  return success();
+}
 
 struct ComposeExtractInsertSlicePass
     : public impl::ComposeExtractInsertSlicePassBase<
@@ -34,6 +68,7 @@ struct ComposeExtractInsertSlicePass
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
+    patterns.add(composeExtractOfExtractSlice);
     tensor::populateMergeConsecutiveInsertExtractSlicePatterns(patterns);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {

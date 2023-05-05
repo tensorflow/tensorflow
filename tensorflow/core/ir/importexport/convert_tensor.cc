@@ -225,9 +225,9 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
 
     std::vector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
-    return ElementsAttr(
-        SplatElementsAttr::get(single_attr.getType().clone(original_dimensions),
-                               single_attr.getValues<Attribute>()[0]));
+    return ElementsAttr(SplatElementsAttr::get(
+        single_attr.getShapedType().clone(original_dimensions),
+        single_attr.getValues<Attribute>()[0]));
   }
 
   Tensor t;
@@ -428,7 +428,7 @@ void ConvertFloat8ElementsAttr(const DenseElementsAttr attr,
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
-  auto type = attr.getType();
+  auto type = attr.getShapedType();
   auto shape = type.getShape();
   tensorflow::DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));

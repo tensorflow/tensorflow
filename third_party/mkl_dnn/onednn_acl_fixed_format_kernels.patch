@@ -1,5 +1,5 @@
  *******************************************************************************
- Copyright 2022 Arm Limited and affiliates.
+ Copyright 2022-2023 Arm Limited and affiliates.
  SPDX-License-Identifier: Apache-2.0
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,98 +16,76 @@
  *******************************************************************************
 
 diff --git a/src/cpu/aarch64/acl_convolution_utils.cpp b/src/cpu/aarch64/acl_convolution_utils.cpp
-index c46d69757..fc93d2aa9 100644
+index c46d697575..1792d0af96 100644
 --- a/src/cpu/aarch64/acl_convolution_utils.cpp
 +++ b/src/cpu/aarch64/acl_convolution_utils.cpp
-@@ -212,6 +212,87 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -212,6 +212,65 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
                  arm_compute::QuantizationInfo(1.0f / scales[0], 0));
      }
  
++    // WeightFormat::ANY tells ACL we can handle any format
 +    acp.weights_info = arm_compute::WeightsInfo(
-+        false,
-+        kw,
-+        kh,
-+        oc,
-+        false,
-+        arm_compute::WeightFormat::ANY);
++            false, kw, kh, oc, false, arm_compute::WeightFormat::ANY);
++
++    // Get the format that the ACL kernel will expect the weights to be
++    // in (if a kernel exists). Note that these are referred to as fixed format
++    // kernels, because they require one specific weights format
 +    arm_compute::WeightFormat expected_weight_format;
-+    auto acl_st = arm_compute::NEGEMMConvolutionLayer::has_opt_impl(
-+        expected_weight_format,
-+        &acp.src_info,
-+        &acp.wei_info,
-+        acp.with_bias ? &acp.bia_info : nullptr,
-+        &acp.dst_info,
-+        acp.padstride_info,
-+        acp.weights_info,
-+        acp.dilation_info,
-+        acp.act_info,
-+        acp.fast_math);
-+    if(acl_st.error_code() != arm_compute::ErrorCode::OK) {
-+        return status::unimplemented;
-+    }
++    ACL_CHECK_VALID(arm_compute::NEGEMMConvolutionLayer::has_opt_impl(
++            expected_weight_format, &acp.src_info, &acp.wei_info,
++            acp.with_bias ? &acp.bia_info : nullptr,
++            &acp.dst_info, acp.padstride_info, acp.weights_info,
++            acp.dilation_info, acp.act_info, acp.fast_math));
++
++    // Set weights info to the one returned by has_opt_impl
 +    acp.weights_info.set_weight_format(expected_weight_format);
 +
-+    int interleaved_by = arm_compute::interleave_by(expected_weight_format);
-+    int block_by = arm_compute::block_by(expected_weight_format);
++    // has_opt_impl may return a non fast math kernel, even if we requested one
++    acp.fast_math
++            = arm_compute::is_fixed_format_fast_math(expected_weight_format);
 +
-+    bool is_fast_math_kernel = arm_compute::is_fixed_format_fast_math(expected_weight_format);
-+    if(!is_fast_math_kernel) {
-+        // FP32 kernel is faster then BF16
++    // Map OIHW used in ACL WeightFormat to the logical dimensions of the memory descriptor
++    dim_t O_dim = 0;
++    dim_t I_dim = 1;
++    dim_t H_dim = 2;
++    dim_t W_dim = 3;
++
++    if (!is_nspc) {
++        // We can try to support NCHW by swapping IHW around, note that this
++        // requires weights_md.dims[I_dim] % block_by != 0 (see next block)
++        O_dim = 0;
++        I_dim = 3;
++        H_dim = 1;
++        W_dim = 2;
++    }
++
++    // We can't currently support nchw and block_by != 1. If this is the case,
++    // try a non fast math kernel, which currently have no blocking
++    int block_by = arm_compute::block_by(acp.weights_info.weight_format());
++    if (!is_nspc && weights_md.dims[I_dim] % block_by != 0 && acp.fast_math) {
 +        acp.fast_math = false;
-+    }
-+
-+    memory_desc_t want_wei_md = weights_md;
-+
-+    int ic_multiply = ic;
-+    if(ic % block_by != 0) {
-+        ic_multiply = utils::div_up(ic, block_by) * block_by;
-+        // Also we need to set padded dimensions as well
-+        want_wei_md.padded_dims[1] = ic_multiply;
-+    } else {
-+        // If we do not need to pad input channels for fast math mode
-+        // then it would be faster to run convolution with im2row
-+        // instead of using indirect buffer
-+        if(acp.fast_math && acp.is_indirect) {
++        acp.weights_info.set_weight_format(arm_compute::WeightFormat::ANY);
++        ACL_CHECK_VALID(arm_compute::NEGEMMConvolutionLayer::has_opt_impl(
++                expected_weight_format, &acp.src_info,
++                &acp.wei_info,
++                acp.with_bias ? &acp.bia_info : nullptr,
++                &acp.dst_info, acp.padstride_info, acp.weights_info,
++                acp.dilation_info, acp.act_info, acp.fast_math));
++        acp.weights_info.set_weight_format(expected_weight_format);
++        block_by = arm_compute::block_by(expected_weight_format);
++        // This shouldn't happen, because non-fastmath have no blocking, but
++        // guard against it because it would silently return incorrect results
++        if (weights_md.dims[I_dim] % block_by != 0)
 +            return status::unimplemented;
-+        }
-+    }
-+    if(oc % interleaved_by != 0) {
-+        int padded_dim = utils::div_up(oc, interleaved_by) * interleaved_by;
-+        want_wei_md.padded_dims[0] = padded_dim;
 +    }
 +
-+    // Set strides based on blocking information
-+    want_wei_md.format_desc.blocking.strides[0] = interleaved_by*ic_multiply*kw*kh;
-+    want_wei_md.format_desc.blocking.strides[1] = interleaved_by*block_by;
-+    want_wei_md.format_desc.blocking.strides[2] = interleaved_by*ic_multiply*kw;
-+    want_wei_md.format_desc.blocking.strides[3] = interleaved_by*ic_multiply;
-+
-+    acl_utils::update_strides_y_and_z(
-+        acp.wei_info,
-+        want_wei_md.format_desc.blocking.strides[0] * wei_d.data_type_size(),
-+        acp.wei_info.strides_in_bytes().z());
-+
-+    // Set blocking
-+    want_wei_md.format_desc.blocking.inner_nblks = (block_by > 1) + 1;
-+    want_wei_md.format_desc.blocking.inner_idxs[0] = 0; // second to last dimension in abcd format
-+    want_wei_md.format_desc.blocking.inner_blks[0] = interleaved_by;
-+
-+    if(block_by > 1) {
-+        want_wei_md.format_desc.blocking.inner_idxs[1] = 1; // second to last dimension in abcd format
-+        want_wei_md.format_desc.blocking.inner_blks[1] = block_by;
-+    }
-+
-+    if(is_fast_math_kernel) {
-+        // If it is fast math mode we need weights in BFloat16
-+        want_wei_md.data_type = dnnl_bf16;
-+    }
-+
-+    weights_md = want_wei_md;
++    acl_utils::reorder_to_weight_format(acp.wei_info, weights_md,
++            expected_weight_format, I_dim, O_dim, {W_dim, H_dim}, {});
 +
      return status::success;
  }
  
-@@ -219,6 +300,7 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -219,6 +278,7 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
          memory_desc_t &weights_md, memory_desc_t &dst_md,
          memory_desc_t &bias_md, const convolution_desc_t &cd,
          const primitive_attr_t &attr) {
@@ -115,7 +93,7 @@ index c46d69757..fc93d2aa9 100644
  
      // General Compute Library checks, memory tags are also set there
      CHECK(acl_init_conf(acp, src_md, weights_md, dst_md, bias_md, cd, attr));
-@@ -244,11 +326,13 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -244,11 +304,13 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
          memory_desc_t &weights_md, memory_desc_t &dst_md,
          memory_desc_t &bias_md, const convolution_desc_t &cd,
          const primitive_attr_t &attr) {
@@ -130,7 +108,7 @@ index c46d69757..fc93d2aa9 100644
          return status::unimplemented;
      }
  
-@@ -275,6 +359,7 @@ status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -275,6 +337,7 @@ status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
          memory_desc_t &weights_md, memory_desc_t &dst_md,
          memory_desc_t &bias_md, const convolution_desc_t &cd,
          const primitive_attr_t &attr) {
@@ -139,7 +117,7 @@ index c46d69757..fc93d2aa9 100644
      // Under these conditions, fallback to faster GEMM-based convolution
      // unless the user explicitly specifies Winograd algorithm
 diff --git a/src/cpu/aarch64/acl_convolution_utils.hpp b/src/cpu/aarch64/acl_convolution_utils.hpp
-index 3e56245fa..44dc8eecb 100644
+index 3e56245faf..44dc8eecbf 100644
 --- a/src/cpu/aarch64/acl_convolution_utils.hpp
 +++ b/src/cpu/aarch64/acl_convolution_utils.hpp
 @@ -43,6 +43,7 @@ struct acl_conv_conf_t {
@@ -151,7 +129,7 @@ index 3e56245fa..44dc8eecb 100644
      arm_compute::TensorInfo wei_info;
      arm_compute::TensorInfo bia_info;
 diff --git a/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp b/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp
-index bcf031a77..4ddc8cf91 100644
+index bcf031a771..4ddc8cf910 100644
 --- a/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp
 +++ b/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp
 @@ -41,6 +41,7 @@ struct acl_indirect_gemm_resource_t : public resource_t {
@@ -174,7 +152,7 @@ index bcf031a77..4ddc8cf91 100644
  
          return status::success;
 diff --git a/src/cpu/aarch64/acl_inner_product.hpp b/src/cpu/aarch64/acl_inner_product.hpp
-index c5e507085..163ff066e 100644
+index c5e507085f..163ff066e6 100644
 --- a/src/cpu/aarch64/acl_inner_product.hpp
 +++ b/src/cpu/aarch64/acl_inner_product.hpp
 @@ -45,6 +45,7 @@ struct acl_ip_conf_t {
@@ -325,7 +303,7 @@ index c5e507085..163ff066e 100644
              // Validate fully connected layer manually to check for return status
              ACL_CHECK_VALID(arm_compute::NEFullyConnectedLayer::validate(
 diff --git a/src/cpu/aarch64/acl_utils.cpp b/src/cpu/aarch64/acl_utils.cpp
-index 79ea775d6..7ee4c7398 100644
+index 79ea775d6d..3424d5dacc 100644
 --- a/src/cpu/aarch64/acl_utils.cpp
 +++ b/src/cpu/aarch64/acl_utils.cpp
 @@ -157,6 +157,28 @@ status_t tensor_info(
@@ -357,8 +335,84 @@ index 79ea775d6..7ee4c7398 100644
  status_t insert_singleton_dimension(arm_compute::TensorInfo &ti, size_t dim_i) {
  
      // Max 6 dims in ACL, so we can't insert another
+@@ -261,6 +283,75 @@ int reorder_dimensions_by_stride(std::vector<memory_desc_t *> permuted_mds,
+     return reordered_dims;
+ }
+ 
++void reorder_to_weight_format(arm_compute::TensorInfo &info, memory_desc_t &md,
++        arm_compute::WeightFormat wf, dim_t I_dim, dim_t O_dim,
++        std::vector<dim_t> spatial_dims, std::vector<dim_t> batch_dims) {
++
++    md.format_kind = format_kind::blocked;
++    md.format_desc.blocking = blocking_desc_t {};
++    const int interleaved_by = arm_compute::interleave_by(wf);
++    const int block_by = arm_compute::block_by(wf);
++
++    // I dimension becomes densest (apart from blocking)
++    md.format_desc.blocking.strides[I_dim] = interleaved_by * block_by;
++    md.padded_dims[I_dim] = utils::rnd_up(md.dims[I_dim], block_by);
++
++    // Then any spatial dimensions (e.g. HW)
++    dim_t ldb = interleaved_by * md.padded_dims[I_dim];
++    for (dim_t sd : spatial_dims) {
++        md.format_desc.blocking.strides[sd] = ldb;
++        ldb *= md.padded_dims[sd];
++    }
++
++    // O dim (which was the innermost) becomes the outermost (apart from batching)
++    md.format_desc.blocking.strides[O_dim] = ldb;
++    md.padded_dims[O_dim] = utils::rnd_up(md.dims[O_dim], interleaved_by);
++
++    // Update the batch dimensions, starting with stride of the innermost batch
++    const dim_t innermost_batch_stride
++            = md.padded_dims[I_dim] * md.padded_dims[O_dim];
++    dim_t batch_stride = innermost_batch_stride;
++    for (dim_t bd : batch_dims) {
++        md.format_desc.blocking.strides[bd] = batch_stride;
++        batch_stride *= md.padded_dims[bd];
++    }
++
++    // Weights can only be blocked if they are also interleaved
++    if (interleaved_by > 1) {
++        md.format_desc.blocking.inner_nblks = 1 + (block_by > 1);
++
++        md.format_desc.blocking.inner_idxs[0] = O_dim;
++        md.format_desc.blocking.inner_blks[0] = interleaved_by;
++        if (block_by > 1) {
++            md.format_desc.blocking.inner_idxs[1] = I_dim;
++            md.format_desc.blocking.inner_blks[1] = block_by;
++        }
++    }
++
++    if (arm_compute::is_fixed_format_fast_math(wf)) {
++        md.data_type = dnnl_bf16;
++        info.set_data_type(arm_compute::DataType::BFLOAT16);
++    }
++
++    // The data layout is now determined by the manually set strides
++    info.set_data_layout(arm_compute::DataLayout::UNKNOWN);
++
++    // x is ignored in fixed format kernels
++    // y is the leading dimension of b (ldb) in the GEMM d = a*b + c
++    //   This is the stride of O_dim in the md
++    // z is the batch dimension (not strictly needed if there's only 1 batch)
++    //   i.e. how much do I need to stride to get to the next matmul (ignoring
++    //   the interleaving). Note that we use the innermost_batch_stride
++    //   because all the batched dimensions are collapsed (as required by ACL).
++    arm_compute::Strides new_strides_in_bytes = info.strides_in_bytes();
++    new_strides_in_bytes.set(1, ldb * info.element_size());
++    new_strides_in_bytes.set(2, innermost_batch_stride * info.element_size());
++
++    info.init(info.tensor_shape(), info.num_channels(), info.data_type(),
++            new_strides_in_bytes, info.offset_first_element_in_bytes(),
++            memory_desc_wrapper(md).size());
++}
++
+ } // namespace acl_utils
+ 
+ } // namespace aarch64
 diff --git a/src/cpu/aarch64/acl_utils.hpp b/src/cpu/aarch64/acl_utils.hpp
-index 28693bb16..c7c9e1278 100644
+index 28693bb167..141b2974a2 100644
 --- a/src/cpu/aarch64/acl_utils.hpp
 +++ b/src/cpu/aarch64/acl_utils.hpp
 @@ -62,6 +62,9 @@ status_t tensor_info(arm_compute::TensorInfo &info, const memory_desc_t &md);
@@ -371,8 +425,37 @@ index 28693bb16..c7c9e1278 100644
  // Insert a dimension of size 1 at the index dim_i of TensorInfo
  status_t insert_singleton_dimension(arm_compute::TensorInfo &ti, size_t dim_i);
  
+@@ -74,6 +77,28 @@ status_t insert_singleton_dimension(arm_compute::TensorInfo &ti, size_t dim_i);
+ int reorder_dimensions_by_stride(std::vector<memory_desc_t *> permuted_mds,
+         std::vector<const memory_desc_t *> mds);
+ 
++// Reorder a memory_desc_t and set the strides on a arm_compute::TensorInfo to
++// match an arm_compute::WeightFormat. You are required to specify how various
++// logical dimensions in oneDNN correspond to logical dimensions in arm_compute.
++// info  TensorInfo where the strides will be changed to match the reordering
++// md    memory descriptor where the stride and padded dimensions will be
++//       changed or reordering
++// wf    Describes the memory format/layout of the weights
++// I_dim The logical dimension of md corresponding to the input channel of
++//       a convolution or the K dimension in a matmul
++// O_dim The logical dimension of md corresponding to the output channel of a
++//       convolution or the N dimension in a matmul
++// spatial_dims The logical dimensions of md corresponding to the spatial
++//              dimensions of the weights (H, W, D for example). These will be
++//              the next densest after the inner blocks and the input channel.
++// batch_dims The logical dimensions of md related to the batch in a batched
++//            matmul, ordered from innermost to outermost. ACL calls these
++//            the multi_stride_b. These will become the outermost (least dense)
++//            dimensions and will be collapsed.
++void reorder_to_weight_format(arm_compute::TensorInfo &info, memory_desc_t &md,
++        arm_compute::WeightFormat wf, dim_t I_dim, dim_t O_dim,
++        std::vector<dim_t> spatial_dims, std::vector<dim_t> batch_dims = {});
++
+ // Logs a custom 'info' line describing an unsupported case
+ #define LOG_ACL_UNSUPPORTED(msg) \
+     do { \
 diff --git a/src/cpu/aarch64/matmul/acl_matmul_utils.cpp b/src/cpu/aarch64/matmul/acl_matmul_utils.cpp
-index 679baec3a..853277e37 100644
+index 679baec3a4..853277e37b 100644
 --- a/src/cpu/aarch64/matmul/acl_matmul_utils.cpp
 +++ b/src/cpu/aarch64/matmul/acl_matmul_utils.cpp
 @@ -66,15 +66,12 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,

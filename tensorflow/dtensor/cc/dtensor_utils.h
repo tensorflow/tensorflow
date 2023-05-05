@@ -60,6 +60,9 @@ bool LowerCollectiveGatherToCollectiveGatherV2();
 // implementation to default to the ReplicatedOpSpmdExpander.
 bool EnableReplicatedSpmdAsDefault(const std::string& op_name);
 
+// Returns whether to use all-to-all collective for relayout when possible.
+bool EnableAllToAllForRelayout();
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

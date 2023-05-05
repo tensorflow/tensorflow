@@ -16,10 +16,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
 
 #include <array>
+#include <cstdint>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
@@ -41,8 +46,7 @@ Status MakeDotSplitKBatch(
     const tensorflow::AutotuneResult::TritonGemmKey& tiling);
 
 // Filters GEMMs which are better to handle using Triton.
-bool IsTritonHandledGEMM(const HloInstruction&,
-                         se::CudaComputeCapability cuda_compute_capability);
+bool IsTritonHandledGEMM(const HloInstruction&, GpuVersion gpu_version);
 
 // Analysis of iteration of HLO shapes within a fusion around dot().
 class DotFusionAnalysis {
@@ -51,6 +55,9 @@ class DotFusionAnalysis {
   struct IterationSpecFragment {
     int64_t stride;
     int64_t count;
+    // Logical subfragments when this iteration is composed
+    // of several HLO dimensions. Product of subfragments equals `count`.
+    std::vector<int64_t> subfragments;
   };
 
   // Description of complex iteration over a sequence of several strides.
@@ -84,8 +91,8 @@ class DotFusionAnalysis {
 // that target Triton-based matmul emitter.
 class GemmRewriterTriton : public HloModulePass {
  public:
-  explicit GemmRewriterTriton(se::CudaComputeCapability cc)
-      : cuda_compute_capability_(cc) {}
+  explicit GemmRewriterTriton(GpuVersion gpu_version)
+      : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 
   using HloPassInterface::Run;
@@ -94,7 +101,7 @@ class GemmRewriterTriton : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::CudaComputeCapability cuda_compute_capability_;
+  GpuVersion gpu_version_;
 };
 
 }  // namespace gpu

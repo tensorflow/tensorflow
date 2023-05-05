@@ -45,7 +45,7 @@ namespace {
 
 MATCHER_P2(IsStatus, error_code, error_message, "") {
   return arg.code() == error_code &&
-         absl::StrContains(arg.error_message(), error_message);
+         absl::StrContains(arg.message(), error_message);
 }
 
 Status RunGraph(const Graph& graph,

@@ -457,7 +457,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           // former may be interpreted by a caller as the end of sequence.
           status = errors::InvalidArgument(
               "Function invocation produced OutOfRangeError: ",
-              status.error_message());
+              status.message());
         }
         result->UpdateStatus(status, offset);
         if (status.ok()) {

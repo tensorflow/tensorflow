@@ -262,7 +262,7 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
   Status status =
       LookupResource(context, HandleFromInput(context, input_index), &variable);
   if (!status.ok()) {
-    printf("Failed with error: %s\n", status.error_message().c_str());
+    printf("Failed with error: %s\n", tsl::NullTerminatedMessage(status));
     abort();
   }
   const Tensor& value = context->input(value_index);
@@ -475,6 +475,118 @@ static Status ValidateVariantType(const Variant& variant) {
   return ::tensorflow::OkStatus();
 }
 
+static Status VariantBinaryAddFunc(
+    ::tensorflow::OpKernelContext* cc_ctx, const Variant& a, const Variant& b,
+    Variant* out,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, TF_Tensor* a, TF_Tensor* b,
+                            TF_Tensor* out));
+
+static Status CCBinaryAddFunc(
+    ::tensorflow::OpKernelContext* cc_ctx, const Tensor& cc_a,
+    const Tensor& cc_b, Tensor* cc_out,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, TF_Tensor* a, TF_Tensor* b,
+                            TF_Tensor* out)) {
+  if (cc_a.dtype() == ::tensorflow::DT_INVALID) {
+    *cc_out = cc_b;
+    return ::tensorflow::OkStatus();
+  }
+  if (cc_b.dtype() == ::tensorflow::DT_INVALID) {
+    *cc_out = cc_a;
+    return ::tensorflow::OkStatus();
+  }
+
+  Status status;
+  TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
+  TF_RETURN_IF_ERROR(status);
+
+  TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
+  if (!status.ok()) {
+    TF_DeleteTensor(a);
+    return status;
+  }
+
+  ::tensorflow::AllocatorAttributes attr;
+  if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
+    attr.set_on_host(true);
+  }
+
+  status = cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
+  if (!status.ok()) {
+    TF_DeleteTensor(a);
+    TF_DeleteTensor(b);
+    return status;
+  }
+
+  TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
+  if (!status.ok()) {
+    TF_DeleteTensor(a);
+    TF_DeleteTensor(b);
+    return status;
+  }
+
+  auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
+  if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
+    return VariantBinaryAddFunc(
+        cc_ctx, cc_a.scalar<Variant>()(), cc_b.scalar<Variant>()(),
+        cc_out->scalar<Variant>().data(), binary_add_func);
+  } else {
+    binary_add_func(ctx, a, b, out);
+    return cc_ctx->status();
+  }
+};
+
+static Status VariantBinaryAddFunc(
+    ::tensorflow::OpKernelContext* cc_ctx, const Variant& a, const Variant& b,
+    Variant* out,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, TF_Tensor* a, TF_Tensor* b,
+                            TF_Tensor* out)) {
+  auto cc_binary_add = [binary_add_func](::tensorflow::OpKernelContext* cc_ctx,
+                                         const Tensor& cc_a, const Tensor& cc_b,
+                                         Tensor* cc_out) {
+    return CCBinaryAddFunc(cc_ctx, cc_a, cc_b, cc_out, binary_add_func);
+  };
+
+  if (out == nullptr) {
+    return ::tensorflow::errors::Internal(
+        "The output variant hasn't been initialized");
+  }
+
+  if (a.TypeId() != b.TypeId()) {
+    return ::tensorflow::errors::Internal(
+        "BinaryOpVariants: Variants a and b have different "
+        "type ids.  Type names: '",
+        a.TypeName(), "' vs. '", b.TypeName(), "'");
+  }
+
+  if (a.TypeId() == tensorflow::TypeIndex::Make<::tensorflow::TensorList>()) {
+    TF_RETURN_IF_ERROR(ValidateVariantType<::tensorflow::TensorList>(a));
+    *out = ::tensorflow::TensorList();
+
+    return ::tensorflow::TensorListBinaryAdd(
+        cc_ctx, *a.get<::tensorflow::TensorList>(),
+        *b.get<::tensorflow::TensorList>(),
+        out->get<::tensorflow::TensorList>(), cc_binary_add);
+  } else if (a.TypeId() == tensorflow::TypeIndex::Make<
+                               ::tensorflow::data::OptionalVariant>()) {
+    TF_RETURN_IF_ERROR(
+        ValidateVariantType<::tensorflow::data::OptionalVariant>(a));
+    *out = ::tensorflow::data::OptionalVariant();
+
+    return ::tensorflow::data::OptionalBinaryAdd(
+        cc_ctx, *a.get<::tensorflow::data::OptionalVariant>(),
+        *b.get<::tensorflow::data::OptionalVariant>(),
+        out->get<::tensorflow::data::OptionalVariant>(), cc_binary_add);
+  }
+
+  const std::string type_index_name =
+      ::tensorflow::port::MaybeAbiDemangle(a.TypeId().name());
+
+  return ::tensorflow::errors::Internal(
+      "No unary variant binary_op function found for op ADD Variant "
+      "type_name: ",
+      type_index_name, " for device type: ", cc_ctx->device()->name());
+}
+
 void TF_AddNVariant(TF_OpKernelContext* ctx,
                     void (*binary_add_func)(TF_OpKernelContext* ctx,
                                             TF_Tensor* a, TF_Tensor* b,
@@ -482,97 +594,11 @@ void TF_AddNVariant(TF_OpKernelContext* ctx,
                     TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
 
-  auto cc_binary_add_func = [binary_add_func](
-                                ::tensorflow::OpKernelContext* cc_ctx,
-                                const Tensor& cc_a, const Tensor& cc_b,
-                                Tensor* cc_out) {
-    if (cc_a.dtype() == ::tensorflow::DT_INVALID) {
-      *cc_out = cc_b;
-      return ::tensorflow::OkStatus();
-    }
-    if (cc_b.dtype() == ::tensorflow::DT_INVALID) {
-      *cc_out = cc_a;
-      return ::tensorflow::OkStatus();
-    }
-
-    Status status;
-    TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
-    TF_RETURN_IF_ERROR(status);
-
-    TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
-    if (!status.ok()) {
-      TF_DeleteTensor(a);
-      return status;
-    }
-
-    ::tensorflow::AllocatorAttributes attr;
-    if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
-      attr.set_on_host(true);
-    }
-
-    status = cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
-    if (!status.ok()) {
-      TF_DeleteTensor(a);
-      TF_DeleteTensor(b);
-      return status;
-    }
-
-    TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
-    if (!status.ok()) {
-      TF_DeleteTensor(a);
-      TF_DeleteTensor(b);
-      return status;
-    }
-
-    auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
-    binary_add_func(ctx, a, b, out);
-    return cc_ctx->status();
-  };
-
-  auto binary_add_variant = [cc_binary_add_func](
-                                ::tensorflow::OpKernelContext* cc_ctx,
-                                const Variant& a, const Variant& b,
-                                Variant* out) {
-    if (out == nullptr) {
-      return ::tensorflow::errors::Internal(
-          "The output variant hasn't been initialized");
-    }
-
-    if (a.TypeId() != b.TypeId()) {
-      return ::tensorflow::errors::Internal(
-          "BinaryOpVariants: Variants a and b have different "
-          "type ids.  Type names: '",
-          a.TypeName(), "' vs. '", b.TypeName(), "'");
-    }
-
-    if (a.TypeId() == tensorflow::TypeIndex::Make<::tensorflow::TensorList>()) {
-      TF_RETURN_IF_ERROR(ValidateVariantType<::tensorflow::TensorList>(a));
-      *out = ::tensorflow::TensorList();
-
-      return ::tensorflow::TensorListBinaryAdd(
-          cc_ctx, *a.get<::tensorflow::TensorList>(),
-          *b.get<::tensorflow::TensorList>(),
-          out->get<::tensorflow::TensorList>(), cc_binary_add_func);
-    } else if (a.TypeId() == tensorflow::TypeIndex::Make<
-                                 ::tensorflow::data::OptionalVariant>()) {
-      TF_RETURN_IF_ERROR(
-          ValidateVariantType<::tensorflow::data::OptionalVariant>(a));
-      *out = ::tensorflow::data::OptionalVariant();
-
-      return ::tensorflow::data::OptionalBinaryAdd(
-          cc_ctx, *a.get<::tensorflow::data::OptionalVariant>(),
-          *b.get<::tensorflow::data::OptionalVariant>(),
-          out->get<::tensorflow::data::OptionalVariant>(), cc_binary_add_func);
-    }
-
-    const std::string type_index_name =
-        ::tensorflow::port::MaybeAbiDemangle(a.TypeId().name());
-
-    return ::tensorflow::errors::Internal(
-        "No unary variant binary_op function found for op ADD Variant "
-        "type_name: ",
-        type_index_name, " for device type: ", cc_ctx->device()->name());
-  };
+  auto binary_add_variant =
+      [binary_add_func](::tensorflow::OpKernelContext* cc_ctx, const Variant& a,
+                        const Variant& b, Variant* out) {
+        return VariantBinaryAddFunc(cc_ctx, a, b, out, binary_add_func);
+      };
   ::tensorflow::AddNVariant(cc_ctx, binary_add_variant);
   ::tensorflow::Set_TF_Status_from_Status(status, cc_ctx->status());
 }

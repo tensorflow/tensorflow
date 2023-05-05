@@ -17,7 +17,7 @@
 import uuid
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as function_eager
+from tensorflow.python.eager import def_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
@@ -63,8 +63,8 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
   }
-  return function_eager.defun_with_attributes(
-      func=func, attributes=function_attributes, autograph=False)
+  return def_function.function(
+      func=func, experimental_attributes=function_attributes, autograph=False)
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])

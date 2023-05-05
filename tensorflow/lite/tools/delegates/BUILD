@@ -18,7 +18,7 @@ cc_library_with_tflite(
     ],
     copts = common_copts,
     tflite_deps = [
-        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/c:common",
     ],
     deps = [
         "//tensorflow/lite/tools:command_line_flags",
@@ -205,7 +205,7 @@ cc_test_with_tflite(
         ":delegate_provider_hdr",
         ":delegate_provider_lib",
         ":xnnpack_delegate_provider",
-        "//tensorflow/lite/core/shims:c_shims_test_util",
+        "//tensorflow/lite/c:test_util",
     ],
     deps = [
         ":nnapi_delegate_provider",

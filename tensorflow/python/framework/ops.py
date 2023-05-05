@@ -44,7 +44,7 @@ from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import monitoring
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as pydev
@@ -83,9 +83,6 @@ from tensorflow.python.util.tf_export import tf_export
 tensor_spec = LazyLoader(
     "tensor_spec", globals(),
     "tensorflow.python.framework.tensor_spec")
-ag_ctx = LazyLoader(
-    "ag_ctx", globals(),
-    "tensorflow.python.autograph.core.ag_ctx")
 
 
 # Temporary global switches determining if we should enable the work-in-progress
@@ -424,8 +421,7 @@ class Tensor(
       raise AttributeError(
           f"{type(self).__name__} object has no attribute '{name}'. " + """
         If you are looking for numpy-related methods, please run the following:
-        from tensorflow.python.ops.numpy_ops import np_config
-        np_config.enable_numpy_behavior()
+        tf.experimental.numpy.experimental_enable_numpy_behavior()
       """)
     self.__getattribute__(name)
 
@@ -473,55 +469,24 @@ class Tensor(
   def ndim(self):
     return self.shape.rank
 
-  def _disallow_when_autograph_unavailable(self, task):
+  def _disallow(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph is unavailable in this runtime. See"
+        f"{task} is not allowed."
+        " You can attempt the following resolutions to the problem:"
+        " If you are running in Graph mode, use Eager execution mode"
+        " or decorate this function with @tf.function."
+        " If you are using AutoGraph, you can try decorating this function"
+        " with @tf.function. If that does not work, then you may be using"
+        " an unsupported feature or your source code may not be visible"
+        " to AutoGraph. See"
         " https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code"
         " for more information.")
 
-  def _disallow_when_autograph_disabled(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph is disabled in this function."
-        " Try decorating it directly with @tf.function.")
-
-  def _disallow_when_autograph_enabled(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph did convert this function. This"
-        " might indicate you are trying to use an unsupported feature.")
-
-  def _disallow_in_graph_mode(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed in Graph execution. Use Eager execution or"
-        " decorate this function with @tf.function.")
-
   def _disallow_bool_casting(self):
-    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
-      self._disallow_when_autograph_unavailable(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_disabled(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_enabled(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    else:
-      # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
+    self._disallow("Using a symbolic `tf.Tensor` as a Python `bool`")
 
   def _disallow_iteration(self):
-    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
-      self._disallow_when_autograph_unavailable(
-          "Iterating over a symbolic `tf.Tensor`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_disabled(
-          "Iterating over a symbolic `tf.Tensor`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_enabled(
-          "Iterating over a symbolic `tf.Tensor`")
-    else:
-      # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode("Iterating over a symbolic `tf.Tensor`")
+    self._disallow("Iterating over a symbolic `tf.Tensor`")
 
   def __iter__(self):
     if not context.executing_eagerly():
@@ -551,7 +516,7 @@ class Tensor(
 
   def _record_tape(self, capture):
     """Connect this graph tensor with capture for gradients calculation."""
-    tape.record_operation(
+    record.record_operation(
         "captured_value",
         [self], [capture],
         backward_function=lambda x: [x],
@@ -808,8 +773,7 @@ class Tensor(
 
   def __hash__(self):
     g = getattr(self, "graph", None)
-    if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
-        (g is None or g.building_function)):
+    if (Tensor._USE_EQUALITY and (g is None or g.building_function)):
       raise TypeError("Tensor is unhashable. "
                       "Instead, use tensor.ref() as the key.")
     else:
@@ -951,13 +915,12 @@ class Tensor(
     return object_identity.Reference(self)
 
   def __tf_tracing_type__(self, signature_context):
-    spec = tensor_spec.TensorSpec(
-        self.shape, self.dtype).__tf_tracing_type__(signature_context)
-    # TODO(b/263894631): Store handle data in the TensorSpec itself. Once
-    # implemented, the following section under the if condition can be removed.
     if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
       handle_data = handle_data_util.get_handle_data(self)
-      signature_context.add_handledata(id(spec), handle_data)
+      dtype = dtypes.DType(self.dtype._type_enum, handle_data)
+    else:
+      dtype = self.dtype
+    spec = tensor_spec.TensorSpec(self.shape, dtype)
     return spec
 
   def __tf_tensor__(
@@ -1096,6 +1059,11 @@ class _EagerTensorBase(Tensor, internal.NativeObject, core_tf_types.Value):
 
     return np.array(a, dtype=dtype)
 
+  def __hash__(self) -> int:
+    # EagerTensors are never hashable.
+    raise TypeError("Tensor is unhashable. "
+                    "Instead, use tensor.ref() as the key.")
+
   def _numpy_internal(self):
     raise NotImplementedError()
 
@@ -1228,7 +1196,7 @@ class _EagerTensorBase(Tensor, internal.NativeObject, core_tf_types.Value):
             if hasattr(dresult, "_copy") else dresult
         ]
 
-      tape.record_operation("_copy", [new_tensor], [self], grad_fun)
+      record.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
 
@@ -1416,8 +1384,8 @@ def pack_eager_tensors(tensors, ctx=None):
     raise ValueError(
         "Computing gradients through pack_eager_tensors is not supported.")
 
-  tape.record_operation("pack_eager_tensors", [packed_tensor], tensors,
-                        grad_fun)
+  record.record_operation("pack_eager_tensors", [packed_tensor], tensors,
+                          grad_fun)
 
   return packed_tensor
 
@@ -4219,9 +4187,9 @@ class Graph(pywrap_tf_session.PyGraph):
       # offset refers to the stack frame used for storing code location.
       # We use 4, the sum of 1 to use our caller's stack frame and 3
       # to jump over layers of context managers above us.
+      self._colocation_stack.push_obj(op, offset=4)
       if device_only_candidate is not None:
         self._colocation_stack.push_obj(device_only_candidate, offset=4)
-      self._colocation_stack.push_obj(op, offset=4)
     elif not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
@@ -5441,7 +5409,7 @@ def init_scope():
 
   if context.executing_eagerly():
     # Fastpath.
-    with tape.stop_recording():
+    with record.stop_recording():
       yield
   else:
     # Retrieve the active name scope: entering an `init_scope` preserves
@@ -5460,7 +5428,7 @@ def init_scope():
     try:
       with outer_context(), name_scope(
           scope, skip_on_eager=False), control_dependencies(
-              None), tape.stop_recording():
+              None), record.stop_recording():
         context_manager = NullContextmanager
         context_manager_input = None
         if not context.executing_eagerly():
@@ -6798,3 +6766,22 @@ def _copy_handle_data_to_arg_def(tensor, arg_def):
     proto = arg_def.handle_data.add()
     proto.dtype = shape_and_type.dtype
     proto.shape.CopyFrom(handle_data.shape_and_type[0].shape)
+
+
+# This will be replaced by a concrete implementation in a future CL.
+@tf_export("__internal__.SymbolicTensor")
+class SymbolicTensor(object):
+  """Stub class for symbolic tensors."""
+
+
+@tf_export("is_symbolic_tensor", v1=["is_symbolic_tensor"])
+def is_symbolic_tensor(tensor):
+  """Test if `tensor` is a symbolic Tensor.
+
+  Args:
+    tensor: a tensor-like object
+
+  Returns:
+    True if `tensor` is a symbolic tensor (not an eager tensor).
+  """
+  return type(tensor) == Tensor  # pylint: disable=unidiomatic-typecheck

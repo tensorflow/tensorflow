@@ -23,10 +23,6 @@ limitations under the License.
 
 namespace tflite {
 
-inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
-  return RuntimeShape(data.size(), data.data());
-}
-
 // A list of tensors in a format that can be used by kernels like split and
 // concatenation.
 template <typename T>

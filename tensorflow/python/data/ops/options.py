@@ -469,7 +469,7 @@ class ThreadingOptions(options_lib.OptionsBase):
   """Represents options for dataset threading.
 
   You can set the threading options of a dataset through the
-  `experimental_threading` property of `tf.data.Options`; the property is
+  `threading` property of `tf.data.Options`; the property is
   an instance of `tf.data.ThreadingOptions`.
 
   ```python

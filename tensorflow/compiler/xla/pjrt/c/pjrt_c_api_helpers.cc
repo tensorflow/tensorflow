@@ -101,15 +101,17 @@ xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   return status;
 }
 
-PJRT_DeviceTopologyDeleter MakeDeviceTopologyDeleter(const PJRT_Api* api) {
-  return [api](PJRT_DeviceTopology* topology) -> void {
-    PJRT_DeviceTopology_Destroy_Args destroy_args;
-    destroy_args.struct_size = PJRT_DeviceTopology_Destroy_Args_STRUCT_SIZE;
+PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
+    const PJRT_Api* api) {
+  return [api](PJRT_TopologyDescription* topology) -> void {
+    PJRT_TopologyDescription_Destroy_Args destroy_args;
+    destroy_args.struct_size =
+        PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
     destroy_args.priv = nullptr;
     destroy_args.topology = topology;
 
-    pjrt::LogFatalIfPjrtError(api->PJRT_DeviceTopology_Destroy(&destroy_args),
-                              api);
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_TopologyDescription_Destroy(&destroy_args), api);
   };
 }
 
@@ -190,7 +192,7 @@ void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {
       error, MakeErrorDeleter(api));
   xla::Status _status = PjrtErrorToStatus(_error.get(), api);
   if (!_status.ok()) {
-    LOG(FATAL) << "Unexpected error status " << _status.error_message();
+    LOG(FATAL) << "Unexpected error status " << _status.message();
   }
 }
 
@@ -236,6 +238,10 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_BF16;
     case xla::PrimitiveType::F64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F64;
+    case xla::PrimitiveType::F8E5M2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
+    case xla::PrimitiveType::F8E4M3FN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN;
     case xla::PrimitiveType::C64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_C64;
     case xla::PrimitiveType::C128:
@@ -279,6 +285,10 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::C64;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_C128:
       return xla::PrimitiveType::C128;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2:
+      return xla::PrimitiveType::F8E5M2;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN:
+      return xla::PrimitiveType::F8E4M3FN;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }
@@ -558,6 +568,16 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk) {
       [deleter_arg = chunk.deleter_arg, deleter = chunk.deleter](void* data) {
         deleter(data, deleter_arg);
       });
+}
+
+PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
+                                             PJRT_Device* device) {
+  PJRT_Device_GetDescription_Args args;
+  args.struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_GetDescription(&args), api);
+  return args.device_description;
 }
 
 }  // namespace pjrt

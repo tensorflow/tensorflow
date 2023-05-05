@@ -73,6 +73,26 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     std::vector<std::unique_ptr<xla::PjRtBuffer>>& executable_outputs,
     OpKernelContext* ctx);
 
+// Returns the options used for executing a PjRtLoadedExecutable.
+xla::ExecuteOptions GetPjRtExecuteOptions();
+
+// Returns the device ordinal from the parsed name of the device.
+int GetDeviceOrdinal(const DeviceBase* device);
+
+// Returns the device type from the OpKernelContext.
+DeviceType GetDeviceType(OpKernelContext* ctx);
+
+// Runs `executable` and populates the outputs in `ctx`. `inputs` and
+// `variables` are the input arguments to the computation, usually read from the
+// OpKernelContext, `ctx`. Requires the device-appropriate `pjrt_client` and the
+// `compilation_result` used to build the `executable`.
+Status RunPjRtExecutable(
+    const xla::PjRtClient& pjrt_client,
+    const std::vector<const Tensor*>& inputs,
+    const std::vector<VariableInfo>& variables,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx);
+
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.
 class XlaComputationLaunchContext {

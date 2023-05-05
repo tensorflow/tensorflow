@@ -253,8 +253,7 @@ void initialize_curand() {
           });
 
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuRAND factory: "
-               << status.error_message();
+    LOG(ERROR) << "Unable to register cuRAND factory: " << status.message();
   }
 
   PluginRegistry::Instance()->SetDefaultFactory(

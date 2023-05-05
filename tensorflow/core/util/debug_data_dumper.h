@@ -16,47 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DEBUG_DATA_DUMPER_H_
 #define TENSORFLOW_CORE_UTIL_DEBUG_DATA_DUMPER_H_
 
+#include <optional>
+#include <set>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
 
-////////////////////////////////////////////////////////////////////////////////
-// The followings are the interfaces to dump debug data.
-//
-// They are designed in MACRO to avoid expensive operations
-// if no dump is required. For example
-//
-// DUMP_MLIR_MODULE("name", "tag", GetModuleTxt(op), false)
-//
-// In the above code, GetModuleTxt is not called if ShouldDump returns false.
-////////////////////////////////////////////////////////////////////////////////
+#define DEBUG_DATA_DUMPER() ::tensorflow::DebugDataDumper::Global()
 
-#define SHOULD_DUMP(name) \
-  ::tensorflow::DebugDataDumper::Global()->ShouldDump(name)
-
-#define DUMP_OP_CREATION_STACKTRACES(name, tag, graph)                    \
-  do {                                                                    \
-    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))        \
-      ::tensorflow::DebugDataDumper::Global()->DumpOpCreationStackTraces( \
-          name, tag, graph);                                              \
-  } while (false)
-
-#define DUMP_GRAPH(name, tag, graph, func_lib_def, bypass_filter)          \
-  do {                                                                     \
-    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name) ||       \
-        bypass_filter)                                                     \
-      ::tensorflow::DebugDataDumper::Global()->DumpGraph(name, tag, graph, \
-                                                         func_lib_def);    \
-  } while (false)
-
-#define DUMP_MLIR_MODULE(name, tag, module_txt, bypass_filter)             \
-  do {                                                                     \
-    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name) ||       \
-        bypass_filter)                                                     \
-      ::tensorflow::DebugDataDumper::Global()->DumpMLIRModule(name, tag,   \
-                                                              module_txt); \
-  } while (false)
+inline constexpr const char* kDebugGroupMain = "main";
+inline constexpr const char* kDebugGroupOpStacktrace = "op_stacktrace";
+inline constexpr const char* kDebugGroupGraphOptPass = "graph_opt_pass";
+inline constexpr const char* kDebugGroupBridgePhase1 = "bridge_phase1";
+inline constexpr const char* kDebugGroupBridgePhase2 = "bridge_phase2";
 
 namespace tensorflow {
 
@@ -70,62 +43,66 @@ class Graph;
 // * Set envvar TF_DUMP_GRAPH_PREFIX to your target dump directory.
 // * Set envvar TF_DUMP_GRAPH_NAME_FILTER to '*' to dump all graphs,
 //   or a name filter to dump graphs with a name containing it.
-// * Set envvar TF_DUMP_OP_CREATION_STACKTRACES to anything if you
-//   would like to dump the op creation stacktraces.
+// * Set envvar TF_DUMP_GRAPH_GROUPS to your dump groups (comma-separated).
 //
 // The dumped graphs then can be found in your target dump directory.
 // The filename of the dump looks like this:
-// <name>.<order-id>.<tag>
+// <name>.<order-id>.<group>.<tag>
 //
 // This is what each field means:
 // * <name>     : The name of your dump.
 // * <order-id> : The order of dumps of a specific name.
 //                Lower orders are executed before higher orders.
+// * <group>    : The group of your dump, e.g., main.
 // * <tag>      : The tag of your dump, e.g., your pass name.
 //
 // Example dump files are:
-// __inference_train_step_441.0.before_pre_placement_passes.pbtxt
-// __inference_train_step_441.1.before_placer.pbtxt
-// __inference_train_step_441.2.before_post_placement_passes.pbtxt
-// __inference_train_step_441.3.before_graph_optimization.pbtxt
-// __inference_train_step_441.4.after_graph_optimization.pbtxt
-// __inference_train_step_441.5.before_post_rewrite_for_exec_passes.pbtxt
+// __inference_train_step_441.0.main.before_pre_placement_passes.pbtxt
+// __inference_train_step_441.1.main.before_placer.pbtxt
+// __inference_train_step_441.2.main.before_post_placement_passes.pbtxt
+// __inference_train_step_441.3.main.before_graph_optimization.pbtxt
+// __inference_train_step_441.4.main.after_graph_optimization.pbtxt
+// __inference_train_step_441.5.main.before_post_rewrite_for_exec_passes.pbtxt
 ////////////////////////////////////////////////////////////////////////////////
 class DebugDataDumper {
  public:
   // Get the singleton instance.
   static DebugDataDumper* Global();
 
+  // Initialize the debug data dumper.
+  void LoadEnvvars();
+
   // Check if we should dump debug data.
-  // We should dump debug data only if 1 and 2 are both true:
+  // We should dump debug data only if the followings are true:
   // 1. Envvar TF_DUMP_GRAPH_PREFIX is set to your target dump directory.
   // 2. This condition is true if one of the followings is true.
   //    2.1. TF_DUMP_GRAPH_NAME_FILTER is set to '*'
   //    2.2. TF_DUMP_GRAPH_NAME_FILTER is set to a name filter
   //         which is a substr of name.
-  bool ShouldDump(const std::string& name) const;
+  // 3. The group is defined in TF_DUMP_GRAPH_GROUPS.
+  bool ShouldDump(const std::string& name, const std::string& group) const;
 
   // Dump op creation callstacks, if ShouldDump returns true.
   void DumpOpCreationStackTraces(const std::string& name,
+                                 const std::string& group,
                                  const std::string& tag, const Graph* graph);
 
   // Dump a graph, if ShouldDump returns true.
-  void DumpGraph(const std::string& name, const std::string& tag,
-                 const Graph* graph,
-                 const FunctionLibraryDefinition* func_lib_def);
-
-  // Dump a MLIR module, if ShouldDump returns true.
-  void DumpMLIRModule(const std::string& name, const std::string& tag,
-                      const std::string& module_txt);
+  void DumpGraph(const std::string& name, const std::string& group,
+                 const std::string& tag, const Graph* graph,
+                 const FunctionLibraryDefinition* func_lib_def,
+                 bool bypass_filter = false);
 
   // Get the dump file basename. Dump file basenames are in this format:
-  // <name>.<order-id>.<tag>
+  // <name>.<order-id>.<group>.<tag>
   //
   // What each field means is explained on the class level comment.
-  std::string GetDumpFileBasename(const std::string& name,
-                                  const std::string& tag);
+  std::string GetDumpFilename(const std::string& name, const std::string& group,
+                              const std::string& tag);
 
  private:
+  DebugDataDumper();
+
   // Get next dump id for a name.
   int GetNextDumpId(const std::string& name) {
     // Use a lock to make sure this is thread safe.
@@ -138,6 +115,15 @@ class DebugDataDumper {
 
   // A mutex to make sure this is thread safe.
   tensorflow::mutex lock_;
+
+  // The name filter.
+  std::optional<std::string> name_filter_;
+
+  // The groups filter.
+  std::set<string> groups_filter_;
+
+  // A flag indicating whether to dump wrapped graphs.
+  bool dump_wrapped_;
 };
 
 }  // namespace tensorflow

@@ -11,10 +11,9 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
-        ":profiler_analysis_pb2_grpc",
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
-        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python/util:all_util",
+        "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 
@@ -36,9 +35,10 @@ py_library(
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
-        "//tensorflow/python:platform",
         "//tensorflow/python:versions",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",

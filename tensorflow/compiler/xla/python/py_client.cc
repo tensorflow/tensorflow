@@ -364,7 +364,7 @@ StatusOr<py::bytes> PyClient::SerializeExecutable(
 }
 
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
-    const std::string& serialized, CompileOptions options,
+    const std::string& serialized, std::optional<CompileOptions> options,
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;

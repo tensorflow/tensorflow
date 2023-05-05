@@ -1020,6 +1020,7 @@ cc_library(
         ":space_to_depth",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
     ],
 )

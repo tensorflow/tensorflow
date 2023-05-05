@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <algorithm>
+#include <climits>
 #include <functional>
 #include <numeric>
 #include <optional>
@@ -1997,6 +1998,11 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     int64_t dim_size = shape_dimensions[minor_to_major[dim]];
     num_of_elements *= dim_size;
   }
+
+  if (ShapeUtil::ElementHasBitWidth(shape, 4)) {
+    return num_of_elements / 2;
+  }
+
   return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
 }
 
@@ -2007,7 +2013,9 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     indices.push_back(dim - 1);
   }
   int64_t size = LayoutUtil::LinearIndex(shape, indices) + 1;
-  return (size * ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()));
+  int64_t num_bits = size * primitive_util::BitWidth(shape.element_type());
+
+  return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
 }
 
 int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {

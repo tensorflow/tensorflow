@@ -24,7 +24,6 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import mirrored_strategy
@@ -32,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -161,9 +161,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
       tensor_input = constant_op.constant(3.0)
       return strategy.run(replica_fn, args=(tensor_input,))
 
-    # TODO(b/274647196): Change to use strategy.scope() for default device/mesh.
-    # with strategy.scope():
-    with d_api.default_mesh(self.mesh):
+    with strategy.scope():
       result = run_fn()
     self.assertEqual(result, constant_op.constant(6.0))
 
@@ -183,7 +181,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
 
     def value_fn(value_context):
-      return value_context.num_replicas_in_sync
+      return value_context.replica_id_in_sync_group
     distributed_values = (
         strategy.experimental_distribute_values_from_function(
             value_fn))
@@ -198,9 +196,9 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     # Note that the scalar value from
     # experimental_distribute_values_from_function will be up rank to 1D since
     # batched shared dtensor need at least be 1D. So the result from the
-    # strategy.run is [4], instead of just 4.
-    self.assertAllClose(result.values[0], constant_op.constant([4]))
-    self.assertAllClose(result.values[1], constant_op.constant([4]))
+    # strategy.run is [0], instead of just 0.
+    self.assertAllClose(result.values[0], constant_op.constant([0]))
+    self.assertAllClose(result.values[1], constant_op.constant([2]))
 
   def test_nested_structure_output(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
@@ -280,14 +278,14 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
 
     @def_function.function
     def replica_fn(inputs):
-      replica_context = distribution_strategy_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       self.assertIsInstance(replica_context, dtensor_util.DTensorReplicaContext)
       return inputs * replica_context.num_replicas_in_sync
 
     # Default replica context
-    self.assertIsNotNone(distribution_strategy_context.get_replica_context())
+    self.assertIsNotNone(distribute_lib.get_replica_context())
     with strategy.scope():
-      self.assertIsNone(distribution_strategy_context.get_replica_context())
+      self.assertIsNone(distribute_lib.get_replica_context())
 
       result = strategy.run(replica_fn, args=(d_tensor_input,))
 
@@ -625,9 +623,16 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     distributed_dataset = strategy.distribute_datasets_from_function(
         dataset_fn, None)
+    iterator = iter(distributed_dataset)
 
-    element = next(iter(distributed_dataset))
-    batched_image, batched_label = element
+    self.assertEqual(distributed_dataset.element_spec,
+                     (tensor_spec.TensorSpec(shape=(8, 8, 8, 3),
+                                             dtype=dtypes.float32, name=None),
+                      tensor_spec.TensorSpec(shape=(8, 1),
+                                             dtype=dtypes.float32, name=None)))
+    self.assertEqual(distributed_dataset.element_spec, iterator.element_spec)
+
+    batched_image, batched_label = next(iterator)
     self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
     self.assertEqual(batched_label.shape, [global_batch_size, 1])
 

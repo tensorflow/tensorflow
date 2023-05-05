@@ -39,11 +39,10 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
   opts.vectorizationSizeThreshold = 0;
   opts.vectorizationTiledSizeThreshold = 1024;
   opts.lowerToMmt4d = false;
-  opts.enableFusionClusters = false;
-  opts.enableFusionClusterOutlining = false;
   opts.cpuName = cpuName;
   opts.statsDetailLevel = statsDetailLevel;
   opts.fuseDegenerateReshapes = false;
+  opts.inlineFusionClusters = true;
   return opts;
 }
 
@@ -56,23 +55,12 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       createVectorizeForCPUPass(options.vectorizationSizeThreshold));
 
-  if (options.enableFusionClusters) {
-    pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
-  }
-
-  // Outline and deduplicate fusion clusters.
-  if (options.enableFusionClusterOutlining) {
-    pm.addPass(createFusionOutliningPass());
-    pm.addPass(func::createDuplicateFunctionEliminationPass());
-    pm.addPass(createCSEPass());
-  }
-
   if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
 
-  pm.addNestedPass<FuncOp>(createTransformBatchMatmulForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
 
+  pm.addNestedPass<FuncOp>(
+      createTransformDotForCpuPass(options.matmulTileSizes, options.cpuName));
   TransformReduceForCpuPassOptions reductionOpts;
   reductionOpts.enableHeuristic = options.reductionEnableHeuristic;
   reductionOpts.tileSize1D = options.reduction1DTileSize;
@@ -82,8 +70,6 @@ void addCPUTilingPipeline(OpPassManager& pm,
       options.reduction2DReductionDimTileSize;
   pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(reductionOpts));
 
-  pm.addNestedPass<FuncOp>(
-      createTransformDotForCpuPass(options.matmulTileSizes, options.cpuName));
   // Upstream generalization of tensor.pack/unpack (i.e. tensor.pack/unpack ->
   // tensor.pad + linalg.transpose + tensor.insert_slice) does not transfer
   // transformed labels from tensor.pack/unpack to linalg.transpose and thus
@@ -95,7 +81,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
 
-  pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
+  if (options.inlineFusionClusters)
+    pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
@@ -108,6 +95,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   // Tile remaining ops by size one and scalarize what we can.
   pm.addNestedPass<FuncOp>(createTileByOnePass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
+  pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
 
   pm.addPass(createCanonicalizerPass());
 

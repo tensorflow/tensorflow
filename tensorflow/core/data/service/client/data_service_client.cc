@@ -61,7 +61,6 @@ bool IsColocatedTask(const TaskInfo& task) {
   });
 }
 
-
 }  // namespace
 
 DataServiceClient::DataServiceClient(const DataServiceParams& params)
@@ -326,6 +325,30 @@ DataServiceClient::CreateWorkerClient(const std::string& protocol,
 }
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+DataServiceClient::CreateGrpcWorkerClient(const TaskInfo& task_info) {
+  return CreateWorkerClient(kGrpcTransferProtocol, task_info);
+}
+
+StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
+    const std::string& protocol, const TaskInfo& task_info) {
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
+      CreateWorkerClient(protocol, task_info);
+  if (worker.ok()) {
+    LOG(INFO) << "Successfully started client for data transfer protocol '"
+              << protocol << "'.";
+    return worker;
+  }
+  LOG(ERROR) << "Failed to start client for data transfer protocol '"
+             << protocol << "'; falling back to grpc. "
+             << "Original error: " << worker.status();
+  metrics::RecordTFDataServiceDataTransferProtocolFallback(
+      protocol, static_cast<error::Code>(worker.status().raw_code()),
+      std::string(worker.status().message()));
+  return CreateGrpcWorkerClient(task_info);
+}
+
+StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   if (params_.data_transfer_protocol == kLocalTransferProtocol) {
     DataTransferServerInfo info;
@@ -334,27 +357,17 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     return CreateDataServiceWorkerClient(params_.protocol, info);
   }
   if (!params_.data_transfer_protocol.empty()) {
-    return CreateWorkerClient(params_.data_transfer_protocol, task_info);
+    return CreateAlternativeWorkerClientWithGrpcFallback(
+        params_.data_transfer_protocol, task_info);
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
     LOG(INFO)
         << "This task is participating in the \"data_transfer\" experiment.";
-    StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
-        CreateWorkerClient(default_protocol, task_info);
-    if (worker.ok()) {
-      LOG(INFO) << "Successfully started client for data transfer protocol '"
-                << default_protocol << "'.";
-      return worker;
-    }
-    LOG(ERROR) << "Failed to start client for default data transfer protocol '"
-               << default_protocol << "'; falling back to grpc. "
-               << "Original error: " << worker.status();
-    metrics::RecordTFDataServiceDataTransferProtocolFallback(
-        default_protocol, static_cast<error::Code>(worker.status().raw_code()),
-        worker.status().error_message());
+    return CreateAlternativeWorkerClientWithGrpcFallback(default_protocol,
+                                                         task_info);
   }
-  return CreateWorkerClient(kGrpcTransferProtocol, task_info);
+  return CreateGrpcWorkerClient(task_info);
 }
 
 Status DataServiceClient::AddTask(const TaskInfo& task_info)
@@ -590,7 +603,7 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
       status_ = errors::CreateWithUpdatedMessage(
           s, absl::StrCat("Failed to get element from worker ",
                           task_to_process->info.worker_address(), ": ",
-                          s.error_message()));
+                          s.message()));
       get_next_cv_.notify_all();
       return;
     }
@@ -764,21 +777,24 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
     Status s = TryGetElement(*task, get_element_result);
     if (s.ok()) break;
     if (!IsPreemptedError(s)) {
-      if (!params_.data_transfer_protocol.empty() ||
-          DefaultDataTransferProtocol() == kGrpcTransferProtocol) {
+      std::string data_transfer_protocol =
+          !params_.data_transfer_protocol.empty()
+              ? params_.data_transfer_protocol
+              : DefaultDataTransferProtocol();
+      if (data_transfer_protocol == kGrpcTransferProtocol ||
+          data_transfer_protocol == kLocalTransferProtocol) {
         return s;
       }
       mutex_lock l(mu_);
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<DataServiceWorkerClient> worker,
-          CreateWorkerClient(kGrpcTransferProtocol, task->info));
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
+                          CreateGrpcWorkerClient(task->info));
       task->worker = std::move(worker);
-      LOG(ERROR) << "failed to use client for default data transfer protocol '"
-                 << DefaultDataTransferProtocol() << "'; falling back to grpc. "
+      LOG(ERROR) << "failed to use alternative data transfer protocol '"
+                 << data_transfer_protocol << "'; falling back to grpc. "
                  << "Original error: " << s;
       metrics::RecordTFDataServiceDataTransferProtocolError(
           DefaultDataTransferProtocol(), static_cast<error::Code>(s.raw_code()),
-          s.error_message());
+          std::string(s.message()));
       continue;
     }
     if (!IsCoordinatedRead()) {

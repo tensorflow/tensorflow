@@ -43,7 +43,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -59,12 +61,6 @@ se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   }
 
   return platform_id;
-}
-
-DeviceType GetDeviceType(OpKernelContext* ctx) {
-  auto* device =
-      tensorflow::down_cast<Device*>(ctx->device()->UnderlyingDevice());
-  return DeviceType(device->device_type());
 }
 
 absl::flat_hash_map<int, int> CreateVariableLookup(
@@ -645,9 +641,12 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
       ctx->set_output(i, *inputs[input_index]);
     } else {
       Tensor* output_tensor;
-      TensorShape shape = TensorShape(
-          executable_outputs[output_num]->on_device_shape().dimensions());
-      TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
+      TF_ASSIGN_OR_RETURN(
+          xla::Shape device_shape,
+          executable_outputs[output_num]->logical_on_device_shape());
+      TensorShape tensor_shape;
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(device_shape, &tensor_shape));
+      TF_RETURN_IF_ERROR(ctx->allocate_output(i, tensor_shape, &output_tensor));
       auto output_avt = AsyncValueTensor::FromTensor(output_tensor);
       output_avt->SetBuffer(std::move(executable_outputs[output_num]));
       ++output_num;
@@ -685,6 +684,52 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     var->is_initialized |= write.modified;
     ++output_num;
   }
+  return OkStatus();
+}
+
+xla::ExecuteOptions GetPjRtExecuteOptions() {
+  xla::ExecuteOptions options;
+  options.arguments_are_tupled = false;
+  options.untuple_result = true;
+  // Note: TF does not use PJRT host callbacks as of today. Setting this option
+  // to true to workaround an ExecuteOptions check: [1].
+  //
+  // [1]:
+  // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
+  options.use_major_to_minor_data_layout_for_callbacks = true;
+  return options;
+}
+
+DeviceType GetDeviceType(OpKernelContext* ctx) {
+  auto* device =
+      tensorflow::down_cast<Device*>(ctx->device()->UnderlyingDevice());
+  return DeviceType(device->device_type());
+}
+
+Status RunPjRtExecutable(
+    const xla::PjRtClient& pjrt_client,
+    const std::vector<const Tensor*>& inputs,
+    const std::vector<VariableInfo>& variables,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx) {
+  TF_ASSIGN_OR_RETURN(const int pjrt_device_id,
+                      tsl::GetDeviceIdFromDeviceParsedName(
+                          ctx->device()->parsed_name(), GetDeviceType(ctx)));
+  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
+                      pjrt_client.LookupAddressableDevice(pjrt_device_id));
+
+  const std::vector<xla::PjRtBuffer*> executable_args =
+      PreparePjRtExecutableArguments(compilation_result.input_mapping, inputs,
+                                     variables);
+  // TODO(b/257548614): currently PJRT is compiled as portable (num_replica = 1
+  // and num_partition = 1). Support multiple partitions case.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
+      executable->ExecutePortable(executable_args, device,
+                                  GetPjRtExecuteOptions()));
+
+  TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
+      inputs, variables, compilation_result, execute_outputs, ctx));
   return OkStatus();
 }
 

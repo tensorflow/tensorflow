@@ -23,6 +23,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 
 namespace xla {
@@ -91,6 +92,11 @@ struct i4 {
     is >> value;
     num = i4(static_cast<UnderlyingTy>(value));
     return is;
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const i4& i) {
+    absl::Format(&sink, "%d", i.v);
   }
 
   std::string to_string() const { return std::to_string(v); }

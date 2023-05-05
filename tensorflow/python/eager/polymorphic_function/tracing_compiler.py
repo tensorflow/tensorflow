@@ -309,8 +309,6 @@ class TracingCompiler:
             kwargs,
             None,
             func_graph=func_graph,
-            autograph=self._autograph,
-            autograph_options=self._autograph_options,
             arg_names=arg_names,
             capture_by_value=self._capture_by_value,
             create_placeholders=False),
@@ -388,10 +386,9 @@ class TracingCompiler:
                 current_func_context, lookup_func_type)
           else:
             target_func_type = lookup_func_type
-          handledata_mapping = lookup_func_context.get_handledata_mapping()
           placeholder_mapping = lookup_func_context.get_placeholder_mapping()
           placeholder_context = trace_type.InternalPlaceholderContext(
-              func_graph, placeholder_mapping, handledata_mapping)
+              func_graph, placeholder_mapping)
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)
@@ -402,7 +399,7 @@ class TracingCompiler:
               args, kwargs, func_graph)
 
           # TODO(b/263520817): Remove access to private attribute.
-          graph_capture_container = concrete_function.graph._function_captures  # pylint: disable=protected-access
+          graph_capture_container = concrete_function.graph.function_captures
           # Maintain the list of all captures
           self._func_captures.merge_by_ref_with(graph_capture_container)
           # Get current active captures snapshot

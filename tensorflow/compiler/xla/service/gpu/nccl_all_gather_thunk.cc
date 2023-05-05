@@ -74,40 +74,9 @@ Status NcclAllGatherThunkBase::RunAllGather(const ExecuteParams& params,
   return xla::gpu::RunAllGather(device_buffers, stream, comm);
 }
 
-NcclAllGatherThunk::NcclAllGatherThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op,
-    std::vector<NcclAllGatherThunk::Buffer> buffers)
-    : NcclAllGatherThunkBase(Thunk::kNcclAllGather, thunk_info,
-                             impl::GetNcclAllGatherConfig(op),
-                             std::move(buffers)) {}
-
-/*static*/ Status NcclAllGatherThunk::CheckImplementable(
-    mlir::lmhlo::AllGatherOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return AddOpDescription<NcclAllGatherThunk>(impl::CheckImplementable(op), op,
-                                              replica_count, partition_count);
-}
-
-/*static*/ bool NcclAllGatherThunk::IsDegenerate(mlir::lmhlo::AllGatherOp op,
-                                                 int64_t replica_count,
-                                                 int64_t partition_count) {
-  return impl::GetNcclAllGatherConfig(op).config.IsDegenerate(replica_count,
-                                                              partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclAllGatherThunk::GetGroupMode(
-    mlir::lmhlo::AllGatherOp op) {
-  return impl::GetNcclAllGatherConfig(op).config.group_mode;
-}
-
-Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
-                                             ncclComm_t comm) {
-  return RunAllGather(params, *params.stream, comm);
-}
-
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, mlir::lmhlo_gpu::AllGatherStartOp op,
-    std::vector<NcclAllGatherThunk::Buffer> buffers)
+    std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclAllGatherThunkBase(Thunk::kNcclAllGatherStart, thunk_info,
                              impl::GetNcclAllGatherConfig(op),
                              std::move(buffers)) {}

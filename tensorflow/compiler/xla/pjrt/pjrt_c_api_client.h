@@ -32,6 +32,35 @@ namespace xla {
 
 class PjRtCApiClient;
 
+class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
+ public:
+  PjRtCApiDeviceDescription(const PJRT_Api* c_api_,
+                            PJRT_DeviceDescription* device_description);
+
+  int id() const override;
+
+  int process_index() const override;
+
+  absl::string_view device_kind() const override;
+
+  absl::string_view DebugString() const override;
+
+  absl::string_view ToString() const override;
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override;
+
+ private:
+  const PJRT_Api* c_api_;
+  // `device_description_` is owned by the `PJRT_Client` wrapped by `client_`
+  PJRT_DeviceDescription* device_description_;
+  // Device specific attributes with corresponding values.
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+
+  // Initializes device specific attributes.
+  void InitAttributes();
+};
+
 class PjRtCApiDevice : public PjRtDevice {
  public:
   explicit PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client);
@@ -40,17 +69,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   bool IsAddressable() const override;
 
-  int id() const override;
-
-  int process_index() const override;
-
   int local_hardware_id() const override;
-
-  absl::string_view device_kind() const override;
-
-  absl::string_view DebugString() const override;
-
-  absl::string_view ToString() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented("PJRT C API does not support TransferToInfeed");
@@ -66,20 +85,17 @@ class PjRtCApiDevice : public PjRtDevice {
     return nullptr;
   }
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override;
-
   PJRT_Device* c_device() const { return device_; }
+
+  const PjRtCApiDeviceDescription& description() const override {
+    return description_;
+  }
 
  private:
   PjRtCApiClient* client_ = nullptr;
   // `device_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_Device* device_;
-  // Device specific attributes with corresponding values.
-  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
-
-  // Initializes device specific attributes.
-  void InitAttributes();
+  PjRtCApiDeviceDescription description_;
 };
 
 class PjRtCApiClient : public PjRtClient {
@@ -463,20 +479,20 @@ class PjRtCApiCompiler : public PjRtCompiler {
 
   StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
-      const PjRtDeviceTopology& topology, PjRtClient* client) override;
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
-      const PjRtDeviceTopology& topology, PjRtClient* client) override;
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
  private:
   const PJRT_Api* c_api_;
 };
 
-class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
+class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
  public:
-  PjRtCApiDeviceTopology(const PJRT_Api* c_api,
-                         PJRT_DeviceTopology* c_topology);
+  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
+                              PJRT_TopologyDescription* c_topology);
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";
@@ -490,12 +506,20 @@ class PjRtCApiDeviceTopology : public PjRtDeviceTopology {
     return compiler_.get();
   }
 
-  const PJRT_DeviceTopology* c_topology() const { return c_topology_.get(); }
+  const PJRT_TopologyDescription* c_topology() const {
+    return c_topology_.get();
+  }
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const {
+    LOG(FATAL) << "PJRT C API DeviceDescription not implemented.";
+  }
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
-  std::unique_ptr<PJRT_DeviceTopology, ::pjrt::PJRT_DeviceTopologyDeleter>
+  std::unique_ptr<PJRT_TopologyDescription,
+                  ::pjrt::PJRT_TopologyDescriptionDeleter>
       c_topology_;
 };
 
@@ -515,7 +539,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
-StatusOr<std::unique_ptr<PjRtDeviceTopology>> GetCApiTopology(
+StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type);
 
 }  // namespace xla

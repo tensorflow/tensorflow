@@ -302,6 +302,131 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
         dtensor_scattered_result,
     )
 
+  @parameterized.named_parameters(
+      (
+          'xu_ux',
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'ux_xu',
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'yu_uy',
+          [_MESH_DIM_Y, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'uy_yu',
+          [layout_lib.UNSHARDED, _MESH_DIM_Y],
+          [_MESH_DIM_Y, layout_lib.UNSHARDED],
+      ),
+  )
+  def testAllToAll2D(self, src_spec, tgt_spec):
+    a = constant_op.constant(
+        np.arange(
+            8 * 8,
+        ).reshape((8, 8)),
+        dtype=dtypes.float32,
+    )
+    sharded_a = numpy_util.pack_numpy(a, layout=Layout(src_spec, self.mesh))
+
+    @polymorphic_function.function
+    def func(a):
+      return api.relayout(a, Layout(tgt_spec, self.mesh))
+
+    dtensor_result = func(sharded_a)
+    self.assertDTensorEqual(a, Layout(tgt_spec, self.mesh), dtensor_result)
+
+  @parameterized.named_parameters(
+      (
+          'yuu_uuy',
+          [_MESH_DIM_Y, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'xuu_uux',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'uux_xuu',
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+      ),
+      (
+          'xuu_uxu',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'uxu_xuu',
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+      ),
+      (
+          'xuy_uxy',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+          [layout_lib.UNSHARDED, _MESH_DIM_X, _MESH_DIM_Y],
+      ),
+      (
+          'uxy_xuy',
+          [layout_lib.UNSHARDED, _MESH_DIM_X, _MESH_DIM_Y],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'xyu_uyx',
+          [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_Y, _MESH_DIM_X],
+      ),
+      # Requires additional transpose
+      (
+          'uxu_uux',
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'uux_uxu',
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'xyu_xuy',
+          [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'xuy_xyu',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+          [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED],
+      ),
+      (
+          'yxu_yux',
+          [_MESH_DIM_Y, _MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_Y, layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'yux_yxu',
+          [_MESH_DIM_Y, layout_lib.UNSHARDED, _MESH_DIM_X],
+          [_MESH_DIM_Y, _MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+  )
+  def testAllToAll3D(self, src_spec, tgt_spec):
+    a = constant_op.constant(
+        np.arange(8 * 8 * 8).reshape((8, 8, 8)), dtype=dtypes.float32
+    )
+    sharded_a = numpy_util.pack_numpy(a, layout=Layout(src_spec, self.mesh))
+
+    @polymorphic_function.function
+    def func(a):
+      return api.relayout(a, Layout(tgt_spec, self.mesh))
+
+    dtensor_result = func(sharded_a)
+
+    self.assertDTensorEqual(a, Layout(tgt_spec, self.mesh), dtensor_result)
+
   def testExpandDimsDifferentInputAndOutputLayouts(self,):
     src_numpy = np.random.uniform(size=[10, 10])
     src = constant_op.constant(src_numpy, dtype=dtypes.float32)

@@ -100,8 +100,7 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
     if (IsDynamicTensor(dst_tensor)) {
       TfLiteTensorRealloc(src_tensor->bytes, dst_tensor);
     }
-    TF_LITE_ENSURE_EQ(context, src_tensor->bytes, dst_tensor->bytes);
-    TfLiteTensorCopy(src_tensor, dst_tensor);
+    TF_LITE_ENSURE_OK(context, TfLiteTensorCopy(src_tensor, dst_tensor));
   }
   return kTfLiteOk;
 }

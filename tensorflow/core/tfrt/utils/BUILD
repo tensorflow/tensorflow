@@ -265,7 +265,7 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
-        "@com_google_absl//absl/types:variant",
+        "//tensorflow/tsl/profiler/lib:traceme",
     ],
 )
 

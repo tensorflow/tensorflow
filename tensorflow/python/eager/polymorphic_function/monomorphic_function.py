@@ -24,7 +24,7 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
@@ -246,17 +246,24 @@ class _DelayedRewriteGradientFunctions(object):
     # Rewrite an inference call op to be a forward call op
     op._set_func_attr("f", forward_function.name)
     op._set_type_list_attr(
-        "Tout", forward_function._graph_artifacts.output_types
+        "Tout",
+        [
+            o.dtype.as_datatype_enum
+            for o in forward_function.function_type.flat_outputs
+        ],
     )
+    truncated_outputs = forward_function.function_type.flat_outputs[
+        len(op.outputs) :
+    ]
     op._add_outputs(
-        forward_function._graph_artifacts.output_types[len(op.outputs) :],
-        forward_function._graph_artifacts.output_shapes[len(op.outputs) :],
+        [o.dtype.as_datatype_enum for o in truncated_outputs],
+        [o.shape for o in truncated_outputs],
     )
     for i in range(len(op.outputs)):
-      func_graph_output = forward_function._graph_artifacts.func_graph_outputs[
-          i
-      ]
-      handle_data_util.copy_handle_data(func_graph_output, op.outputs[i])
+      output_type = forward_function.function_type.flat_outputs[i]
+      handle_data = output_type.dtype._handle_data
+      if handle_data:
+        handle_data_util.set_handle_data(op.outputs[i], handle_data)
     # pylint: enable=protected-access
 
     capture_mapping = dict(
@@ -345,7 +352,7 @@ class _DelayedRewriteGradientFunctions(object):
         operation.
     """
     backward_function, to_record = self._backward(flat_outputs)
-    tape.record_operation(
+    record.record_operation(
         self._inference_function.cached_definition.signature.name,
         to_record,
         inference_args + input_tangents,
@@ -525,7 +532,7 @@ class _TapeGradientFunctions(object):
           else:
             forward_wrapper_graph.inputs.append(input_placeholder)
         for inp, arg in zip(forward_wrapper_graph.inputs, inference_args):
-          tape.record_operation(
+          record.record_operation(
               "captured_value", [inp], [arg],
               backward_function=lambda x: [x],
               forward_function=lambda x: [x])
@@ -545,7 +552,7 @@ class _TapeGradientFunctions(object):
             tensor_shape.TensorShape(
                 external_jvp.shape).assert_is_compatible_with(
                     jvp_placeholder.shape)
-            tape.record_operation(
+            record.record_operation(
                 "captured_value",
                 [jvp_placeholder],
                 [external_jvp],
@@ -557,7 +564,7 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          forward_outputs = forward_function.call(forward_inputs)
+          forward_outputs = forward_function(*forward_inputs)
           if isinstance(forward_outputs, ops.Operation):
             # _wrapped_backward_function expects a list, but if the function has
             # no outputs its call() returns an Operation. We need to undo that
@@ -573,7 +580,7 @@ class _TapeGradientFunctions(object):
       #
       # TODO(allenl): It might be better to explicitly stop backward recording
       # so we don't use the second-order tape cases unnecessarily.
-      tape.record_operation_forwardprop_only(
+      record.record_operation_forwardprop_only(
           forward_function.cached_definition.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
@@ -801,19 +808,19 @@ class _TapeGradientFunctions(object):
     backward_function, to_record = self._wrap_backward_function(
         self._forward_graph, self._backward, flat_outputs)
     if self._forwardprop_output_indices:
-      tape.record_operation_backprop_only(
+      record.record_operation_backprop_only(
           self._forward.cached_definition.signature.name,
           to_record, inference_args,
           backward_function)
-      tape.record_operation_forwardprop_only(
+      record.record_operation_forwardprop_only(
           self._forward.cached_definition.signature.name,
           flat_outputs, inference_args + input_tangents,
           backward_function,
           self._forwardprop_output_indices)
     else:
-      tape.record_operation(self._forward.cached_definition.signature.name,
-                            to_record, inference_args + input_tangents,
-                            backward_function)
+      record.record_operation(self._forward.cached_definition.signature.name,
+                              to_record, inference_args + input_tangents,
+                              backward_function)
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
@@ -1176,32 +1183,28 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """
     return self._call_impl(args, kwargs)
 
-  def _call_impl(self, args, kwargs, cancellation_manager=None):
+  def _call_impl(self, args, kwargs):
     """See `__call__` for details."""
     with trace.Trace(self._func_graph.name, tf_function_call="concrete"):
       # Construct the list of input tensors: check if the structured signature
       # applies first; and if not, then use the flat signature.
       if self._function_spec is not None:
         try:
-          return self._call_with_structured_signature(args, kwargs,
-                                                      cancellation_manager)
+          return self._call_with_structured_signature(args, kwargs)
         except TypeError as structured_err:
           try:
-            return self._call_with_flat_signature(args, kwargs,
-                                                  cancellation_manager)
+            return self._call_with_flat_signature(args, kwargs)
           except TypeError:
             raise structured_err
 
-      return self._call_with_flat_signature(args, kwargs, cancellation_manager)
+      return self._call_with_flat_signature(args, kwargs)
 
-  def _call_with_flat_signature(self, args, kwargs, cancellation_manager):
+  def _call_with_flat_signature(self, args, kwargs):
     """Executes the wrapped function with the flat signature.
 
     Args:
       args: Positional arguments to the concrete function.
       kwargs: Keyword arguments to the concrete function.
-      cancellation_manager: A `CancellationManager` that can be used to cancel
-        function invocation.
 
     Returns:
       The result of applying the function on the Tensors/Variables contained in
@@ -1246,16 +1249,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         raise TypeError(f"{self._flat_signature_summary()}: expected argument "
                         f"#{i}(zero-based) to be a Tensor; "
                         f"got {type(arg).__name__} ({arg}).")
-    return self._call_flat(args, self.captured_inputs, cancellation_manager)
+    return self._call_flat(args, self.captured_inputs)
 
-  def _call_with_structured_signature(self, args, kwargs, cancellation_manager):
+  def _call_with_structured_signature(self, args, kwargs):
     """Executes the wrapped function with the structured signature.
 
     Args:
       args: Positional arguments to the concrete function.
       kwargs: Keyword arguments to the concrete function.
-      cancellation_manager: A `CancellationManager` that can be used to cancel
-        function invocation.
 
     Returns:
       The result of applying the function on the Tensors/Variables contained in
@@ -1268,10 +1269,9 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         self._function_spec.canonicalize_function_inputs(args, kwargs))
     return self._call_flat(
         filtered_flat_args,
-        captured_inputs=self.captured_inputs,
-        cancellation_manager=cancellation_manager)
+        captured_inputs=self.captured_inputs)
 
-  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+  def _call_flat(self, args, captured_inputs):
     """Executes the wrapped function.
 
     Args:
@@ -1282,9 +1282,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         calling this method.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
-      cancellation_manager: (Optional.) A `CancellationManager` that can be
-        used to cancel function invocation.
-
     Returns:
       The result of applying the TF function to `args`.
 
@@ -1299,7 +1296,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if default_graph.building_function and not self._func_graph.saveable:
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
-    if (tape.could_possibly_record() or
+    if (record.could_possibly_record() or
         hasattr(default_graph, "watch_variable")):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
@@ -1349,40 +1346,21 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
-      return self._build_call_outputs(self._inference_function.call(
-          args, cancellation_manager=cancellation_manager))
+      return self._build_call_outputs(self._inference_function(*args))
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
         executing_eagerly)
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
-      flat_outputs = forward_function.call(
-          args_with_tangents, cancellation_manager=cancellation_manager)
+      flat_outputs = forward_function(*args_with_tangents)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function.call(args_with_tangents)
+        flat_outputs = forward_function(*args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
-
-  def _experimental_with_cancellation_manager(self, cancellation_manager):
-    """Returns a callable that invokes a cancellable version of this function.
-
-    Args:
-      cancellation_manager: A `CancellationManager` object that can be used to
-        cancel function invocation.
-
-    Returns:
-      A callable with the same signature as this concrete function.
-    """
-
-    def cancellable_call(*args, **kwargs):
-      return self._call_impl(
-          args, kwargs, cancellation_manager=cancellation_manager)
-
-    return cancellable_call
 
   @property
   def name(self):
@@ -1637,7 +1615,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       input_tangents = forwardprop_util.pack_tangents(args)
     else:
       input_tangents = forwardprop_util.TangentInfo()
-    need_gradients_for_jvps = tape.should_record_backprop(
+    need_gradients_for_jvps = record.should_record_backprop(
         input_tangents.tangents)
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.

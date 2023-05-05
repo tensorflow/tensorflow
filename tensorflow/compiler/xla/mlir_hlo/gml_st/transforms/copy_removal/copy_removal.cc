@@ -30,7 +30,7 @@ namespace {
 /// Remove memref::CopyOp whose target (can be either a memref::SubViewOp or
 /// memref::AllocOp) has no other users.
 LogicalResult removeCopy(memref::CopyOp op, PatternRewriter &rewriter) {
-  auto valueIt = op.getTarget();
+  Value valueIt = op.getTarget();
   Operation *onlyNonStoreLikeUser = op;
   for (auto subviewOp = valueIt.getDefiningOp<memref::SubViewOp>(); subviewOp;
        onlyNonStoreLikeUser = subviewOp, valueIt = subviewOp.getSource(),

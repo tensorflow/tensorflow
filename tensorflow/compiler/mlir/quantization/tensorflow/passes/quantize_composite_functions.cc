@@ -939,7 +939,8 @@ class QuantizeConstPattern
       // TODO(b/225793355): It adds TensorProtoAttr to the constant as a
       // workaround.
       tensorflow::TensorProto tensor_proto;
-      if (!mlir::tfg::ConvertToTensorProto(tensor_proto_attr, &tensor_proto)
+      if (!mlir::tfg::ConvertToTensorProto(
+               tensor_proto_attr.cast<ElementsAttr>(), &tensor_proto)
                .ok()) {
         return failure();
       }

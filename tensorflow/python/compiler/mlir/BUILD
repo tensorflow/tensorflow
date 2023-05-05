@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,7 +6,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "mlir",
     srcs = ["mlir.py"],
     srcs_version = "PY3",
@@ -16,17 +16,27 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "mlir_test",
     srcs = ["mlir_test.py"],
+    data = [
+        "multi_add.tflite",
+    ],
     python_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":mlir",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_mlir",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )

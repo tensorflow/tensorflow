@@ -595,8 +595,7 @@ TEST_F(LayoutTest, TruncateBeginning) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto expected_layout,
       Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU"));
-  EXPECT_THAT(layout.Truncate(/*split_point=*/1),
-              IsOkAndHolds(expected_layout));
+  EXPECT_EQ(layout.Truncate(/*split_point=*/1), expected_layout);
 }
 
 TEST_F(LayoutTest, TruncateEnd) {
@@ -606,8 +605,7 @@ TEST_F(LayoutTest, TruncateEnd) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto expected_layout,
       Layout::FromString("sharding_specs:y, mesh:CPU|x=2,y=2|*CPU"));
-  EXPECT_THAT(layout.Truncate(/*split_point=*/1, /*end=*/true),
-              IsOkAndHolds(expected_layout));
+  EXPECT_EQ(layout.Truncate(/*split_point=*/1, /*end=*/true), expected_layout);
 }
 
 TEST_F(LayoutTest, Concatenate) {

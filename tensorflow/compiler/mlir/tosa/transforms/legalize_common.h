@@ -289,8 +289,8 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
                                   Value input, ShapedType output_type);
 
 // Lowers Sign operator to a sequence of TOSA ops.
-llvm::Optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
-                                    Value input, RankedTensorType output_type);
+std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, RankedTensorType output_type);
 
 };  // namespace tosa
 };  // namespace mlir

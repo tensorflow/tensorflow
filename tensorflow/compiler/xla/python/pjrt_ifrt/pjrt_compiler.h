@@ -40,7 +40,8 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<LoadedExecutable>> DeserializeLoadedExecutable(
-      absl::string_view serialized, CompileOptions options) override;
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
   static char ID;  // NOLINT
 

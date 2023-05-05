@@ -57,6 +57,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = 1,
@@ -96,6 +97,7 @@ cc_library(
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_factory",
+        "//tensorflow/core/common_runtime/next_pluggable_device:pjrt_compile_on_demand_op",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([

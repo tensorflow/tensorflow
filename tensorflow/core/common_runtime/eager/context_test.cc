@@ -283,7 +283,7 @@ TEST_F(EagerContextTest, FunctionErrorRecovery) {
   op_and_sync_status.Update(
       fail_op->Execute(absl::MakeSpan(retvals), &num_retvals));
   op_and_sync_status.Update(context()->SyncExecutors());
-  ASSERT_THAT(op_and_sync_status.as_summary_status().error_message(),
+  ASSERT_THAT(op_and_sync_status.as_summary_status().message(),
               HasSubstr("assertion failed"));
   if (retvals[0] != nullptr) {
     retvals[0]->Unref();
@@ -346,24 +346,24 @@ TEST_F(EagerContextTest, LocalRendezvousCreation) {
   // Create a new rendezvous instance.
   // Initially its ref-count is 2:
   // one added upon rendezvous creation, the other one added by EagerContext.
-  Rendezvous* rendezvous_1;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_1;
   TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 1);
 
   // Create another rendezvous instance with the same step-id.
   // This would add one more ref-count to the existing rendezvous insteance
   // insted of creating a new instance.
-  Rendezvous* rendezvous_2;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_2;
   TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_2));
   EXPECT_EQ(rendezvous_2->RefCount(), 2);
 
   // Caller releases rendezvous-1.
-  rendezvous_1->Unref();
-  EXPECT_EQ(rendezvous_1->RefCount(), 1);
+  rendezvous_1.reset();
+  EXPECT_EQ(rendezvous_2->RefCount(), 1);
 
   // Caller releases rendezvous-2.
-  tsl::core::WeakPtr<Rendezvous> weak2{rendezvous_2};
-  rendezvous_2->Unref();
+  tsl::core::WeakPtr<Rendezvous> weak2{rendezvous_2.get()};
+  rendezvous_2.reset();
   EXPECT_EQ(weak2.GetNewRef(), nullptr);
 }
 
@@ -372,24 +372,19 @@ void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
   EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);
 
   auto rendezvous_creator = context->RendezvousFactory();
-  Rendezvous* rendezvous_1;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_1;
   TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 2);
-  Rendezvous* rendezvous_2;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_2;
   TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_2));
   EXPECT_EQ(rendezvous_2->RefCount(), 3);
 
   // Global rendezvous's ref-count should be back to 1 after resetting.
   context->ResetGlobalRendezvousForFunction();
 
-  Rendezvous* rendezvous_3;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_3;
   TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_3));
   EXPECT_EQ(rendezvous_3->RefCount(), 2);
-
-  // Callers release rendezvous.
-  rendezvous_1->Unref();
-  rendezvous_2->Unref();
-  rendezvous_3->Unref();
 }
 
 TEST_F(EagerContextTest, GlobalRendezvousCreation) {

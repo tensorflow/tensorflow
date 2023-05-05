@@ -239,7 +239,7 @@ Service::ResolveAndValidateArguments(
     if (!buffer_status.ok()) {
       return tsl::errors::CreateWithUpdatedMessage(
           buffer_status.status(),
-          StrCat(buffer_status.status().error_message(), ", ",
+          StrCat(buffer_status.status().message(), ", ",
                  "failed to resolve allocation for parameter ", i));
     }
     auto replicated_buffers = buffer_status.value();
@@ -466,7 +466,7 @@ Service::ExecuteParallelAndRegisterResult(
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError("failed to complete execution for stream %d: %s", i,
-                           block_status.error_message());
+                           block_status.message());
     }
   }
 
