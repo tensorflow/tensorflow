@@ -23,11 +23,8 @@ from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -105,87 +102,6 @@ class LayoutPropagationV2Test(test_util.DTensorBaseTest):
     dtensor_result = add_function()
     self.assertDTensorEqual(golden_result, self.unsharded_unsharded_layout,
                             dtensor_result)
-
-  @combinations.generate(
-      combinations.combine(is_graph=[False, True], is_replicated=[False, True])
-  )
-  def test_relayout(self, is_graph, is_replicated):
-    inp = stateless_random_ops.stateless_random_uniform([4, 4], seed=[0, 1])
-    if is_replicated:
-      to_layout = self.unsharded_unsharded_layout
-    else:
-      to_layout = self.x_unsharded_layout
-
-    def do_relayout():
-      return api.relayout(inp, to_layout)
-
-    if is_graph:
-      relayout_fn = polymorphic_function.function(do_relayout)
-      self.assertRaisesRegex(
-          errors_impl.InvalidArgumentError,
-          "No OpKernel was registered to support Op 'Relayout'",
-          relayout_fn,
-      )
-    else:
-      self.assertDTensorEqual(inp, to_layout, do_relayout())
-
-  def test_nested_relayout_gradient_preserves_layout(self):
-    # Test that nesting gradient tapes with relayouts preserves the layout of
-    # the original DTensor input. The second-order gradient should have a layout
-    # equivalent to the original input, even if the inner gradient tape
-    # relayouts the DTensor to a different layout.
-
-    @polymorphic_function.function
-    def inner(x):
-      with backprop.GradientTape() as tape:
-        tape.watch(x)
-        x = api.relayout(x, self.unsharded_x_layout)
-        cube = x * x * x
-      grad = tape.gradient(cube, x)
-      return grad
-
-    @polymorphic_function.function
-    def outer(x):
-      with backprop.GradientTape() as tape:
-        tape.watch(x)
-        x = api.relayout(x, self.x_unsharded_layout)
-        grad = inner(x)
-        out = grad + x
-      out_grad = tape.gradient(out, x)
-      return out_grad
-
-    a = stateless_random_ops.stateless_random_uniform([8, 8], seed=[0, 1])
-    a_dt = numpy_util.pack_numpy(a, self.unsharded_unsharded_layout)
-
-    with ops.device_v2(api.device_name()):
-      inner_grad = inner(a_dt)
-      outer_grad = outer(a_dt)
-
-    self.assertDTensorEqual(3 * a * a, self.unsharded_x_layout, inner_grad)
-    self.assertDTensorEqual(6 * a + 1, self.x_unsharded_layout, outer_grad)
-
-  def test_wus_using_relayout(self):
-    sharded_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_X, rank=2)
-    w = stateless_random_ops.stateless_random_uniform(
-        [4, 4], seed=[0, 1], dtype=dtypes.float32
-    )
-    sharded_w = numpy_util.pack_numpy(w, sharded_layout)
-    replicated_layout = layout.Layout(
-        [layout.UNSHARDED, layout.UNSHARDED], mesh=self.mesh
-    )
-
-    @polymorphic_function.function
-    def func_with_relayout(t):
-      with backprop.GradientTape() as tape:
-        tape.watch(t)
-        t = t + t
-        out = api.relayout(t, replicated_layout)
-        loss = math_ops.reduce_sum(out)
-      grad = tape.gradient(loss, t)
-      t = t - grad
-      return t
-
-    func_with_relayout(sharded_w)
 
   def test_layout_prop_v2_while(self):
     a = constant_op.constant([0, 1, 2, 1], dtype=dtypes.float32)

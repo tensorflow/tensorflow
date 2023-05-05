@@ -455,7 +455,7 @@ def _relayout_gradient(op, grad):
   return grad
 
 
-@ops.RegisterGradient("RelayoutGrad")
+@ops.RegisterGradient("RelayoutLike")
 def _relayout_grad_gradient(op, grad):
   # Gradient of RelayoutGrad is relayout to the original Relayout's output.
   grad = gen_dtensor_ops.relayout_like(grad, layout_input=op.inputs[0])
