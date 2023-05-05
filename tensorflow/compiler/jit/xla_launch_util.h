@@ -58,10 +58,16 @@ Status SetOutputForConstant(
 // PjRtLoadedExecutable. `input_mapping` is a vector that maps from the
 // parameters of the XlaComputation to their original argument positions. This
 // can be sourced from `XlaCompiler::CompilationResult::input_mapping`.
-std::vector<xla::PjRtBuffer*> PreparePjRtExecutableArguments(
+//
+// The obtained PjRtBuffers are populated to `args` vector.
+// `non_donatable_input_indices` will also be set, which contains the indices of
+// the input that should not be donated to output.
+void PreparePjRtExecutableArguments(
     const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
-    const std::vector<VariableInfo>& variables);
+    const std::vector<VariableInfo>& variables,
+    std::vector<xla::PjRtBuffer*>* args,
+    absl::flat_hash_set<int>* non_donatable_input_indices);
 
 // Populates the OpKernelContext outputs with the outputs of the
 // PjRtLoadedExecutable. Requires the `compilation_result` used to build the
@@ -74,7 +80,8 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     OpKernelContext* ctx);
 
 // Returns the options used for executing a PjRtLoadedExecutable.
-xla::ExecuteOptions GetPjRtExecuteOptions();
+xla::ExecuteOptions GetPjRtExecuteOptions(
+    absl::flat_hash_set<int> non_donatable_input_indices);
 
 // Returns the device ordinal from the parsed name of the device.
 int GetDeviceOrdinal(const DeviceBase* device);
