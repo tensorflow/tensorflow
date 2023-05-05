@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,20 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-DEFINE_BINARY5(div_no_nan, Eigen::half, float, double, complex64, complex128);
+DEFINE_BINARY2(polygamma, float, double);
 #endif
-
-DEFINE_BINARY1(div_no_nan, bfloat16);
-
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-DEFINE_BINARY10(div, Eigen::half, float, double, uint8, uint16, int16, int32,
-                int64, complex64, complex128);
-#endif
-
-DEFINE_BINARY1(div, bfloat16);
-
 }  // namespace functor
 }  // namespace tensorflow
 

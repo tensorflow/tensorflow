@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-DEFINE_BINARY2(zeta, float, double);
+DEFINE_BINARY8(mul, Eigen::half, int8, int16, int64, uint8, uint16, uint32,
+               uint64);
 #endif
+
 }  // namespace functor
 }  // namespace tensorflow
 
