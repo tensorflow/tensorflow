@@ -112,6 +112,8 @@ upper_tabs:
       - title: "Smart reply"
         path: https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android
         status: external
+      - title: "Auto complete"
+        path: /lite/examples/auto_complete/overview
 
       - heading: "Audio"
       - title: "Sound and word recognition"
