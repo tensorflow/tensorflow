@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     # LINT.IfChange
-    STABLEHLO_COMMIT = "5572baa1071a98ec1389d4c17fb851bfa7b14508"
-    STABLEHLO_SHA256 = "c809b1e13935203e7261d8abe62eafaa9e1737bd52b94f6181485dba673699ea"
+    STABLEHLO_COMMIT = "579f865e350cbd3513df71ecec4f4a12f0acb5fb"
+    STABLEHLO_SHA256 = "7d342ac2fd71dfb16da852f74bb929b548c6f5fbc0643504c32d60e5bb87ef76"
     # LINT.ThenChange(Google-internal path)
 
     tf_http_archive(
