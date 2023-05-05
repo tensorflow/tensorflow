@@ -118,6 +118,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_matmul_tiling_m_dim(8);
   opts.set_xla_cpu_matmul_tiling_n_dim(8);
   opts.set_xla_cpu_matmul_tiling_k_dim(8);
+  opts.set_xla_cpu_enable_mlir_fusion_outlining(true);
   opts.set_xla_cpu_enable_experimental_deallocation(true);
 
   opts.set_xla_partitioning_algorithm(

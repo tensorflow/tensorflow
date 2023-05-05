@@ -110,3 +110,21 @@ func.func @cst_defined_above() -> tensor<1x10xf32> {
 // CHECK:         %[[EMPTY:.*]] = tensor.empty()
 // CHECK:         %[[VAL:.*]] = call @cst_defined_above_fusion_0(%[[EMPTY]])
 // CHECK:         return %[[VAL]]
+
+// -----
+
+func.func @reduce_wo_init(%arg0: tensor<2xf64>, %arg1: tensor<f64>)
+    -> tensor<f64> {
+  %0 = gml_st.fusion ins(%arg3 = %arg0: tensor<2xf64>)
+                     inits(%arg4 = %arg1: tensor<f64>) {
+    %reduced = linalg.reduce { arith.maxf }
+                 ins(%arg3 : tensor<2xf64>)
+                 outs(%arg4 : tensor<f64>)
+                 dimensions = [0]
+    gml_st.yield %reduced : tensor<f64>
+  } : tensor<f64>
+  return %0 : tensor<f64>
+}
+
+// CHECK: @reduce_wo_init_fusion_0
+// CHECK: @reduce_wo_init
