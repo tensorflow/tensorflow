@@ -201,7 +201,7 @@ def canonicalize_signatures(signatures):
       for arg, default in zip(
           full_arg_spec.args[-len_defaults:], full_arg_spec.defaults or []
       ):
-        if not default:
+        if not (default and isinstance(default, ops.Tensor)):
           continue
         defaults.setdefault(signature_key, {})[arg] = default
   return concrete_signatures, wrapped_functions, defaults
