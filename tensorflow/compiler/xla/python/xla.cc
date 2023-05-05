@@ -155,6 +155,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("U64", U64)
       .value("F16", F16)
       .value("F8E4M3FN", F8E4M3FN)
+      .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
       .value("F8E5M2", F8E5M2)
       .value("BF16", BF16)
       .value("F32", F32)

@@ -3414,6 +3414,9 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
     case F8E4M3FN:
       return SetValueInLiteralHelper<tsl::float8_e4m3fn>(loc, value, index,
                                                          literal);
+    case F8E4M3B11FNUZ:
+      return SetValueInLiteralHelper<tsl::float8_e4m3b11>(loc, value, index,
+                                                          literal);
     case F16:
       return SetValueInLiteralHelper<Eigen::half>(loc, value, index, literal);
     case BF16:
@@ -3467,7 +3470,7 @@ std::string StringifyValue(std::complex<double> val) {
 
 // Evaluates to V when T == U.
 template <typename T, typename U, typename V>
-using EnableIfSameWithType = std::enable_if_t<std::is_same<T, U>::value, V>;
+using EnableIfSameWithType = std::enable_if_t<std::is_same_v<T, U>, V>;
 
 template <class T, EnableIfSameWithType<T, bool, bool> = false>
 uint64_t GetNanPayload(T val) {
@@ -3556,17 +3559,7 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
           return true;
         }
         auto nan_payload = GetNanPayload(parsed_value_component);
-        if constexpr (std::is_same<LiteralNativeComponentT,
-                                   tsl::float8_e4m3fn>::value) {
-          if (nan_payload != QuietNanWithoutPayload<double>()) {
-            return Error(
-                loc, StrCat("tries to set NaN payload 0x",
-                            absl::Hex(nan_payload), " to a literal in shape ",
-                            ShapeUtil::HumanString(literal->shape()),
-                            " at linear index ", index,
-                            ", but f8e4m3fn does not support payloads"));
-          }
-        } else {
+        if constexpr (NanPayloadBits<LiteralNativeComponentT>() > 0) {
           if (nan_payload == QuietNanWithoutPayload<double>()) {
             nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
           }
@@ -3586,6 +3579,17 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
                   /*sign=*/std::signbit(
                       static_cast<double>(parsed_value_component)),
                   /*nan_payload=*/nan_payload);
+        } else {
+          if (nan_payload != QuietNanWithoutPayload<double>()) {
+            return Error(
+                loc, StrCat("tries to set NaN payload 0x",
+                            absl::Hex(nan_payload), " to a literal in shape ",
+                            ShapeUtil::HumanString(literal->shape()),
+                            " at linear index ", index, ", but ",
+                            primitive_util::LowercasePrimitiveTypeName(
+                                literal->shape().element_type()),
+                            " does not support payloads"));
+          }
         }
         return true;
       };
@@ -3898,6 +3902,10 @@ struct MinMaxFiniteValue<tsl::float8_e5m2>
 template <>
 struct MinMaxFiniteValue<tsl::float8_e4m3fn>
     : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fn> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e4m3b11>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3b11> {};
 
 // MSVC's standard C++ library does not define isnan/isfinite for integer types.
 // To work around that we will need to provide our own.

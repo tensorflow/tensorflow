@@ -336,6 +336,9 @@ std::string RoundTripFpToString(tsl::float8_e5m2 value);
 // Returns a string which can losslessly round trip to a float8 E4M3.
 std::string RoundTripFpToString(tsl::float8_e4m3fn value);
 
+// Returns a string which can losslessly round trip to a float8 E4M3B11.
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value);
+
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
@@ -529,10 +532,8 @@ SignedIntegerTypeForSizeType<sizeof(T)> ToSignMagnitude(T input) {
 
 template <typename T>
 constexpr int NanPayloadBits() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  // Floating point types with NaNs have payloads.
-  if (!std::numeric_limits<T>::has_quiet_NaN) {
+  // Floating point types with signaling NaNs have payloads.
+  if constexpr (!std::numeric_limits<T>::has_signaling_NaN) {
     return 0;
   }
   return std::numeric_limits<T>::digits - 1;
@@ -540,19 +541,15 @@ constexpr int NanPayloadBits() {
 
 template <typename T>
 constexpr uint64_t QuietNanWithoutPayload() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  if (const int bits = NanPayloadBits<T>()) {
-    return uint64_t{1} << (bits > 0 ? (bits - 1) : 0);
+  if constexpr (const int bits = NanPayloadBits<T>()) {
+    return uint64_t{1} << (bits - 1);
   }
   return 0;
 }
 
 template <typename T>
 constexpr uint64_t NanPayloadBitMask() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  if (const int bits = NanPayloadBits<T>()) {
+  if constexpr (const int bits = NanPayloadBits<T>()) {
     return LsbMask<uint64_t>(bits);
   }
   return 0;
@@ -560,8 +557,7 @@ constexpr uint64_t NanPayloadBitMask() {
 
 template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
+  static_assert(NanPayloadBits<T>() > 0);
   using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   const T val = std::numeric_limits<T>::quiet_NaN();
   auto rep = absl::bit_cast<RepT>(val);

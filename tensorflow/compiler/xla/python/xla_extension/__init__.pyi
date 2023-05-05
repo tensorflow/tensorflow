@@ -52,6 +52,7 @@ class PrimitiveType(enum.IntEnum):
   U32: PrimitiveType
   U64: PrimitiveType
   F8_E4M3FN: PrimitiveType
+  F8_E4M3B11FNUZ: PrimitiveType
   F8_E5M2: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType

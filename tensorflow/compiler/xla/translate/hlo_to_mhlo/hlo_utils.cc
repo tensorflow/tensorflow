@@ -117,6 +117,8 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
       return CreateDenseAttrFromLiteral<tsl::float8_e5m2>(type, literal);
     case PrimitiveType::F8E4M3FN:
       return CreateDenseAttrFromLiteral<tsl::float8_e4m3fn>(type, literal);
+    case PrimitiveType::F8E4M3B11FNUZ:
+      return CreateDenseAttrFromLiteral<tsl::float8_e4m3b11>(type, literal);
     case PrimitiveType::F16:
       return CreateDenseAttrFromLiteral<half>(type, literal);
     case PrimitiveType::BF16:
@@ -183,6 +185,10 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
     CopyDenseElementsBy<tsl::float8_e4m3fn>(data, output);
     return OkStatus();
   }
+  if (element_type.isFloat8E4M3B11FNUZ()) {
+    CopyDenseElementsBy<tsl::float8_e4m3b11>(data, output);
+    return OkStatus();
+  }
   if (element_type.isBF16()) {
     CopyDenseElementsBy<bfloat16>(data, output);
     return OkStatus();
@@ -244,6 +250,8 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getFloat8E5M2Type();
     case PrimitiveType::F8E4M3FN:
       return builder.getFloat8E4M3FNType();
+    case PrimitiveType::F8E4M3B11FNUZ:
+      return builder.getFloat8E4M3B11FNUZType();
     case PrimitiveType::F16:
       return builder.getF16Type();
     case PrimitiveType::BF16:

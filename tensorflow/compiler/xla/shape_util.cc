@@ -72,6 +72,7 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(float) / 4,   // F8E4M3FN = 20
     sizeof(int8_t),      // S4 = 21
     sizeof(int8_t),      // U4 = 22
+    sizeof(float) / 4,   // F8E4M3B11FNUZ = 23
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 
@@ -572,6 +573,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case S64:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case F16:
     case BF16:
     case F32:
