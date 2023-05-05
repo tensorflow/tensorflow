@@ -4005,6 +4005,8 @@ tf_kernel_library(
         "@com_google_absl//absl/synchronization",
     ] + if_cuda([
         ":numeric_options_utils",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
