@@ -2568,5 +2568,16 @@ TEST(StackTracesMapToGraphDebugInfoTest, TwoFramesDifferentFile) {
             "other_function_name");
 }
 
+TEST(StackTracesTest, CacheCleaningWorks) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"other_file_name", 20, "other_function_name"})};
+  auto stack_trace = TestStackTrace(frames);
+  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
+  stack_trace.WipeCache();
+  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
+}
+
 }  // namespace
 }  // namespace tensorflow

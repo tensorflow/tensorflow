@@ -368,8 +368,14 @@ class AbstractStackTrace {
 
   virtual ~AbstractStackTrace() {}
 
-  // The returned span is alive as long as the AbstractStackTrace is alive.
+  // The returned span is alive until either the AbstractStackTrace gets
+  // destroyed or its cache gets flushed.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
+
+  // Remove all data that was generated for e.g. the result of ToFrames().
+  // Calling this will make the next ToFrames() run more slowly, but tends to
+  // save a large amount of memory.
+  virtual void WipeCache() {}
 
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
