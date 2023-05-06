@@ -541,7 +541,8 @@ constexpr int NanPayloadBits() {
 
 template <typename T>
 constexpr uint64_t QuietNanWithoutPayload() {
-  if constexpr (const int bits = NanPayloadBits<T>()) {
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
     return uint64_t{1} << (bits - 1);
   }
   return 0;
@@ -549,7 +550,8 @@ constexpr uint64_t QuietNanWithoutPayload() {
 
 template <typename T>
 constexpr uint64_t NanPayloadBitMask() {
-  if constexpr (const int bits = NanPayloadBits<T>()) {
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
     return LsbMask<uint64_t>(bits);
   }
   return 0;
