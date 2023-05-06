@@ -22,7 +22,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -318,6 +318,12 @@ class Tensor {
     return true;
 #else
     void* ptr = base<void>();
+    // If ptr is allocated through AsyncValueAllocator, the last bit is 1,
+    // which indicates ptr points to an AsyncValueTensor instead of raw buffer,
+    // and disable alignemnt check for it.
+    if (ptr & 0x1ULL) {
+      return true;
+    }
     return dtype() == DT_STRING || NumElements() == 0 ||
            (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
 #endif
