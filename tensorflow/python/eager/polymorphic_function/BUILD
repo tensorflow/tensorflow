@@ -25,6 +25,14 @@ py_library(
 )
 
 py_library(
+    name = "transform",
+    srcs = ["transform.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/python:__subpackages__"],
+    deps = [],
+)
+
+py_library(
     name = "atomic_function",
     srcs = ["atomic_function.py"],
     srcs_version = "PY3",
@@ -98,6 +106,7 @@ py_library(
         ":function_context",
         ":monomorphic_function",
         ":tf_method_target",
+        ":transform",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python/platform:tf_logging",
@@ -302,21 +311,6 @@ cuda_py_test(
 )
 
 py_library(
-    name = "quarantine",
-    srcs = ["quarantine.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
-    deps = [
-        ":atomic_function",
-        ":eager_function_run",
-        ":polymorphic_function",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
     name = "composite_tensor_utils",
     srcs = ["composite_tensor_utils.py"],
     srcs_version = "PY3",
@@ -336,7 +330,6 @@ tf_py_test(
     deps = [
         ":monomorphic_function",
         ":polymorphic_function",
-        ":quarantine",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",

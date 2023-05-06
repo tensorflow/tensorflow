@@ -20,6 +20,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
+from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
@@ -66,6 +67,7 @@ def create_new_tf_function(func_graph):
   Returns:
     The name of the new TF_Function.
   """
+  transform.apply_func_graph_transforms(func_graph)
   func = atomic_function.from_func_graph(
       func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
 

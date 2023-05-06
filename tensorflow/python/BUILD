@@ -1579,6 +1579,7 @@ py_strict_library(
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:transform",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",

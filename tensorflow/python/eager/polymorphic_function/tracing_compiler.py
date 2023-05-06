@@ -31,6 +31,7 @@ from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tf_method_target
+from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -38,6 +39,7 @@ from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import tf_decorator
+
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -301,17 +303,22 @@ class TracingCompiler:
     else:
       arg_names = base_arg_names
 
+    traced_func_graph = func_graph_module.func_graph_from_py_func(
+        self._name,
+        self._python_function,
+        args,
+        kwargs,
+        None,
+        func_graph=func_graph,
+        arg_names=arg_names,
+        capture_by_value=self._capture_by_value,
+        create_placeholders=False,
+    )
+
+    transform.apply_func_graph_transforms(traced_func_graph)
+
     concrete_function = monomorphic_function.ConcreteFunction(
-        func_graph_module.func_graph_from_py_func(
-            self._name,
-            self._python_function,
-            args,
-            kwargs,
-            None,
-            func_graph=func_graph,
-            arg_names=arg_names,
-            capture_by_value=self._capture_by_value,
-            create_placeholders=False),
+        traced_func_graph,
         self._function_attributes,
         spec=self.function_spec,
         # Tell the ConcreteFunction to clean up its graph once it goes out of
@@ -319,6 +326,9 @@ class TracingCompiler:
         # places (like Keras) where the FuncGraph lives longer than the
         # ConcreteFunction.
         shared_func_graph=False)
+
+    transform.call_concrete_function_callbacks(concrete_function)
+
     return concrete_function
 
   def _maybe_define_function(self, args, kwargs):

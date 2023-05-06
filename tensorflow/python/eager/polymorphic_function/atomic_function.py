@@ -385,25 +385,8 @@ def make_call_op_in_graph(atomic, tensor_inputs):
     )
   return op.outputs if op.outputs else op
 
-# List of AtomicFunction -> AtomicFunction transformation functions.
-FUNCTION_TRANSFORMS = []
 
-
-def from_func_graph(name, graph, inputs, outputs, attrs):
-  """Initializes an AtomicFunction from FuncGraph with transforms."""
-
-  atomic = from_func_graph_no_transforms(name, graph, inputs, outputs, attrs)
-  for transform in FUNCTION_TRANSFORMS:
-    atomic = transform(atomic)
-    if not isinstance(atomic, AtomicFunction):
-      raise TypeError(
-          f"Transformation {transform} did not return an AtomicFunction."
-      )
-
-  return atomic
-
-
-def from_func_graph_no_transforms(
+def from_func_graph(
     name, graph, inputs, outputs, attrs, overwrite=False
 ):
   """Initializes an AtomicFunction from FuncGraph.
