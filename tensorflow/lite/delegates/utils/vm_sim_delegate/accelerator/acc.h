@@ -2,18 +2,30 @@
 #define ACCNAME_H
 
 #include <systemc.h>
-#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_integrator/sysc_types.h"
-#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_profiler/profiler.h"
-
-#ifndef __SYNTHESIS__
-#define DWAIT(x) wait(x)
-#else
-#define DWAIT(x)
-#endif
 
 #define ACCNAME VM_INT8_V2_0
 #define ACC_DTYPE sc_int
 #define ACC_C_DTYPE int
+
+#define STOPPER -1
+
+#define __SYNTHESIS__
+
+#ifndef __SYNTHESIS__
+#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_integrator/sysc_types.h"
+#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_profiler/profiler.h"
+#define DWAIT(x) wait(x)
+#else
+typedef struct _SDATA {
+  ACC_DTYPE<32> data;
+  bool tlast;
+  inline friend ostream &operator<<(ostream &os, const _SDATA &v) {
+    cout << "data&colon; " << v.data << " tlast: " << v.tlast;
+    return os;
+  }
+} DATA;
+#define DWAIT(x)
+#endif
 
 #define IN_BUF_LEN 2048
 #define WE_BUF_LEN 2048
@@ -27,27 +39,6 @@
 #define DIVMAX 2147483648
 #define MAX8 127
 #define MIN8 -128
-
-typedef struct _ADATA {
-  ACC_DTYPE<32> d2;
-  ACC_DTYPE<32> d3;
-  ACC_DTYPE<32> d4;
-  ACC_DTYPE<32> d5;
-  ACC_DTYPE<32> d6;
-  ACC_DTYPE<32> d7;
-  ACC_DTYPE<32> d8;
-  ACC_DTYPE<32> d9;
-  ACC_DTYPE<32> d10;
-  ACC_DTYPE<32> d11;
-  ACC_DTYPE<32> d12;
-  ACC_DTYPE<32> d13;
-  ACC_DTYPE<32> d14;
-  ACC_DTYPE<32> d15;
-  ACC_DTYPE<32> d16;
-  ACC_DTYPE<32> d17;
-
-  inline friend ostream& operator<<(ostream& os, const _ADATA& v) { return os; }
-} ADATA;
 
 SC_MODULE(ACCNAME) {
   // debug vars
@@ -153,16 +144,6 @@ SC_MODULE(ACCNAME) {
   sc_signal<bool> gemm_unit_2_iwuse;
   sc_signal<bool> gemm_unit_3_iwuse;
   sc_signal<bool> gemm_unit_4_iwuse;
-
-  //   ADATA g1;
-  //   ADATA g2;
-  //   ADATA g3;
-  //   ADATA g4;
-
-  //   ADATA r1;
-  //   ADATA r2;
-  //   ADATA r3;
-  //   ADATA r4;
 
   ACC_DTYPE<32> g1[16];
   ACC_DTYPE<32> g2[16];
@@ -285,37 +266,39 @@ SC_MODULE(ACCNAME) {
   sc_out<int> schS;
   sc_out<int> p1S;
 
+#ifndef __SYNTHESIS__
   // Profiling variable
-  ClockCycles* read_cycles = new ClockCycles("read_cycles", true);
-  ClockCycles* process_cycles = new ClockCycles("process_cycles", true);
-  ClockCycles* idle1 = new ClockCycles("idle1", true);
-  ClockCycles* idle2 = new ClockCycles("idle2", true);
-  ClockCycles* idle3 = new ClockCycles("idle3", true);
-  ClockCycles* idle4 = new ClockCycles("idle4", true);
-  ClockCycles* gemmw1 = new ClockCycles("gemmw1", true);
-  ClockCycles* gemmw2 = new ClockCycles("gemmw2", true);
-  ClockCycles* gemmw3 = new ClockCycles("gemmw3", true);
-  ClockCycles* gemmw4 = new ClockCycles("gemmw4", true);
-  ClockCycles* gemm1 = new ClockCycles("gemm1", true);
-  ClockCycles* gemm2 = new ClockCycles("gemm2", true);
-  ClockCycles* gemm3 = new ClockCycles("gemm3", true);
-  ClockCycles* gemm4 = new ClockCycles("gemm4", true);
-  ClockCycles* wstall1 = new ClockCycles("wstall1", true);
-  ClockCycles* wstall2 = new ClockCycles("wstall2", true);
-  ClockCycles* wstall3 = new ClockCycles("wstall3", true);
-  ClockCycles* wstall4 = new ClockCycles("wstall4", true);
-  BufferSpace* gweightbuf_p = new BufferSpace("gweightbuf_p", GWE_BUF_LEN);
-  BufferSpace* inputbuf_p = new BufferSpace("inputbuf_p", IN_BUF_LEN);
-  BufferSpace* weightbuf_p = new BufferSpace("weightbuf_p", WE_BUF_LEN);
-  DataCountArray* gmacs = new DataCountArray("gmacs", 4);
-  DataCountArray* gouts = new DataCountArray("gouts", 4);
+  ClockCycles *read_cycles = new ClockCycles("read_cycles", true);
+  ClockCycles *process_cycles = new ClockCycles("process_cycles", true);
+  ClockCycles *idle1 = new ClockCycles("idle1", true);
+  ClockCycles *idle2 = new ClockCycles("idle2", true);
+  ClockCycles *idle3 = new ClockCycles("idle3", true);
+  ClockCycles *idle4 = new ClockCycles("idle4", true);
+  ClockCycles *gemmw1 = new ClockCycles("gemmw1", true);
+  ClockCycles *gemmw2 = new ClockCycles("gemmw2", true);
+  ClockCycles *gemmw3 = new ClockCycles("gemmw3", true);
+  ClockCycles *gemmw4 = new ClockCycles("gemmw4", true);
+  ClockCycles *gemm1 = new ClockCycles("gemm1", true);
+  ClockCycles *gemm2 = new ClockCycles("gemm2", true);
+  ClockCycles *gemm3 = new ClockCycles("gemm3", true);
+  ClockCycles *gemm4 = new ClockCycles("gemm4", true);
+  ClockCycles *wstall1 = new ClockCycles("wstall1", true);
+  ClockCycles *wstall2 = new ClockCycles("wstall2", true);
+  ClockCycles *wstall3 = new ClockCycles("wstall3", true);
+  ClockCycles *wstall4 = new ClockCycles("wstall4", true);
+  BufferSpace *gweightbuf_p = new BufferSpace("gweightbuf_p", GWE_BUF_LEN);
+  BufferSpace *inputbuf_p = new BufferSpace("inputbuf_p", IN_BUF_LEN);
+  BufferSpace *weightbuf_p = new BufferSpace("weightbuf_p", WE_BUF_LEN);
+  DataCountArray *gmacs = new DataCountArray("gmacs", 4);
+  DataCountArray *gouts = new DataCountArray("gouts", 4);
 
-  std::vector<Metric*> profiling_vars = {
+  std::vector<Metric *> profiling_vars = {
       read_cycles,  process_cycles, idle1,       idle2,   idle4,   idle1,
       gemmw1,       gemmw2,         gemmw3,      gemmw4,  gemm1,   gemm2,
       gemm3,        gemm4,          wstall1,     wstall2, wstall3, wstall4,
       gweightbuf_p, inputbuf_p,     weightbuf_p, gmacs,   gouts,
   };
+#endif
 
   void Input_Handler();
 
@@ -365,23 +348,30 @@ SC_MODULE(ACCNAME) {
 
   int SHR(int, int);
 
-  void VM_PE(ACC_DTYPE<32>*, ACC_DTYPE<32>*, ACC_DTYPE<32>*, ACC_DTYPE<32>*,
-             ACC_DTYPE<32>*, ACC_DTYPE<32>*, ACC_DTYPE<32>*, ACC_DTYPE<32>*,
+  void VM_PE(ACC_DTYPE<32> *, ACC_DTYPE<32> *, ACC_DTYPE<32> *, ACC_DTYPE<32> *,
+             ACC_DTYPE<32> *, ACC_DTYPE<32> *, ACC_DTYPE<32> *, ACC_DTYPE<32> *,
              ACC_DTYPE<32>[][4], int, int, int);
 
   int Quantised_Multiplier(int, int, sc_int<8>);
 
-  void PPU(int*, int*, int*, sc_int<8>*, ACC_DTYPE<32>*, ACC_DTYPE<8>*);
+  int Quantised_Multiplier_v2(int, int, sc_int<64>, sc_int<32>, sc_int<32>,
+                              sc_int<32>);
+
+  void PPU(int *, int *, int *, sc_int<8> *, ACC_DTYPE<32> *, ACC_DTYPE<8> *);
 
   void overwrite_weights_check();
 
+  sc_int<32> mul_s8(sc_int<8>, sc_int<8>);
+
+  sc_int<64> mul_s64(int, sc_int<64>);
+
+#ifndef __SYNTHESIS__
   void Read_Cycle_Counter();
 
   void Process_Cycle_Counter();
 
   void Writer_Cycle_Counter();
-
-  sc_int<32> mul_s8(sc_int<8>, sc_int<8>);
+#endif
 
   SC_HAS_PROCESS(ACCNAME);
 
@@ -447,6 +437,7 @@ SC_MODULE(ACCNAME) {
     SC_CTHREAD(Arranger4, clock);
     reset_signal_is(reset, true);
 
+#ifndef __SYNTHESIS__
     SC_CTHREAD(Read_Cycle_Counter, clock);
     reset_signal_is(reset, true);
 
@@ -455,39 +446,36 @@ SC_MODULE(ACCNAME) {
 
     SC_CTHREAD(Writer_Cycle_Counter, clock);
     reset_signal_is(reset, true);
+#endif
 
-#pragma HLS RESOURCE variable = din1 core = AXI4Stream metadata = \
-    "-bus_bundle S_AXIS_DATA1" port_map = {                       \
-      {din1_0 TDATA } {                                           \
+#pragma HLS array_partition variable = r1 complete dim = 0
+#pragma HLS array_partition variable = r2 complete dim = 0
+#pragma HLS array_partition variable = r3 complete dim = 0
+#pragma HLS array_partition variable = r4 complete dim = 0
+
+#pragma HLS array_partition variable = g1 complete dim = 0
+#pragma HLS array_partition variable = g2 complete dim = 0
+#pragma HLS array_partition variable = g3 complete dim = 0
+#pragma HLS array_partition variable = g4 complete dim = 0
+
+#pragma HLS RESOURCE variable = din1 core = AXI4Stream metadata =              \
+    "-bus_bundle S_AXIS_DATA1" port_map = {                                    \
+      {din1_0 TDATA } {                                                        \
         din1_1 TLAST } }
-#pragma HLS RESOURCE variable = din2 core = AXI4Stream metadata = \
-    "-bus_bundle S_AXIS_DATA2" port_map = {                       \
-      {din2_0 TDATA } {                                           \
-        din2_1 TLAST } }
-#pragma HLS RESOURCE variable = din3 core = AXI4Stream metadata = \
-    "-bus_bundle S_AXIS_DATA3" port_map = {                       \
-      {din3_0 TDATA } {                                           \
-        din3_1 TLAST } }
-#pragma HLS RESOURCE variable = din4 core = AXI4Stream metadata = \
-    "-bus_bundle S_AXIS_DATA4" port_map = {                       \
-      {din4_0 TDATA } {                                           \
-        din4_1 TLAST } }
-#pragma HLS RESOURCE variable = dout1 core = AXI4Stream metadata = \
-    "-bus_bundle M_AXIS_DATA1" port_map = {                        \
-      {dout1_0 TDATA } {                                           \
-        dout1_1 TLAST } }
-#pragma HLS RESOURCE variable = dout2 core = AXI4Stream metadata = \
-    "-bus_bundle M_AXIS_DATA2" port_map = {                        \
-      {dout2_0 TDATA } {                                           \
-        dout2_1 TLAST } }
-#pragma HLS RESOURCE variable = dout3 core = AXI4Stream metadata = \
-    "-bus_bundle M_AXIS_DATA3" port_map = {                        \
-      {dout3_0 TDATA } {                                           \
-        dout3_1 TLAST } }
-#pragma HLS RESOURCE variable = dout4 core = AXI4Stream metadata = \
-    "-bus_bundle M_AXIS_DATA4" port_map = {                        \
-      {dout4_0 TDATA } {                                           \
-        dout4_1 TLAST } }
+#pragma HLS RESOURCE variable = din2 core = AXI4Stream metadata =              \
+    "-bus_bundle S_AXIS_DATA2" port_map = {{din2_0 TDATA } {din2_1 TLAST } }
+#pragma HLS RESOURCE variable = din3 core = AXI4Stream metadata =              \
+    "-bus_bundle S_AXIS_DATA3" port_map = {{din3_0 TDATA } {din3_1 TLAST } }
+#pragma HLS RESOURCE variable = din4 core = AXI4Stream metadata =              \
+    "-bus_bundle S_AXIS_DATA4" port_map = {{din4_0 TDATA } {din4_1 TLAST } }
+#pragma HLS RESOURCE variable = dout1 core = AXI4Stream metadata =             \
+    "-bus_bundle M_AXIS_DATA1" port_map = {{dout1_0 TDATA } {dout1_1 TLAST } }
+#pragma HLS RESOURCE variable = dout2 core = AXI4Stream metadata =             \
+    "-bus_bundle M_AXIS_DATA2" port_map = {{dout2_0 TDATA } {dout2_1 TLAST } }
+#pragma HLS RESOURCE variable = dout3 core = AXI4Stream metadata =             \
+    "-bus_bundle M_AXIS_DATA3" port_map = {{dout3_0 TDATA } {dout3_1 TLAST } }
+#pragma HLS RESOURCE variable = dout4 core = AXI4Stream metadata =             \
+    "-bus_bundle M_AXIS_DATA4" port_map = {{dout4_0 TDATA } {dout4_1 TLAST } }
 #pragma HLS RESET variable = reset
   }
 };

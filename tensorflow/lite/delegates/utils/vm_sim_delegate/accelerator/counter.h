@@ -1,3 +1,4 @@
+#ifndef __SYNTHESIS__
 void ACCNAME::Read_Cycle_Counter() {
   while (1) {
     while (read_inputs) {
@@ -53,3 +54,4 @@ void ACCNAME::Writer_Cycle_Counter() {
     wait();
   }
 }
+#endif

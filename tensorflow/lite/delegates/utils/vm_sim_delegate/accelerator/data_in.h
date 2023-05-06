@@ -4,7 +4,8 @@ void ACCNAME::Data_In() {
 
   wait();
   while (1) {
-    while (!read_inputs.read()) wait();
+    while (!read_inputs.read())
+      wait();
     llength = llen.read();
     rlength = rlen.read();
     int la = 0;
@@ -100,6 +101,7 @@ void ACCNAME::Data_In() {
       }
     }
     d_in1.write(0);
-    while (read_inputs.read()) wait();
+    while (read_inputs.read())
+      wait();
   }
 }
