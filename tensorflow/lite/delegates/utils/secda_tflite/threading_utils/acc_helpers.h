@@ -47,6 +47,9 @@ struct del_params {
 };
 
 struct DSR {
+  // dID is the ID of datablock that is last loaded into the buffer
+  // sID is the ID of the datablock that is last sent to the accelerator
+  // rID is the ID of the datablock that is last received from the accelerator
   int dID = 0;
   int sID = 0;
   int rID = 0;

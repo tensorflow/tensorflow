@@ -456,9 +456,10 @@ void Entry(acc_container& drv, int32_t* gemm_dst, int8_t* dst) {
   pad_dexmap(rows, cols, rrows, rcols, dex_map, pdex_map);
   drv.dex_map = pdex_map;
 
-#ifdef DELEGATE_VERBOSE
   saveMatrixCSV("aData/tconv/dex_map" + std::to_string(drv.t.layer) + "_1.csv",
                 pdex_map, rrows, rcols);
+
+#ifdef DELEGATE_VERBOSE
 
   cout << "VM_TCONV" << endl;
   cout << "===========================" << endl;

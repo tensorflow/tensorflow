@@ -1,0 +1,4 @@
+BasedOnStyle: LLVM
+AlwaysBreakTemplateDeclarations: Yes
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortCaseLabelsOnASingleLine: True

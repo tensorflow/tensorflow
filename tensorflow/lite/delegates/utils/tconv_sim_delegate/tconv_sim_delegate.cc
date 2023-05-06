@@ -76,7 +76,7 @@ class TCONVSimDelegateKernel : public SimpleDelegateKernelInterface {
     wt_sum2.resize(params->nodes_to_replace->size);
     wt_sum3.resize(params->nodes_to_replace->size);
     wt_sum4.resize(params->nodes_to_replace->size);
-    wt_sum4.resize(params->nodes_to_replace->size);
+    wt_sum.resize(params->nodes_to_replace->size);
 
     for (int i = 0; i < params->nodes_to_replace->size; ++i) {
       const int node_index = params->nodes_to_replace->data[i];
@@ -242,7 +242,7 @@ class TCONVSimDelegateKernel : public SimpleDelegateKernelInterface {
       int* dims = transposed_weights->dims->data;
       preload_weights(transposed_weights->data.int8, dims, wb0[i], wb1[i],
                       wb2[i], wb3[i], wt_sum1[i], wt_sum2[i], wt_sum3[i],
-                      wt_sum4[i]);
+                      wt_sum4[i], wt_sum[i]);
 
       int k = 0;
     }
@@ -490,6 +490,13 @@ class TCONVSimDelegateKernel : public SimpleDelegateKernelInterface {
       int* wb_2 = reinterpret_cast<int*>(&wb2[i][0]);
       int* wb_3 = reinterpret_cast<int*>(&wb3[i][0]);
 
+      op_params.padding_values.width = data->padding.width;
+      op_params.padding_values.height = data->padding.height;
+      op_params.padding_values.width_offset = data->padding.width_offset;
+      op_params.padding_values.height_offset = data->padding.height_offset;
+      op_params.stride_width = params->stride_width;
+      op_params.stride_height = params->stride_height;
+
       struct acc_container drv(acc, wb_0, wb_1, wb_2, wb_3, wt_sum1[i],
                                wt_sum2[i], wt_sum3[i], wt_sum4[i], crf[i],
                                crx_8[i]);
@@ -537,6 +544,26 @@ class TCONVSimDelegateKernel : public SimpleDelegateKernelInterface {
       drv.cols = lhs_params.rows;
       drv.depth = rhs_params.rows;
 
+      int32_t dex_map[drv.rows * drv.cols] = {};
+      Col2im_Mapping_v2(drv.output_depth, drv.output_height, drv.output_width,
+                        drv.filter_height, drv.filter_width, drv.padding_top,
+                        drv.padding_left, drv.padding_bottom, drv.padding_right,
+                        drv.stride_height, drv.stride_width, dex_map);
+
+      struct tconv_params tconv_params(
+          op_params.stride_width, op_params.stride_height, output_rows,
+          filter_w, input_shape.Dims(1), input_shape.Dims(2),
+          input_shape.Dims(3), lhs_params.rows, rhs_params.cols,
+          lhs_params.cols, output_height, output_width, output_rows,
+          padding_top, padding_bottom, padding_left, padding_right, true);
+      tconv_params.input_data = input_data;
+      tconv_params.weight_data = hwoi_ordered_filter_data;
+      tconv_params.output_data = col2im_data;
+      tconv_params.dex_map = dex_map;
+      tconv_params.wt_sum = &(wt_sum[i][0]);
+
+      tconv_params.TCONV();
+
       const int scratch_cols = scratch_shape.Dims(1) * scratch_shape.Dims(2);
       const int scratch_rows = scratch_shape.Dims(0) * scratch_shape.Dims(3);
 
@@ -552,31 +579,32 @@ class TCONVSimDelegateKernel : public SimpleDelegateKernelInterface {
 
       ts_dst_params.Init(col2im_data, 1, dst_params.rows, dst_params.cols, 0);
 
+      // DirectTCONV(hwoi_ordered_filter_data, input_data, output_data);
+
       cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
                              input_data, dst_params, col2im_data, gemm_params,
                              cpu_backend_context);
 
-      // saveMatrixCSV(
-      //     "aData/tconv/" + std::to_string(associated_nodes[i]) +
-      //     "_del_wgt.csv", hwoi_ordered_filter_data, lhs_params.cols,
-      //     lhs_params.rows);
+      saveMatrixCSV(
+          "aData/tconv/" + std::to_string(associated_nodes[i]) + "_del_wgt.csv",
+          hwoi_ordered_filter_data, lhs_params.rows, lhs_params.cols);
 
-      // saveMatrixCSV(
-      //     "aData/tconv/" + std::to_string(associated_nodes[i]) +
-      //     "_del_inp.csv", input_data, rhs_params.cols, rhs_params.rows);
+      saveMatrixCSV(
+          "aData/tconv/" + std::to_string(associated_nodes[i]) + "_del_inp.csv",
+          input_data, rhs_params.rows, rhs_params.cols);
 
-      // saveMatrixCSV("aData/tconv/" + std::to_string(associated_nodes[i]) +
-      //                   "_del_cpugemm_.csv",
-      //               col2im_data, dst_params.cols, dst_params.rows);
+      saveMatrixCSV("aData/tconv/" + std::to_string(associated_nodes[i]) +
+                        "_del_gemm_cpu.csv",
+                    col2im_data, dst_params.cols, dst_params.rows);
 
       optimized_ops::Col2im(
           col2im_data, output_depth, output_height, output_width, filter_height,
           filter_width, padding_top, padding_left, padding_bottom,
           padding_right, stride_height, stride_width, scratch_data_p);
 
-      // saveMatrixCSV("aData/tconv/" + std::to_string(associated_nodes[i]) +
-      //                   "_del_out_col2im_cpu.csv",
-      //               scratch_data_p, scratch_cols, scratch_rows);
+      saveMatrixCSV("aData/tconv/" + std::to_string(associated_nodes[i]) +
+                        "_del_col2im_cpu.csv",
+                    scratch_data_p, scratch_cols, scratch_rows);
 
       if (has_bias)
         optimized_ops::BiasAdd(scratch_data_p, bias_data, batch_size,
@@ -614,6 +642,7 @@ class TCONVSimDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<std::vector<int>> wt_sum2;
   std::vector<std::vector<int>> wt_sum3;
   std::vector<std::vector<int>> wt_sum4;
+  std::vector<std::vector<int>> wt_sum;
   std::vector<std::vector<int8_t>> wb0;
   std::vector<std::vector<int8_t>> wb1;
   std::vector<std::vector<int8_t>> wb2;

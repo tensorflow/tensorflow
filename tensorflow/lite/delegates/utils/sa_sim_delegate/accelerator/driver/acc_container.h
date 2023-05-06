@@ -1,10 +1,10 @@
 #ifndef ACC_CONTAINER
 #define ACC_CONTAINER
 
-#include <vector>
 #include "../acc.h"
 #include "systemc_binding.h"
 #include "tensorflow/lite/delegates/utils/secda_tflite/axi_support/axi_api_v2.h"
+#include <vector>
 
 // Used for storing current GEMM info
 struct gemm_details {
@@ -19,7 +19,7 @@ struct gemm_details {
 
 // Used for tracking output locations
 struct store_params {
-  int* dst;
+  int *dst;
   int dcs;
   int rows;
   int cols;
@@ -29,21 +29,21 @@ struct store_params {
 
 struct acc_container {
   // Gives driver access to SystemC modules + profiler
-  ACCNAME* acc;
-  Profile* profile;
-  struct multi_dma* mdma;
+  ACCNAME *acc;
+  Profile *profile;
+  struct multi_dma *mdma;
 
   // Temporary Weight non-MMapped Padded Buffers
-  int* wb_0;
-  int* wb_1;
-  int* wb_2;
-  int* wb_3;
+  int *wb_0;
+  int *wb_1;
+  int *wb_2;
+  int *wb_3;
 
   // Temporary Input non-MMapped Padded Buffers
-  int* inb_0;
-  int* inb_1;
-  int* inb_2;
-  int* inb_3;
+  int *inb_0;
+  int *inb_1;
+  int *inb_2;
+  int *inb_3;
   int in_id = 0;
 
   // Driver variables
@@ -55,21 +55,26 @@ struct acc_container {
   std::vector<int> wt_sum2;
   std::vector<int> wt_sum3;
   std::vector<int> wt_sum4;
-  int* in_sum1;
-  int* in_sum2;
-  int* in_sum3;
-  int* in_sum4;
-  int* bias;
+  int *in_sum1;
+  int *in_sum2;
+  int *in_sum3;
+  int *in_sum4;
+  int *bias;
   std::vector<int> crf;
   std::vector<int8_t> crx;
   int ra;
   int rhs_offset = 0;
   int lhs_offset = 0;
 
+  int rows = 0;
+  int cols = 0;
+  int depth = 0;
+  int8_t *dst;
+
   // GEMM Info variable
   struct gemm_details t;
 
-  acc_container(ACCNAME* _acc, int* _wb_0, int* _wb_1, int* _wb_2, int* _wb_3,
+  acc_container(ACCNAME *_acc, int *_wb_0, int *_wb_1, int *_wb_2, int *_wb_3,
                 std::vector<int> _wt_sum1, std::vector<int> _wt_sum2,
                 std::vector<int> _wt_sum3, std::vector<int> _wt_sum4,
                 std::vector<int> _crf, std::vector<int8_t> _crx) {
@@ -87,11 +92,11 @@ struct acc_container {
   }
 };
 
-void preload_weights(int8_t* weight_data, int* dims, vector<int8_t>& wb0,
-                     vector<int8_t>& wb1, vector<int8_t>& wb2,
-                     vector<int8_t>& wb3, vector<int>& wt_sum1,
-                     vector<int>& wt_sum2, vector<int>& wt_sum3,
-                     vector<int>& wt_sum4) {
+void preload_weights(int8_t *weight_data, int *dims, vector<int8_t> &wb0,
+                     vector<int8_t> &wb1, vector<int8_t> &wb2,
+                     vector<int8_t> &wb3, vector<int> &wt_sum1,
+                     vector<int> &wt_sum2, vector<int> &wt_sum3,
+                     vector<int> &wt_sum4) {
   int width = dims[0];
   int w = ((width + 4 - 1) - ((width + 4 - 1) % 4));
   int depth = dims[1] * dims[2] * dims[3];
@@ -139,4 +144,4 @@ void preload_weights(int8_t* weight_data, int* dims, vector<int8_t>& wb0,
   }
 }
 
-#endif  // ACC_CONTAINER
+#endif // ACC_CONTAINER

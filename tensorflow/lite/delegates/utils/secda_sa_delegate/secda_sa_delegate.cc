@@ -1,12 +1,13 @@
 #include "tensorflow/lite/delegates/utils/secda_sa_delegate/secda_sa_delegate.h"
-#include <utility>
 #include "tensorflow/lite/delegates/utils/secda_sa_delegate/driver/gemm_driver.h"
 #include "tensorflow/lite/delegates/utils/secda_sa_delegate/util.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
+#include <utility>
 
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/acc_helpers.h"
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/utils.h"
 
+#define DMA_BC 10
 // DRIVER Globals
 unsigned int dma_addrs[4] = {dma_addr0, dma_addr1, dma_addr2, dma_addr3};
 unsigned int dma_addrs_in[4] = {dma_in0, dma_in1, dma_in2, dma_in3};
@@ -14,26 +15,26 @@ unsigned int dma_addrs_out[4] = {dma_out0, dma_out1, dma_out2, dma_out3};
 struct multi_dma mdma(4, dma_addrs, dma_addrs_in, dma_addrs_out, DMA_BL);
 struct del_params dparams;
 struct sa_times sa_t;
-struct store_params st_params[10];
+struct store_params st_params[DMA_BC];
 struct dma_buffer_set dfs[4] = {
-    {4, 204800, dma_in0},
-    {4, 204800, dma_in1},
-    {4, 204800, dma_in2},
-    {4, 204800, dma_in3},
+    {DMA_BC, 204800, dma_in0},
+    {DMA_BC, 204800, dma_in1},
+    {DMA_BC, 204800, dma_in2},
+    {DMA_BC, 204800, dma_in3},
 };
-int recv_len = 204800 / 4;
+int recv_len = 204800 / DMA_BC;
 
 namespace tflite {
 namespace secda_sa_test {
 
 // SecdaSA delegate kernel.
 class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
- public:
-  explicit SecdaSADelegateKernel(const SecdaSADelegateOptions& options)
+public:
+  explicit SecdaSADelegateKernel(const SecdaSADelegateOptions &options)
       : options_(options) {}
 
-  TfLiteStatus Init(TfLiteContext* context,
-                    const TfLiteDelegateParams* params) override {
+  TfLiteStatus Init(TfLiteContext *context,
+                    const TfLiteDelegateParams *params) override {
     // Init DMA
     if (!dparams.init) {
       dparams.acc = getAccBaseAddress<int>(acc_address, 65536);
@@ -71,8 +72,8 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
     for (int i = 0; i < params->nodes_to_replace->size; ++i) {
       const int node_index = params->nodes_to_replace->data[i];
       // Get this node information.
-      TfLiteNode* delegated_node = nullptr;
-      TfLiteRegistration* delegated_node_registration = nullptr;
+      TfLiteNode *delegated_node = nullptr;
+      TfLiteRegistration *delegated_node_registration = nullptr;
       TF_LITE_ENSURE_EQ(
           context,
           context->GetNodeAndRegistration(context, node_index, &delegated_node,
@@ -84,26 +85,26 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       outputs_[i].push_back(delegated_node->outputs->data[0]);
       builtin_code_[i] = delegated_node_registration->builtin_code;
       associated_nodes.push_back(node_index);
-      TfLiteConvParams* cparam =
-          reinterpret_cast<TfLiteConvParams*>(delegated_node->builtin_data);
-      OpData* opdata = reinterpret_cast<OpData*>(delegated_node->user_data);
+      TfLiteConvParams *cparam =
+          reinterpret_cast<TfLiteConvParams *>(delegated_node->builtin_data);
+      OpData *opdata = reinterpret_cast<OpData *>(delegated_node->user_data);
       cparams[i] = cparam;
       opdatas[i] = opdata;
     }
     return kTfLiteOk;
   }
 
-  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
+  TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) override {
     KernelType kernel_type = kCblasOptimized;
     int node_count = inputs_.size();
     int out_tid = 0;
     for (int i = 0; i < node_count; i++) {
-      TfLiteConvParams* params = cparams[i];
-      OpData* data = opdatas[i];
-      TfLiteTensor* output;
-      const TfLiteTensor* input;
-      const TfLiteTensor* filter;
-      const TfLiteTensor* bias;
+      TfLiteConvParams *params = cparams[i];
+      OpData *data = opdatas[i];
+      TfLiteTensor *output;
+      const TfLiteTensor *input;
+      const TfLiteTensor *filter;
+      const TfLiteTensor *bias;
 
       GetOutputSafe(context, outputs_[i][0], &output);
       GetInputSafe(context, inputs_[i][0], &input);
@@ -142,8 +143,8 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
 
       TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                         kTfLiteAffineQuantization);
-      const auto* affine_quantization =
-          reinterpret_cast<TfLiteAffineQuantization*>(
+      const auto *affine_quantization =
+          reinterpret_cast<TfLiteAffineQuantization *>(
               filter->quantization.params);
       TF_LITE_ENSURE(context, affine_quantization);
       TF_LITE_ENSURE(context, affine_quantization->scale);
@@ -164,7 +165,7 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       for (int j = 0; j < channels_out; j++)
         crx[i][j] = (int8_t)data->per_channel_output_shift.data()[j];
 
-      TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
+      TfLiteIntArray *output_size = TfLiteIntArrayCreate(4);
       output_size->data[0] = batches;
       output_size->data[1] = out_height;
       output_size->data[2] = out_width;
@@ -174,14 +175,14 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
 
       if (data->need_im2col) {
         node->temporaries->data[data->im2col_index] = data->im2col_id;
-        TfLiteIntArray* im2col_size = TfLiteIntArrayCreate(4);
+        TfLiteIntArray *im2col_size = TfLiteIntArrayCreate(4);
         int input_depth = input->dims->data[3];
         im2col_size->data[0] = output_size->data[0];
         im2col_size->data[1] = output_size->data[1];
         im2col_size->data[2] = output_size->data[2];
         im2col_size->data[3] = input_depth * filter_height * filter_width;
 
-        TfLiteTensor* im2col =
+        TfLiteTensor *im2col =
             &context->tensors[node->temporaries->data[data->im2col_index]];
         im2col->type = input->type;
         if (is_hybrid) {
@@ -196,14 +197,14 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       if (data->need_hwcn_weights) {
         node->temporaries->data[data->hwcn_weights_index] =
             data->hwcn_weights_id;
-        TfLiteIntArray* hwcn_weights_size = TfLiteIntArrayCreate(2);
+        TfLiteIntArray *hwcn_weights_size = TfLiteIntArrayCreate(2);
 
         int input_depth = input->dims->data[3];
         hwcn_weights_size->data[0] =
             (filter_height * filter_width * input_depth);
         hwcn_weights_size->data[1] = channels_out;
 
-        TfLiteTensor* hwcn_weights =
+        TfLiteTensor *hwcn_weights =
             &context
                  ->tensors[node->temporaries->data[data->hwcn_weights_index]];
         hwcn_weights->type = input->type;
@@ -217,14 +218,14 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
 
       if (data->need_im2col) {
         node->temporaries->data[data->im2col_index] = data->im2col_id;
-        TfLiteIntArray* im2col_size = TfLiteIntArrayCreate(4);
+        TfLiteIntArray *im2col_size = TfLiteIntArrayCreate(4);
         int input_depth = input->dims->data[3];
         im2col_size->data[0] = output_size->data[0];
         im2col_size->data[1] = output_size->data[1];
         im2col_size->data[2] = output_size->data[2];
         im2col_size->data[3] = input_depth * filter_height * filter_width;
 
-        TfLiteTensor* im2col =
+        TfLiteTensor *im2col =
             &context->tensors[node->temporaries->data[data->im2col_index]];
         im2col->type = input->type;
         if (is_hybrid) {
@@ -239,13 +240,13 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       if (req_temp_out) {
         node->temporaries->data[temp_out_id] = outputs_[i][0];
 
-        TfLiteIntArray* temp_out_tensor_size = TfLiteIntArrayCreate(4);
+        TfLiteIntArray *temp_out_tensor_size = TfLiteIntArrayCreate(4);
         temp_out_tensor_size->data[0] = output_size->data[0];
         temp_out_tensor_size->data[1] = output_size->data[1];
         temp_out_tensor_size->data[2] = output_size->data[2];
         temp_out_tensor_size->data[3] = output_size->data[3];
 
-        TfLiteTensor* temp_out_tensor = &context->tensors[outputs_[i][0]];
+        TfLiteTensor *temp_out_tensor = &context->tensors[outputs_[i][0]];
         temp_out_tensor->type = kTfLiteInt8;
         temp_out_tensor->allocation_type = kTfLiteArenaRw;
         auto temp_out_tensor_status = context->ResizeTensor(
@@ -254,7 +255,7 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       }
 
       biases[i] = bias->data.i32;
-      int* dims = filter->dims->data;
+      int *dims = filter->dims->data;
       preload_weights(filter->data.int8, dims, wb0[i], wb1[i], wb2[i], wb3[i],
                       wt_sum1[i], wt_sum2[i], wt_sum3[i], wt_sum4[i]);
     }
@@ -262,30 +263,30 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
     return kTfLiteOk;
   }
 
-  TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
+  TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) override {
     prf_start(0);
     int node_count = inputs_.size();
     for (int i = 0; i < node_count; i++) {
       prf_start(1);
-      auto* params = cparams[i];
-      OpData* data = opdatas[i];
-      const TfLiteTensor* input;
-      const TfLiteTensor* filter;
-      TfLiteTensor* output;
+      auto *params = cparams[i];
+      OpData *data = opdatas[i];
+      const TfLiteTensor *input;
+      const TfLiteTensor *filter;
+      TfLiteTensor *output;
 
       GetInputSafe(context, inputs_[i][0], &input);
       GetInputSafe(context, inputs_[i][1], &filter);
       GetOutputSafe(context, outputs_[i][0], &output);
 
-      TfLiteTensor* im2col =
+      TfLiteTensor *im2col =
           data->need_im2col
               ? &context->tensors[node->temporaries->data[data->im2col_index]]
               : nullptr;
 
-      const int8* input_data = input->data.int8;
-      const int8* filter_data = filter->data.int8;
-      int8* im2col_data = data->need_im2col ? im2col->data.int8 : nullptr;
-      int8* output_data = output->data.int8;
+      const int8 *input_data = input->data.int8;
+      const int8 *filter_data = filter->data.int8;
+      int8 *im2col_data = data->need_im2col ? im2col->data.int8 : nullptr;
+      int8 *output_data = output->data.int8;
 
       ConvParams op_params;
       op_params.input_offset = -input->params.zero_point;
@@ -317,8 +318,8 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       const int32 output_activation_min = data->output_activation_min;
       const int32 output_activation_max = data->output_activation_max;
 
-      const int8* gemm_input_data = nullptr;
-      const RuntimeShape* gemm_input_shape = nullptr;
+      const int8 *gemm_input_data = nullptr;
+      const RuntimeShape *gemm_input_shape = nullptr;
       const int filter_width = filter_shape.Dims(2);
       const int filter_height = filter_shape.Dims(1);
       const bool need_dilated_im2col =
@@ -327,7 +328,7 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
                                filter_width != 1 || filter_height != 1;
       const int8 input_zero_point = -input_offset;
       const uint8 zero_point_byte =
-          *reinterpret_cast<const uint8*>(&input_zero_point);
+          *reinterpret_cast<const uint8 *>(&input_zero_point);
       if (need_dilated_im2col) {
         TFLITE_DCHECK(im2col_data);
         RuntimeShape im2col_shape =
@@ -376,10 +377,10 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       precal_sum_load_pad(gemm_input_data, width, depth, inb0, inb1, inb2, inb3,
                           in_sum1, in_sum2, in_sum3, in_sum4);
 
-      int* wb_0 = reinterpret_cast<int*>(&wb0[i][0]);
-      int* wb_1 = reinterpret_cast<int*>(&wb1[i][0]);
-      int* wb_2 = reinterpret_cast<int*>(&wb2[i][0]);
-      int* wb_3 = reinterpret_cast<int*>(&wb3[i][0]);
+      int *wb_0 = reinterpret_cast<int *>(&wb0[i][0]);
+      int *wb_1 = reinterpret_cast<int *>(&wb1[i][0]);
+      int *wb_2 = reinterpret_cast<int *>(&wb2[i][0]);
+      int *wb_3 = reinterpret_cast<int *>(&wb3[i][0]);
       struct acc_container drv(wb_0, wb_1, wb_2, wb_3, wt_sum1[i], wt_sum2[i],
                                wt_sum3[i], wt_sum4[i], crf[i], crx[i]);
 
@@ -390,10 +391,10 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       drv.thread_count = context->recommended_num_threads;
 
       drv.in_id = 0;
-      int* inb_0 = reinterpret_cast<int*>(inb0);
-      int* inb_1 = reinterpret_cast<int*>(inb1);
-      int* inb_2 = reinterpret_cast<int*>(inb2);
-      int* inb_3 = reinterpret_cast<int*>(inb3);
+      int *inb_0 = reinterpret_cast<int *>(inb0);
+      int *inb_1 = reinterpret_cast<int *>(inb1);
+      int *inb_2 = reinterpret_cast<int *>(inb2);
+      int *inb_3 = reinterpret_cast<int *>(inb3);
       drv.inb_0 = inb_0;
       drv.inb_1 = inb_1;
       drv.inb_2 = inb_2;
@@ -410,6 +411,10 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
       drv.rhs_offset = input_offset;
       drv.lhs_offset = 0;
       drv.t.layer = associated_nodes[i];
+
+      drv.rows = gemm_input_cols;
+      drv.cols = filter_rows;
+      drv.depth = filter_cols;
 
       int8_params ts_lhs_params;
       int8_params ts_rhs_params;
@@ -429,7 +434,9 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
 
       prf_end(1, sa_t.ipack);
       drv.t2 = sa_t;
-      tflite_secda_sa::Entry(drv, ts_lhs_params, ts_rhs_params, ts_dst_params);
+      // tflite_secda_sa::Entry(drv, ts_lhs_params, ts_rhs_params,
+      // ts_dst_params);
+      tflite_secda_sa::Entry(drv, output_data);
       sa_t = drv.t2;
 
       dparams.layer++;
@@ -451,38 +458,38 @@ class SecdaSADelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<std::vector<int8_t>> wb1;
   std::vector<std::vector<int8_t>> wb2;
   std::vector<std::vector<int8_t>> wb3;
-  std::vector<int*> biases;
+  std::vector<int *> biases;
   std::vector<std::vector<int>> crf;
   std::vector<std::vector<int8_t>> crx;
-  std::vector<OpData*> opdatas;
-  std::vector<TfLiteConvParams*> cparams;
+  std::vector<OpData *> opdatas;
+  std::vector<TfLiteConvParams *> cparams;
 
- private:
+private:
   const SecdaSADelegateOptions options_;
 };
 
 // SecdaSADelegate implements the interface of SimpleDelegateInterface.
 // This holds the Delegate capabilities.
 class SecdaSADelegate : public SimpleDelegateInterface {
- public:
-  explicit SecdaSADelegate(const SecdaSADelegateOptions& options)
+public:
+  explicit SecdaSADelegate(const SecdaSADelegateOptions &options)
       : options_(options) {}
 
-  bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
-                                 const TfLiteNode* node,
-                                 TfLiteContext* context) const override {
+  bool IsNodeSupportedByDelegate(const TfLiteRegistration *registration,
+                                 const TfLiteNode *node,
+                                 TfLiteContext *context) const override {
     // Only supports CONV2D op
     if (kTfLiteBuiltinConv2d != registration->builtin_code) return false;
 
     // This delegate only supports int8 types
     if (node->inputs->size != 3) return false;
     for (int i = 0; i < 2; ++i) {
-      auto& tensor = context->tensors[node->inputs->data[i]];
+      auto &tensor = context->tensors[node->inputs->data[i]];
       if (tensor.type != kTfLiteInt8) return false;
     }
 
     // Ensures bias tensor is supports int32 type
-    auto& tensor = context->tensors[node->inputs->data[2]];
+    auto &tensor = context->tensors[node->inputs->data[2]];
     if (tensor.type != kTfLiteInt32) return false;
 
     // Adds node for delegation
@@ -490,15 +497,15 @@ class SecdaSADelegate : public SimpleDelegateInterface {
     return true;
   }
 
-  TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
+  TfLiteStatus Initialize(TfLiteContext *context) override { return kTfLiteOk; }
 
-  const char* Name() const override {
+  const char *Name() const override {
     static constexpr char kName[] = "SecdaSADelegate";
     return kName;
   }
 
-  std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
-      override {
+  std::unique_ptr<SimpleDelegateKernelInterface>
+  CreateDelegateKernelInterface() override {
     return std::make_unique<SecdaSADelegateKernel>(options_);
   }
 
@@ -507,12 +514,12 @@ class SecdaSADelegate : public SimpleDelegateInterface {
     return SimpleDelegateInterface::Options();
   }
 
- private:
+private:
   const SecdaSADelegateOptions options_;
 };
 
-}  // namespace secda_sa_test
-}  // namespace tflite
+} // namespace secda_sa_test
+} // namespace tflite
 
 SecdaSADelegateOptions TfLiteSecdaSADelegateOptionsDefault() {
   SecdaSADelegateOptions options = {0};
@@ -525,8 +532,8 @@ SecdaSADelegateOptions TfLiteSecdaSADelegateOptionsDefault() {
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteSecdaSADelegateDelete` when delegate is no longer used by TFLite.
 // When `options` is set to `nullptr`, the above default values are used:
-TfLiteDelegate* TfLiteSecdaSADelegateCreate(
-    const SecdaSADelegateOptions* options) {
+TfLiteDelegate *
+TfLiteSecdaSADelegateCreate(const SecdaSADelegateOptions *options) {
   std::unique_ptr<tflite::secda_sa_test::SecdaSADelegate> secda_sa(
       new tflite::secda_sa_test::SecdaSADelegate(
           options ? *options : TfLiteSecdaSADelegateOptionsDefault()));
@@ -535,7 +542,7 @@ TfLiteDelegate* TfLiteSecdaSADelegateCreate(
 }
 
 // Destroys a delegate created with `TfLiteSecdaSADelegateCreate` call.
-void TfLiteSecdaSADelegateDelete(TfLiteDelegate* delegate) {
+void TfLiteSecdaSADelegateDelete(TfLiteDelegate *delegate) {
   if (!dparams.unmap) {
     mdma.multi_free_dmas();
     std::cout << "===========================" << std::endl;

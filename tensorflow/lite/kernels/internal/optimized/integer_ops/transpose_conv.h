@@ -86,10 +86,6 @@ inline void TransposeConvV2(
     cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
                            input_data + input_offset * i, dst_params,
                            col2im_data, gemm_params, cpu_backend_context);
-//   cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
-//                          dst_params, output_data, gemm_params,
-//                          cpu_backend_context);
-
     optimized_ops::Col2im(
         col2im_data, output_depth, output_height, output_width, filter_height,
         filter_width, padding_top, padding_left, padding_bottom, padding_right,

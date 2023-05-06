@@ -1,13 +1,13 @@
 #ifndef ACC_CONTAINER
 #define ACC_CONTAINER
 
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <chrono>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
+#include <sys/mman.h>
 #include <typeinfo>
+#include <unistd.h>
 #include <vector>
 
 #include "tensorflow/lite/delegates/utils/secda_tflite/axi_support/axi_api_v2.h"
@@ -23,8 +23,8 @@ using namespace std::chrono;
 
 #ifdef ACC_PROFILE
 #define prf_start(N) auto start##N = chrono::steady_clock::now();
-#define prf_end(N, X)                        \
-  auto end##N = chrono::steady_clock::now(); \
+#define prf_end(N, X)                                                          \
+  auto end##N = chrono::steady_clock::now();                                   \
   X += end##N - start##N;
 #else
 #define prf_start(N)
@@ -33,7 +33,7 @@ using namespace std::chrono;
 
 // Used for tracking output locations
 struct store_params {
-  int* dst;
+  int *dst;
   int dcs;
   int rows;
   int cols;
@@ -80,24 +80,24 @@ struct gemm_details {
 
 struct acc_container {
   // DMAs Pointer
-  struct multi_dma* mdma;
+  struct multi_dma *mdma;
 
   // Temporary Weight non-MMapped Padded Buffers
-  int* wb_0;
-  int* wb_1;
-  int* wb_2;
-  int* wb_3;
+  int *wb_0;
+  int *wb_1;
+  int *wb_2;
+  int *wb_3;
 
   // Temporary Input non-MMapped Padded Buffers
-  int* inb_0;
-  int* inb_1;
-  int* inb_2;
-  int* inb_3;
+  int *inb_0;
+  int *inb_1;
+  int *inb_2;
+  int *inb_3;
   int in_id = 0;
 
   // Driver variables
-  struct store_params* st_params;
-  MultiThreadContext* mt_context;
+  struct store_params *st_params;
+  MultiThreadContext *mt_context;
   int thread_count;
   int w_c = 0;
 
@@ -106,19 +106,24 @@ struct acc_container {
   std::vector<int> wt_sum2;
   std::vector<int> wt_sum3;
   std::vector<int> wt_sum4;
-  int* in_sum1;
-  int* in_sum2;
-  int* in_sum3;
-  int* in_sum4;
-  int* bias;
+  int *in_sum1;
+  int *in_sum2;
+  int *in_sum3;
+  int *in_sum4;
+  int *bias;
   std::vector<int> crf;
   std::vector<int8_t> crx;
   int ra;
   int rhs_offset = 0;
   int lhs_offset = 0;
 
+  int rows = 0;
+  int cols = 0;
+  int depth = 0;
+  int8_t *dst;
+
   // Pipeline vars
-  struct dma_buffer_set* dfs;
+  struct dma_buffer_set *dfs;
   struct DSR dsr;
   bool lhs_start = false;
   int recv_len;
@@ -127,7 +132,7 @@ struct acc_container {
   struct gemm_details t;
   struct sa_times t2;
 
-  acc_container(int* _wb_0, int* _wb_1, int* _wb_2, int* _wb_3,
+  acc_container(int *_wb_0, int *_wb_1, int *_wb_2, int *_wb_3,
                 std::vector<int> _wt_sum1, std::vector<int> _wt_sum2,
                 std::vector<int> _wt_sum3, std::vector<int> _wt_sum4,
                 std::vector<int> _crf, std::vector<int8_t> _crx) {
@@ -169,11 +174,11 @@ struct acc_container {
 
 //========================//========================//========================//
 
-void preload_weights(int8_t* weight_data, int* dims, vector<int8_t>& wb0,
-                     vector<int8_t>& wb1, vector<int8_t>& wb2,
-                     vector<int8_t>& wb3, vector<int>& wt_sum1,
-                     vector<int>& wt_sum2, vector<int>& wt_sum3,
-                     vector<int>& wt_sum4) {
+void preload_weights(int8_t *weight_data, int *dims, vector<int8_t> &wb0,
+                     vector<int8_t> &wb1, vector<int8_t> &wb2,
+                     vector<int8_t> &wb3, vector<int> &wt_sum1,
+                     vector<int> &wt_sum2, vector<int> &wt_sum3,
+                     vector<int> &wt_sum4) {
   int width = dims[0];
   int w = ((width + 4 - 1) - ((width + 4 - 1) % 4));
   int depth = dims[1] * dims[2] * dims[3];
@@ -221,11 +226,11 @@ void preload_weights(int8_t* weight_data, int* dims, vector<int8_t>& wb0,
   }
 }
 
-void preload_weights(const int8_t* weight_data, int* dims, vector<int8_t>& wb0,
-                     vector<int8_t>& wb1, vector<int8_t>& wb2,
-                     vector<int8_t>& wb3, vector<int>& wt_sum1,
-                     vector<int>& wt_sum2, vector<int>& wt_sum3,
-                     vector<int>& wt_sum4) {
+void preload_weights(const int8_t *weight_data, int *dims, vector<int8_t> &wb0,
+                     vector<int8_t> &wb1, vector<int8_t> &wb2,
+                     vector<int8_t> &wb3, vector<int> &wt_sum1,
+                     vector<int> &wt_sum2, vector<int> &wt_sum3,
+                     vector<int> &wt_sum4) {
   int width = dims[0];
   int w = ((width + 4 - 1) - ((width + 4 - 1) % 4));
   int depth = dims[1] * dims[2] * dims[3];
@@ -274,9 +279,9 @@ void preload_weights(const int8_t* weight_data, int* dims, vector<int8_t>& wb0,
   }
 }
 
-void precal_sum_load_pad(const int8_t* data, int width, int depth, int8_t* inb0,
-                         int8_t* inb1, int8_t* inb2, int8_t* inb3, int* in_sum1,
-                         int* in_sum2, int* in_sum3, int* in_sum4) {
+void precal_sum_load_pad(const int8_t *data, int width, int depth, int8_t *inb0,
+                         int8_t *inb1, int8_t *inb2, int8_t *inb3, int *in_sum1,
+                         int *in_sum2, int *in_sum3, int *in_sum4) {
   int w = ((width + 3) - ((width + 3) % 4));
   int d = ((depth + 15) - ((depth + 15) % 16));
   int d2 = depth * 2;
@@ -285,7 +290,7 @@ void precal_sum_load_pad(const int8_t* data, int width, int depth, int8_t* inb0,
   int i_c = 0;
   int sums_curr = 0;
 
-  const int8_t* rhs_d = reinterpret_cast<const int8_t*>(data);
+  const int8_t *rhs_d = reinterpret_cast<const int8_t *>(data);
   int dm = 0;
   for (int i = 0; i < w / 4; i++) {
     int id = i * d4;
@@ -384,4 +389,4 @@ void precal_sum_load_pad(const int8_t* data, int width, int depth, int8_t* inb0,
   }
 }
 
-#endif  // ACC_CONTAINER
+#endif // ACC_CONTAINER

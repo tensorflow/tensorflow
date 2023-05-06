@@ -126,6 +126,11 @@ struct acc_container {
   int rhs_offset = 0;
   int lhs_offset = 0;
 
+  int rows = 0;
+  int cols = 0;
+  int depth = 0;
+  int8_t *dst;
+
   // Pipeline vars
   struct dma_buffer_set* dfs;
   struct DSR dsr;

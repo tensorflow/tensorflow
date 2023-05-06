@@ -13,7 +13,6 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <typeinfo>
 #include <vector>
 
 // TODO: Remove hardcode addresses, make it cleaner
