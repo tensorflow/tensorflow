@@ -321,7 +321,9 @@ class Tensor {
     // If ptr is allocated through AsyncValueAllocator, the last bit is 1,
     // which indicates ptr points to an AsyncValueTensor instead of raw buffer,
     // and disable alignemnt check for it.
-    if (ptr & 0x1ULL) {
+    constexpr uintptr_t kTag = 0x1ULL;
+    uintptr_t value = reinterpret_cast<uintptr_t>(ptr);
+    if (value & kTag) {
       return true;
     }
     return dtype() == DT_STRING || NumElements() == 0 ||
