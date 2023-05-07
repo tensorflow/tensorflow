@@ -1,5 +1,3 @@
-#include "acc.h"
-
 sc_int<32> ACCNAME::mul_s8(sc_int<8> a, sc_int<8> b) {
   sc_int<32> c;
 #pragma HLS RESOURCE variable = c core = Mul
@@ -16,6 +14,14 @@ void ACCNAME::compute() {
   int od[4][4][16];
   int prod[4][4][16];
 
+#pragma HLS array_partition variable = in complete dim = 0
+#pragma HLS array_partition variable = we complete dim = 0
+#pragma HLS array_partition variable = od complete dim = 0
+#pragma HLS array_partition variable = wgt8x complete dim = 0
+#pragma HLS array_partition variable = inp8x complete dim = 0
+#pragma HLS array_partition variable = acc complete dim = 0
+#pragma HLS array_partition variable = out_mem complete dim = 0
+
   gemm_wait.write(true);
   wait();
   while (true) {
@@ -31,6 +37,7 @@ void ACCNAME::compute() {
     int N = inp_block / 2;
 
     for (int n = 0; n < 4; n++) {
+#pragma HLS pipeline II = 1
       for (int m = 0; m < 2; m++) {
         int acc_idx = (n * N) + (wp * N) + m + (ip / 2);
         sc_int<64> acc2x = acc_mem[acc_idx];
@@ -43,25 +50,14 @@ void ACCNAME::compute() {
 #pragma HLS unroll
       for (int m = 0; m < 4; m++) {
 #pragma HLS unroll
-        od[n][m][0] = 0;
-        od[n][m][1] = 0;
-        od[n][m][2] = 0;
-        od[n][m][3] = 0;
-        od[n][m][4] = 0;
-        od[n][m][5] = 0;
-        od[n][m][6] = 0;
-        od[n][m][7] = 0;
-        od[n][m][8] = 0;
-        od[n][m][9] = 0;
-        od[n][m][10] = 0;
-        od[n][m][11] = 0;
-        od[n][m][12] = 0;
-        od[n][m][13] = 0;
-        od[n][m][14] = 0;
-        od[n][m][15] = 0;
+        for (int k = 0; k < 16; k++) {
+#pragma HLS unroll
+          od[n][m][k] = 0;
+        }
       }
     }
 
+    wait();
     for (int rin = 0; rin < d; rin += 2) {
 #pragma HLS pipeline II = 1
       wgt8x[0] = wgt_mem1[rin + wi];
@@ -142,7 +138,7 @@ void ACCNAME::compute() {
         }
       }
       // Profile number of Macs
-      macs->value+=256;
+      DPROF(macs->value += 256;)
 
       for (int m = 0; m < 4; m++) {
 #pragma HLS unroll
@@ -155,7 +151,10 @@ void ACCNAME::compute() {
         }
       }
     }
-    while (storing.read()) wait();
+
+    wait();
+    while (storing.read())
+      wait();
 
     m_off.write(wp);
     n_off.write(ip);

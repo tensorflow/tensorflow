@@ -16,23 +16,23 @@
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/utils.h"
 
 // Some variables needs to be defined across multiple instances of the delegate
-ACCNAME* acc;
+ACCNAME *acc;
 struct del_params dparams;
-struct sysC_sigs* scs;
-struct Profile* profile;
+struct sysC_sigs *scs;
+struct Profile *profile;
 
 namespace tflite {
 namespace bert_sim_test {
 
 // BertSim delegate kernel.
 class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
- public:
-  explicit BertSimDelegateKernel(const BertSimDelegateOptions& options)
+public:
+  explicit BertSimDelegateKernel(const BertSimDelegateOptions &options)
       : options_(options) {}
 
   // Runs once per delegate partition
-  TfLiteStatus Init(TfLiteContext* context,
-                    const TfLiteDelegateParams* params) override {
+  TfLiteStatus Init(TfLiteContext *context,
+                    const TfLiteDelegateParams *params) override {
     // Init SystemC Modules & Profilier
     if (!dparams.init) {
       static struct sysC_sigs _scs(1);
@@ -50,6 +50,7 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
       std::cout << "FC-GEMM Accelerator";
       std::cout << std::endl;
       std::cout << "===========================" << std::endl;
+      scs->sig_start_acc = 0;
     }
 
     // Save Tensors input & outputs
@@ -70,8 +71,8 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
     for (int i = 0; i < params->nodes_to_replace->size; ++i) {
       const int node_index = params->nodes_to_replace->data[i];
       // Get this node information.
-      TfLiteNode* delegated_node = nullptr;
-      TfLiteRegistration* delegated_node_registration = nullptr;
+      TfLiteNode *delegated_node = nullptr;
+      TfLiteRegistration *delegated_node_registration = nullptr;
       TF_LITE_ENSURE_EQ(
           context,
           context->GetNodeAndRegistration(context, node_index, &delegated_node,
@@ -83,10 +84,10 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
       outputs_[i].push_back(delegated_node->outputs->data[0]);
       builtin_code_[i] = delegated_node_registration->builtin_code;
       associated_nodes.push_back(node_index);
-      TfLiteFullyConnectedParams* cparam =
-          reinterpret_cast<TfLiteFullyConnectedParams*>(
+      TfLiteFullyConnectedParams *cparam =
+          reinterpret_cast<TfLiteFullyConnectedParams *>(
               delegated_node->builtin_data);
-      OpData* opdata = reinterpret_cast<OpData*>(delegated_node->user_data);
+      OpData *opdata = reinterpret_cast<OpData *>(delegated_node->user_data);
 
       cparams[i] = cparam;
       opdatas[i] = opdata;
@@ -99,17 +100,17 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
   // quantization parameters For more info look into
   // "tensorflow/lite/kernels/fullyconnected.cc" for the default implementation
   // for FullyConnected Nodes
-  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
+  TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) override {
     int node_count = inputs_.size();
     int out_tid = 0;
     for (int i = 0; i < node_count; i++) {
-      TfLiteFullyConnectedParams* params = cparams[i];
-      OpData* data = opdatas[i];
+      TfLiteFullyConnectedParams *params = cparams[i];
+      OpData *data = opdatas[i];
 
-      TfLiteTensor* output;
-      const TfLiteTensor* input;
-      const TfLiteTensor* filter;
-      const TfLiteTensor* bias;
+      TfLiteTensor *output;
+      const TfLiteTensor *input;
+      const TfLiteTensor *filter;
+      const TfLiteTensor *bias;
 
       GetOutputSafe(context, outputs_[i][0], &output);
       GetInputSafe(context, inputs_[i][0], &input);
@@ -140,7 +141,7 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
       const int num_units = filter->dims->data[0];
       const int out_dim1 = batch_size;
       const int out_dim2 = num_units;
-      TfLiteIntArray* output_size = TfLiteIntArrayCreate(2);
+      TfLiteIntArray *output_size = TfLiteIntArrayCreate(2);
       output_size->data[0] = out_dim1;
       output_size->data[1] = out_dim2;
       auto output_status = context->ResizeTensor(context, output, output_size);
@@ -158,11 +159,11 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
 
       if (req_temp_out) {
         node->temporaries->data[temp_out_id] = outputs_[i][0];
-        TfLiteIntArray* temp_out_tensor_size = TfLiteIntArrayCreate(2);
+        TfLiteIntArray *temp_out_tensor_size = TfLiteIntArrayCreate(2);
         temp_out_tensor_size->data[0] = output_size->data[0];
         temp_out_tensor_size->data[1] = output_size->data[1];
 
-        TfLiteTensor* temp_out_tensor = &context->tensors[outputs_[i][0]];
+        TfLiteTensor *temp_out_tensor = &context->tensors[outputs_[i][0]];
         temp_out_tensor->type = kTfLiteInt8;
         temp_out_tensor->allocation_type = kTfLiteArenaRw;
         auto temp_out_tensor_status = context->ResizeTensor(
@@ -178,31 +179,29 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
   // computation to the fc_driver For more info look into
   // "tensorflow/lite/kernels/fullyconnected.cc" for the default implementation
   // for FullyConnected Nodes
-  TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
+  TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) override {
     int node_count = inputs_.size();
     for (int i = 0; i < node_count; i++) {
-      auto* params = cparams[i];
-      OpData* data = opdatas[i];
-      const TfLiteTensor* input;
-      const TfLiteTensor* filter;
-      TfLiteTensor* output;
+      auto *params = cparams[i];
+      OpData *data = opdatas[i];
+      const TfLiteTensor *input;
+      const TfLiteTensor *filter;
+      TfLiteTensor *output;
 
       GetInputSafe(context, inputs_[i][0], &input);
       GetInputSafe(context, inputs_[i][1], &filter);
       GetOutputSafe(context, outputs_[i][0], &output);
 
-      const TfLiteTensor* bias;
+      const TfLiteTensor *bias;
       bool isBias = biases[i] ? true : false;
-      if (isBias)
-        GetInputSafe(context, inputs_[i][2], &bias);
-      else
-        bias = nullptr;
+      if (isBias) GetInputSafe(context, inputs_[i][2], &bias);
+      else bias = nullptr;
 
-      const int8* input_data = input->data.int8;
-      const int8* filter_data = filter->data.int8;
-      int8* output_data = output->data.int8;
-      const int32_t* bias_data =
-          (bias != nullptr ? reinterpret_cast<int32_t*>(bias->data.raw)
+      const int8 *input_data = input->data.int8;
+      const int8 *filter_data = filter->data.int8;
+      int8 *output_data = output->data.int8;
+      const int32_t *bias_data =
+          (bias != nullptr ? reinterpret_cast<int32_t *>(bias->data.raw)
                            : nullptr);
 
       FullyConnectedParams op_params;
@@ -246,11 +245,11 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
 
       std::vector<int> in_sum;
       std::vector<int> wt_sum;
-      int* idims = input->dims->data;
-      int* wdims = filter->dims->data;
-      int8_t* padded_input = new int8_t[pN * pK];
-      int8_t* padded_weights = new int8_t[pM * pK];
-      int8_t* padded_output = new int8_t[pM * pN];
+      int *idims = input->dims->data;
+      int *wdims = filter->dims->data;
+      int8_t *padded_input = new int8_t[pN * pK];
+      int8_t *padded_weights = new int8_t[pM * pK];
+      int8_t *padded_output = new int8_t[pM * pN];
 
       // Calls the fc_driver to re-shape TFLite input/weight tensor and also
       // produces vector of sums from the tensor's rows (required for
@@ -281,10 +280,8 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
       drv.ra = output_offset;
       drv.rhs_offset = -rhs_offset;
       drv.lhs_offset = -lhs_offset;
-      if (!isBias)
-        drv.bias = new int32_t[pM]();
-      else
-        drv.bias = biases[i];
+      if (!isBias) drv.bias = new int32_t[pM]();
+      else drv.bias = biases[i];
 
       // Calls the fc_driver to offload the FC operation
       drv.start_count = dparams.start_count;
@@ -312,29 +309,29 @@ class BertSimDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<std::vector<int>> wgt_sum;
   std::vector<int> weight_offsets;
 
-  std::vector<uint32_t*> del_weights;
+  std::vector<uint32_t *> del_weights;
 
-  std::vector<int*> biases;
-  std::vector<int*> crf;
-  std::vector<int8_t*> crx;
+  std::vector<int *> biases;
+  std::vector<int *> crf;
+  std::vector<int8_t *> crx;
 
-  std::vector<OpData*> opdatas;
-  std::vector<TfLiteFullyConnectedParams*> cparams;
+  std::vector<OpData *> opdatas;
+  std::vector<TfLiteFullyConnectedParams *> cparams;
 
- private:
+private:
   const BertSimDelegateOptions options_;
 };
 
 // BertSimDelegate implements the interface of SimpleDelegateInterface.
 // This holds the Delegate capabilities.
 class BertSimDelegate : public SimpleDelegateInterface {
- public:
-  explicit BertSimDelegate(const BertSimDelegateOptions& options)
+public:
+  explicit BertSimDelegate(const BertSimDelegateOptions &options)
       : options_(options) {}
 
-  bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
-                                 const TfLiteNode* node,
-                                 TfLiteContext* context) const override {
+  bool IsNodeSupportedByDelegate(const TfLiteRegistration *registration,
+                                 const TfLiteNode *node,
+                                 TfLiteContext *context) const override {
     // Only supports FC ops
     if (kTfLiteBuiltinFullyConnected != registration->builtin_code)
       return false;
@@ -342,12 +339,12 @@ class BertSimDelegate : public SimpleDelegateInterface {
     if (node->inputs->size != 3 && node->inputs->size != 2) return false;
     // This delegate only supports int8 types.
     for (int i = 0; i < 2; ++i) {
-      auto& tensor = context->tensors[node->inputs->data[i]];
+      auto &tensor = context->tensors[node->inputs->data[i]];
       if (tensor.type != kTfLiteInt8) return false;
     }
 
     if (node->inputs->size == 3 && node->inputs->data[2] >= 0) {
-      auto& tensor = context->tensors[node->inputs->data[2]];
+      auto &tensor = context->tensors[node->inputs->data[2]];
       if (tensor.type != kTfLiteInt32 && tensor.type <= 16) return false;
     }
 
@@ -357,15 +354,15 @@ class BertSimDelegate : public SimpleDelegateInterface {
     return true;
   }
 
-  TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
+  TfLiteStatus Initialize(TfLiteContext *context) override { return kTfLiteOk; }
 
-  const char* Name() const override {
+  const char *Name() const override {
     static constexpr char kName[] = "BertSimDelegate";
     return kName;
   }
 
-  std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
-      override {
+  std::unique_ptr<SimpleDelegateKernelInterface>
+  CreateDelegateKernelInterface() override {
     return std::make_unique<BertSimDelegateKernel>(options_);
   }
 
@@ -374,12 +371,12 @@ class BertSimDelegate : public SimpleDelegateInterface {
     return SimpleDelegateInterface::Options();
   }
 
- private:
+private:
   const BertSimDelegateOptions options_;
 };
 
-}  // namespace bert_sim_test
-}  // namespace tflite
+} // namespace bert_sim_test
+} // namespace tflite
 
 BertSimDelegateOptions TfLiteBertSimDelegateOptionsDefault() {
   BertSimDelegateOptions options = {0};
@@ -392,8 +389,8 @@ BertSimDelegateOptions TfLiteBertSimDelegateOptionsDefault() {
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteBertSimDelegateDelete` when delegate is no longer used by TFLite.
 // When `options` is set to `nullptr`, the above default values are used:
-TfLiteDelegate* TfLiteBertSimDelegateCreate(
-    const BertSimDelegateOptions* options) {
+TfLiteDelegate *
+TfLiteBertSimDelegateCreate(const BertSimDelegateOptions *options) {
   std::unique_ptr<tflite::bert_sim_test::BertSimDelegate> bert_sim(
       new tflite::bert_sim_test::BertSimDelegate(
           options ? *options : TfLiteBertSimDelegateOptionsDefault()));
@@ -402,6 +399,6 @@ TfLiteDelegate* TfLiteBertSimDelegateCreate(
 }
 
 // Destroys a delegate created with `TfLiteBertSimDelegateCreate` call.
-void TfLiteBertSimDelegateDelete(TfLiteDelegate* delegate) {
+void TfLiteBertSimDelegateDelete(TfLiteDelegate *delegate) {
   tflite::TfLiteDelegateFactory::DeleteSimpleDelegate(delegate);
 }

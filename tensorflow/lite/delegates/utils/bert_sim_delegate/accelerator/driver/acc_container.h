@@ -1,18 +1,17 @@
 #ifndef ACC_CONTAINER
 #define ACC_CONTAINER
 
-
-#include <vector>
 #include "../acc.h"
 #include "systemc_binding.h"
 #include "tensorflow/lite/delegates/utils/secda_tflite/axi_support/axi_api_v2.h"
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/utils.h"
+#include <vector>
 
 struct acc_container {
   // Hardware
-  struct sysC_sigs* scs;
-  Profile* profile;
-  ACCNAME* acc;
+  struct sysC_sigs *scs;
+  Profile *profile;
+  ACCNAME *acc;
 
   // Dims
   int M;
@@ -24,15 +23,15 @@ struct acc_container {
   int pK;
 
   // Data
-  int8_t* padded_input;
-  int8_t* padded_weights;
-  int8_t* padded_output;
+  int8_t *padded_input;
+  int8_t *padded_weights;
+  int8_t *padded_output;
 
   // PPU
   // bool isBias;
-  int* bias;
-  int* wt_sum;
-  int* in_sum;
+  int *bias;
+  int *wt_sum;
+  int *in_sum;
 
   int crf;
   int crx;
@@ -46,8 +45,8 @@ struct acc_container {
   // Debugging
   int layer = 0;
 };
-void precal_sum_load_pad(int8_t* data, int width, int depth, int8_t* shape_data,
-                         vector<int>& sums) {
+void precal_sum_load_pad(int8_t *data, int width, int depth, int8_t *shape_data,
+                         vector<int> &sums) {
   int w = ((width + 16 - 1) - ((width + 16 - 1) % 16));
   int d = ((depth + 16 - 1) - ((depth + 16 - 1) % 16));
   int max = width * depth;
@@ -95,13 +94,14 @@ void precal_sum_load_pad(int8_t* data, int width, int depth, int8_t* shape_data,
       }
 #endif
     } else {
-      for (int j = 0; j < d; j++) shape_data[i_c++] = 0;
+      for (int j = 0; j < d; j++)
+        shape_data[i_c++] = 0;
     }
     sums.push_back(s0);
   }
 }
 
-void store_unpad(int8_t* data, int width, int depth, int8_t* shape_data) {
+void store_unpad(int8_t *data, int width, int depth, int8_t *shape_data) {
   int w = ((width + 16 - 1) - ((width + 16 - 1) % 16));
   int d = ((depth + 16 - 1) - ((depth + 16 - 1) % 16));
   int dm = roundDown(depth, 16);
@@ -127,8 +127,8 @@ void store_unpad(int8_t* data, int width, int depth, int8_t* shape_data) {
   }
 }
 
-void create_2d_biases(int sn, int N_dim, int sm, int M_dim, int32_t* new_bias,
-                      int32_t* bias, int32_t* wt_sum, int* in_sum,
+void create_2d_biases(int sn, int N_dim, int sm, int M_dim, int32_t *new_bias,
+                      int32_t *bias, int32_t *wt_sum, int *in_sum,
                       int32_t rhs_offset, int32_t lhs_offset, int32_t depth) {
   int offdepth = 0;
   if (-lhs_offset && -rhs_offset)
@@ -146,4 +146,4 @@ void create_2d_biases(int sn, int N_dim, int sm, int M_dim, int32_t* new_bias,
   }
 }
 
-#endif  // ACC_CONTAINER
+#endif // ACC_CONTAINER

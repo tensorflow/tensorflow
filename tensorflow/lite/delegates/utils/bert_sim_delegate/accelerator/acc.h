@@ -1,27 +1,25 @@
-#ifndef VTA_H
-#define VTA_H
+#ifndef ACCNAME_H
+#define ACCNAME_H
 
 #include <systemc.h>
-#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_profiler/profiler.h"
-#include "tensorflow/lite/delegates/utils/secda_tflite/ap_sysc/AXI4_if.h"
 
-#include <iostream>
-using namespace std;
+#define ACCNAME FC_ACC_v2_0
+
+// #define __SYNTHESIS__
 
 #ifndef __SYNTHESIS__
+#include "tensorflow/lite/delegates/utils/secda_tflite/ap_sysc/AXI4_if.h"
+#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_integrator/sysc_types.h"
+#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_profiler/profiler.h"
 #define DWAIT(x) wait(x)
 #define DWAIT() wait(1)
 #define DWAIT(x) wait(1)
-// #define DPROF(x) x
-#else
-#define DWAIT(x)
-#define DPROF(x)
-#endif
-
-#ifndef __SYNTHESIS__
-//#define VLOG(X) cout X
+#define DPROF(x) x
 #define VLOG(X)
 #else
+#include "AXI4_if.h"
+#define DWAIT(x)
+#define DPROF(x)
 #define VLOG(X)
 #endif
 
@@ -29,7 +27,6 @@ typedef unsigned long long inp_bt;
 typedef unsigned long long wgt_bt;
 typedef int out_bt;
 typedef unsigned long long acc_bt;
-
 typedef sc_int<8> dat_t;
 typedef sc_int<32> acc_t;
 
@@ -62,7 +59,6 @@ typedef sc_int<32> acc_t;
 struct opcode {
   unsigned long long p1;
   unsigned long long p2;
-
   int dstride;
   int x_size;
   int y_size;
@@ -72,17 +68,14 @@ struct opcode {
   opcode(sc_uint<64> _p1, sc_uint<64> _p2) {
     p1 = _p1;
     p2 = _p2;
-
     dstride = _p1.range(63, 32);
     x_size = _p1.range(31, 16);
     y_size = _p1.range(15, 0);
-
     doffset = _p2.range(63, 32);
     op = _p2.range(31, 0);
   }
 };
 
-#define ACCNAME FC_ACC
 SC_MODULE(ACCNAME) {
   sc_in<bool> clock;
   sc_in<bool> reset;
@@ -110,15 +103,27 @@ SC_MODULE(ACCNAME) {
   AXI4M_bus_port<unsigned int> out_port;
 
   // Instantiate memories
-  wgt_bt* wgt_mem1 = new wgt_bt[WGT_DEPTH];
-  wgt_bt* wgt_mem2 = new wgt_bt[WGT_DEPTH];
-  wgt_bt* wgt_mem3 = new wgt_bt[WGT_DEPTH];
-  wgt_bt* wgt_mem4 = new wgt_bt[WGT_DEPTH];
-  inp_bt* inp_mem1 = new inp_bt[INP_DEPTH];
-  inp_bt* inp_mem2 = new inp_bt[INP_DEPTH];
-  inp_bt* inp_mem3 = new inp_bt[INP_DEPTH];
-  inp_bt* inp_mem4 = new inp_bt[INP_DEPTH];
-  acc_bt* acc_mem = new acc_bt[ACC_DEPTH];
+#ifndef __SYNTHESIS__
+  wgt_bt *wgt_mem1 = new wgt_bt[WGT_DEPTH];
+  wgt_bt *wgt_mem2 = new wgt_bt[WGT_DEPTH];
+  wgt_bt *wgt_mem3 = new wgt_bt[WGT_DEPTH];
+  wgt_bt *wgt_mem4 = new wgt_bt[WGT_DEPTH];
+  inp_bt *inp_mem1 = new inp_bt[INP_DEPTH];
+  inp_bt *inp_mem2 = new inp_bt[INP_DEPTH];
+  inp_bt *inp_mem3 = new inp_bt[INP_DEPTH];
+  inp_bt *inp_mem4 = new inp_bt[INP_DEPTH];
+  acc_bt *acc_mem = new acc_bt[ACC_DEPTH];
+#else
+  wgt_bt wgt_mem1[WGT_DEPTH];
+  wgt_bt wgt_mem2[WGT_DEPTH];
+  wgt_bt wgt_mem3[WGT_DEPTH];
+  wgt_bt wgt_mem4[WGT_DEPTH];
+  inp_bt inp_mem1[INP_DEPTH];
+  inp_bt inp_mem2[INP_DEPTH];
+  inp_bt inp_mem3[INP_DEPTH];
+  inp_bt inp_mem4[INP_DEPTH];
+  acc_bt acc_mem[ACC_DEPTH];
+#endif
   out_bt out_mem[4][4];
 
 #ifndef __SYNTHESIS__
@@ -128,15 +133,16 @@ SC_MODULE(ACCNAME) {
   sc_signal<bool, SC_MANY_WRITERS> gemm_wait;
   sc_signal<bool, SC_MANY_WRITERS> schedule;
   sc_signal<bool, SC_MANY_WRITERS> storing;
+  sc_signal<bool, SC_MANY_WRITERS> loading;
 #else
   sc_signal<bool> wgt_load;
   sc_signal<bool> inp_load;
   sc_signal<bool> bias_load;
   sc_signal<bool> gemm_wait;
   sc_signal<bool> schedule;
-  sc_signal<bool, SC_MANY_WRITERS> storing;
-#endif
+  sc_signal<bool> storing;
   sc_signal<bool> loading;
+#endif
 
   sc_uint<64> wgt_insn1;
   sc_uint<64> wgt_insn2;
@@ -159,7 +165,10 @@ SC_MODULE(ACCNAME) {
   sc_signal<unsigned int> store_dstride;
   sc_signal<unsigned int> m_off;
   sc_signal<unsigned int> n_off;
+  sc_signal<bool> fetch_resetted;
 
+  int start_count;
+  int done_count;
   int ra_val;
   int crf_val;
   int crx_val;
@@ -169,13 +178,13 @@ SC_MODULE(ACCNAME) {
   sc_int<32> msk;
   sc_int<32> sm;
 
-  int crr_pc;
-
+#ifndef __SYNTHESIS__
   // Profiling variable
-  ClockCycles* per_batch_cycles = new ClockCycles("per_batch_cycles", true);
-  DataCount* macs = new DataCount("macs");
-  DataCount* ins_count = new DataCount("ins_count");
-  std::vector<Metric*> profiling_vars = {per_batch_cycles, macs,ins_count};
+  ClockCycles *per_batch_cycles = new ClockCycles("per_batch_cycles", true);
+  DataCount *macs = new DataCount("macs");
+  DataCount *ins_count = new DataCount("ins_count");
+  std::vector<Metric *> profiling_vars = {per_batch_cycles, macs, ins_count};
+#endif
 
   sc_int<32> mul_s8(sc_int<8>, sc_int<8>);
 
@@ -184,7 +193,9 @@ SC_MODULE(ACCNAME) {
   void fetch();
 
   void load_weights();
+
   void load_inputs();
+
   void load_bias();
 
   void scheduler();
@@ -193,17 +204,17 @@ SC_MODULE(ACCNAME) {
 
   void store();
 
+#ifndef __SYNTHESIS_
   void counter();
+#endif
 
   SC_HAS_PROCESS(ACCNAME);
 
-  ACCNAME(sc_module_name name_)
-      : sc_module(name_),
-        insn_port("insn_port"),
-        input_port("input_port"),
-        weight_port("weight_port"),
-        bias_port("bias_port"),
-        out_port("out_port")
+  ACCNAME(
+      sc_module_name
+          name_) // @suppress("Class members should be properly initialized")
+  : sc_module(name_), insn_port("insn_port"), input_port("input_port"),
+    weight_port("weight_port"), bias_port("bias_port"), out_port("out_port")
 
   {
     SC_CTHREAD(fetch, clock.pos());
@@ -227,11 +238,13 @@ SC_MODULE(ACCNAME) {
     SC_CTHREAD(scheduler, clock.pos());
     reset_signal_is(reset, true);
 
+#ifndef __SYNTHESIS__
     SC_CTHREAD(counter, clock.pos());
     reset_signal_is(reset, true);
+#endif
 
 #pragma HLS RESET variable = reset
   }
 };
 
-#endif  // VTA_H
+#endif // ACCNAME_H

@@ -1,40 +1,38 @@
 
 #include "tensorflow/lite/delegates/utils/secda_bert_delegate/secda_bert_delegate.h"
 
-#include <utility>
 #include <fstream>
 #include <iostream>
+#include <utility>
 
-#include "tensorflow/lite/delegates/utils/simple_delegate.h"
+#include "driver/fc_driver.h"
 #include "tensorflow/lite/delegates/utils/secda_bert_delegate/util.h"
+#include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "driver/fc_driver.h"
-
 
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/acc_helpers.h"
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/utils.h"
 
 struct del_params dparams;
 struct fc_times fc_t;
-unsigned long long* insn_mem;
-unsigned long long* inp_mem;
-unsigned long long* wgt_mem;
-unsigned long long* bias_mem;
-unsigned int* out_mem;
-
+unsigned long long *insn_mem;
+unsigned long long *inp_mem;
+unsigned long long *wgt_mem;
+unsigned long long *bias_mem;
+unsigned int *out_mem;
 
 namespace tflite {
 namespace secda_bert_test {
 
 // SecdaBert delegate kernel.
 class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
- public:
-  explicit SecdaBertDelegateKernel(const SecdaBertDelegateOptions& options)
+public:
+  explicit SecdaBertDelegateKernel(const SecdaBertDelegateOptions &options)
       : options_(options) {}
 
-  TfLiteStatus Init(TfLiteContext* context,
-                    const TfLiteDelegateParams* params) override {
+  TfLiteStatus Init(TfLiteContext *context,
+                    const TfLiteDelegateParams *params) override {
     // Init ACC
     if (!dparams.init) {
       dparams.acc = getAccBaseAddress<int>(acc_address, 65536);
@@ -76,8 +74,8 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
     for (int i = 0; i < params->nodes_to_replace->size; ++i) {
       const int node_index = params->nodes_to_replace->data[i];
       // Get this node information.
-      TfLiteNode* delegated_node = nullptr;
-      TfLiteRegistration* delegated_node_registration = nullptr;
+      TfLiteNode *delegated_node = nullptr;
+      TfLiteRegistration *delegated_node_registration = nullptr;
       TF_LITE_ENSURE_EQ(
           context,
           context->GetNodeAndRegistration(context, node_index, &delegated_node,
@@ -90,10 +88,10 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       builtin_code_[i] = delegated_node_registration->builtin_code;
       associated_nodes.push_back(node_index);
 
-      TfLiteFullyConnectedParams* cparam =
-          reinterpret_cast<TfLiteFullyConnectedParams*>(
+      TfLiteFullyConnectedParams *cparam =
+          reinterpret_cast<TfLiteFullyConnectedParams *>(
               delegated_node->builtin_data);
-      OpData* opdata = reinterpret_cast<OpData*>(delegated_node->user_data);
+      OpData *opdata = reinterpret_cast<OpData *>(delegated_node->user_data);
       cparams[i] = cparam;
       opdatas[i] = opdata;
     }
@@ -101,18 +99,18 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
     return kTfLiteOk;
   }
 
-  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
+  TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) override {
     int node_count = inputs_.size();
     int out_tid = 0;
 
     for (int i = 0; i < node_count; i++) {
-      TfLiteFullyConnectedParams* params = cparams[i];
-      OpData* data = opdatas[i];
+      TfLiteFullyConnectedParams *params = cparams[i];
+      OpData *data = opdatas[i];
 
-      TfLiteTensor* output;
-      const TfLiteTensor* input;
-      const TfLiteTensor* filter;
-      const TfLiteTensor* bias;
+      TfLiteTensor *output;
+      const TfLiteTensor *input;
+      const TfLiteTensor *filter;
+      const TfLiteTensor *bias;
 
       GetOutputSafe(context, outputs_[i][0], &output);
       GetInputSafe(context, inputs_[i][0], &input);
@@ -146,7 +144,7 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       // const int out_dim2 = output->dims->data[1];
       const int out_dim1 = batch_size;
       const int out_dim2 = num_units;
-      TfLiteIntArray* output_size = TfLiteIntArrayCreate(2);
+      TfLiteIntArray *output_size = TfLiteIntArrayCreate(2);
       output_size->data[0] = out_dim1;
       output_size->data[1] = out_dim2;
       auto output_status = context->ResizeTensor(context, output, output_size);
@@ -164,11 +162,11 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
 
       if (req_temp_out) {
         node->temporaries->data[temp_out_id] = outputs_[i][0];
-        TfLiteIntArray* temp_out_tensor_size = TfLiteIntArrayCreate(2);
+        TfLiteIntArray *temp_out_tensor_size = TfLiteIntArrayCreate(2);
         temp_out_tensor_size->data[0] = output_size->data[0];
         temp_out_tensor_size->data[1] = output_size->data[1];
 
-        TfLiteTensor* temp_out_tensor = &context->tensors[outputs_[i][0]];
+        TfLiteTensor *temp_out_tensor = &context->tensors[outputs_[i][0]];
         temp_out_tensor->type = kTfLiteInt8;
         temp_out_tensor->allocation_type = kTfLiteArenaRw;
         auto temp_out_tensor_status = context->ResizeTensor(
@@ -185,37 +183,36 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
     return kTfLiteOk;
   }
 
-  TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
+  TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) override {
     prf_start(0);
     int node_count = inputs_.size();
     for (int i = 0; i < node_count; i++) {
       // cout << "===========================" << endl;
-      // cout << "Layer: " << dparams.layer << "      Node: " << associated_nodes[i]
+      // cout << "Layer: " << dparams.layer << "      Node: " <<
+      // associated_nodes[i]
       //      << endl;
       // cout << "===========================" << endl;
 
-      auto* params = cparams[i];
-      OpData* data = opdatas[i];
+      auto *params = cparams[i];
+      OpData *data = opdatas[i];
 
-      const TfLiteTensor* input;
-      const TfLiteTensor* filter;
-      TfLiteTensor* output;
+      const TfLiteTensor *input;
+      const TfLiteTensor *filter;
+      TfLiteTensor *output;
       GetInputSafe(context, inputs_[i][0], &input);
       GetInputSafe(context, inputs_[i][1], &filter);
       GetOutputSafe(context, outputs_[i][0], &output);
 
-      const TfLiteTensor* bias;
+      const TfLiteTensor *bias;
       bool isBias = biases[i] ? true : false;
-      if (isBias)
-        GetInputSafe(context, inputs_[i][2], &bias);
-      else
-        bias = nullptr;
+      if (isBias) GetInputSafe(context, inputs_[i][2], &bias);
+      else bias = nullptr;
 
-      const int8* input_data = input->data.int8;
-      const int8* filter_data = filter->data.int8;
-      int8* output_data = output->data.int8;
-      const int32_t* bias_data =
-          (bias != nullptr ? reinterpret_cast<int32_t*>(bias->data.raw)
+      const int8 *input_data = input->data.int8;
+      const int8 *filter_data = filter->data.int8;
+      int8 *output_data = output->data.int8;
+      const int32_t *bias_data =
+          (bias != nullptr ? reinterpret_cast<int32_t *>(bias->data.raw)
                            : nullptr);
 
       FullyConnectedParams op_params;
@@ -262,13 +259,13 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       int pM = roundUp(M, rfactor);
       int pK = roundUp(K, rfactor);
 
-      int* idims = input->dims->data;
-      int* wdims = filter->dims->data;
+      int *idims = input->dims->data;
+      int *wdims = filter->dims->data;
       std::vector<int> in_sum;
       std::vector<int> wt_sum;
-      int8_t* padded_input = (int8_t*)&inp_mem[0];
-      int8_t* padded_weights = (int8_t*)&wgt_mem[0];
-      int8_t* padded_output = (int8_t*)&out_mem[0];
+      int8_t *padded_input = (int8_t *)&inp_mem[0];
+      int8_t *padded_weights = (int8_t *)&wgt_mem[0];
+      int8_t *padded_output = (int8_t *)&out_mem[0];
 
       prf_start(1);
       precal_sum_load_pad(input->data.int8, N, K, padded_input, in_sum);
@@ -279,7 +276,8 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       //   tasks.push_back(new precal_sum_load_pad_task(input->data.int8, N, K,
       //                                                padded_input, &in_sum));
       //   tasks.push_back(new precal_sum_load_pad_task(filter->data.int8, M, K,
-      //                                                padded_weights, &wt_sum));
+      //                                                padded_weights,
+      //                                                &wt_sum));
       //   workers_pool->Execute(tasks);
       // } else {
       //   precal_sum_load_pad(input->data.int8, N, K, padded_input, in_sum);
@@ -296,7 +294,7 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       drv.insn_mem = insn_mem;
       drv.bias_mem = bias_mem;
 
-      drv.pN =  dparams.layer;
+      drv.pN = dparams.layer;
       drv.pN = pN;
       drv.pM = pM;
       drv.pK = pK;
@@ -315,10 +313,8 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       drv.rhs_offset = -rhs_offset;
       drv.lhs_offset = -lhs_offset;
 
-      if (!isBias)
-        drv.bias = new int32_t[pM]();
-      else
-        drv.bias = biases[i];
+      if (!isBias) drv.bias = new int32_t[pM]();
+      else drv.bias = biases[i];
 
       drv.t = fc_t;
       drv.start_count = dparams.start_count;
@@ -327,10 +323,10 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       fc_t = drv.t;
 
       prf_start(2);
-      int* odims = output->dims->data;
+      int *odims = output->dims->data;
       if (task_count > 1) {
-        std::vector<Task*> tasks;
-        auto* workers_pool = dparams.mt_context.workers_pool();
+        std::vector<Task *> tasks;
+        auto *workers_pool = dparams.mt_context.workers_pool();
         int width = N;
         int depth = M;
         int d = roundUp(depth, 16);
@@ -357,7 +353,7 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
       dparams.delegated_nodes--;
     }
     prf_end(0, fc_t.conv_total);
-    if ( dparams.delegated_nodes == 0) {
+    if (dparams.delegated_nodes == 0) {
       fc_t.print();
     }
 
@@ -367,24 +363,24 @@ class SecdaBertDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<std::vector<int>> inputs_, outputs_;
   std::vector<int> builtin_code_, associated_nodes;
 
-  std::vector<OpData*> opdatas;
-  std::vector<TfLiteFullyConnectedParams*> cparams;
-  std::vector<int*> biases;
+  std::vector<OpData *> opdatas;
+  std::vector<TfLiteFullyConnectedParams *> cparams;
+  std::vector<int *> biases;
 
- private:
+private:
   const SecdaBertDelegateOptions options_;
-};  // namespace secda_bert_test
+}; // namespace secda_bert_test
 
 // SecdaBertDelegate implements the interface of SimpleDelegateInterface.
 // This holds the Delegate capabilities.
 class SecdaBertDelegate : public SimpleDelegateInterface {
- public:
-  explicit SecdaBertDelegate(const SecdaBertDelegateOptions& options)
+public:
+  explicit SecdaBertDelegate(const SecdaBertDelegateOptions &options)
       : options_(options) {}
 
-  bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
-                                 const TfLiteNode* node,
-                                 TfLiteContext* context) const override {
+  bool IsNodeSupportedByDelegate(const TfLiteRegistration *registration,
+                                 const TfLiteNode *node,
+                                 TfLiteContext *context) const override {
     // Only supports FC ops
     if (kTfLiteBuiltinFullyConnected != registration->builtin_code)
       return false;
@@ -392,12 +388,12 @@ class SecdaBertDelegate : public SimpleDelegateInterface {
     if (node->inputs->size != 3 && node->inputs->size != 2) return false;
     // This delegate only supports int8 types.
     for (int i = 0; i < 2; ++i) {
-      auto& tensor = context->tensors[node->inputs->data[i]];
+      auto &tensor = context->tensors[node->inputs->data[i]];
       if (tensor.type != kTfLiteInt8) return false;
     }
 
     if (node->inputs->size == 3 && node->inputs->data[2] >= 0) {
-      auto& tensor = context->tensors[node->inputs->data[2]];
+      auto &tensor = context->tensors[node->inputs->data[2]];
       if (tensor.type != kTfLiteInt32 && tensor.type <= 16) return false;
     }
 
@@ -406,15 +402,15 @@ class SecdaBertDelegate : public SimpleDelegateInterface {
     return true;
   }
 
-  TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
+  TfLiteStatus Initialize(TfLiteContext *context) override { return kTfLiteOk; }
 
-  const char* Name() const override {
+  const char *Name() const override {
     static constexpr char kName[] = "SecdaBertDelegate";
     return kName;
   }
 
-  std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
-      override {
+  std::unique_ptr<SimpleDelegateKernelInterface>
+  CreateDelegateKernelInterface() override {
     return std::make_unique<SecdaBertDelegateKernel>(options_);
   }
 
@@ -423,17 +419,17 @@ class SecdaBertDelegate : public SimpleDelegateInterface {
     return SimpleDelegateInterface::Options();
   }
 
- private:
+private:
   const SecdaBertDelegateOptions options_;
 };
 
-}  // namespace secda_bert_test
-}  // namespace tflite
+} // namespace secda_bert_test
+} // namespace tflite
 
 SecdaBertDelegateOptions TfLiteSecdaBertDelegateOptionsDefault() {
   SecdaBertDelegateOptions options = {0};
-  // Just assign an invalid builtin code so that this secda_bert test delegate will
-  // not support any node by default.
+  // Just assign an invalid builtin code so that this secda_bert test delegate
+  // will not support any node by default.
   options.allowed_builtin_code = -1;
   return options;
 }
@@ -441,14 +437,16 @@ SecdaBertDelegateOptions TfLiteSecdaBertDelegateOptionsDefault() {
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteSecdaBertDelegateDelete` when delegate is no longer used by TFLite.
 // When `options` is set to `nullptr`, the above default values are used:
-TfLiteDelegate* TfLiteSecdaBertDelegateCreate(const SecdaBertDelegateOptions* options) {
+TfLiteDelegate *
+TfLiteSecdaBertDelegateCreate(const SecdaBertDelegateOptions *options) {
   std::unique_ptr<tflite::secda_bert_test::SecdaBertDelegate> secda_bert(
       new tflite::secda_bert_test::SecdaBertDelegate(
           options ? *options : TfLiteSecdaBertDelegateOptionsDefault()));
-  return tflite::TfLiteDelegateFactory::CreateSimpleDelegate(std::move(secda_bert));
+  return tflite::TfLiteDelegateFactory::CreateSimpleDelegate(
+      std::move(secda_bert));
 }
 
 // Destroys a delegate created with `TfLiteSecdaBertDelegateCreate` call.
-void TfLiteSecdaBertDelegateDelete(TfLiteDelegate* delegate) {
+void TfLiteSecdaBertDelegateDelete(TfLiteDelegate *delegate) {
   tflite::TfLiteDelegateFactory::DeleteSimpleDelegate(delegate);
 }
