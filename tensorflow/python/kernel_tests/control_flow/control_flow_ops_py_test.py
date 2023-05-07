@@ -47,6 +47,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
@@ -88,6 +89,7 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import nest
 from tensorflow.python.ops import control_flow_switch_case
+from tensorflow.python.ops import variable_v1
 
 
 def check_consumers(graph):
@@ -169,7 +171,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testRefIdentity(self):
     with self.cached_session():
-      v = variables.VariableV1(7)
+      v = variable_v1.VariableV1(7)
 
       v = control_flow_ops._Identity(v)
       op = state_ops.assign(v, 9)
@@ -182,7 +184,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testRefEnter(self):
     with self.cached_session():
-      v = variables.VariableV1(7)
+      v = variable_v1.VariableV1(7)
 
       enter_v = control_flow_ops._Enter(v, "foo_1", is_constant=True)
       nine = constant_op.constant(9)
@@ -196,7 +198,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testRefSwitch(self):
     with self.cached_session():
-      v = variables.VariableV1(7)
+      v = variable_v1.VariableV1(7)
 
       p = constant_op.constant(True)
       v1 = control_flow_ops._SwitchRefOrTensor(v._ref(), p)  # pylint: disable=protected-access
@@ -389,7 +391,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     fn1 = lambda: math_ops.add(values, 1)
     fn2 = lambda: math_ops.subtract(values, 1)
     with self.assertRaisesRegex(TypeError, "must not be a Python bool"):
-      _ = control_flow_ops.cond(False, fn1, fn2)
+      _ = tf_cond.cond(False, fn1, fn2)
 
   @test_util.run_deprecated_v1
   def testCondInt(self):
@@ -397,13 +399,13 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     v = constant_op.constant(10)
     fn1 = lambda: math_ops.add(v, 1)
     fn2 = lambda: math_ops.subtract(v, 1)
-    y = control_flow_ops.cond(p, fn1, fn2)
+    y = tf_cond.cond(p, fn1, fn2)
     grad = gradients_impl.gradients(y, [v])
     self.assertAllEqual([None], grad)
 
   def testCondOutputShape(self):
     x = constant_op.constant(1.0)
-    b = control_flow_ops.cond(
+    b = tf_cond.cond(
         constant_op.constant(True), lambda: math_ops.square(x),
         lambda: math_ops.subtract(x, 1.))
     self.assertEqual(b.shape, tensor_shape.TensorShape([]))
@@ -412,7 +414,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   def testFetchable(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
-      control_flow_ops.cond(
+      tf_cond.cond(
           constant_op.constant(True), lambda: x + 2, lambda: x + 0)
       graph = ops.get_default_graph()
       for op in graph.get_operations():
@@ -454,7 +456,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           math_ops.add(x.values, 1), indices)
       fn2 = lambda: indexed_slices.IndexedSlices(
           math_ops.subtract(x.values, 1), indices)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       val = r.values
       ind = r.indices
@@ -469,7 +471,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       x = indexed_slices.IndexedSlices(values, indices)
       with self.assertRaisesRegex(TypeError,
                                   "Cannot reconcile tf.cond 0-th outputs"):
-        control_flow_ops.cond(
+        tf_cond.cond(
             constant_op.constant(True), lambda: indexed_slices.IndexedSlices(
                 math_ops.add(x.values, 1), indices),
             lambda: math_ops.add(x.values, 1), indices)
@@ -487,7 +489,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         indices + 1, x.values + 1, dense_shape=shape)
     fn2 = lambda: sparse_tensor.SparseTensor(
         indices, x.values - 1, dense_shape=shape)
-    r = control_flow_ops.cond(pred, fn1, fn2)
+    r = tf_cond.cond(pred, fn1, fn2)
     self.assertAllEqual([3.0, 5.0], r.values)
     self.assertAllEqual([[1], [4]], r.indices)
     self.assertAllEqual(r.values.get_shape(), (2,))
@@ -497,7 +499,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     pred = math_ops.less(1, 2)
     fn1 = lambda: array_ops.concat([rt + 2, [[100]]], axis=0)
     fn2 = lambda: rt[:2] - 2
-    result = control_flow_ops.cond(pred, fn1, fn2)
+    result = tf_cond.cond(pred, fn1, fn2)
     self.assertAllEqual([3, 4, 5, 6, 7, 8, 100], result.values)
     self.assertAllEqual([0, 2, 3, 6, 7], result.row_splits)
 
@@ -515,14 +517,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           return array_ops.identity(t)
 
       self.assertEqual(
-          1.0, self.evaluate(control_flow_ops.cond(rv, case, lambda: t)))
+          1.0, self.evaluate(tf_cond.cond(rv, case, lambda: t)))
 
   @test_util.run_deprecated_v1
   def testCondResourceGradShape(self):
     rv1 = resource_variable_ops.ResourceVariable([1.0, 2.0])
     rv2 = resource_variable_ops.ResourceVariable([3.0, 4.0])
     pred = constant_op.constant(True)
-    result = control_flow_ops.cond(pred, lambda: rv1, lambda: rv2)
+    result = tf_cond.cond(pred, lambda: rv1, lambda: rv2)
     grads = gradients_impl.gradients(result, [rv1, rv2])
     self.assertAllEqual(grads[0].shape.as_list(), [2])
     self.assertAllEqual(grads[1].shape.as_list(), [2])
@@ -533,7 +535,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       with ops.device(test.gpu_device_name()):
         pred = array_ops.placeholder(dtypes.bool, [])
         x = constant_op.constant([1.0, 2.0, 3.0])
-        y = control_flow_ops.cond(
+        y = tf_cond.cond(
             pred, lambda: map_fn.map_fn(lambda z: z * 2.0, x),
             lambda: constant_op.constant([1.0, 1.0, 1.0]))
         g = gradients_impl.gradients(y, x)[0]
@@ -553,7 +555,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           math_ops.add(x.values, 1), i_32)
       fn2 = lambda: indexed_slices.IndexedSlices(
           math_ops.subtract(x.values, 1), i_64)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       val = r.values
       ind = r.indices
@@ -571,7 +573,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1.0, 2.0)
       fn1 = lambda: math_ops.add(v, 1.0)
       fn2 = lambda: math_ops.subtract(x, 1.0)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       for op in x.graph.get_operations():
         if op.name == "cond/Add/Switch":
@@ -583,7 +585,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: math_ops.add(x, 1)
       fn2 = lambda: math_ops.subtract(x, 1)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       result = self.evaluate(r)
     self.assertAllEqual(11, result)
@@ -598,7 +600,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     with self.cached_session():
       x = constant_op.constant(10)
-      r = control_flow_ops.cond(
+      r = tf_cond.cond(
           math_ops.less(1, 0), lambda: math_ops.add(x, 1),
           lambda: math_ops.subtract(x, 1))
       result = self.evaluate(r)
@@ -611,8 +613,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: math_ops.add(x, 1)
       fn2 = lambda: math_ops.subtract(x, 1)
-      fn3 = lambda: math_ops.add(control_flow_ops.cond(pred, fn1, fn2), 1)
-      r = control_flow_ops.cond(pred, fn3, fn2)
+      fn3 = lambda: math_ops.add(tf_cond.cond(pred, fn1, fn2), 1)
+      r = tf_cond.cond(pred, fn3, fn2)
 
       result = self.evaluate(r)
     self.assertAllEqual(12, result)
@@ -629,7 +631,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.greater(age, max_age)
       fn1 = lambda: [state_ops.assign(v1, 1).op, state_ops.assign(v2, 2).op]
       fn2 = lambda: [state_ops.assign(v3, 3).op, constant_op.constant(10).op]
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       self.assertEqual(len(r), 2)
       return r[1]
 
@@ -658,7 +660,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       count = constant_op.constant(0, name="count")
 
       def body(i):
-        return control_flow_ops.cond(
+        return tf_cond.cond(
             alive, lambda: [math_ops.less(i, 3), math_ops.add(count, 1)],
             lambda: [alive, count])
 
@@ -675,7 +677,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.greater(age, 4)
       fn1 = lambda: age
       fn2 = lambda: v1
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       self.evaluate(variables.global_variables_initializer())
       result = self.evaluate(r)
@@ -688,7 +690,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: [math_ops.add(x, 1), math_ops.add(x, 2)]
       fn2 = lambda: [y, y]
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], self.evaluate(r))
 
   @parameterized.parameters(dtypes.float32, dtypes.float64)
@@ -701,7 +703,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     pred = math_ops.greater(age, 4.)
     fn1 = lambda: age
     fn2 = lambda: v1
-    r = control_flow_ops.cond(pred, fn1, fn2)
+    r = tf_cond.cond(pred, fn1, fn2)
 
     grad = gradients_impl.gradients(r, v1)[0]
     self.evaluate(variables.global_variables_initializer())
@@ -717,7 +719,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return math_ops.exp(x)
 
     with ops.device("CPU:0"):
-      r = control_flow_ops.cond(
+      r = tf_cond.cond(
           constant_op.constant(True), true_fn, lambda: 0.)
       self.assertIn("cpu", r.device.lower())
 
@@ -758,7 +760,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       with ops.device("CPU:0"):
         return arg + 1
 
-    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+    r = tf_cond.cond(constant_op.constant(True), true_fn, lambda: 0.)
 
     # Disable Loop_optimizer grappler pass for this test because it replaces
     # Switch with Identity when it's part of a dead branch.
@@ -794,7 +796,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     def true_fn():
       return cardinality.cardinality(arg)
 
-    r = control_flow_ops.cond(
+    r = tf_cond.cond(
         constant_op.constant(True), true_fn,
         lambda: constant_op.constant(0, dtypes.int64))
 
@@ -832,7 +834,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       with ops.device("CPU:0"):
         return arg + 1
 
-    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+    r = tf_cond.cond(constant_op.constant(True), true_fn, lambda: 0.)
 
     # Disable Loop_optimizer grappler pass for this test because it replaces
     # Switch with Identity when it's part of a dead branch.
@@ -869,7 +871,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return array_ops.identity(inputs["c"])
 
       pred = constant_op.constant(True)
-      return control_flow_ops.cond(
+      return tf_cond.cond(
           pred, lambda: true_fn(inputs), lambda: false_fn(inputs))
 
     # This was needed for backwards compatibility with TF2 Estimators which
@@ -920,7 +922,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: [math_ops.add(x, y), math_ops.add(x, y)]
       fn2 = lambda: [y, y]
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       test_result = self.evaluate(r)
       self.assertListEqual([210, 210], test_result)
 
@@ -931,7 +933,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: (math_ops.add(x, y), math_ops.add(x, y))
       fn2 = lambda: (y, y)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       test_result = self.evaluate(r)
       self.assertTupleEqual((210, 210), test_result)
 
@@ -942,7 +944,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
       fn2 = lambda: {"a": y, "b": y}
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       test_result = self.evaluate(r)
       self.assertDictEqual({"a": 210, "b": 210}, test_result)
 
@@ -954,7 +956,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     fn2 = lambda: [[y, y]]
     # Pass strict=True flag as cond_v2 allows for tensors to be
     # in nested output structures as singletons
-    r = control_flow_ops.cond(pred, fn1, fn2, strict=True)
+    r = tf_cond.cond(pred, fn1, fn2, strict=True)
     test_result = self.evaluate(r)
     self.assertListEqual([[210, 210]], test_result)
 
@@ -965,7 +967,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: ((math_ops.add(x, y), math_ops.add(x, y)))
       fn2 = lambda: ((y, y))
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       test_result = self.evaluate(r)
       self.assertTupleEqual(((210, 210)), test_result)
 
@@ -978,7 +980,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                      "b": {"d": math_ops.add(x, y)}}
       fn2 = lambda: {"a": {"c": y},
                      "b": {"d": y}}
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       test_result = self.evaluate(r)
       self.assertDictEqual({"a": {"c": 210}, "b": {"d": 210}}, test_result)
 
@@ -996,7 +998,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(
           TypeError if control_flow_util.ENABLE_CONTROL_FLOW_V2 else ValueError,
           v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
-        control_flow_ops.cond(pred, fn1, fn2)
+        tf_cond.cond(pred, fn1, fn2)
 
   @test_util.run_v1_only("b/120545219")
   def testCondWithControl(self):
@@ -1009,7 +1011,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           _ = a + 1
         return a + 2
 
-      r = control_flow_ops.cond(
+      r = tf_cond.cond(
           constant_op.constant(True), true_branch,
           lambda: constant_op.constant(1))
       result = sess.run(r, feed_dict={control_holder: 5.})
@@ -1051,7 +1053,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def fn2():
         return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       self.evaluate(r)
 
   def testCondRecvIdentity(self):
@@ -1067,7 +1069,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         with ops.device("/cpu:0"):
           return control_flow_assert.Assert(False, ["Wrong branch!!!"])
 
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       self.evaluate(r)
 
   @test_util.run_deprecated_v1
@@ -1087,7 +1089,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     pred = array_ops.placeholder_with_default(
         constant_op.constant(True), shape=())
-    r = control_flow_ops.cond(pred, lambda: True, lambda: False)
+    r = tf_cond.cond(pred, lambda: True, lambda: False)
 
     with session.Session(config=config) as sess:
       r_value = sess.run(
@@ -1118,7 +1120,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: array_ops.identity(x)
       fn2 = lambda: array_ops.identity(x)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       grad = gradients_impl.gradients(r, [x])[0]
       self.assertAllEqual(1.0, self.evaluate(grad))
@@ -1137,7 +1139,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def false_fn():
         return x * x
 
-      r = control_flow_ops.cond(pred, true_fn, false_fn)
+      r = tf_cond.cond(pred, true_fn, false_fn)
 
       self.assertAllEqual(r, 10000.)
       grad = gradients_impl.gradients(r, [x])[0]
@@ -1162,7 +1164,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def false_fn():
         return x * x
 
-      r = control_flow_ops.cond(pred, true_fn, false_fn)
+      r = tf_cond.cond(pred, true_fn, false_fn)
 
       self.assertAllEqual(r, 10000.)
       grad = gradients_impl.gradients(r, [x])[0]
@@ -1184,13 +1186,13 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         def inner_false_fn():
           return x * x
 
-        return control_flow_ops.cond(
+        return tf_cond.cond(
             constant_op.constant(True), inner_true_fn, inner_false_fn)
 
       def false_fn():
         return x * x
 
-      r = control_flow_ops.cond(pred, true_fn, false_fn)
+      r = tf_cond.cond(pred, true_fn, false_fn)
 
       self.assertAllEqual(r, 10000.)
       grad = gradients_impl.gradients(r, [x])[0]
@@ -1204,7 +1206,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(c, 2)
       fn1 = lambda: math_ops.multiply(x, 42.0)
       fn2 = lambda: math_ops.multiply(x, 3.0)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       grad = gradients_impl.gradients(r, [x])[0]
       self.assertAllEqual(42.0, grad.eval(feed_dict={c: 1}))
@@ -1225,7 +1227,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       fn2 = lambda: math_ops.multiply(ox, 3.0)
       y = math_ops.multiply(7.0, ox)
-      r = control_flow_ops.cond(pred, lambda: fn1(y), fn2)
+      r = tf_cond.cond(pred, lambda: fn1(y), fn2)
 
       self.assertAllEqual(980.0, r.eval(feed_dict={c: 1}))
       self.assertAllEqual(30.0, r.eval(feed_dict={c: 3}))
@@ -1240,7 +1242,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       y = array_ops.placeholder(dtypes.float32)
 
       with ops.device("/cpu:0"):
-        z = control_flow_ops.cond(pred, lambda: x * y * 2.0, lambda: 2.0)
+        z = tf_cond.cond(pred, lambda: x * y * 2.0, lambda: 2.0)
 
       with ops.device("/cpu:1"):
         grad = gradients_impl.gradients(z, x)[0]
@@ -1263,15 +1265,15 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   def testNestedCond_Simple(self):
     with self.cached_session():
       x = constant_op.constant(0., name="X")
-      y = control_flow_ops.cond(
+      y = tf_cond.cond(
           constant_op.constant(True), lambda: x,
-          lambda: control_flow_ops.cond(x < 1., lambda: x, lambda: x))
+          lambda: tf_cond.cond(x < 1., lambda: x, lambda: x))
       result = gradients_impl.gradients(y, x)[0]
       self.assertEqual(1.0, self.evaluate(result))
 
-      z = control_flow_ops.cond(
+      z = tf_cond.cond(
           constant_op.constant(False), lambda: x,
-          lambda: control_flow_ops.cond(x < 1., lambda: x, lambda: x))
+          lambda: tf_cond.cond(x < 1., lambda: x, lambda: x))
       result = gradients_impl.gradients(z, x)[0]
       self.assertEqual(1.0, self.evaluate(result))
 
@@ -1283,7 +1285,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       pred = math_ops.less(c, 2)
       fn1 = lambda: array_ops.identity(v1)
       fn2 = lambda: array_ops.gather(v1, [1, 1])
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
       # The following `grad` is a Tensor since it is the aggregation of an
       # IndexedSlice and a Tensor. It is an `IndexedSlices` with control flow
       # v2.
@@ -1306,7 +1308,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     var = resource_variable_ops.ResourceVariable(
         np.ones((4, 2), dtype=np.float32))
     x = constant_op.constant(1.0)
-    r = control_flow_ops.cond(
+    r = tf_cond.cond(
         constant_op.constant(True),
         lambda: x * math_ops.reduce_sum(var.sparse_read([1, 2])),
         lambda: constant_op.constant(np.zeros((2, 3)),
@@ -1343,7 +1345,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     @eager_def_function.function
     def foo():
-      r = control_flow_ops.cond(constant_op.constant(True), true_fn, false_fn)
+      r = tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
       return gradients_impl.gradients(r, [var, x1, x2])
 
     grad = foo()
@@ -1369,7 +1371,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     def foo():
       return constant_op.constant("foo"), constant_op.constant(True)
 
-    r = control_flow_ops.cond(foo()[1], lambda: 1.0, lambda: 2.0)
+    r = tf_cond.cond(foo()[1], lambda: 1.0, lambda: 2.0)
     self.assertEqual(self.evaluate(r), 1.0)
 
   @test_util.run_v1_only("Tests Session.run() pruning logic.")
@@ -1377,7 +1379,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       value = constant_op.constant(37.0)
       predicate = constant_op.constant(True)
-      cond_output = control_flow_ops.cond(
+      cond_output = tf_cond.cond(
           predicate, lambda: constant_op.constant(0.0), lambda: value)
       result = array_ops.identity(cond_output)
       self.assertEqual(37.0, sess.run(result, feed_dict={predicate: False}))
@@ -1390,7 +1392,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       value = constant_op.constant(37.0)
       predicate = array_ops.placeholder_with_default(
           constant_op.constant(True), [])
-      cond_output = control_flow_ops.cond(
+      cond_output = tf_cond.cond(
           predicate, lambda: constant_op.constant(0.0), lambda: value)
       result = array_ops.identity(cond_output)
       self.assertAllEqual(37.0, sess.run(result, feed_dict={predicate: False}))
@@ -1421,11 +1423,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return constant_op.constant(10)
 
     def build_cond():
-      return control_flow_ops.cond(
+      return tf_cond.cond(
           constant_op.constant(True), branch_fn, lambda: 0)
 
     def build_nested_cond():
-      return control_flow_ops.cond(
+      return tf_cond.cond(
           constant_op.constant(True), build_cond, lambda: 0)
 
     # In v1 graph mode, pruning should make only "C" print.
@@ -1503,7 +1505,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                        constant_op.constant(0)])
 
     def build_nested_while():
-      return control_flow_ops.cond(
+      return tf_cond.cond(
           constant_op.constant(True), build_while, lambda: [0, 0])
 
     # In v1 graph mode, pruning should make only "D" print.
@@ -1599,7 +1601,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testWhileWithRefs_1(self):
     with self.cached_session() as sess:
-      x = variables.VariableV1(0)._ref()  # pylint: disable=protected-access
+      x = variable_v1.VariableV1(0)._ref()  # pylint: disable=protected-access
       i = constant_op.constant(0)
       c = lambda i, x: math_ops.less(i, 100)
 
@@ -1755,7 +1757,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         max_iter_holder.append(array_ops.placeholder(dtypes.int32, shape=()))
         return 1.0
 
-      _ = control_flow_ops.cond(
+      _ = tf_cond.cond(
           constant_op.constant(True), create_mi, create_mi)
 
       return while_loop_tf.while_loop(
@@ -2497,8 +2499,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       const_true = lambda: constant_op.constant(True)
       const_false = lambda: constant_op.constant(False)
-      cond = lambda i: control_flow_ops.cond(i > 0, const_true, const_false)
-      body = lambda i: control_flow_ops.cond(i > 0, lambda: i - 1, lambda: i)
+      cond = lambda i: tf_cond.cond(i > 0, const_true, const_false)
+      body = lambda i: tf_cond.cond(i > 0, lambda: i - 1, lambda: i)
 
       with ops.control_dependencies([control_flow_ops.no_op()]):
         loop = while_loop_tf.while_loop(cond, body, (constant_op.constant(5),))
@@ -2517,7 +2519,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           return i < 4
 
         def loop_body(i):
-          some_cond = control_flow_ops.cond(
+          some_cond = tf_cond.cond(
               constant_op.constant(True),
               lambda: state_ops.assign(v, math_ops.square(v)), lambda: v)
           with ops.control_dependencies([some_cond]):
@@ -2547,7 +2549,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         with ops.control_dependencies([loop]):
           return constant_op.constant(6.0)
 
-      r = control_flow_ops.cond(
+      r = tf_cond.cond(
           constant_op.constant(False), lambda: constant_op.constant(1.0),
           false_branch)
       self.evaluate(variables.global_variables_initializer())
@@ -2560,7 +2562,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = ops.convert_to_tensor(0, name="n")
       c = lambda x: math_ops.less(x, 10)
       b = lambda x: math_ops.add(x, 1)
-      r = control_flow_ops.cond(
+      r = tf_cond.cond(
           math_ops.less(0, 1), lambda: while_loop_tf.while_loop(c, b, [n]),
           lambda: n)
       self.assertAllEqual(10, self.evaluate(r))
@@ -2571,7 +2573,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       n = ops.convert_to_tensor(0)
       c = lambda x: math_ops.less(x, 10)
       b = lambda x: math_ops.add(x, 1)
-      r = control_flow_ops.cond(
+      r = tf_cond.cond(
           math_ops.less(1, 0), lambda: math_ops.add(n, 1),
           lambda: while_loop_tf.while_loop(c, b, [n]))
       self.assertAllEqual(10, self.evaluate(r))
@@ -2589,7 +2591,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           x1 = math_ops.add(x, 1.0)
         return x1
 
-      r = control_flow_ops.cond(
+      r = tf_cond.cond(
           p,
           lambda: while_loop_tf.while_loop(c, b, [n]),
           lambda: math_ops.multiply(n, 2.0),
@@ -2614,7 +2616,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = lambda x: math_ops.less(x, n)
       # pylint: disable=undefined-variable
       # for OSS build
-      b = lambda x: control_flow_ops.cond(
+      b = lambda x: tf_cond.cond(
           constant_op.constant(True),
           lambda: math_ops.add(x, one), lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
@@ -2626,7 +2628,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       n = ops.convert_to_tensor(0, name="n")
       c = lambda x: math_ops.less(x, 10)
-      b = lambda x: control_flow_ops.cond(constant_op.constant(True), lambda: math_ops.add(x, 1), lambda: n)
+      b = lambda x: tf_cond.cond(
+          constant_op.constant(True), lambda: math_ops.add(x, 1), lambda: n)
       r = while_loop_tf.while_loop(c, b, [n])
       self.assertAllEqual(10, self.evaluate(r))
 
@@ -2637,9 +2640,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = lambda x: math_ops.less(x, 10)
       # pylint: disable=undefined-variable
       # for OSS build
-      b = lambda x: control_flow_ops.cond(math_ops.less(0, 1),
-                                          lambda: math_ops.add(x, 1),
-                                          lambda: math_ops.subtract(x, 1))
+      b = lambda x: tf_cond.cond(math_ops.less(0, 1),
+                                 lambda: math_ops.add(x, 1),
+                                 lambda: math_ops.subtract(x, 1))
       # pylint: enable=undefined-variable
       r = while_loop_tf.while_loop(c, b, [n])
       self.assertAllEqual(10, self.evaluate(r))
@@ -2655,7 +2658,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       with ops.device("/cpu:0"):
         z = while_loop_tf.while_loop(
             lambda i, _: i < 3, lambda i, x:
-            (i + 1, control_flow_ops.cond(pred, lambda: x * 2.0, lambda: 10.0)),
+            (i + 1, tf_cond.cond(pred, lambda: x * 2.0, lambda: 10.0)),
             [0, x_init])
 
       with ops.device("/cpu:1"):
@@ -2953,7 +2956,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = lambda v: math_ops.less(v, 100.0)
       b = math_ops.square
       r = while_loop_tf.while_loop(c, b, [v], parallel_iterations=1)
-      r = control_flow_ops.cond(math_ops.less(1, 2), lambda: r, lambda: v)
+      r = tf_cond.cond(math_ops.less(1, 2), lambda: r, lambda: v)
 
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(1024.0, self.evaluate(r))
@@ -3108,7 +3111,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = lambda x: math_ops.less(x, 128.0)
 
       def b(x):
-        return control_flow_ops.cond(
+        return tf_cond.cond(
             constant_op.constant(True),
             lambda: math_ops.square(inner_loop(x)[1]),
             lambda: math_ops.multiply(x, 2.0))
@@ -3236,7 +3239,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return x + var.sparse_read([1])[0]
 
     def body(i, x):
-      return (i + 1, control_flow_ops.cond(
+      return (i + 1, tf_cond.cond(
           math_ops.equal(i % 2, 0),
           lambda: foo(x, var1),
           lambda: foo(x, var2)))
@@ -3347,7 +3350,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         r = while_loop_tf.while_loop(c, b, [n], [tensor_shape.unknown_shape()])
         return gradients_impl.gradients(r, x)[0]
 
-      r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
+      r = tf_cond.cond(math_ops.less(1, 2), fn1, lambda: x)
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
   @test_util.disable_control_flow_v2("b/116340060")
@@ -3393,7 +3396,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return i + 1, x
 
     def inner_body(j, x):
-      y = control_flow_ops.cond(math_ops.less(x, 1), lambda: 2 * x, lambda: x)
+      y = tf_cond.cond(math_ops.less(x, 1), lambda: 2 * x, lambda: x)
       return j + 1, gradients_impl.gradients(y, x)[0]
 
     i, x = while_loop_tf.while_loop(lambda i, x: i < 3, outer_body, [0, 0.0])
@@ -3413,7 +3416,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return while_loop_tf.while_loop(
           lambda i, _: i < 3, lambda i, x:
           (i + 1,
-           control_flow_ops.cond(
+           tf_cond.cond(
                constant_op.constant(True), lambda: x + var, lambda: x)),
           [0, 0.0])[1]
 
@@ -3432,7 +3435,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           # Outer loop body
           lambda i, y: (
               i + 1,
-              y + control_flow_ops.cond(
+              y + tf_cond.cond(
                   constant_op.constant(True),
                   # True branch
                   lambda: while_loop_tf.while_loop(
@@ -3768,9 +3771,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = lambda x: math_ops.less(x, n)
       # pylint: disable=undefined-variable
       # for OSS build
-      b = lambda x: control_flow_ops.cond(constant_op.constant(True),
-                                          lambda: math_ops.square(x),
-                                          lambda: math_ops.subtract(x, one))
+      b = lambda x: tf_cond.cond(constant_op.constant(True),
+                                 lambda: math_ops.square(x),
+                                 lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
       r = while_loop_tf.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
@@ -3790,9 +3793,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       c = lambda x: math_ops.less(x, n)
       # pylint: disable=undefined-variable
       # for OSS build
-      b = lambda x: control_flow_ops.cond(constant_op.constant(True),
-                                          lambda: math_ops.square(x),
-                                          lambda: math_ops.subtract(x, one))
+      b = lambda x: tf_cond.cond(constant_op.constant(True),
+                                 lambda: math_ops.square(x),
+                                 lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
       r = while_loop_tf.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
@@ -3828,7 +3831,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testWhileWithRefsWithGradients_1(self):
     with self.cached_session() as sess:
-      x = variables.VariableV1(0.)._ref()  # pylint: disable=protected-access
+      x = variable_v1.VariableV1(0.)._ref()  # pylint: disable=protected-access
       i = constant_op.constant(0)
       c = lambda i, x: math_ops.less(i, 10)
 
@@ -3840,7 +3843,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       r = while_loop_tf.while_loop(c, body, [i, x], parallel_iterations=5)
 
-      grad_ys = [variables.VariableV1(73)._ref()]  # pylint: disable=protected-access
+      grad_ys = [variable_v1.VariableV1(73)._ref()]  # pylint: disable=protected-access
       grad = gradients_impl.gradients([r[1]], [x], grad_ys=grad_ys)
 
       self.evaluate(variables.global_variables_initializer())
@@ -4188,7 +4191,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       one = ops.convert_to_tensor(1, name="one")
       two = ops.convert_to_tensor(2, name="two")
       p = math_ops.greater_equal(c, 1)
-      i = control_flow_ops.cond(p, lambda: one, lambda: two)
+      i = tf_cond.cond(p, lambda: one, lambda: two)
       self.assertTrue(isinstance(i, ops.Tensor))
 
       # True case: c = 2 is >= 1
@@ -4210,7 +4213,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def l1():
         return math_ops.reduce_sum(math_ops.abs(x))
 
-      i = control_flow_ops.cond(math_ops.equal(d, 2), l2, l1)
+      i = tf_cond.cond(math_ops.equal(d, 2), l2, l1)
       self.assertAllClose(4.0, i.eval(feed_dict={d: 1}))
       self.assertAllClose(2.0 * math.sqrt(2), i.eval(feed_dict={d: 2}))
 
@@ -4324,7 +4327,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def b():
         return state_ops.assign(v, two)
 
-      i = control_flow_ops.cond(p, a, b)
+      i = tf_cond.cond(p, a, b)
       self.assertTrue(isinstance(i, ops.Tensor))
       self.evaluate(variables.global_variables_initializer())
 
@@ -4341,7 +4344,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testWithOpsDependencies(self):
     with self.cached_session() as sess:
-      v = variables.VariableV1(0.0)
+      v = variable_v1.VariableV1(0.0)
       c = constant_op.constant(10)
 
       # Fetching v directly will result in an uninitialized error
@@ -4365,7 +4368,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testWithTensorDependencies(self):
     with self.cached_session():
-      v = variables.VariableV1(0.0)
+      v = variable_v1.VariableV1(0.0)
       c1 = constant_op.constant(10)
       c2 = constant_op.constant(20)
 
@@ -4392,7 +4395,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testWithIndexedSlicesDependencies(self):
     with self.cached_session():
-      v = variables.VariableV1(
+      v = variable_v1.VariableV1(
           np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(np.float32))
       v_at_1 = indexed_slices.IndexedSlices(v, constant_op.constant([1]))
       gather_v_at_1 = array_ops.gather(v_at_1.values, v_at_1.indices)
@@ -4417,18 +4420,18 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       # device set on tensor => same device on dep.
       with ops.device("/job:ps"):
-        vd = variables.VariableV1([0.0])
+        vd = variable_v1.VariableV1([0.0])
       with_vd_dep = control_flow_ops.with_dependencies([vd.initializer], vd)
       self.assertTrue("/job:ps" in with_vd_dep.device)
 
       # No device set on tensor => no device on dep.
-      vnod = variables.VariableV1([0.0])
+      vnod = variable_v1.VariableV1([0.0])
       with_vnod_dep = control_flow_ops.with_dependencies([vnod.initializer],
                                                          vnod)
       self.assertDeviceEqual(None, with_vnod_dep.device)
 
       # device set on tensor, default device on graph => default device on dep.
-      vdef = variables.VariableV1([0.0], name="vdef")
+      vdef = variable_v1.VariableV1([0.0], name="vdef")
       with ops.device("/job:worker/device:GPU:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
@@ -4439,8 +4442,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testGroup(self):
     with self.cached_session() as sess:
-      v1 = variables.VariableV1([0.0])
-      v2 = variables.VariableV1([1.0])
+      v1 = variable_v1.VariableV1([0.0])
+      v2 = variable_v1.VariableV1([1.0])
 
       # Group init1 and init2 and run.
       init = control_flow_ops.group(v1.initializer, v2.initializer)
@@ -4525,29 +4528,29 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     p1 = array_ops.placeholder(dtypes.float32)
     p2 = array_ops.placeholder(dtypes.float32)
     p3 = array_ops.placeholder(dtypes.float32)
-    v1 = variables.VariableV1(p1, validate_shape=False)
-    v2 = variables.VariableV1(p2, validate_shape=False)
-    v3 = variables.VariableV1(p3, validate_shape=False)
+    v1 = variable_v1.VariableV1(p1, validate_shape=False)
+    v2 = variable_v1.VariableV1(p2, validate_shape=False)
+    v3 = variable_v1.VariableV1(p3, validate_shape=False)
     self.assertIs(None, v1.get_shape().ndims)
     s = control_flow_ops.ref_select(index, [v1, v2, v3])
     self.assertIs(None, s.get_shape().ndims)
 
     # All inputs known but different.
-    v1 = variables.VariableV1([[1, 2]])
-    v2 = variables.VariableV1([[2], [1]])
+    v1 = variable_v1.VariableV1([[1, 2]])
+    v2 = variable_v1.VariableV1([[2], [1]])
     s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertIs(None, s.get_shape().ndims)
 
     # All inputs known and same.
-    v1 = variables.VariableV1([[1, 2]])
-    v2 = variables.VariableV1([[1, 2]])
+    v1 = variable_v1.VariableV1([[1, 2]])
+    v2 = variable_v1.VariableV1([[1, 2]])
     s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual([1, 2], s.get_shape())
 
     # Possibly the same but not guaranteed.
-    v1 = variables.VariableV1([[1., 2.]])
+    v1 = variable_v1.VariableV1([[1., 2.]])
     p2 = array_ops.placeholder(dtypes.float32, shape=[None, 2])
-    v2 = variables.VariableV1(p2, validate_shape=False)
+    v2 = variable_v1.VariableV1(p2, validate_shape=False)
     s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual(None, s.get_shape())
 
@@ -4739,7 +4742,7 @@ class ControlFlowContextCheckTest(test.TestCase):
         cond_tensor.append(constant_op.constant(1))
       return cond_tensor[0]
 
-    control_flow_ops.cond(
+    tf_cond.cond(
         math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))
     return cond_tensor[0]
 
@@ -4762,7 +4765,7 @@ class ControlFlowContextCheckTest(test.TestCase):
         "'while/Const_1' is in a while loop. See info log for more details."):
       # TODO(skyewm): this passes if we return while_tensor directly instead
       # of using it as input to another op.
-      control_flow_ops.cond(
+      tf_cond.cond(
           math_ops.less(1, 2), lambda: math_ops.add(1, while_tensor),
           lambda: constant_op.constant(0))
 
@@ -4799,7 +4802,7 @@ class ControlFlowContextCheckTest(test.TestCase):
         cond_tensor.append(constant_op.constant(1))
       return cond_tensor[0]
 
-    control_flow_ops.cond(math_ops.less(1, 2), branch_fn, branch_fn)
+    tf_cond.cond(math_ops.less(1, 2), branch_fn, branch_fn)
 
   @test_util.run_v1_only("b/120545219")
   def testValidWhileContext(self):
@@ -4817,7 +4820,7 @@ class ControlFlowContextCheckTest(test.TestCase):
     def body(_):
       cond_tensor = self._getCondTensor()
       # Create another cond containing the while loop for good measure
-      return control_flow_ops.cond(
+      return tf_cond.cond(
           math_ops.less(1, 2),
           lambda: while_loop_tf.while_loop(lambda i: i < 3,
                                            lambda i: i + cond_tensor, [0]),
@@ -4838,7 +4841,7 @@ class ControlFlowContextCheckTest(test.TestCase):
         ValueError,
         "Cannot use 'cond/while/Const_1' as input to 'cond/while_1/add' because"
         " they are in different while loops. See info log for more details."):
-      control_flow_ops.cond(
+      tf_cond.cond(
           math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))
 
 
@@ -4848,11 +4851,11 @@ class TupleTest(test.TestCase):
   def testTensors(self):
     for v1_first in [True, False]:
       with self.cached_session():
-        v1 = variables.VariableV1([1.0])
+        v1 = variable_v1.VariableV1([1.0])
         add1 = math_ops.add(
             control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             2.0)
-        v2 = variables.VariableV1([10.0])
+        v2 = variable_v1.VariableV1([10.0])
         add2 = math_ops.add(
             control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             20.0)
@@ -4879,16 +4882,16 @@ class TupleTest(test.TestCase):
   def testIndexedSlices(self):
     for v1_first in [True, False]:
       with self.cached_session():
-        v1 = variables.VariableV1(
-            np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(
-                np.float32))
+        v1 = variable_v1.VariableV1(
+            np.array([[0.0, 1.0], [10.0, 11.0], [20.0,
+                                                 21.0]]).astype(np.float32))
         v1_at_1 = indexed_slices.IndexedSlices(
             control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             constant_op.constant([1]))
 
-        v2 = variables.VariableV1(
-            np.array([[0.1, 1.1], [10.1, 11.1], [20.1, 21.1]]).astype(
-                np.float32))
+        v2 = variable_v1.VariableV1(
+            np.array([[0.1, 1.1], [10.1, 11.1], [20.1,
+                                                 21.1]]).astype(np.float32))
         v2_at_1 = indexed_slices.IndexedSlices(
             control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             constant_op.constant([1]))
@@ -4918,7 +4921,7 @@ class TupleTest(test.TestCase):
 
   def testAcceptTensorsAsControlInputs(self):
     with self.cached_session():
-      var = variables.VariableV1(0)
+      var = variable_v1.VariableV1(0)
       assign = state_ops.assign(var, 1)
       t, = control_flow_ops.tuple(
           [constant_op.constant(0)], control_inputs=[assign])
@@ -5096,7 +5099,7 @@ class EagerTest(test.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: [constant_op.constant(10)]
       fn2 = lambda: [constant_op.constant(20)]
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf_cond.cond(pred, fn1, fn2)
 
       self.assertAllEqual(r.numpy(), 10)
       self.assertFalse(isinstance(r, list))
@@ -5110,7 +5113,7 @@ class EagerTest(test.TestCase):
         # TODO(b/111124878): this only needs to output one element.
         fn1 = lambda: (constant_op.constant(10), constant_op.constant(100))
         fn2 = lambda: (constant_op.constant(20), constant_op.constant(200))
-        return control_flow_ops.cond(constant_op.constant(pred), fn1, fn2)
+        return tf_cond.cond(constant_op.constant(pred), fn1, fn2)
 
       r = foo(True)
       self.assertAllEqual(r[0].numpy(), 10)

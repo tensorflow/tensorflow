@@ -25,6 +25,7 @@ py_strict_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -42,6 +43,7 @@ py_strict_library(
     deps = [
         ":util",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -50,7 +52,8 @@ py_strict_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:weights_broadcast_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
 )

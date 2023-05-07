@@ -23,7 +23,9 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace mlir {
 namespace quant {
@@ -56,17 +58,24 @@ class RemoveTpuOp : public RewritePattern {
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
 
  private:
-  LogicalResult matchAndRewrite(Operation* call_op,
+  LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
+    // Remove `_tpu_replicate` attributes on each operation first.
+    if (op->hasAttr(tensorflow::kTPUReplicateAttr)) {
+      op->removeAttr(tensorflow::kTPUReplicateAttr);
+      return success();
+    }
+
+    // Remove TPU operations.
     if (isa<TF::TPUReplicateMetadataOp, TF::TPUCompilationResultOp,
-            TF::TPUOrdinalSelectorOp>(call_op)) {
-      call_op->erase();
+            TF::TPUOrdinalSelectorOp>(op)) {
+      op->erase();
     } else if (auto replicated_input_op =
-                   dyn_cast_or_null<TF::TPUReplicatedInputOp>(call_op)) {
+                   dyn_cast_or_null<TF::TPUReplicatedInputOp>(op)) {
       // TODO(b/267700110): Handle multiple input/output cases.
       rewriter.replaceOp(replicated_input_op, replicated_input_op.getInputs());
     } else if (auto replicated_output_op =
-                   dyn_cast_or_null<TF::TPUReplicatedOutputOp>(call_op)) {
+                   dyn_cast_or_null<TF::TPUReplicatedOutputOp>(op)) {
       // TODO(b/267700110): Handle multiple input/output cases.
       rewriter.replaceOp(replicated_output_op, replicated_output_op.getInput());
     } else {
@@ -115,6 +124,7 @@ void ConvertTpuModelToCpuPass::runOnOperation() {
   patterns.add<ReplaceTpuPartitionedCallOpWithPartitionedCallOp,
                ReplaceBatchFunctionOpToPartitionedCallOp>(ctx);
   patterns.add<RemoveTpuOp>(ctx);
+  patterns.add<RemoveIdentity>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     module_op.emitError() << "quant-convert-tpu-model-to-cpu pattern "

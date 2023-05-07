@@ -63,7 +63,7 @@ GraphMgr::GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr)
   Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
 }
 
@@ -145,14 +145,11 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [this, session](const int64_t step_id, const DeviceMgr*,
-                          Rendezvous** r) -> Status {
-            auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
+                          tsl::core::RefCountPtr<Rendezvous>* r) -> Status {
+            tsl::core::RefCountPtr<RemoteRendezvous> remote_r =
+                this->worker_env_->rendezvous_mgr->Find(step_id);
             TF_RETURN_IF_ERROR(remote_r->Initialize(session));
-            *r = remote_r;
-            return OkStatus();
-          },
-          [this](const int64_t step_id) {
-            this->worker_env_->rendezvous_mgr->Cleanup(step_id);
+            *r = std::move(remote_r);
             return OkStatus();
           }}));
 
@@ -354,7 +351,7 @@ Status GraphMgr::DeregisterAll() {
 }
 
 Status GraphMgr::SendInputs(const int64_t step_id, const NamedTensors& in) {
-  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id).release();
   std::vector<string> keys;
   std::vector<Tensor> tensors_to_send;
   keys.reserve(in.size());
@@ -373,14 +370,14 @@ Status GraphMgr::SendInputs(const int64_t step_id, const NamedTensors& in) {
 }
 
 Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
-  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id).release();
   Status s = RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
   rendezvous->Unref();
   if (!s.ok()) {
     // Failing to fetch the outputs should not be possible, so rewrite the error
     // status to an INTERNAL error.
     s = errors::Internal("Failed to fetch outputs for step ", step_id,
-                         ". (Original error message: ", s.error_message(), ")");
+                         ". (Original error message: ", s.message(), ")");
   }
   size_t output_size = 0;
   for (auto& p : *out) {
@@ -392,7 +389,7 @@ Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
 
 void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
                                 StatusCallback done) {
-  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id).release();
   std::vector<string> keys;
   std::vector<Tensor>* received_keys = new std::vector<Tensor>;
   keys.reserve(out->size());
@@ -460,7 +457,8 @@ void GraphMgr::ExecuteAsync(
     }
   }
 
-  RemoteRendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  RemoteRendezvous* rendezvous =
+      worker_env_->rendezvous_mgr->Find(step_id).release();
   Status s = rendezvous->Initialize(session);
   CollectiveExecutor::Handle* ce_handle =
       item->collective_graph_key != BuildGraphOptions::kNoCollectiveGraphKey

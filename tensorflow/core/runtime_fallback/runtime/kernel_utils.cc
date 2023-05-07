@@ -33,17 +33,18 @@ tfrt::Expected<OwnedEagerContext> InitEagerContext(
   tensorflow::Status status = tensorflow::DeviceFactory::AddDevices(
       session_opts, "/job:localhost/replica:0/task:0", &devices);
   if (!status.ok()) {
-    return tfrt::MakeStringError(tfrt::StrCat(status.error_message()));
+    return tfrt::MakeStringError(status.message());
   }
 
   if (device_mgr != nullptr) {
     Status s = device_mgr->AddDevices(std::move(devices));
     DCHECK(s.ok()) << "Failed to initialize device manager.";
-    auto r = new tensorflow::IntraProcessRendezvous(device_mgr);
+    auto r = tsl::core::RefCountPtr<IntraProcessRendezvous>(
+        new tensorflow::IntraProcessRendezvous(device_mgr));
 
     OwnedEagerContext owned_eager_context{new tensorflow::EagerContext(
         session_opts, default_device_placement_policy, is_async, device_mgr,
-        /*device_mgr_owned=*/false, r)};
+        /*device_mgr_owned=*/false, std::move(r))};
 
 #if !defined(IS_MOBILE_PLATFORM)
     owned_eager_context->SetDistributedManager(
@@ -56,11 +57,12 @@ tfrt::Expected<OwnedEagerContext> InitEagerContext(
 
   auto owned_device_mgr =
       std::make_unique<tensorflow::StaticDeviceMgr>(std::move(devices));
-  auto r = new tensorflow::IntraProcessRendezvous(owned_device_mgr.get());
+  auto r = tsl::core::RefCountPtr<IntraProcessRendezvous>(
+      new tensorflow::IntraProcessRendezvous(owned_device_mgr.get()));
 
   OwnedEagerContext owned_eager_context{new tensorflow::EagerContext(
       session_opts, default_device_placement_policy, is_async,
-      owned_device_mgr.release(), /*device_mgr_owned=*/true, r)};
+      owned_device_mgr.release(), /*device_mgr_owned=*/true, std::move(r))};
 
 #if !defined(IS_MOBILE_PLATFORM)
   owned_eager_context->SetDistributedManager(

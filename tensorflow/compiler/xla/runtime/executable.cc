@@ -93,17 +93,16 @@ ExecutionEngine::SymbolsBinding ToSymbolsBinding(
     using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
     custom_call_registry.ForEach([&](std::string_view name,
                                      DirectCustomCall custom_call) {
-      symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-          llvm::pointerToJITTargetAddress(custom_call), llvm::JITSymbolFlags());
+      symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(custom_call),
+                                  llvm::JITSymbolFlags()};
     });
 
     // Register type id symbols.
     type_registry.ForEach([&](std::string_view name, TypeID type_id) {
       auto type_id_ptr =
           reinterpret_cast<std::uintptr_t>(type_id.getAsOpaquePointer());
-      symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-          static_cast<llvm::JITTargetAddress>(type_id_ptr),
-          llvm::JITSymbolFlags());
+      symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr(type_id_ptr),
+                                  llvm::JITSymbolFlags()};
     });
 
     return symbol_map;
@@ -435,7 +434,7 @@ Status Executable::ReturnResults(unsigned ordinal,
   // Prepare exported functions for the executable.
   std::vector<Executable::Function> functions;
 
-  for (auto& indexed : llvm::enumerate(load_functions)) {
+  for (const auto& indexed : llvm::enumerate(load_functions)) {
     LoadFunction& fn = indexed.value();
 
     // Get the memory layout for passing function arguments.
@@ -449,7 +448,8 @@ Status Executable::ReturnResults(unsigned ordinal,
     functions.push_back(Executable::Function(
         std::move(fn.name), (*engine)->exported(indexed.index()),
         std::move(fn.signature), std::move(fn.runtime_signature),
-        std::move(*args_memory_layout), std::move(*results_memory_layout)));
+        std::move(*args_memory_layout), std::move(*results_memory_layout),
+        true));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),
@@ -531,8 +531,8 @@ llvm::orc::SymbolMap RuntimeApiSymbolMap(llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
 
   auto bind = [&](std::string_view name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
+    symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(symbol_ptr),
+                                llvm::JITSymbolFlags()};
   };
 
   bind("runtimeGetResultStorage", &GetResultStorage);

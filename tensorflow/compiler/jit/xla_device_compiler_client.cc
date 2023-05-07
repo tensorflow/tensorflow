@@ -102,6 +102,8 @@ XlaDeviceCompilerClient::LoadExecutable(
 }
 
 void XlaDeviceCompilerClient::WaitForProgramsToFinish() {
+  if (client_ == nullptr) return;
+
   for (auto* executor : client_->backend().stream_executors()) {
     bool ok = executor->SynchronizeAllActivity();
     if (!ok) {

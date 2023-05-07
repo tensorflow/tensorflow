@@ -74,12 +74,12 @@ cc_library(
     deps = [
         ":grpc_client_cq_tag",
         ":grpc_util",
-        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_state",
+        "@com_google_absl//absl/strings:str_format",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -120,13 +120,13 @@ cc_library(
     hdrs = ["grpc_tensor_coding.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@com_google_absl//absl/flags:flag",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/flags:flag",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -172,13 +172,14 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "grpc_response_cache",
-    srcs = ["grpc_response_cache.cc"],
-    hdrs = ["grpc_response_cache.h"],
+    name = "rpc_response_cache",
+    srcs = ["rpc_response_cache.cc"],
+    hdrs = ["rpc_response_cache.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -189,11 +190,10 @@ tf_cuda_library(
     hdrs = ["grpc_worker_service.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        ":grpc_response_cache",
         ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
-        "@com_google_absl//absl/container:flat_hash_map",
+        ":rpc_response_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -207,9 +207,10 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_session",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -303,7 +304,6 @@ cc_library(
         ":grpc_worker_cache",
         ":grpc_worker_service",
         ":rpc_rendezvous_mgr",
-        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -325,6 +325,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service_impl",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
     ] + tf_protos_profiler_service() + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),

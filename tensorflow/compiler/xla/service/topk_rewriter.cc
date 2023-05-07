@@ -111,10 +111,26 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Gt(param0, param1);
   };
 
-  auto match_all_compares = [&match_compare](HloInstruction* root) {
-    return Match(root, match_compare(BF16)) ||
-           Match(root, match_compare(F32)) || Match(root, match_compare(S32)) ||
-           Match(root, match_compare(U32));
+  auto match_default_compare = [](PrimitiveType type) {
+    auto params_with_type = [&](int i, PrimitiveType t) {
+      return m::Parameter(i).WithShape(m::Shape().WithElementType(t));
+    };
+    auto params =
+        std::vector({// Values
+                     params_with_type(0, type), params_with_type(1, type),
+                     // Indices
+                     params_with_type(2, S32), params_with_type(3, S32)});
+    auto const_true = m::Broadcast(m::Constant());
+    auto values_gt = m::Gt(params[0], params[1]);
+    return m::Select(const_true, values_gt, const_true);
+  };
+
+  auto match_all_types = [](HloInstruction* root, auto callback) {
+    bool result = false;
+    for (auto type : {BF16, F32, S32, U32}) {
+      result = result || Match(root, callback(type));
+    }
+    return result;
   };
 
   return Match(comp->root_instruction(),
@@ -128,16 +144,19 @@ static bool IsNanSafeGt(HloComputation* comp) {
                m::Gt(match_bitcast_bf16_with_convert(0),
                      match_bitcast_bf16_with_convert(1))) ||
          Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1))) ||
-         match_all_compares(comp->root_instruction());
+         match_all_types(comp->root_instruction(), match_compare) ||
+         match_all_types(comp->root_instruction(), match_default_compare);
 }
 
 // Look for the instructions emitted from: xla/client/lib/sorting.cc
 static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
   namespace m = match;
-  auto match_iota = m::Iota().WithShape(
-      m::Shape().WithElementType(S32).WithDims(data->shape().dimensions()));
-  return Match(sort->operand(1), match_iota) ||
-         Match(sort->operand(1), m::Broadcast(match_iota));
+  const auto sort_dims = {data->shape().dimensions(sort->sort_dimension())};
+  auto match_iota = [](auto dims) {
+    return m::Iota().WithShape(m::Shape().WithElementType(S32).WithDims(dims));
+  };
+  return Match(sort->operand(1), match_iota(data->shape().dimensions())) ||
+         Match(sort->operand(1), m::Broadcast(match_iota(sort_dims)));
 }
 
 std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
@@ -330,10 +349,10 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     };
     CHECK_NE(comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
-    if (call->user_count() == 1) {
+    if (call->user_count() == 1 && call->users().front()->tuple_index() == 0) {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
           {input->shape()}, sort_dimension, {input}, call->to_apply(),
-          /*is_stable=*/false));
+          /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),
           comp->AddInstruction(HloInstruction::CreateSlice(
@@ -346,7 +365,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
           ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
           sort_dimension, {input, iota}, call->to_apply(),
-          /*is_stable=*/false));
+          /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call, comp->AddInstruction(HloInstruction::CreateTuple(
                     {slice_tuple(sort, 0), slice_tuple(sort, 1)}))));

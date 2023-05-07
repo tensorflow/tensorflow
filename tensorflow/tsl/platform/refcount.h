@@ -65,6 +65,11 @@ class RefCounted {
   // reference implementation.
   bool TryRef() const;
 
+  // Notifies the instance is deleted. This function is used by WeakRefCounted
+  // for securely propagating the delete notification before the destruction
+  // sequence starts.
+  virtual void NotifyDeleted() const;
+
  private:
   mutable std::atomic_int_fast32_t ref_;
 
@@ -77,9 +82,31 @@ struct RefCountDeleter {
   void operator()(const RefCounted* o) const { o->Unref(); }
 };
 
+template <typename T>
+class RefCountPtr;
+
+// Adds a new reference to a RefCounted pointer.
+template <typename T>
+ABSL_MUST_USE_RESULT RefCountPtr<T> GetNewRef(T* ptr) {
+  static_assert(std::is_base_of<RefCounted, T>::value);
+
+  if (ptr == nullptr) return RefCountPtr<T>();
+  ptr->Ref();
+  RefCountPtr<T> ret(ptr);
+  return ret;
+}
+
 // A unique_ptr that unrefs the owned object on destruction.
 template <typename T>
-using RefCountPtr = std::unique_ptr<T, RefCountDeleter>;
+class RefCountPtr : public std::unique_ptr<T, RefCountDeleter> {
+ public:
+  using std::unique_ptr<T, RefCountDeleter>::unique_ptr;
+  ABSL_MUST_USE_RESULT RefCountPtr GetNewRef() const {
+    if (this->get() == nullptr) return RefCountPtr<T>();
+    this->get()->Ref();
+    return RefCountPtr<T>(this->get());
+  }
+};
 
 // Helper class to unref an object when out-of-scope.
 class ScopedUnref {
@@ -122,7 +149,7 @@ class WeakRefCounted : public RefCounted {
   }
 
  protected:
-  ~WeakRefCounted() override { data_->Notify(); }
+  void NotifyDeleted() const override { data_->Notify(); }
 
  private:
   struct WeakRefData : public RefCounted {
@@ -187,7 +214,7 @@ class WeakRefCounted : public RefCounted {
     }
   };
 
-  RefCountPtr<WeakRefData> data_{new WeakRefData(this)};
+  mutable RefCountPtr<WeakRefData> data_{new WeakRefData(this)};
 
   template <typename T>
   friend class WeakPtr;
@@ -304,6 +331,7 @@ inline bool RefCounted::Unref() const {
   // Using release alone is a bug on systems where acq_rel differs from release.
   // (e.g. arm), according to Herb Sutter's 2012 talk on "Atomic<> Weapons".
   if (ref_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+    NotifyDeleted();
     delete this;
     return true;
   }
@@ -313,6 +341,8 @@ inline bool RefCounted::Unref() const {
 inline int_fast32_t RefCounted::RefCount() const {
   return ref_.load(std::memory_order_acquire);
 }
+
+inline void RefCounted::NotifyDeleted() const {}
 
 inline bool RefCounted::RefCountIsOne() const {
   return (ref_.load(std::memory_order_acquire) == 1);

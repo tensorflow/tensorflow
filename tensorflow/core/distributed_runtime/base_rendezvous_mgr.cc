@@ -33,48 +33,27 @@ limitations under the License.
 
 namespace tensorflow {
 
-static void StartAbortRendevous(Rendezvous* rendez, const Status& s) {
-  rendez->StartAbort(s);
-  rendez->Unref();
-}
-
 BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
-    : worker_env_(worker_env) {}
+    : cache_(new RendezvousCache<BaseRemoteRendezvous>()),
+      worker_env_(worker_env) {}
 
-BaseRendezvousMgr::~BaseRendezvousMgr() {
-  for (auto& p : table_) {
-    auto rendez = p.second;
-    StartAbortRendevous(rendez, errors::Aborted("Shutdown"));
-  }
-}
+BaseRendezvousMgr::~BaseRendezvousMgr() = default;
 
-RemoteRendezvous* BaseRendezvousMgr::Find(int64_t step_id) {
+tsl::core::RefCountPtr<RemoteRendezvous> BaseRendezvousMgr::Find(
+    int64_t step_id) {
   return FindOrCreate(step_id);
 }
 
-BaseRemoteRendezvous* BaseRendezvousMgr::FindOrCreate(int64_t step_id) {
-  mutex_lock l(mu_);
-  auto iter = table_.find(step_id);
-  if (iter == table_.end()) {
-    auto rr = Create(step_id, worker_env_);
-    iter = table_.insert({step_id, rr}).first;
-  }
-  iter->second->Ref();
-  return iter->second;
+tsl::core::RefCountPtr<BaseRemoteRendezvous> BaseRendezvousMgr::FindOrCreate(
+    int64_t step_id) {
+  return cache_->FindOrCreate(
+      step_id, [this, step_id]() { return Create(step_id, worker_env_); });
 }
 
 void BaseRendezvousMgr::RecvLocalAsync(int64_t step_id,
                                        const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
-  auto rendez = FindOrCreate(step_id);
-  auto done_cb = [rendez, done = std::move(done)](
-                     const Status& s, const Rendezvous::Args& send_args,
-                     const Rendezvous::Args& recv_args, const Tensor& v,
-                     bool dead) {
-    rendez->Unref();
-    done(s, send_args, recv_args, v, dead);
-  };
-  rendez->RecvLocalAsync(parsed, std::move(done_cb));
+  FindOrCreate(step_id)->RecvLocalAsync(parsed, std::move(done));
 }
 
 Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
@@ -96,45 +75,22 @@ Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
   return ret;
 }
 
-void BaseRendezvousMgr::Cleanup(int64_t step_id) {
-  Rendezvous* rendez = nullptr;
-  {
-    mutex_lock l(mu_);
-    auto iter = table_.find(step_id);
-    if (iter != table_.end()) {
-      rendez = iter->second;
-      table_.erase(iter);
-    }
-  }
-  if (rendez) {
-    StartAbortRendevous(rendez, errors::Aborted("Cleanup ", step_id));
-  }
-}
-
-void BaseRendezvousMgr::CleanupAll() {
-  mutex_lock l(mu_);
-  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
-    iter->second->Unref();
-  }
-  table_.clear();
-}
-
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
                                            int64_t step_id)
     : env_(env),
       step_id_(step_id),
       num_shards_(env_->experimental_num_shards),
-      local_(NewLocalRendezvous(num_shards_)),
+      local_(this, num_shards_),
       session_(nullptr) {
   DCHECK_GT(env_->experimental_num_shards, 0);
 }
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
+  VLOG(5) << "BaseRemoteRendezvous::~BaseRemoteRendezvous() " << this;
   {
     mutex_lock l(calls_mu_);
     calls_.clear();
   }
-  local_->Unref();
 }
 
 // Returns true if "device_name" is a valid full name of local device
@@ -209,7 +165,7 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
   }
 
   // Buffers "val" and "device_context" in local_.
-  return local_->Send(parsed, args, val, is_dead);
+  return local_.Send(parsed, args, val, is_dead);
 }
 
 Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
@@ -338,12 +294,12 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   if (IsImplicitLocalDevice(parsed.src) ||
       IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
-    local_->RecvAsync(
+    local_.RecvAsync(
         parsed, recv_args,
         [this, parsed, done](
             const Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
-          VLOG(2) << "RemoteRendezvous Finished Recv " << this << " "
+          VLOG(2) << "RemoteRendezvous Finished Local Recv " << this << " "
                   << parsed.FullKey();
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
@@ -361,12 +317,24 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
         });
     return;
   } else {
-    RecvFromRemoteAsync(parsed, recv_args, std::move(done));
+    // Keep current rendezvous alive while the recv is inflight.
+    this->Ref();
+    RecvFromRemoteAsync(parsed, recv_args,
+                        [this, parsed, done](const Status& status,
+                                             const Rendezvous::Args& send_args,
+                                             const Rendezvous::Args& recv_args,
+                                             const Tensor& in, bool is_dead) {
+                          VLOG(2) << "RemoteRendezvous Finished Remote Recv "
+                                  << this << " " << parsed.FullKey();
+                          done(status, send_args, recv_args, in, is_dead);
+                          this->Unref();
+                        });
   }
 }
 
 void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
                                           DoneCallback done) {
+  VLOG(2) << "RemoteRendezvous RecvLocal " << this << " " << parsed.FullKey();
   // Test whether the rendezvous is initialized using a shared lock, to avoid
   // the need for exclusive access in the common case.
   if (TF_PREDICT_FALSE(!is_initialized())) {
@@ -379,8 +347,12 @@ void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
       // rendezvous logic. At some point after Initialize() is called, a Tensor
       // is produced locally that will then be sent in response to the incoming
       // RPC.
-      DeferredCall call(parsed, std::move(done));
-      deferred_calls_.push_back(call);
+
+      // Keeps a reference to ensure current rendezvous won't be released before
+      // these pending calls are applied.
+      tsl::core::RefCountPtr<Rendezvous> rendez_ref = GetNewRef(this);
+      deferred_calls_.emplace_back(parsed, std::move(done),
+                                   std::move(rendez_ref));
       return;
     }
   }
@@ -394,7 +366,7 @@ void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
     done(s, Args(), Args(), Tensor(), false);
     return;
   }
-  local_->RecvAsync(parsed, Args(), std::move(done));
+  local_.RecvAsync(parsed, Args(), std::move(done));
 }
 
 void BaseRemoteRendezvous::StartAbort(const Status& s) {
@@ -408,7 +380,7 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
     derived_status = StatusGroup::MakeDerived(s);
   }
 
-  local_->StartAbort(derived_status);
+  local_.StartAbort(derived_status);
 
   bool status_ok = false;
   {
@@ -556,8 +528,9 @@ void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
   }
 }
 
-BaseRemoteRendezvous::DeferredCall::DeferredCall(const ParsedKey& parsed,
-                                                 DoneCallback done)
-    : parsed(parsed), done(std::move(done)) {}
+BaseRemoteRendezvous::DeferredCall::DeferredCall(
+    const ParsedKey& parsed, DoneCallback done,
+    tsl::core::RefCountPtr<Rendezvous> rendez)
+    : parsed(parsed), done(std::move(done)), rendezvous(std::move(rendez)) {}
 
 }  // end namespace tensorflow

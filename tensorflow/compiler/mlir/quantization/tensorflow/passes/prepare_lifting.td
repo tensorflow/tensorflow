@@ -21,11 +21,47 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 
+// Creates Einsum Op from XlaDotV2 Op by generating equation.
+def CreateEinsumOpFromXlaDotV2Op : NativeCodeCall<
+  "CreateEinsumOpFromXlaDotV2Op($_builder, $_loc, $0...)">;
+
+// Only handles the case where precision config is default.
+def IsPrecisionEmpty :
+  Constraint<CPred<"IsPrecisionEmpty($0)">>;
+
+// Convert XlaDotV2 Op to Einsum Op with above two functions.
+def ConvertXlaDotV2OpToEinsumOp : Pat<
+  (TF_XlaDotV2Op:$dot $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+  (CreateEinsumOpFromXlaDotV2Op $lhs, $rhs, $dot, $dot_dimension_numbers),
+  [(IsPrecisionEmpty $precision_config)]>;
+
 // Converts arith.constant ops from freezing passes back to tf.Const ops.
 def ConvertArithConstToTfConst : Pat<
   (Arith_ConstantOp:$res DenseElementsAttr:$value),
   (TF_ConstOp $value),
   [(AnyStaticShapeTensor $res)]>;
+
+// Converts CheckNumerics op to Identity
+def ConvertCheckNumerics : Pat<
+  (TF_CheckNumericsOp $arg, $msg),
+  (TF_IdentityOp $arg)>;
+
+// Only handles the case where batch_dimension is empty.
+def IsXlaGatherWithoutBatch :
+  Constraint<CPred<"IsXlaGatherWithoutBatch($0, $1)">>;
+
+// Create Slice op from XlaGather op without batch dimension.
+def CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch : NativeCodeCall<
+  "CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch($_builder, $_loc, $0...)">;
+
+// Convert XlaGather op without batch to Slice op with above two functions.
+def ConvertXlaGatherOpWithoutBatch : Pat<
+  (TF_XlaGatherOp:$gather $operand,
+    $start_indices, $slice_sizes, $dimension_numbers, $indices_are_sorted),
+  (CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch $operand,
+    $start_indices, $slice_sizes, $gather, $dimension_numbers),
+  [(IsXlaGatherWithoutBatch $operand, $start_indices)]>;
+
 
 // Converts tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
@@ -103,6 +139,19 @@ def ConvertAddToBiasAdd : Pat<
   (TF_BiasAddOp $conv_out, $add_rhs, (CreateStringAttr<"NHWC">)),
   [(HasRankOf<1> $add_rhs_value),
    (HasEqualElementSize<[-1], [0]> $conv_out, $add_rhs)]>;
+
+// TODO(b/278493977): Create generic implementation of lifting any fused op
+// with any reshaping op
+def ConvertAddWithReshapeToBiasAddWithReshape : Pat<
+  (TF_AddV2Op
+    (TF_ReshapeOp:$reshape_out
+      (SupportedAffineOpMatcher $_, $_, $_),
+      $_
+    ),
+    (TF_ConstOp:$add_rhs IsFloatElementsAttr:$add_rhs_value)),
+  (TF_BiasAddOp $reshape_out, $add_rhs, (CreateStringAttr<"NHWC">)),
+  [(HasRankOf<1> $add_rhs_value),
+   (HasEqualElementSize<[-1], [0]> $reshape_out, $add_rhs)]>;
 
 // Fuse consecutive BiasAddOp and an AddV2Op.
 def FuseBiasAndAddV2 : Pat<

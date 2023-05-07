@@ -20,11 +20,12 @@ import functools
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -33,7 +34,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
@@ -191,7 +192,7 @@ class Loss:
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""
     if (not self._allow_sum_over_batch_size and
-        distribution_strategy_context.has_strategy() and
+        distribute_lib.has_strategy() and
         (self.reduction == losses_utils.ReductionV2.AUTO or
          self.reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)):
       raise ValueError(
@@ -1213,7 +1214,7 @@ def mean_squared_error(y_true, y_pred):
   Returns:
     Mean squared error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return backend.mean(math_ops.squared_difference(y_pred, y_true), axis=-1)
 
@@ -1269,7 +1270,7 @@ def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred, y_pred_extra_dim=False):
   def _wrapper(inputs, ragged_output):
     _, y_pred = inputs
     if isinstance(y_pred, ragged_tensor.RaggedTensor):
-      return control_flow_ops.cond(
+      return cond.cond(
           rt_is_equiv_dense(y_pred),
           lambda: _call_loss(_convert_to_dense(inputs), ragged_output),
           lambda: _call_loss(inputs, ragged_output))
@@ -1341,7 +1342,7 @@ def mean_absolute_error(y_true, y_pred):
   Returns:
     Mean absolute error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return backend.mean(math_ops.abs(y_pred - y_true), axis=-1)
 
@@ -1380,7 +1381,7 @@ def mean_absolute_percentage_error(y_true, y_pred):
   Returns:
     Mean absolute percentage error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   diff = math_ops.abs(
       (y_true - y_pred) / backend.maximum(math_ops.abs(y_true),
@@ -1426,7 +1427,7 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   Returns:
     Mean squared logarithmic error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   first_log = math_ops.log(backend.maximum(y_pred, backend.epsilon()) + 1.)
   second_log = math_ops.log(backend.maximum(y_true, backend.epsilon()) + 1.)
@@ -1483,7 +1484,7 @@ def squared_hinge(y_true, y_pred):
   Returns:
      Squared hinge loss values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = _maybe_convert_labels(y_true)
   return backend.mean(
@@ -1516,7 +1517,7 @@ def hinge(y_true, y_pred):
   Returns:
     Hinge loss values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = _maybe_convert_labels(y_true)
   return backend.mean(math_ops.maximum(1. - y_true * y_pred, 0.), axis=-1)
@@ -1549,7 +1550,7 @@ def categorical_hinge(y_true, y_pred):
   Returns:
     Categorical hinge loss values.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
@@ -1584,7 +1585,9 @@ def huber(y_true, y_pred, delta=1.0):
   delta = math_ops.cast(delta, dtype=backend.floatx())
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
-  half = ops.convert_to_tensor_v2_with_dispatch(0.5, dtype=abs_error.dtype)
+  half = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      0.5, dtype=abs_error.dtype
+  )
   return backend.mean(
       array_ops.where_v2(abs_error <= delta, half * math_ops.square(error),
                          delta * abs_error - half * math_ops.square(delta)),
@@ -1621,7 +1624,7 @@ def log_cosh(y_true, y_pred):
   Returns:
     Logcosh error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
 
   def _logcosh(x):
@@ -1664,10 +1667,11 @@ def categorical_crossentropy(y_true,
   Returns:
     Categorical crossentropy loss value.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  label_smoothing = ops.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=backend.floatx())
+  label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      label_smoothing, dtype=backend.floatx()
+  )
 
   def _smooth_labels():
     num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
@@ -1747,7 +1751,7 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
   Returns:
     Sparse categorical crossentropy loss value.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return backend.sparse_categorical_crossentropy(
       y_true, y_pred, from_logits=from_logits, axis=axis)
@@ -1808,10 +1812,11 @@ def binary_crossentropy(y_true,
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  label_smoothing = ops.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=backend.floatx())
+  label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      label_smoothing, dtype=backend.floatx()
+  )
 
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
@@ -1895,7 +1900,7 @@ def kl_divergence(y_true, y_pred):
   Raises:
     TypeError: If `y_true` cannot be cast to the `y_pred.dtype`.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = backend.clip(y_true, backend.epsilon(), 1)
   y_pred = backend.clip(y_pred, backend.epsilon(), 1)
@@ -1931,7 +1936,7 @@ def poisson(y_true, y_pred):
   Raises:
     InvalidArgumentError: If `y_true` and `y_pred` have incompatible shapes.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return backend.mean(
       y_pred - y_true * math_ops.log(y_pred + backend.epsilon()), axis=-1)

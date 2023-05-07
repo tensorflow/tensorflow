@@ -18,9 +18,9 @@ from absl import logging
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -28,7 +28,6 @@ from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import composite_tensor
@@ -61,7 +60,6 @@ from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
-
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -188,7 +186,7 @@ class TPUTest(test.TestCase):
     with ops.device("/device:TPU:0"):
       a = variables.Variable(1)
 
-    @function.defun_with_attributes(attributes={"_noinline": True})
+    @def_function.function(experimental_attributes={"_noinline": True})
     def get_a_plus_one():
       return a + 1
 
@@ -224,13 +222,14 @@ class TPUTest(test.TestCase):
     def foo():
       return 1 + 1
 
-    func1 = function.defun_with_attributes(
-        foo, attributes={"_XlaMustCompile": False})
-    func2 = function.defun_with_attributes(
-        foo, attributes={
+    func1 = def_function.function(foo, jit_compile=False)
+    func2 = def_function.function(
+        foo,
+        jit_compile=False,
+        experimental_attributes={
             "_OutputsOnOpDevice": True,
-            "_XlaMustCompile": False
-        })
+        },
+    )
 
     with ops.device("/device:TPU:0"):
       ret1 = func1()
@@ -766,6 +765,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           synchronization=variables.VariableSynchronization.ON_READ,
           aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
 
+    self.assertFalse(w._is_mirrored())
+
     @def_function.function
     def run(iterator):
 
@@ -774,7 +775,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         return w
 
       def all_reduce(x):
-        ctx = distribution_strategy_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         return ctx.all_reduce("SUM", w) + x
 
       outputs = strategy.run(computation, args=(next(iterator),))
@@ -1144,6 +1145,57 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_get_tpu_cluster_resolver(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     self.assertIsNotNone(strategy.cluster_resolver)
+
+  def test_replica_order_for_distribute_datasets_from_function(
+      self, enable_packed_var
+  ):
+    def _create_dataset(strategy):
+      def dataset_fn(ctx):
+        del ctx
+        return dataset_ops.Dataset.range(2)
+
+      return strategy.distribute_datasets_from_function(dataset_fn)
+
+    values = self._test_replica_order(_create_dataset).values
+
+    self.assertLen(values, 2)
+    self.assertEqual(1, values[0].numpy())
+    self.assertEqual(0, values[1].numpy())
+
+  def test_replica_order_for_experimental_distribute_dataset(
+      self, enable_packed_var
+  ):
+    def _create_dataset(strategy):
+      dataset = dataset_ops.Dataset.range(2).batch(2)
+      return strategy.experimental_distribute_dataset(dataset)
+
+    values = self._test_replica_order(_create_dataset).values
+
+    self.assertLen(values, 2)
+    self.assertEqual(1, values[0].numpy())
+    self.assertEqual(0, values[1].numpy())
+
+  def _test_replica_order(self, create_dist_dataset_fn):
+    tf2.enable()
+
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    device_assignment = device_assignment_lib.DeviceAssignment(
+        topology, core_assignment=[[[0, 0, 0, 1]], [[0, 0, 0, 0]]]
+    )
+    strategy = tpu_lib.TPUStrategyV2(
+        resolver, experimental_device_assignment=device_assignment
+    )
+
+    dist_dataset = create_dist_dataset_fn(strategy)
+    iterator = iter(dist_dataset)
+
+    @def_function.function
+    def test_iterators_order(iterator):
+      return next(iterator)
+
+    return test_iterators_order(iterator)
 
 
 @test_util.with_eager_op_as_function

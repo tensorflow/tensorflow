@@ -58,7 +58,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-      bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+      bool disable_expensive_passes, bool disable_slp_vectorizer,
+      llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
       std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
@@ -66,7 +67,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   static llvm::Expected<std::unique_ptr<SimpleOrcJIT>> Create(
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-      bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+      bool disable_expensive_passes, bool disable_slp_vectorizer,
+      llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
       std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
@@ -84,7 +86,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
-  llvm::Expected<llvm::JITEvaluatedSymbol> FindCompiledSymbol(
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> FindCompiledSymbol(
       const std::string& name);
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
@@ -100,7 +102,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   }
 
  private:
-  llvm::JITEvaluatedSymbol ResolveRuntimeSymbol(llvm::StringRef name);
+  llvm::orc::ExecutorSymbolDef ResolveRuntimeSymbol(llvm::StringRef name);
 
   void notifyObjectLoaded(
       llvm::JITEventListener::ObjectKey key,

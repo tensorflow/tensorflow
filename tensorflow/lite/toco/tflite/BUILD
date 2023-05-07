@@ -148,6 +148,9 @@ tf_cc_test(
     srcs = [
         "import_test.cc",
     ],
+    tags = [
+        "no_oss",  # TODO(b/273558651): Enable after updating flatbuffer version.
+    ],
     deps = [
         ":import",
         "//tensorflow/core:ops",

@@ -367,7 +367,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
             /*output_layouts=*/llvm::DenseMap<int, Layout>());
     if (!forward_result.ok()) {
       op->emitOpError() << "ComputeLayoutForward error: "
-                        << forward_result.status().error_message();
+                        << forward_result.status().message();
       return mlir::WalkResult::interrupt();
     }
     StatusOr<llvm::DenseMap<int, Layout>> backward_result =
@@ -376,7 +376,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
             /*output_layouts=*/llvm::DenseMap<int, Layout>());
     if (!backward_result.ok()) {
       op->emitOpError() << "ComputeLayoutBackward error: "
-                        << backward_result.status().error_message();
+                        << backward_result.status().message();
       return mlir::WalkResult::interrupt();
     }
 
@@ -461,8 +461,7 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
     auto merged =
         MergeLayouts(value, producer_layout, consumer_requests[value]);
     if (!merged.ok())
-      return value.getDefiningOp()->emitOpError()
-             << merged.status().error_message();
+      return value.getDefiningOp()->emitOpError() << merged.status().message();
 
     auto current_layout = merged_layouts.find(value);
     if (current_layout == merged_layouts.end() ||
@@ -525,7 +524,7 @@ mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
     return mlir::emitError(
         location, llvm::formatv("error in layout propagation while merging "
                                 "producer layouts. {0}",
-                                new_layout.status().error_message()));
+                                new_layout.status().message()));
   }
   out->emplace(*new_layout);
   return mlir::success();
@@ -619,14 +618,14 @@ mlir::LogicalResult UpdateLayoutsForOp(
       expander->ComputeLayoutForward(op, input_layouts, output_layouts);
   if (!forward_result.ok()) {
     return op->emitOpError() << "ComputeLayoutForward error: "
-                             << forward_result.status().error_message();
+                             << forward_result.status().message();
   }
   const auto new_output_layouts = *forward_result;
   auto backward_result =
       expander->ComputeLayoutBackward(op, input_layouts, output_layouts);
   if (!backward_result.ok()) {
     return op->emitOpError() << "ComputeLayoutBackward error: "
-                             << backward_result.status().error_message();
+                             << backward_result.status().message();
   }
   const auto new_input_layouts = *backward_result;
 
@@ -656,17 +655,37 @@ mlir::LogicalResult UpdateLayoutsForOp(
         const bool exempt_restore_unknown_rank =
             ValueRank(value) == -1 && value.getDefiningOp() &&
             llvm::isa<mlir::TF::RestoreV2Op>(value.getDefiningOp());
-        if (!exempt_restore_unknown_rank &&
-            input_layout->second.rank() != ValueRank(value))
-          return op->emitOpError()
-                 << "Rank for input " << i << " layout is "
-                 << input_layout->second.rank() << " but actual rank is "
-                 << ValueRank(value);
+        bool producer_is_resource =
+            value.getDefiningOp() &&
+            llvm::isa<mlir::TF::VarHandleOp>(value.getDefiningOp());
+        if (producer_is_resource) {
+          // If producer is a VarHandleOp, the input layout could be empty,
+          // In this case  ComputeBackward method for Assign op will derive a
+          // replicated layout for the resource based on the rank of value.
+          // This block will update resource layout.
+          // Read and Assign ops.
+          //
+          // If resource has a non-empty value, the existing layout will be
+          // returned from ComputeBackward and Forward methods for Assign and
+          // Read variable ops.
+          //
+          // Thus, it is safe to update the producer layout here for the
+          // resource.
+          producer_request[value] = input_layout->second;
+          is_updated.insert(value);
+        } else {
+          if (!exempt_restore_unknown_rank &&
+              input_layout->second.rank() != ValueRank(value))
+            return op->emitOpError()
+                   << "Rank for input " << i << " layout is "
+                   << input_layout->second.rank() << " but actual rank is "
+                   << ValueRank(value);
 
-        // If there was a layout returned and either no previous request or the
-        // request changed, insert and mark as updated.
-        consumer_request[operand] = input_layout->second;
-        is_updated.insert(value);
+          // If there was a layout returned and either no previous request or
+          // the request changed, insert and mark as updated.
+          consumer_request[operand] = input_layout->second;
+          is_updated.insert(value);
+        }
       } else if (input_layout == new_input_layouts.end() &&
                  consumer_request_from_op_operand != consumer_request.end()) {
         // If no layout was returned and there is previous request, erase the
@@ -683,6 +702,12 @@ mlir::LogicalResult UpdateLayoutsForOp(
   for (int i = 0; i < op->getNumResults(); ++i) {
     const auto output_layout = new_output_layouts.find(i);
     if (output_layout == new_output_layouts.end()) continue;
+    if (output_layout->second.IsEmpty()) {
+      // Empty layout is derived from var handle op, bypass the check for update
+      // layout and let the next passes propagate layout update for producer to
+      // handle it.
+      continue;
+    }
     const auto& result = op->getOpResult(i);
     if (producer_request[result] != output_layout->second) {
       if (output_layout->second.rank() != ValueRank(result))
@@ -690,6 +715,7 @@ mlir::LogicalResult UpdateLayoutsForOp(
                                  << output_layout->second.rank()
                                  << " but actual rank is " << ValueRank(result);
       producer_request[result] = output_layout->second;
+
       is_updated.insert(result);
     }
   }
@@ -1006,8 +1032,8 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot create directory '" << prefix
+                 << "': " << status.message();
     return;
   }
 
@@ -1021,8 +1047,7 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   std::unique_ptr<WritableFile> file_writer;
   status = env->NewWritableFile(prefix, &file_writer);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
     return;
   }
 
@@ -1036,8 +1061,8 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
 
   status = file_writer->Append(txt_module);
   if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "error writing to file '" << prefix
+                 << "': " << status.message();
     return;
   }
   (void)file_writer->Close();

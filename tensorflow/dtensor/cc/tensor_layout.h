@@ -136,7 +136,7 @@ class Mesh {
   //  <name|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
   static StatusOr<Mesh> FromString(absl::string_view str);
   std::string ToString() const;
-  MeshProto ToProto() const;
+  StatusOr<MeshProto> ToProto() const;
 
   // Creates mesh without specific devices associated to it (aka abstract mesh).
   // This is an experimental API. Use only if strictly needed.
@@ -217,10 +217,13 @@ class Mesh {
   int64 size() const;
   bool use_xla_spmd() const { return use_xla_spmd_; }
   const std::string& name() const { return name_; }
+  absl::string_view single_device() const { return single_device_; }
 
   // Global unique fingerprint. Same on different workers.
   uint64 GlobalFingerprint() const;
 
+  // Uses proto to compare the equality. If any conversion to proto fails,
+  // returns false.
   bool operator==(const Mesh& b) const;
   bool operator!=(const Mesh& b) const { return !((*this) == b); }
   bool operator<(const Mesh& b) const {
@@ -285,6 +288,9 @@ class Layout {
   // the layout for the given dimension.
   static constexpr const char* kMatch = "match";
 
+  Layout() = default;
+  Layout(const Layout& other) = default;
+
   inline bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
 
   // Returns empty layout.
@@ -304,7 +310,7 @@ class Layout {
   static StatusOr<Layout> FromString(absl::string_view layout_str);
   // Creates human readable string version of a layout.
   std::string ToString() const;
-  LayoutProto ToProto() const;
+  StatusOr<LayoutProto> ToProto() const;
 
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
@@ -314,7 +320,6 @@ class Layout {
   static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
                                  int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
-  static StatusOr<Layout> SingleDeviceOnMesh(const Mesh& mesh);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
   void set_mesh(Mesh mesh) { mesh_ = mesh; }
@@ -344,8 +349,8 @@ class Layout {
   // Makes a new layout from this one dropping the given dimensions.
   // If keep_dims is true, the dimensions are replicated rather than
   // deleted.
-  Layout GetLayoutWithReducedDims(const absl::flat_hash_set<int>& reduced_dims,
-                                  bool keep_dims) const;
+  StatusOr<Layout> GetLayoutWithReducedDims(
+      const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const;
 
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
@@ -354,6 +359,10 @@ class Layout {
 
   // Left or right pad the layout to a max rank.
   Layout LeftPad(int64 rank) const;
+
+  // Minimally pads replicated axes on the left, or removes axes on the right,
+  // such that the result layout has the provided rank.
+  StatusOr<Layout> EnsureRank(int64_t rank) const;
 
   bool IsFullyReplicated() const;
   bool IsLastDimReplicated() const;
@@ -399,6 +408,8 @@ class Layout {
   // the tensor. E.g. if one is unsharded and the other is sharded on a mesh
   // dimension of size 1.
   bool IsEquivalent(const Layout& b) const;
+  // Uses proto to compare the equality. If any conversion to proto fails,
+  // returns false.
   bool operator==(const Layout& b) const;
   bool operator!=(const Layout& b) const { return !((*this) == b); }
   bool operator<(const Layout& b) const {

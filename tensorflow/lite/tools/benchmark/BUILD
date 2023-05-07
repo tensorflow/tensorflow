@@ -176,6 +176,22 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "benchmark_tflite_model_lib_test",
+    srcs = [
+        "benchmark_tflite_model_test.cc",
+    ],
+    data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":benchmark_tflite_model_lib",
+        "//tensorflow/lite/tools:tool_params",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "benchmark_multirun_stats_recorder",
     hdrs = ["benchmark_multirun_stats_recorder.h"],
@@ -191,19 +207,19 @@ cc_library(
     hdrs = ["benchmark_performance_options.h"],
     copts = common_copts,
     deps = [
-        ":benchmark_multirun_stats_recorder",
         ":benchmark_model_lib",
+        ":benchmark_multirun_stats_recorder",
         ":benchmark_params",
         ":benchmark_utils",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/tools:logging",
-        "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",

@@ -57,7 +57,7 @@ inline void Export(const Model& model, bool allow_custom_ops,
   params.quantize_weights =
       quantize_weights ? QuantizedBufferType::INT8 : QuantizedBufferType::NONE;
   auto status = Export(model, output_file_contents, params);
-  if (!status.ok()) LOG(QFATAL) << status.error_message();
+  if (!status.ok()) LOG(QFATAL) << status.message();
 }
 
 // This is for backward-compatibility.
@@ -71,7 +71,7 @@ inline void Export(
   params.quantize_weights =
       quantize_weights ? QuantizedBufferType::INT8 : QuantizedBufferType::NONE;
   auto status = Export(model, output_file_contents, params, ops_by_type);
-  if (!status.ok()) LOG(QFATAL) << status.error_message();
+  if (!status.ok()) LOG(QFATAL) << status.message();
 }
 
 // This is for backward-compatibility.
@@ -80,7 +80,7 @@ inline void Export(const Model& model, std::string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = true;
   auto status = Export(model, output_file_contents, params);
-  if (!status.ok()) LOG(QFATAL) << status.error_message();
+  if (!status.ok()) LOG(QFATAL) << status.message();
 }
 
 namespace details {

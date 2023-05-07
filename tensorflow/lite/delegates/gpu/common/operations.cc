@@ -30,11 +30,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-Padding2D& Padding2D::operator=(const Padding2D& value) {
-  prepended = value.prepended;
-  appended = value.appended;
-  return *this;
-}
 
 bool Padding2D::operator==(const Padding2D& value) const {
   return this->prepended == value.prepended && this->appended == value.appended;
@@ -49,12 +44,6 @@ Padding2D& Padding2D::operator-(const Padding2D& value) {
   prepended.w -= value.prepended.w;
   appended.h -= value.appended.h;
   appended.w -= value.appended.w;
-  return *this;
-}
-
-Padding3D& Padding3D::operator=(const Padding3D& value) {
-  prepended = value.prepended;
-  appended = value.appended;
   return *this;
 }
 
@@ -130,6 +119,8 @@ std::string ToString(enum OperationType op) {
       return "fully_connected_int8";
     case OperationType::GATHER:
       return "gather";
+    case OperationType::GELU:
+      return "gelu";
     case OperationType::GREATER:
       return "greater";
     case OperationType::GREATER_EQUAL:
@@ -261,6 +252,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
           {"gather", OperationType::GATHER},
+          {"gelu", OperationType::GELU},
           {"greater", OperationType::GREATER},
           {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},

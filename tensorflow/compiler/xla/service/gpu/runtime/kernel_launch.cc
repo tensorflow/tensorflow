@@ -30,6 +30,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
+#endif  // #if GOOGLE_CUDA
+
 namespace xla {
 namespace gpu {
 
@@ -74,7 +78,18 @@ static absl::Status LaunchImpl(
   if (!kernel.ok()) return kernel.status();
   assert((**kernel)->name() == name && "unexpected loaded kernel");
 
+#if GOOGLE_CUDA
+  absl::StatusOr<bool> is_capturing = se::gpu::IsStreamCapturing(stream);
+  if (!is_capturing.ok()) return is_capturing.status();
+  if (is_capturing.value()) {
+    VLOG(3) << "Launching " << (**kernel)->name()
+            << "during CUDA graph capture";
+  } else {
+    VLOG(3) << "Launching " << (**kernel)->name();
+  }
+#else
   VLOG(3) << "Launching " << (**kernel)->name();
+#endif
   absl::InlinedVector<se::DeviceMemoryBase, 8> buffer_args(
       args_size_including_temp_buffer);
 

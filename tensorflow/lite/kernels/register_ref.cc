@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -181,6 +181,9 @@ TfLiteRegistration* Register_CALL_ONCE();
 TfLiteRegistration* Register_VAR_HANDLE();
 TfLiteRegistration* Register_READ_VARIABLE();
 TfLiteRegistration* Register_ASSIGN_VARIABLE();
+TfLiteRegistration* Register_BITCAST();
+TfLiteRegistration* Register_BITWISE_XOR();
+TfLiteRegistration* Register_RIGHT_SHIFT();
 
 namespace {
 
@@ -278,13 +281,13 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND,
              Register_SPACE_TO_BATCH_ND_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND,
              Register_BATCH_TO_SPACE_ND_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL_REF(), /* min_version = */ 1,
-             /* max_version = */ 6);
+             /* max_version = */ 7);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2NORM_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -351,7 +354,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_LOG, Register_LOG());
   AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX_REF(),
              /* min_version = */ 1,
@@ -528,6 +531,9 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_VAR_HANDLE, Register_VAR_HANDLE());
   AddBuiltin(BuiltinOperator_READ_VARIABLE, Register_READ_VARIABLE());
   AddBuiltin(BuiltinOperator_ASSIGN_VARIABLE, Register_ASSIGN_VARIABLE());
+  AddBuiltin(BuiltinOperator_BITCAST, Register_BITCAST());
+  AddBuiltin(BuiltinOperator_BITWISE_XOR, Register_BITWISE_XOR());
+  AddBuiltin(BuiltinOperator_RIGHT_SHIFT, Register_RIGHT_SHIFT());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

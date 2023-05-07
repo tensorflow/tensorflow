@@ -172,9 +172,7 @@ DataType TFRTOpKernelContext::expected_output_dtype(int i) const {
   return op_meta_->output_type(i);
 }
 
-void TFRTOpKernelContext::CtxFailure(const Status& s) {
-  error_ = s.error_message();
-}
+void TFRTOpKernelContext::CtxFailure(const Status& s) { error_ = s.message(); }
 void TFRTOpKernelContext::CtxFailureWithWarning(const Status& s) {
   CtxFailure(s);
 }

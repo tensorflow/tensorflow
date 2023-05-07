@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import math_ops
@@ -44,7 +45,7 @@ class CondTest(xla_test.XLATestCase):
       @def_function.function
       def f():
         ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
-        output = control_flow_ops.cond(
+        output = cond.cond(
             constant_op.constant(True),
             lambda: ta.write(0, 5.), lambda: ta.write(0, 10.))
 
@@ -64,7 +65,7 @@ class CondTest(xla_test.XLATestCase):
       @def_function.function
       def f():
         ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
-        output = control_flow_ops.cond(
+        output = cond.cond(
             constant_op.constant(False),
             lambda: ta.write(0, 5.), lambda: ta.write(0, 10.))
 
@@ -84,7 +85,7 @@ class CondTest(xla_test.XLATestCase):
 
       def f():
         ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
-        output = control_flow_ops.cond(
+        output = cond.cond(
             constant_op.constant(True),
             lambda: ta.write(0, 5.), lambda: ta.write(0, 10.))
 
@@ -112,7 +113,7 @@ class CondTest(xla_test.XLATestCase):
       def if_false():
         return 5.
 
-      output = control_flow_ops.cond(
+      output = cond.cond(
           constant_op.constant(True), if_true, if_false)
 
       self.assertAllEqual(1.,
@@ -142,7 +143,7 @@ class CondTest(xla_test.XLATestCase):
         def if_false():
           return 5.
 
-        return control_flow_ops.cond(
+        return cond.cond(
             constant_op.constant(True), if_true, if_false)
 
       output = xla.compile(f)
@@ -169,7 +170,7 @@ class CondTest(xla_test.XLATestCase):
       def if_false():
         return array_ops.fill([p], 5.)
 
-      output = control_flow_ops.cond(
+      output = cond.cond(
           constant_op.constant(True), if_true, if_false)
 
       with self.assertRaisesRegex(errors.InvalidArgumentError,
@@ -202,7 +203,7 @@ class CondTest(xla_test.XLATestCase):
         def if_false():
           return array_ops.fill([p], 5.)
 
-        return control_flow_ops.cond(condition, if_true, if_false)
+        return cond.cond(condition, if_true, if_false)
 
       output = xla.compile(f)
 
@@ -304,7 +305,7 @@ class CondTest(xla_test.XLATestCase):
       xla_context.Enter()
 
       for pred in True, False:
-        cond_out = control_flow_ops.cond(
+        cond_out = cond.cond(
             array_ops.placeholder_with_default(pred, []),
             lambda: constant_op.constant(2.),
             lambda: constant_op.constant(1.))

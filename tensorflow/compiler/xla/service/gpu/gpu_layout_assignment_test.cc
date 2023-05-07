@@ -209,11 +209,11 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
   HloModule DotLayout
   ENTRY dot {
     p0 = f32[5,2,3] parameter(0)
-    p1 = f32[5,3,4] parameter(1)
-    dot = f32[5,2,4] dot(p0, p1),
+    p1 = f32[5,3,4,6] parameter(1)
+    dot = f32[5,2,4,6] dot(p0, p1),
       lhs_batch_dims={0}, lhs_contracting_dims={2},
       rhs_batch_dims={0}, rhs_contracting_dims={1}
-    ROOT out = f32[2,5,4] transpose(dot), dimensions={1,0,2}
+    ROOT out = f32[2,5,4,6] transpose(dot), dimensions={1,0,2,3}
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -227,11 +227,53 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Transpose(
-                        AllOf(op::Dot(op::ShapeWithLayout("f32[5,2,3]{2,1,0}"),
-                                      op::ShapeWithLayout("f32[5,3,4]{2,1,0}")),
-                              op::ShapeWithLayout("f32[5,2,4]{2,0,1}"))),
-                    op::ShapeWithLayout("f32[2,5,4]{2,1,0}")));
+              AllOf(op::Transpose(AllOf(
+                        op::Dot(op::ShapeWithLayout("f32[5,2,3]{2,1,0}"),
+                                op::ShapeWithLayout("f32[5,3,4,6]{3,2,1,0}")),
+                        op::ShapeWithLayout("f32[5,2,4,6]{3,2,0,1}"))),
+                    op::ShapeWithLayout("f32[2,5,4,6]{3,2,1,0}")));
+}
+
+TEST_F(LayoutAssignmentTest, TransposedDotOfDotLayout) {
+  const char* hlo_text = R"(
+  HloModule DotLayout
+  ENTRY dot {
+    p0 = f32[8,50] parameter(0)
+    p1 = f32[2,8,4,4] parameter(1)
+    p2 = f32[4,38] parameter(2)
+    dot.1 = f32[50,2,4,4]{3,2,1,0} dot(p0, p1),
+      lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    dot.2 = f32[50,2,4,38]{3,2,1,0} dot(dot.1, p2),
+      lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    ROOT out = f32[2,50,38,4]{2,3,0,1} transpose(dot.2), dimensions={1,0,3,2}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+
+  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+  // The transpose layout is not supported by dot.2. Also, we need a copy
+  // between dot.1 and dot.2, because the needed operand layout for the lhs of
+  // dot.1 cannot be used as layout for dot.1
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(
+          op::Transpose(AllOf(
+              op::Dot(AllOf(op::Copy(AllOf(
+                                op::Dot(op::ShapeWithLayout("f32[8,50]{1,0}"),
+                                        op::ShapeWithLayout(
+                                            "f32[2,8,4,4]{3,2,0,1}")),
+                                op::ShapeWithLayout("f32[50,2,4,4]{3,2,1,0}"))),
+                            op::ShapeWithLayout("f32[50,2,4,4]{3,1,0,2}")),
+                      op::ShapeWithLayout("f32[4,38]{1,0}")),
+              op::ShapeWithLayout("f32[50,2,4,38]{3,2,1,0}"))),
+          op::ShapeWithLayout("f32[2,50,38,4]{2,3,0,1}")));
 }
 
 TEST_F(LayoutAssignmentTest, DotLayoutS8) {

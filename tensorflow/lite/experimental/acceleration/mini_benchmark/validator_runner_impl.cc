@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
@@ -28,9 +27,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
@@ -134,7 +133,6 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed.");
     return status;
   }
-
   std::unique_ptr<tools::ModelLoader> model_loader =
       tools::CreateModelLoaderFromPath(fd_or_model_path_);
   if (!model_loader) {
@@ -207,10 +205,13 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
 }
 
 void ValidatorRunnerImpl::TriggerValidationAsync(
-    std::unique_ptr<std::vector<FlatBufferBuilder>> tflite_settings) {
-  if (!tflite_settings || tflite_settings->empty()) {
+    std::vector<FlatBufferBuilder> tflite_settings,
+    absl::string_view storage_path) {
+  if (tflite_settings.empty()) {
     return;
   }
+
+  storage_ = FlatbufferStorage<BenchmarkEvent>(storage_path, error_reporter_);
 
   // We purposefully detach the thread and have it own all the data. The
   // runner may potentially hang, so we can't wait for it to terminate.
@@ -218,7 +219,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
   // the thread. Model data is copied from model_allocation_ if set and owned by
   // the thread.
   std::thread detached_thread(
-      [original_model_path = fd_or_model_path_, storage_path = storage_path_,
+      [original_model_path = fd_or_model_path_,
+       storage_path = std::string(storage_path),
        data_directory_path = data_directory_path_,
        tflite_settings = std::move(tflite_settings),
        validation_entrypoint_name =
@@ -229,7 +231,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
        allocation_and_model =
            CopyModel(model_allocation_.get(), error_reporter_),
        timeout_ms = timeout_ms_]() {
-        FileLock lock(storage_path + ".parent_lock");
+        FileLock lock(absl::StrCat(storage_path, ".parent_lock"));
         if (!lock.TryLock()) {
           return;
         }
@@ -237,14 +239,14 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
         std::string model_path = original_model_path;
         std::unique_ptr<FdHolder> fd_holder =
             UpdateModelPathIfUsingFd(model_path);
-        for (auto& one_setting : *tflite_settings) {
+        for (auto& one_setting : tflite_settings) {
           FlatbufferStorage<BenchmarkEvent> storage(storage_path);
           TFLiteSettingsT tflite_settings_obj;
           flatbuffers::GetRoot<TFLiteSettings>(one_setting.GetBufferPointer())
               ->UnPackTo(&tflite_settings_obj);
           TFLITE_LOG_PROD(TFLITE_LOG_INFO,
-                          "Run validation with entry point '%s'",
-                          validation_entrypoint_name);
+                          "Run validation with entry point '%s' %s",
+                          validation_entrypoint_name, storage_path.c_str());
           ProcessRunner runner(data_directory_path, validation_entrypoint_name,
                                validation_entrypoint, timeout_ms);
           int exitcode = 0;

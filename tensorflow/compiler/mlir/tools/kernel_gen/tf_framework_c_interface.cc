@@ -130,8 +130,8 @@ std::string GetFileCachePath(const std::string cache_dir,
 llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
   auto bind = [&](llvm::StringRef name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
+    symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(symbol_ptr),
+                                llvm::JITSymbolFlags()};
   };
 
   // Register TF framework symbols.

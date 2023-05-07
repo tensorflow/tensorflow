@@ -17,6 +17,8 @@ limitations under the License.
 /// "third_party/tensorflow/lite/kernels/builtin_op_kernels.h".
 /// Only the TensorFlow Lite implementation itself should include this
 /// file directly.
+// IWYU pragma: private, include "third_party/tensorflow/lite/kernels/builtin_op_kernels.h"
+
 #ifndef TENSORFLOW_LITE_CORE_KERNELS_BUILTIN_OP_KERNELS_H_
 #define TENSORFLOW_LITE_CORE_KERNELS_BUILTIN_OP_KERNELS_H_
 
@@ -191,6 +193,9 @@ TfLiteRegistration* Register_VAR_HANDLE();
 TfLiteRegistration* Register_WHERE();
 TfLiteRegistration* Register_WHILE();
 TfLiteRegistration* Register_ZEROS_LIKE();
+TfLiteRegistration* Register_BITCAST();
+TfLiteRegistration* Register_BITWISE_XOR();
+TfLiteRegistration* Register_RIGHT_SHIFT();
 
 }  // namespace builtin
 }  // namespace ops

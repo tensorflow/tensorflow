@@ -73,8 +73,8 @@ Status ReadSavedModelProto(const string& export_dir,
 
   Status err;
   if (found_pb.code() == found_pbtxt.code()) {
-    err = Status(found_pb.code(), StrCat(found_pb.error_message(), "\n",
-                                         found_pbtxt.error_message()));
+    err = Status(found_pb.code(),
+                 StrCat(found_pb.message(), "\n", found_pbtxt.message()));
   } else if (found_pb.code() == NOT_FOUND) {
     err = found_pbtxt;
   } else if (found_pbtxt.code() == NOT_FOUND) {
@@ -171,11 +171,17 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   // Read the fingerprint.
   auto fingerprint_proto =
       saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
+  std::string singleprint = "";
   if (fingerprint_proto.ok()) {
-    // Set gauge cell with saved_model_checksum.
     metrics::SavedModelReadFingerprint().Set(
-        std::to_string(fingerprint_proto->saved_model_checksum()));
+        metrics::MakeFingerprintJson(fingerprint_proto.value()));
+
+    singleprint =
+        saved_model::fingerprinting::Singleprint(fingerprint_proto.value());
   }
+
+  metrics::SavedModelReadPathAndSingleprint().Set(
+      metrics::MakeSavedModelPathAndSingleprint(export_dir, singleprint));
   return OkStatus();
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -36,39 +37,24 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMSCATTERFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-constexpr llvm::StringRef kScatterTransformedLabel =
-    "__scatter_transformed_label__";
-
 struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
   using OpRewritePattern<thlo::ScatterOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(thlo::ScatterOp scatterOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(scatterOp, kScatterTransformedLabel)) return failure();
-
-    if (isa<scf::ForOp>(scatterOp->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          scatterOp, "has already been tiled by another pass.");
-    }
+    if (hasLabel(scatterOp, kTransformedLabel)) return failure();
 
     // Tile everything to points and fuse.
     scf::SCFTilingOptions opts;
-    opts.setTileSizeComputationFunction([](OpBuilder &b, Operation *op) {
-      OpBuilder::InsertionGuard guard(b);
-      b.setInsertionPointToStart(
-          &op->getParentOfType<func::FuncOp>().getBody().front());
-
-      auto loops = cast<TilingInterface>(op).getLoopIteratorTypes();
-      return SmallVector<Value>(
-          loops.size(), b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
-    });
+    opts.setTileSizes(
+        SmallVector<int64_t>(scatterOp.getLoopIteratorTypes().size(), 1));
 
     auto fuseFilterFn = [](Operation *op) {
       return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
                  thlo::ReverseOp, linalg::TransposeOp>(op);
     };
-    auto tilingResult = tileUsingSCFForOpAndFuseGreedily(
-        rewriter, scatterOp, opts, kScatterTransformedLabel, fuseFilterFn);
+    auto tilingResult = tileUsingSCFForOpAndFuseGreedily(rewriter, scatterOp,
+                                                         opts, fuseFilterFn);
 
     if (failed(tilingResult)) return failure();
 
@@ -81,8 +67,10 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
     if (failed(ifOpOr)) return failure();
 
     // Fuse into `then` block.
-    fuseGreedily(rewriter, ifOpOr->getThenRegion().front(), fuseFilterFn);
+    fuseGreedily(rewriter, &ifOpOr->getThenRegion().front(), fuseFilterFn);
 
+    // Remove tiling label to continue generating code inside the region.
+    ifOpOr->walk([](Operation *op) { removeLabel(op, kTransformedLabel); });
     return success();
   }
 };
@@ -103,17 +91,10 @@ struct TransformScatterForCpuPass
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    // Ensure we drop the marker in the end.
-    f.walk([](thlo::ScatterOp scatterOp) {
-      removeLabel(scatterOp, kScatterTransformedLabel);
-    });
   }
 };
 
 }  // namespace
-}  // namespace mlir::gml_st
-
-namespace mlir::gml_st {
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformScatterForCpuPass() {

@@ -28,50 +28,71 @@ namespace tensorflow {
 namespace {
 
 TEST(DebugDataDumper, NoPrefixTest) {
-  EXPECT_EQ(false,
-            DebugDataDumper::Global()->ShouldDump("DumpGraphToFileTest"));
+  EXPECT_EQ(false, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
+                                                   kDebugGroupMain));
 }
 
 TEST(DebugDataDumper, NoNameFilterTest) {
   std::string dir = testing::TmpDir();
   setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
-  EXPECT_EQ(false,
-            DebugDataDumper::Global()->ShouldDump("DumpGraphToFileTest"));
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+
+  EXPECT_EQ(false, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
+                                                   kDebugGroupMain));
 }
 
 TEST(DebugDataDumper, ShouldDumpTest) {
   std::string dir = testing::TmpDir();
   setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
-
   setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
-  EXPECT_EQ(true, DebugDataDumper::Global()->ShouldDump("DumpGraphToFileTest"));
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(true, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
+                                                  kDebugGroupMain));
 
   setenv("TF_DUMP_GRAPH_NAME_FILTER", "DumpGraph", 1);
-  EXPECT_EQ(true, DebugDataDumper::Global()->ShouldDump("DumpGraphToFileTest"));
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(true, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
+                                                  kDebugGroupMain));
 
   setenv("TF_DUMP_GRAPH_NAME_FILTER", "DoNotDumpGraph", 1);
-  EXPECT_EQ(false,
-            DebugDataDumper::Global()->ShouldDump("DumpGraphToFileTest"));
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(false, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
+                                                   kDebugGroupMain));
 
-  setenv("TF_DUMP_GRAPH_NAME_FILTER", "DoNotDumpGraph", 1);
-  EXPECT_EQ(true,
-            DebugDataDumper::Global()->ShouldDump("DumpGraphToFileTest", true));
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(false, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
+                                                   kDebugGroupBridgePhase1));
+
+  setenv("TF_DUMP_GRAPH_GROUPS", "main,bridge_phase1", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(true, DEBUG_DATA_DUMPER()->ShouldDump("DumpGraphToFileTest",
+                                                  kDebugGroupBridgePhase1));
+
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(false, DEBUG_DATA_DUMPER()->ShouldDump(
+                       "__wrapped__DumpGraphToFileTest", kDebugGroupMain));
+
+  setenv("TF_DUMP_GRAPH_WRAPPED", "true", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+  EXPECT_EQ(true, DEBUG_DATA_DUMPER()->ShouldDump(
+                      "__wrapped__DumpGraphToFileTest", kDebugGroupMain));
 }
 
 TEST(DebugDataDumper, DumpFileBasenameTest) {
   // For the same name, the order id should increment for each new dump file
   // name.
-  EXPECT_EQ("DumpFileBasenameTest1.0.tag1",
-            DebugDataDumper::Global()->GetDumpFileBasename(
-                "DumpFileBasenameTest1", "tag1"));
-  EXPECT_EQ("DumpFileBasenameTest1.1.tag2",
-            DebugDataDumper::Global()->GetDumpFileBasename(
-                "DumpFileBasenameTest1", "tag2"));
+  EXPECT_EQ("DumpFileBasenameTest1.0000.main.tag1",
+            DEBUG_DATA_DUMPER()->GetDumpFilename("DumpFileBasenameTest1",
+                                                 kDebugGroupMain, "tag1"));
+  EXPECT_EQ("DumpFileBasenameTest1.0001.main.tag2",
+            DEBUG_DATA_DUMPER()->GetDumpFilename("DumpFileBasenameTest1",
+                                                 kDebugGroupMain, "tag2"));
 
   // For other names, the order id should restart from 0.
-  EXPECT_EQ("DumpFileBasenameTest2.0.tag1",
-            DebugDataDumper::Global()->GetDumpFileBasename(
-                "DumpFileBasenameTest2", "tag1"));
+  EXPECT_EQ("DumpFileBasenameTest2.0000.main.tag1",
+            DEBUG_DATA_DUMPER()->GetDumpFilename("DumpFileBasenameTest2",
+                                                 kDebugGroupMain, "tag1"));
 }
 
 TEST(DebugDataDumper, DumpGraphToFileTest) {
@@ -82,11 +103,13 @@ TEST(DebugDataDumper, DumpGraphToFileTest) {
   std::string dir = testing::TmpDir();
   setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
   setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
 
-  DUMP_GRAPH("DumpGraphToFileTest", "tag", &graph);
+  DEBUG_DATA_DUMPER()->DumpGraph("DumpGraphToFileTest", kDebugGroupMain, "tag",
+                                 &graph, nullptr, false);
 
   std::string dumpFilename =
-      io::JoinPath(dir, "DumpGraphToFileTest.0.tag.pbtxt");
+      io::JoinPath(dir, "DumpGraphToFileTest.0000.main.tag.pbtxt");
   EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilename));
 }
 
@@ -98,40 +121,53 @@ TEST(DebugDataDumper, DumpGraphLongFileNameCrashTest) {
   std::string dir = testing::TmpDir();
   setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
   setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
 
   // Make sure long file name does not crash.
   std::string name = std::string(256, 'x');
-  DUMP_GRAPH(name, "tag", &graph);
+  DEBUG_DATA_DUMPER()->DumpGraph(name, kDebugGroupMain, "tag", &graph, nullptr,
+                                 false);
 
-  std::string dumpFilename =
-      io::JoinPath(dir, absl::StrFormat("%s.0.tag.pbtxt", name.c_str()));
+  std::string dumpFilename = io::JoinPath(
+      dir, absl::StrFormat("%s.0000.main.tag.pbtxt", name.c_str()));
   EXPECT_EQ(absl::StatusCode::kNotFound,
             Env::Default()->FileExists(dumpFilename).code());
 }
 
-TEST(DebugDataDumper, DumpMLIRModuleTest) {
+TEST(DebugDataDumper, DumpOpCreationStacktracesTest) {
+  Graph graph(OpRegistry::Global());
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+
   std::string dir = testing::TmpDir();
   setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
   setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  setenv("TF_DUMP_OP_CREATION_STACKTRACES", "1", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
 
-  DUMP_MLIR_MODULE("DumpMLIRModuleTest", "test", "fake_mlir_txt", false);
-
-  std::string dumpFilepath =
-      io::JoinPath(dir, "DumpMLIRModuleTest.0.test.mlir");
-  EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilepath));
-}
-
-TEST(DebugDataDumper, DumpMLIRModuleLongFileNameCrashTest) {
-  std::string dir = testing::TmpDir();
-  setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
-  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
-
-  // Make sure long file name does not crash.
-  std::string name = std::string(256, 'x');
-  DUMP_MLIR_MODULE(name, "tag", "fake_mlir_txt", false);
+  DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
+      "DumpOpCreationStacktracesTest", kDebugGroupMain, "test", &graph);
 
   std::string dumpFilename =
-      io::JoinPath(dir, absl::StrFormat("%s.0.tag.pbtxt", name.c_str()));
+      io::JoinPath(dir, "DumpOpCreationStacktracesTest.0000.main.test.csv");
+  EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilename));
+}
+
+TEST(DebugDataDumper, NoDumpOpCreationStacktracesTest) {
+  Graph graph(OpRegistry::Global());
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+
+  std::string dir = testing::TmpDir();
+  setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+
+  DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
+      "DumpOpCreationStacktracesTest", kDebugGroupMain, "test", &graph);
+
+  std::string dumpFilename =
+      io::JoinPath(dir, "DumpOpCreationStacktracesTest.0000.main.test.json");
   EXPECT_EQ(absl::StatusCode::kNotFound,
             Env::Default()->FileExists(dumpFilename).code());
 }

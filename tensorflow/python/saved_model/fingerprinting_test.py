@@ -22,6 +22,7 @@ import shutil
 
 from tensorflow.core.config import flags
 from tensorflow.core.protobuf import fingerprint_pb2
+from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -29,8 +30,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import fingerprinting
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model.pywrap_saved_model import constants
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as fingerprinting_pywrap
 from tensorflow.python.trackable import autotrackable
 
 
@@ -68,6 +71,12 @@ class FingerprintingTest(test.TestCase):
     with file_io.FileIO(filename, "rb") as f:
       fingerprint_def.ParseFromString(f.read())
     return fingerprint_def
+
+  def _read_saved_model(self, filename):
+    saved_model_def = saved_model_pb2.SavedModel()
+    with file_io.FileIO(filename, "rb") as f:
+      saved_model_def.ParseFromString(f.read())
+    return saved_model_def
 
   def setUp(self):
     super().setUp()
@@ -131,34 +140,30 @@ class FingerprintingTest(test.TestCase):
     fingerprint = fingerprinting.read_fingerprint(save_dir)
 
     fingerprint_def = self._read_fingerprint(
-        file_io.join(save_dir, constants.FINGERPRINT_FILENAME)
-    )
+        file_io.join(save_dir, constants.FINGERPRINT_FILENAME))
 
-    self.assertEqual(
-        fingerprint.saved_model_checksum, fingerprint_def.saved_model_checksum
-    )
-    self.assertEqual(
-        fingerprint.graph_def_program_hash,
-        fingerprint_def.graph_def_program_hash,
-    )
-    self.assertEqual(
-        fingerprint.signature_def_hash, fingerprint_def.signature_def_hash
-    )
-    self.assertEqual(
-        fingerprint.saved_object_graph_hash,
-        fingerprint_def.saved_object_graph_hash,
-    )
-    self.assertEqual(
-        fingerprint.checkpoint_hash, fingerprint_def.checkpoint_hash
-    )
-    self.assertEqual(
-        fingerprint.version.producer, fingerprint_def.version.producer
-    )
+    self.assertEqual(fingerprint, fingerprint_def)
 
-  def test_read_fingerprint_api_invalid(self):
+  def test_read_fingerprint_file_not_found(self):
     with self.assertRaisesRegex(FileNotFoundError,
                                 "SavedModel Fingerprint Error"):
       fingerprinting.read_fingerprint("foo")
+
+  def test_write_fingerprint(self):
+    save_dir = os.path.join(self.get_temp_dir(), "model_and_fingerprint")
+    save.save_and_return_nodes(
+        self._create_model_with_data(), save_dir,
+        experimental_skip_checkpoint=True)  # checkpoint data won't be loaded*
+
+    new_dir = os.path.join(self.get_temp_dir(), "fingerprint_dir")
+    os.mkdir(new_dir)
+    serialized_model = self._read_saved_model(  # *here
+        os.path.join(save_dir, "saved_model.pb")).SerializeToString()
+    fingerprinting_utils.write_fingerprint(new_dir, serialized_model)
+
+    model_fingerprint = fingerprinting.read_fingerprint(save_dir)
+    solo_fingerprint = fingerprinting.read_fingerprint(new_dir)
+    self.assertEqual(model_fingerprint, solo_fingerprint)
 
   def test_valid_singleprint(self):
     save_dir = os.path.join(self.get_temp_dir(), "singleprint_model")
@@ -178,6 +183,30 @@ class FingerprintingTest(test.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 "Encounted invalid fingerprint values"):
       fingerprint.singleprint()
+
+  def test_valid_from_proto(self):
+    save_dir = os.path.join(self.get_temp_dir(), "from_proto_model")
+    save.save(self._create_model_with_data(), save_dir)
+    fingerprint_def = fingerprint_pb2.FingerprintDef().FromString(
+        fingerprinting_pywrap.ReadSavedModelFingerprint(save_dir))
+    fingerprint = fingerprinting.Fingerprint.from_proto(fingerprint_def)
+    self.assertEqual(fingerprint, fingerprint_def)
+
+  def test_invalid_from_proto(self):
+    save_dir = os.path.join(self.get_temp_dir(), "from_proto_model")
+    save.save(self._create_model_with_data(), save_dir)
+    wrong_def = saved_model_pb2.SavedModel(
+        saved_model_schema_version=1)
+    with self.assertRaisesRegex(ValueError,
+                                "Given proto could not be deserialized as"):
+      fingerprinting.Fingerprint.from_proto(wrong_def)
+
+  def test_fingerprint_to_proto(self):
+    save_dir = os.path.join(self.get_temp_dir(), "from_proto_model")
+    save.save(self._create_model_with_data(), save_dir)
+    fingerprint = fingerprinting.read_fingerprint(save_dir)
+    fingerprint_def = fingerprinting_utils.to_proto(fingerprint)
+    self.assertEqual(fingerprint, fingerprint_def)
 
 
 if __name__ == "__main__":

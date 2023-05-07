@@ -148,7 +148,7 @@ Status CreateFileForDumping(llvm::StringRef name,
     dir = GetDumpDirFromEnvVar();
 
   if (dir.empty()) {
-    return Status(error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
@@ -164,7 +164,7 @@ Status CreateFileForDumping(llvm::StringRef name,
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create '" << dir
                  << "' directory for dumping: " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
   *filepath = io::JoinPath(dir, MakeUniqueFilename(std::string(name)));
 
@@ -173,7 +173,7 @@ Status CreateFileForDumping(llvm::StringRef name,
   status = env->NewWritableFile(*filepath, &file);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create file '" << filepath << "': " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
   file = std::make_unique<tsl::BufferedWritableFile>(std::move(file));
   *os = std::make_unique<WritableFileRawStream>(std::move(file));
@@ -202,7 +202,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
-  if (!result.ok()) return result.error_message();
+  if (!result.ok()) return std::string(result.message());
 
   if (pass_manager) PrintPassPipeline(*pass_manager, op, *os);
   op->print(*os, mlir::OpPrintingFlags().useLocalScope());
@@ -236,7 +236,7 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
   std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
-  if (!result.ok()) return result.error_message();
+  if (!result.ok()) return std::string(result.message());
 
   (*os) << content;
   LOG(INFO) << "Outputted requested string to '" << filepath << "'";
@@ -276,8 +276,8 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     auto* env = tensorflow::Env::Default();
     auto status = env->RecursivelyCreateDir(path);
     if (!status.ok()) {
-      LOG(WARNING) << "cannot create directory '" + path +
-                          "': " + status.error_message();
+      LOG(WARNING) << "cannot create directory '" << path
+                   << "': " << status.message();
       return;
     }
 
@@ -307,7 +307,7 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
 
     if (!status.ok()) {
       error = absl::StrCat("Failed to create file '", path,
-                           "': ", status.error_message());
+                           "': ", status.message());
       return nullptr;
     }
     return std::make_unique<CrashReproducerStream>(
@@ -318,7 +318,11 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
 
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path) {
-  mlir::applyPassManagerCLOptions(pm);
+  mlir::registerPassManagerCLOptions();
+  if (!mlir::succeeded(mlir::applyPassManagerCLOptions(pm))) {
+    LOG(ERROR) << "cannot apply MLIR pass manager CL options";
+    return;
+  }
   SetCrashReproducer(pm, dir_path);
 }
 

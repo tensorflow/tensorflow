@@ -20,8 +20,8 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:templates",
         "@gast_archive//:gast",
     ],
 )
@@ -32,8 +32,11 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
     ],
 )
 
@@ -43,7 +46,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:templates",
         "@gast_archive//:gast",
     ],
 )
@@ -54,7 +57,8 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
         "@gast_archive//:gast",
     ],
 )
@@ -65,8 +69,11 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
     ],
 )
 
@@ -76,7 +83,8 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
         "@gast_archive//:gast",
     ],
 )
@@ -87,7 +95,10 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/utils:ag_logging",
         "@gast_archive//:gast",
     ],
@@ -99,9 +110,18 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:ast_util",
+        "//tensorflow/python/autograph/pyct:cfg",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "@gast_archive//:gast",
     ],
 )
@@ -112,8 +132,8 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/util:tf_inspect",
         "@gast_archive//:gast",
     ],
@@ -125,7 +145,8 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:templates",
         "@gast_archive//:gast",
     ],
 )
@@ -136,9 +157,18 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:cfg",
+        "//tensorflow/python/autograph/pyct:origin_info",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "@gast_archive//:gast",
     ],
 )
@@ -149,8 +179,12 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
         "@gast_archive//:gast",
     ],
 )
@@ -161,9 +195,13 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
         "@gast_archive//:gast",
     ],
 )
@@ -174,8 +212,12 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
         "@gast_archive//:gast",
     ],
 )
@@ -186,7 +228,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:templates",
         "@gast_archive//:gast",
     ],
 )
@@ -216,7 +258,7 @@ py_strict_test(
         ":break_statements",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
     ],
 )
 
@@ -289,8 +331,8 @@ py_strict_test(
         ":directives",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/lang",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
     ],
 )
 
@@ -305,7 +347,7 @@ py_strict_test(
         "//tensorflow/python/autograph/core:ag_ctx",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/framework:constant_op",
     ],
 )
@@ -334,7 +376,8 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:list_ops",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
     ],
@@ -379,7 +422,7 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:list_ops",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
     ],

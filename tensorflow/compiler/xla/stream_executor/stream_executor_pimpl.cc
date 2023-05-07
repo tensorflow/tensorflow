@@ -270,32 +270,6 @@ bool StreamExecutor::SupportsDnn() const {
   return implementation_->SupportsDnn();
 }
 
-bool StreamExecutor::GetConvolveAlgorithms(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  switch (kind) {
-    default:
-      return false;
-    case dnn::ConvolutionKind::FORWARD:
-    case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
-      return dnn_support->GetConvolveAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), input_type,
-          out_algorithms);
-    case dnn::ConvolutionKind::BACKWARD_DATA:
-      return dnn_support->GetConvolveBackwardDataAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), input_type,
-          out_algorithms);
-    case dnn::ConvolutionKind::BACKWARD_FILTER:
-      return dnn_support->GetConvolveBackwardFilterAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), input_type,
-          out_algorithms);
-  }
-}
-
 tsl::Status StreamExecutor::GetConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -304,7 +278,7 @@ tsl::Status StreamExecutor::GetConvolveRunners(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    ScratchAllocator* scratch_allocator,
+    ScratchAllocator* scratch_allocator, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
@@ -314,7 +288,7 @@ tsl::Status StreamExecutor::GetConvolveRunners(
       use_cudnn_frontend, kind, input_type, output_type, stream,
       input_descriptor, input_data, filter_descriptor, filter_data,
       output_descriptor, output_data, convolution_descriptor, use_fallback,
-      scratch_allocator, out_exec_plans);
+      scratch_allocator, numeric_options, out_exec_plans);
 }
 
 tsl::Status StreamExecutor::GetFusedConvolveRunners(
@@ -327,7 +301,7 @@ tsl::Status StreamExecutor::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode,
+    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
@@ -337,7 +311,8 @@ tsl::Status StreamExecutor::GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
       conv_input_scale, side_input_scale, leakyrelu_alpha, stream,
       input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
-      convolution_descriptor, use_fallback, activation_mode, out_exec_plans);
+      convolution_descriptor, use_fallback, activation_mode, numeric_options,
+      out_exec_plans);
 }
 
 tsl::Status StreamExecutor::GetFusedMatmulRunners(
@@ -345,6 +320,7 @@ tsl::Status StreamExecutor::GetFusedMatmulRunners(
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
     dnn::ActivationMode activation_mode, bool use_fallback,
+    const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
@@ -355,7 +331,7 @@ tsl::Status StreamExecutor::GetFusedMatmulRunners(
   return dnn_support->GetFusedMatmulRunners(
       use_cudnn_frontend, input_type, bias_type, output_type, stream, trans_a,
       trans_b, m, n, k, lda, ldb, ldc, activation_mode, use_fallback,
-      out_exec_plans);
+      numeric_options, out_exec_plans);
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
@@ -405,7 +381,7 @@ StreamExecutor::createRnnDescriptor(
     bool use_padded_io) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
@@ -420,7 +396,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
@@ -434,7 +410,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(
     dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
@@ -448,7 +424,7 @@ StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
@@ -546,7 +522,7 @@ tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   }
 
   return tsl::Status(
-      tsl::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       absl::StrCat("Check if module containing symbol ", symbol_name,
                    " is loaded (module_handle = ",
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
@@ -691,7 +667,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyD2H(
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to synchronously memcpy device-to-host: device "
                         "%p to host %p size %d: %s",
                         device_src.opaque(), host_dst, size,
@@ -715,7 +691,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyH2D(const void* host_src,
   result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to synchronously memcpy host-to-device: host "
                         "%p to device %p size %d: %s",
                         host_src, device_dst->opaque(), size,

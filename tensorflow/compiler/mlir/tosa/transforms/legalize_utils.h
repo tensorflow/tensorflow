@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
 
+#include <cfloat>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
@@ -103,6 +105,11 @@ Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
                                   int32_t val);
 
+// Create an expected bitwidth integer constant operator based on the type
+// parameter.
+Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
+                                  int64_t val);
+
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
@@ -151,9 +158,9 @@ LogicalResult ApplyPatternsWithShapeResolution(
 // Creates a TOSA operation and performs shape inference on the individual
 // op. This allows shape inference during the TFLite to TOSA lowering.
 template <typename TosaOp, typename... Args>
-TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
+TosaOp CreateOpAndInfer(ImplicitLocOpBuilder& builder, Type result_ty,
                         Args&&... args) {
-  auto op = rewriter.create<TosaOp>(loc, result_ty, args...);
+  auto op = builder.create<TosaOp>(result_ty, args...);
 
   InferShapedTypeOpInterface shapeInterface =
       dyn_cast<InferShapedTypeOpInterface>(op.getOperation());
@@ -161,8 +168,9 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
 
   SmallVector<ShapedTypeComponents> returnedShapes;
   if (shapeInterface
-          .inferReturnTypeComponents(op.getContext(), op.getLoc(),
+          .inferReturnTypeComponents(op.getContext(), builder.getLoc(),
                                      op->getOperands(), op->getAttrDictionary(),
+                                     op->getPropertiesStorage(),
                                      op->getRegions(), returnedShapes)
           .failed())
     return op;
@@ -194,6 +202,13 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
           : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
   result.setType(new_ty);
   return op;
+}
+
+template <typename TosaOp, typename... Args>
+TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
+                        Args&&... args) {
+  ImplicitLocOpBuilder builder(loc, rewriter);
+  return CreateOpAndInfer<TosaOp>(builder, result_ty, args...);
 }
 
 template <typename TosaOp, typename... Args>

@@ -43,7 +43,7 @@ from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -518,9 +518,9 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = MaskedTensorV1([1, 2, 3, 4], [True, False, True, False])
     y = MaskedTensorV1([5, 6, 7, 8], [False, True, True, False])
 
-    x_2 = control_flow_ops.cond(
+    x_2 = tf_cond.cond(
         constant_op.constant(True), lambda: x, lambda: y)
-    y_2 = control_flow_ops.cond(
+    y_2 = tf_cond.cond(
         constant_op.constant(False), lambda: x, lambda: y)
 
     self.assertAllEqual(x.values, x_2.values)
@@ -540,8 +540,8 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           array_ops.where_v2(mt.mask, 100, mt.values * 2),
           math_ops.logical_not(mt.mask))
 
-    x = control_flow_ops.cond(constant_op.constant(True), true_fn, false_fn)
-    y = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
+    x = tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+    y = tf_cond.cond(constant_op.constant(False), true_fn, false_fn)
 
     self.assertAllEqual(x.values, [1, -1, 3, -1])
     self.assertAllEqual(x.mask, [False, False, False, True])
@@ -568,7 +568,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       # In eager mode, tf.cond eagerly runs either true_fn or false_fn, and
       # ignores the other one; so it doesn't detect any type mismatches
       # between the two outcomes.  (See _eager_cond_implementation in
-      # control_flow_ops.py.)
+      # cond.py.)
       return
 
     a = lambda: MaskedTensorV1([1, 2, 3], [True, True, False])
@@ -580,16 +580,16 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError,
         'Incompatible return values of true_fn and false_fn: The two '
         "structures don't have the same nested structure"):
-      control_flow_ops.cond(constant_op.constant(True), a, b)
+      tf_cond.cond(constant_op.constant(True), a, b)
     with self.assertRaisesRegex(
         TypeError, 'Incompatible return types of true_fn and false_fn: The two '
         "structures don't have the same nested structure"):
-      control_flow_ops.cond(constant_op.constant(True), a, c)
+      tf_cond.cond(constant_op.constant(True), a, c)
     with self.assertRaisesRegex(
         ValueError,
         'Incompatible return values of true_fn and false_fn: The two '
         "structures don't have the same nested structure"):
-      control_flow_ops.cond(constant_op.constant(True), a, d)
+      tf_cond.cond(constant_op.constant(True), a, d)
 
   def testCondPacked(self):
     x = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
@@ -597,9 +597,9 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = extension_type.pack(x)
     y = extension_type.pack(y)
 
-    x_2 = control_flow_ops.cond(
+    x_2 = tf_cond.cond(
         constant_op.constant(True), lambda: x, lambda: y)
-    y_2 = control_flow_ops.cond(
+    y_2 = tf_cond.cond(
         constant_op.constant(False), lambda: x, lambda: y)
 
     self.assertAllEqual(x.values, x_2.values)
@@ -609,7 +609,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     a = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
     b = extension_type.pack(a)
-    b = control_flow_ops.cond(
+    b = tf_cond.cond(
         constant_op.constant(True), lambda: array_ops.size(a.mask),
         lambda: array_ops.size(a.values))
     self.assertAllEqual(b, 4)
@@ -619,7 +619,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # the value.  See the comment in `ExtensionType.__getattr__` for details.
     c = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
     c = extension_type.pack(c)
-    d = control_flow_ops.cond(
+    d = tf_cond.cond(
         constant_op.constant(False), lambda: array_ops.size(c.mask),
         lambda: array_ops.size(c.values))
     self.assertAllEqual(d, 4)

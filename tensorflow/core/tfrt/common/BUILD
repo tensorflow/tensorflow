@@ -20,6 +20,7 @@ package_group(
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//platforms/xla/megascale/tensorflow/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/jit/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
@@ -75,9 +76,8 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":global_state",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
     ],
@@ -105,8 +105,7 @@ cc_library(
 )
 
 # Uses this target if you need to create a PJRT client.
-# TODO(b/269308144): consider adding a PJRT client factory to separate the
-# dependenceis of different PJRT clients.
+# TODO(b/280671896) Combines pjrt_util and create_pjrt_client_util
 cc_library(
     name = "create_pjrt_client_util",
     srcs = [
@@ -117,11 +116,12 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":pjrt_client_factory_options",
+        ":pjrt_client_factory_registry",
         ":pjrt_util",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
-        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tf_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
     ],
@@ -166,6 +166,7 @@ tf_cuda_cc_test(
     deps = [
         ":create_pjrt_client_util",
         ":global_state",
+        ":pjrt_gpu_client_registration",
         ":pjrt_state",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -176,5 +177,86 @@ tf_cuda_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
+cc_library(
+    name = "pjrt_client_factory_options",
+    hdrs = ["pjrt_client_factory_options.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
+        "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
+    ],
+)
+
+cc_library(
+    name = "pjrt_client_factory_registry",
+    srcs = ["pjrt_client_factory_registry.cc"],
+    hdrs = ["pjrt_client_factory_registry.h"],
+    deps = [
+        ":pjrt_client_factory_options",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/tsl/framework:device_type",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "pjrt_cpu_client_registration",
+    srcs = ["pjrt_cpu_client_registration.cc"],
+    deps = [
+        ":pjrt_client_factory_options",
+        ":pjrt_client_factory_registry",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/core:framework_types_hdr",
+    ],
+    alwayslink = True,
+)
+
+tf_cc_test(
+    name = "pjrt_cpu_client_registration_test",
+    srcs = ["pjrt_cpu_client_registration_test.cc"],
+    deps = [
+        ":pjrt_client_factory_options",
+        ":pjrt_client_factory_registry",
+        ":pjrt_cpu_client_registration",
+        "//tensorflow/core:framework_types_hdr",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pjrt_gpu_client_registration",
+    srcs = ["pjrt_gpu_client_registration.cc"],
+    deps = [
+        ":pjrt_client_factory_options",
+        ":pjrt_client_factory_registry",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//tensorflow/core:framework_types_hdr",
+    ],
+    alwayslink = True,
+)
+
+tf_cuda_cc_test(
+    name = "pjrt_gpu_client_registration_test",
+    size = "small",
+    srcs = ["pjrt_gpu_client_registration_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":pjrt_client_factory_options",
+        ":pjrt_client_factory_registry",
+        ":pjrt_gpu_client_registration",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/core:framework_types_hdr",
+        "@com_google_googletest//:gtest_main",
     ],
 )

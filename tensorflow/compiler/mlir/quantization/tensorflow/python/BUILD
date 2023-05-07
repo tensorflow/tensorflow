@@ -85,10 +85,12 @@ cc_library(
     hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = if_static([":quantize_model_cc_impl"]) + [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -124,7 +126,7 @@ tf_py_test(
     deps = [
         ":pywrap_quantize_model",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -147,7 +149,6 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/training:saver",
         "//tensorflow/python/training:training_lib",
-        "//tensorflow/python/types",
         "@absl_py//absl/logging",
     ],
 )
@@ -171,14 +172,15 @@ pytype_strict_library(
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/trackable:autotrackable",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
@@ -198,6 +200,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -236,7 +239,7 @@ pytype_library(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -264,8 +267,8 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/client:session",
-        "//tensorflow/python/platform",
-        "//tensorflow/python/types",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/types:core",
     ],
 )
 
@@ -279,7 +282,7 @@ tf_py_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
     ],
 )

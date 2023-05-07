@@ -256,7 +256,7 @@ static LLVM::GlobalOp EncodeTypeTable(Globals &g, ImplicitLocOpBuilder &b,
   // Global initializer that encodes type ids as pointers.
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) -> LogicalResult {
     Value arr = b.create<LLVM::UndefOp>(type);
-    for (auto &pair : llvm::enumerate(type_ids)) {
+    for (const auto &pair : llvm::enumerate(type_ids)) {
       arr = b.create<LLVM::InsertValueOp>(arr, Globals::AddrOf(b, pair.value()),
                                           pair.index());
     }
@@ -324,7 +324,7 @@ static FailureOr<EncodedArguments> EncodeArguments(
   if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
 
   // Store pointer to encoded arguments into the allocated storage.
-  for (auto &pair : llvm::enumerate(encoded)) {
+  for (const auto &pair : llvm::enumerate(encoded)) {
     CustomCallArgEncoding::Encoded encoded = pair.value();
     int64_t offset = 2 + pair.index();
     insert_value(AsPtr(b, encoded.value), offset);
@@ -418,7 +418,7 @@ static FailureOr<EncodedResults> EncodeResults(
   if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
 
   // Store encoded results into the allocated storage.
-  for (auto &pair : llvm::enumerate(encoded)) {
+  for (const auto &pair : llvm::enumerate(encoded)) {
     CustomCallRetEncoding::Encoded encoded_pair = pair.value();
     int64_t offset = 2 + pair.index();
     insert_value(encoded_pair.value, offset);
@@ -689,10 +689,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
 
   // We use conversion to LLVM type to lower all runtime operands to LLVM types.
-  // TODO(b/267828330): Migrate to opaque pointers.
-  LowerToLLVMOptions options(&getContext());
-  options.useOpaquePointers = false;
-  LLVMTypeConverter llvm_converter(ctx, options);
+  LLVMTypeConverter llvm_converter(ctx);
   llvm_converter.addConversion(
       RuntimeTypeConverter::ConvertExecutionContextType);
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertStatusType);
@@ -705,8 +702,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Convert all async types to opaque pointers.
   llvm_converter.addConversion([&](Type type) -> std::optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
-      return llvm_converter.getPointerType(
-          IntegerType::get(type.getContext(), 8));
+      return LLVM::LLVMPointerType::get(ctx);
     return std::nullopt;
   });
 

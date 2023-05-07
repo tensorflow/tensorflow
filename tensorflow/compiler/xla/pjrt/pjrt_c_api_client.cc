@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
-// TODO(skyewm): remove when everything goes through C API
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
@@ -46,8 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 namespace xla {
-
-bool kPjRtCApiBypass = false;
 
 // Helper macros
 
@@ -89,10 +85,6 @@ PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
           "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
-  if (kPjRtCApiBypass) {
-    wrapped_ = c_client_->client.get();
-  }
-
   InitDevices();
   LOG(INFO) << "PjRtCApiClient created.";
 }
@@ -278,7 +270,8 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
   std::string module_bytecode;
   {
     llvm::raw_string_ostream os(module_bytecode);
-    mlir::writeBytecodeToFile(module, os);
+    if (mlir::failed(mlir::writeBytecodeToFile(module, os)))
+      return absl::UnknownError("writeBytecodeToFile() failed.");
   }
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
@@ -330,13 +323,6 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   RETURN_STATUS_IF_ERROR(c_api_->PJRT_Buffer_UnsafePointer(&args), c_api_);
 
   return args.buffer_pointer;
-}
-
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
-    StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCApiBuffer>(
-      this, new PJRT_Buffer{std::move(buffer), pjrt_c_client()}));
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
@@ -414,54 +400,39 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 // --------------------------------- Devices -----------------------------------
 
-PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
-    : client_(client), device_(device) {
-  if (kPjRtCApiBypass) {
-    wrapped_ = device_->device;
-  }
+PjRtCApiDeviceDescription::PjRtCApiDeviceDescription(
+    const PJRT_Api* c_api, PJRT_DeviceDescription* device_description)
+    : c_api_(c_api), device_description_(device_description) {
   InitAttributes();
 }
 
-PjRtClient* PjRtCApiDevice::client() const { return client_; }
-
-int PjRtCApiDevice::id() const {
-  PJRT_Device_Id_Args args;
-  args.struct_size = PJRT_Device_Id_Args_STRUCT_SIZE;
+int PjRtCApiDeviceDescription::id() const {
+  PJRT_DeviceDescription_Id_Args args;
+  args.struct_size = PJRT_DeviceDescription_Id_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_Id(&args), api);
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Id(&args), c_api_);
   return args.id;
 }
 
-int PjRtCApiDevice::process_index() const {
-  PJRT_Device_ProcessIndex_Args args;
-  args.struct_size = PJRT_Device_ProcessIndex_Args_STRUCT_SIZE;
+int PjRtCApiDeviceDescription::process_index() const {
+  PJRT_DeviceDescription_ProcessIndex_Args args;
+  args.struct_size = PJRT_DeviceDescription_ProcessIndex_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_ProcessIndex(&args), api);
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_ProcessIndex(&args),
+                            c_api_);
   return args.process_index;
 }
 
-bool PjRtCApiDevice::IsAddressable() const {
-  PJRT_Device_IsAddressable_Args args;
-  args.struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_IsAddressable(&args), api);
-  return args.is_addressable;
-}
-
-void PjRtCApiDevice::InitAttributes() {
+void PjRtCApiDeviceDescription::InitAttributes() {
   attributes_ = {};
-  PJRT_Device_Attributes_Args args;
-  args.struct_size = PJRT_Device_Attributes_Args_STRUCT_SIZE;
+  PJRT_DeviceDescription_Attributes_Args args;
+  args.struct_size = PJRT_DeviceDescription_Attributes_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Device_Attributes(&args), api);
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Attributes(&args),
+                            c_api_);
 
   for (int i = 0; i < args.num_attributes; ++i) {
     const auto& attribute = args.attributes[i];
@@ -491,9 +462,10 @@ void PjRtCApiDevice::InitAttributes() {
       // PJRT library is a newer version that returns types not supported by
       // this client). Failing here to prevent undefined behavior.
       default: {
-        LOG(FATAL) << "PJRT_Device_Attributes() returned attribute '"
+        LOG(FATAL) << "PJRT_DeviceDescription_Attributes() returned attribute '"
                    << attribute_name << "' with unsupported type "
-                   << attribute.type << " to PjRtCApiDevice::InitAttributes()";
+                   << attribute.type
+                   << " to PjRtCApiDeviceDescription::InitAttributes()";
         break;
       }
     }
@@ -501,21 +473,60 @@ void PjRtCApiDevice::InitAttributes() {
 }
 
 const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-PjRtCApiDevice::Attributes() const {
+PjRtCApiDeviceDescription::Attributes() const {
   return attributes_;
 }
 
-absl::string_view PjRtCApiDevice::device_kind() const {
-  PJRT_Device_Kind_Args args;
-  args.struct_size = PJRT_Device_Kind_Args_STRUCT_SIZE;
+absl::string_view PjRtCApiDeviceDescription::device_kind() const {
+  PJRT_DeviceDescription_Kind_Args args;
+  args.struct_size = PJRT_DeviceDescription_Kind_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.device = device_;
+  args.device_description = device_description_;
 
-  const PJRT_Api* c_api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_Kind(&args), c_api);
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Kind(&args), c_api_);
 
   absl::string_view device_kind(args.device_kind, args.device_kind_size);
   return device_kind;
+}
+
+absl::string_view PjRtCApiDeviceDescription::DebugString() const {
+  PJRT_DeviceDescription_DebugString_Args args;
+  args.struct_size = PJRT_DeviceDescription_DebugString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_DebugString(&args),
+                            c_api_);
+  absl::string_view debug_string(args.debug_string, args.debug_string_size);
+  return debug_string;
+}
+
+absl::string_view PjRtCApiDeviceDescription::ToString() const {
+  PJRT_DeviceDescription_ToString_Args args;
+  args.struct_size = PJRT_DeviceDescription_ToString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_ToString(&args),
+                            c_api_);
+  absl::string_view to_string(args.to_string, args.to_string_size);
+  return to_string;
+}
+
+PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
+    : client_(client),
+      device_(device),
+      description_(client->pjrt_c_api(),
+                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {}
+
+PjRtClient* PjRtCApiDevice::client() const { return client_; }
+
+bool PjRtCApiDevice::IsAddressable() const {
+  PJRT_Device_IsAddressable_Args args;
+  args.struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_IsAddressable(&args), api);
+  return args.is_addressable;
 }
 
 int PjRtCApiDevice::local_hardware_id() const {
@@ -526,28 +537,6 @@ int PjRtCApiDevice::local_hardware_id() const {
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
   return args.local_hardware_id;
-}
-
-absl::string_view PjRtCApiDevice::DebugString() const {
-  PJRT_Device_DebugString_Args args;
-  args.struct_size = PJRT_Device_DebugString_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* c_api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_DebugString(&args), c_api);
-  absl::string_view debug_string(args.debug_string, args.debug_string_size);
-  return debug_string;
-}
-
-absl::string_view PjRtCApiDevice::ToString() const {
-  PJRT_Device_ToString_Args args;
-  args.struct_size = PJRT_Device_ToString_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  const PJRT_Api* c_api = client_->pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_ToString(&args), c_api);
-  absl::string_view to_string(args.to_string, args.to_string_size);
-  return to_string;
 }
 
 // ------------------------------- Executables ---------------------------------
@@ -757,26 +746,29 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
 PJRT_SendCallbackInfo CppSendCallbackToC(
     const xla::SendCallback& cpp_send_callback,
     PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback_function) {
-  *send_callback_function = [&send_callback = cpp_send_callback.callback](
-                                PJRT_TransferMetadata* metadata,
-                                PJRT_Chunk* chunk, size_t total_size_in_bytes,
-                                bool done) -> bool {
-    // TODO(b/238999986) use `shape` with full information when available.
-    xla::Shape shape = metadata->device_shape;
-    xla::Status status = send_callback(xla::PjRtTransferMetadata{shape},
+  *send_callback_function =
+      [&send_callback = cpp_send_callback.callback](
+          PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+          size_t total_size_in_bytes, bool done) -> PJRT_Error* {
+    // PJRT C API doesn't support
+    // use_major_to_minor_data_layout_for_callbacks = false
+    xla::Shape dummy_shape;
+    xla::Status status = send_callback(xla::PjRtTransferMetadata{dummy_shape},
                                        ::pjrt::ConvertToCppChunk(*chunk),
                                        total_size_in_bytes, done);
     if (!status.ok()) {
-      return false;
+      absl::string_view message = status.message();
+      return (*callback_error)(pjrt::StatusCodeToPjrtErrorCode(status.code()),
+                               message.data(), message.size());
     }
-    return true;
+    return nullptr;
   };
   return PJRT_SendCallbackInfo{
       /*channel_id=*/cpp_send_callback.channel_id,
       /*user_arg=*/send_callback_function,
       /*send_callback=*/
-      [](PJRT_TransferMetadata* metadata, PJRT_Chunk* chunk,
-         size_t total_size_in_bytes, bool done, void* user_arg) -> bool {
+      [](PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+         size_t total_size_in_bytes, bool done, void* user_arg) -> PJRT_Error* {
         // PJRT_SendCallback, `send_callback` is internal C interface callback
         // representation that cpatures the client C++ callback in void*
         // `user_arg` and reinterprets in the lower-level runtime for execution.
@@ -785,7 +777,8 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
         PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback =
             reinterpret_cast<PjRtCApiLoadedExecutable::SendCallbackFunction*>(
                 user_arg);
-        return (*send_callback)(metadata, chunk, total_size_in_bytes, done);
+        return (*send_callback)(chunk, callback_error, total_size_in_bytes,
+                                done);
       }};
 }
 
@@ -857,19 +850,18 @@ PJRT_RecvCallbackInfo CppRecvCallbackToC(
     const xla::RecvCallback& cpp_recv_callback, const PJRT_Api* c_api,
     PjRtCApiLoadedExecutable::RecvCallbackFunction* recv_callback_function) {
   *recv_callback_function = [&recv_callback = cpp_recv_callback.callback,
-                             c_api](PJRT_TransferMetadata* metadata,
-                                    PJRT_CopyToDeviceStream* stream) {
-    // TODO(b/238999986) use `shape` with full information when available.
-    xla::Shape shape = metadata->device_shape;
-    recv_callback(xla::PjRtTransferMetadata{shape},
+                             c_api](PJRT_CopyToDeviceStream* stream) {
+    // PJRT C API doesn't support
+    // use_major_to_minor_data_layout_for_callbacks = false
+    xla::Shape dummy_shape;
+    recv_callback(xla::PjRtTransferMetadata{dummy_shape},
                   std::make_unique<CApiCopyToDeviceStream>(stream, c_api));
   };
   return PJRT_RecvCallbackInfo{
       /*channel_id=*/cpp_recv_callback.channel_id,
       /*user_arg=*/recv_callback_function,
       /*recv_callback=*/
-      [](PJRT_TransferMetadata* metadata, PJRT_CopyToDeviceStream* stream,
-         void* user_arg) {
+      [](PJRT_CopyToDeviceStream* stream, void* user_arg) {
         // PJRT_RecvCallback, `recv_callback` is internal C interface callback
         // representation that cpatures the client C++ callback in void*
         // `user_arg` and reinterprets in the lower-level runtime for execution.
@@ -878,7 +870,7 @@ PJRT_RecvCallbackInfo CppRecvCallbackToC(
         PjRtCApiLoadedExecutable::RecvCallbackFunction* recv_callback =
             reinterpret_cast<PjRtCApiLoadedExecutable::RecvCallbackFunction*>(
                 user_arg);
-        (*recv_callback)(metadata, stream);
+        (*recv_callback)(stream);
       }};
 }
 
@@ -935,6 +927,15 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
     SendRecvCallbackData& callback_data) {
+  bool using_host_callbacks =
+      !options.send_callbacks.empty() || !options.recv_callbacks.empty();
+  if (using_host_callbacks &&
+      !options.use_major_to_minor_data_layout_for_callbacks) {
+    return Unimplemented(
+        "PJRT C API doesn't support "
+        "ExecuteOptions::use_major_to_minor_data_layout_for_callbacks = false");
+  }
+
   PJRT_LoadedExecutable_Execute_Args args;
   args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -945,8 +946,7 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.num_devices = argument_handles.size();
   CHECK_GT(args.num_devices, 0);
   args.num_args = argument_handles[0].size();
-  if (device_complete_events.has_value() || !options.send_callbacks.empty() ||
-      !options.recv_callbacks.empty()) {
+  if (device_complete_events.has_value() || using_host_callbacks) {
     device_complete_events->resize(args.num_devices);
     args.device_complete_events = device_complete_events->data();
   } else {
@@ -1017,6 +1017,8 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   PJRT_ExecuteOptions c_options;
+  c_options.num_send_ops = 0;
+  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (returned_futures.has_value()) {
@@ -1068,7 +1070,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (!options.send_callbacks.empty() || !options.recv_callbacks.empty()) {
-    return Status(tensorflow::error::UNIMPLEMENTED,
+    return Status(absl::StatusCode::kUnimplemented,
                   "Send/recv callbacks not implemented for "
                   "PjRtCApiLoadedExecutable::ExecuteWithSingleDevice.");
   }
@@ -1080,6 +1082,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   PJRT_ExecuteOptions c_options;
+  c_options.num_send_ops = 0;
+  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (fill_future) {
@@ -1182,15 +1186,15 @@ const Shape& PjRtCApiBuffer::on_device_shape() const {
   return shape_.value();
 }
 
-void PjRtCApiBuffer::set_shape() {
+static Shape GetDeviceShape(PJRT_Buffer* c_buffer, const PJRT_Api* api,
+                            bool is_logical_on_device_shape) {
   PJRT_Buffer_OnDeviceTrimmedShape_Args args;
   args.struct_size = PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_.get();
+  args.buffer = c_buffer;
+  args.is_logical_on_device_shape = is_logical_on_device_shape;
 
-  pjrt::LogFatalIfPjrtError(
-      client_->pjrt_c_api()->PJRT_Buffer_OnDeviceTrimmedShape(&args),
-      client_->pjrt_c_api());
+  pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_OnDeviceTrimmedShape(&args), api);
 
   xla::PrimitiveType element_type =
       static_cast<xla::PrimitiveType>(args.element_type);
@@ -1206,8 +1210,6 @@ void PjRtCApiBuffer::set_shape() {
   if (args.has_layout) {
     *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
   }
-
-  shape_ = trimmed_shape;
 
   // TODO(amangu): Refactor the deletion.
   if (args.dimensions.size > TPU_C_API_MAX_INLINED) {
@@ -1227,6 +1229,17 @@ void PjRtCApiBuffer::set_shape() {
       delete[] args.layout.tiles.heap;
     }
   }
+  return trimmed_shape;
+}
+
+void PjRtCApiBuffer::set_shape() {
+  shape_ = GetDeviceShape(buffer_.get(), client_->pjrt_c_api(),
+                          /*is_logical_on_device_shape=*/false);
+}
+
+StatusOr<Shape> PjRtCApiBuffer::logical_on_device_shape() {
+  return GetDeviceShape(buffer_.get(), client_->pjrt_c_api(),
+                        /*is_logical_on_device_shape=*/true);
 }
 
 PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
@@ -1393,29 +1406,29 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
 
 // ------------------------------ Device Topology ------------------------------
 
-PjRtCApiDeviceTopology::PjRtCApiDeviceTopology(const PJRT_Api* c_api,
-                                               PJRT_DeviceTopology* c_topology)
+PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
+    const PJRT_Api* c_api, PJRT_TopologyDescription* c_topology)
     : compiler_(std::make_unique<PjRtCApiCompiler>(c_api)),
       c_api_(c_api),
-      c_topology_(c_topology, ::pjrt::MakeDeviceTopologyDeleter(c_api)) {}
+      c_topology_(c_topology, ::pjrt::MakeTopologyDescriptionDeleter(c_api)) {}
 
-absl::string_view PjRtCApiDeviceTopology::platform_name() const {
-  PJRT_DeviceTopology_PlatformName_Args args;
+absl::string_view PjRtCApiTopologyDescription::platform_name() const {
+  PJRT_TopologyDescription_PlatformName_Args args;
   args.topology = c_topology_.get();
-  args.struct_size = PJRT_DeviceTopology_PlatformName_Args_STRUCT_SIZE;
+  args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceTopology_PlatformName(&args),
-                            c_api_);
+  pjrt::LogFatalIfPjrtError(
+      c_api_->PJRT_TopologyDescription_PlatformName(&args), c_api_);
   return absl::string_view(args.platform_name, args.platform_name_size);
 }
 
-absl::string_view PjRtCApiDeviceTopology::platform_version() const {
-  PJRT_DeviceTopology_PlatformVersion_Args args;
-  args.struct_size = PJRT_DeviceTopology_PlatformVersion_Args_STRUCT_SIZE;
+absl::string_view PjRtCApiTopologyDescription::platform_version() const {
+  PJRT_TopologyDescription_PlatformVersion_Args args;
+  args.struct_size = PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.topology = c_topology_.get();
-  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceTopology_PlatformVersion(&args),
-                            c_api_);
+  pjrt::LogFatalIfPjrtError(
+      c_api_->PJRT_TopologyDescription_PlatformVersion(&args), c_api_);
   return absl::string_view(args.platform_version, args.platform_version_size);
 }
 
@@ -1423,7 +1436,7 @@ absl::string_view PjRtCApiDeviceTopology::platform_version() const {
 // API PJRT_Compile().
 static StatusOr<std::unique_ptr<PjRtExecutable>> InitializeArgsAndCompileAot(
     const PJRT_Api* c_api, PjRtClient* client, const CompileOptions& options,
-    const PjRtDeviceTopology& topology, const std::string& code,
+    const PjRtTopologyDescription& topology, const std::string& code,
     const std::string& format) {
   PJRT_Compile_Args args;
   args.struct_size = PJRT_Compile_Args_STRUCT_SIZE;
@@ -1435,7 +1448,7 @@ static StatusOr<std::unique_ptr<PjRtExecutable>> InitializeArgsAndCompileAot(
         tensorflow::down_cast<PjRtCApiClient*>(client)->pjrt_c_client();
   }
   args.topology =
-      tensorflow::down_cast<const PjRtCApiDeviceTopology*>(&topology)
+      tensorflow::down_cast<const PjRtCApiTopologyDescription*>(&topology)
           ->c_topology();
   TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
                       options.ToProto());
@@ -1460,7 +1473,7 @@ static StatusOr<std::unique_ptr<PjRtExecutable>> InitializeArgsAndCompileAot(
 
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, const XlaComputation& computation,
-    const PjRtDeviceTopology& topology, PjRtClient* client) {
+    const PjRtTopologyDescription& topology, PjRtClient* client) {
   std::string module_str = computation.proto().SerializeAsString();
   std::string format(pjrt::kHloFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
@@ -1469,11 +1482,12 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, mlir::ModuleOp module,
-    const PjRtDeviceTopology& topology, PjRtClient* client) {
+    const PjRtTopologyDescription& topology, PjRtClient* client) {
   std::string module_bytecode;
   {
     llvm::raw_string_ostream os(module_bytecode);
-    mlir::writeBytecodeToFile(module, os);
+    if (mlir::failed(mlir::writeBytecodeToFile(module, os)))
+      return absl::UnknownError("writeBytecodeToFile() failed.");
   }
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
@@ -1510,20 +1524,21 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
       std::make_unique<PjRtCApiClient>(c_api, c_client));
 }
 
-StatusOr<std::unique_ptr<PjRtDeviceTopology>> GetCApiTopology(
+StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type) {
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr for %s", device_type);
   }
 
-  PJRT_DeviceTopology_Create_Args init_args;
-  init_args.struct_size = PJRT_DeviceTopology_Create_Args_STRUCT_SIZE;
+  PJRT_TopologyDescription_Create_Args init_args;
+  init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
   init_args.priv = nullptr;
-  RETURN_STATUS_IF_ERROR(c_api->PJRT_DeviceTopology_Create(&init_args), c_api);
-  PJRT_DeviceTopology* c_topology = init_args.topology;
-  return std::unique_ptr<PjRtDeviceTopology>(
-      std::make_unique<PjRtCApiDeviceTopology>(c_api, c_topology));
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_TopologyDescription_Create(&init_args),
+                         c_api);
+  PJRT_TopologyDescription* c_topology = init_args.topology;
+  return std::unique_ptr<PjRtTopologyDescription>(
+      std::make_unique<PjRtCApiTopologyDescription>(c_api, c_topology));
 }
 
 }  // namespace xla

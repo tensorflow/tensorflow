@@ -47,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.13.0'
+_VERSION = '2.14.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -84,17 +84,13 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 2.0',
+    'flatbuffers >= 23.1.21',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
-    # TODO(b/239052279): replace with external dependency on JAX repo once JAX
-    # no longer relies on TF.
-    'jax >= 0.3.15',
     'libclang >= 13.0.0',
-    # TODO(b/263178356): numpy 1.24 breaks TF's tests
-    'numpy >= 1.22, <1.24',
+    'numpy >= 1.22',
     'opt_einsum >= 2.3.2',
     'packaging',
     'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
@@ -118,12 +114,12 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.12, < 2.13',
+    standard_or_nightly('tensorboard >= 2.13, < 2.14',
                         'tb-nightly ~= 2.13.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.12.0rc0, < 2.13',
-                        'tf-estimator-nightly ~= 2.13.0.dev'),
-    standard_or_nightly('keras >= 2.12.0rc0, < 2.13',
-                        'keras-nightly ~= 2.13.0.dev'),
+    standard_or_nightly('tensorflow_estimator >= 2.13.0rc0, < 2.14',
+                        'tf-estimator-nightly ~= 2.14.0.dev'),
+    standard_or_nightly('keras >= 2.13.1rc0, < 2.14',
+                        'keras-nightly ~= 2.14.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -156,6 +152,10 @@ if collaborator_build:
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
       _VERSION + ';platform_system=="Windows"',
+      # Install the TensorFlow package built by Apple if the user is running
+      # macOS on an Apple Silicon machine.
+      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 DOCLINES = __doc__.split('\n')

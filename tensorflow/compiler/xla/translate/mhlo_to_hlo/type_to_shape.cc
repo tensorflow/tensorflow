@@ -50,6 +50,8 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     return PrimitiveType::F8E5M2;
   } else if (type.isFloat8E4M3FN()) {
     return PrimitiveType::F8E4M3FN;
+  } else if (type.isFloat8E4M3B11FNUZ()) {
+    return PrimitiveType::F8E4M3B11FNUZ;
   } else if (type.isBF16()) {
     return PrimitiveType::BF16;
   } else if (type.isF16()) {
@@ -103,6 +105,9 @@ std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
       return std::make_tuple(DimLevelType::DIM_COMPRESSED, unique, ordered);
     case mlir::sparse_tensor::LevelFormat::Dense:
       return std::make_tuple(DimLevelType::DIM_DENSE, unique, ordered);
+    case mlir::sparse_tensor::LevelFormat::CompressedWithHi:
+      return std::make_tuple(DimLevelType::DIM_COMPRESSED_WITH_HI, unique,
+                             ordered);
     default:
       return std::nullopt;
   }

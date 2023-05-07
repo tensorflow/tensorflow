@@ -43,7 +43,7 @@ TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
   StatusOr<XlaComputation> computation = builder.Build();
   EXPECT_FALSE(computation.ok());
   LOG(INFO) << "status received: " << computation.status();
-  EXPECT_THAT(computation.status().error_message(),
+  EXPECT_THAT(computation.status().message(),
               ::testing::HasSubstr("shape has invalid"));
 }
 

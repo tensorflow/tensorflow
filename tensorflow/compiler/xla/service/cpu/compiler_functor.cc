@@ -119,7 +119,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   llvm::PipelineTuningOptions pto;
   pto.LoopVectorization = !optimize_for_size_;
-  pto.SLPVectorization = !optimize_for_size_;
+  pto.SLPVectorization = !optimize_for_size_ && !disable_slp_vectorizer_;
   pto.LoopUnrolling = false;
 
   llvm::LoopAnalysisManager lam;
@@ -129,7 +129,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   llvm::PassInstrumentationCallbacks pic;
   llvm::StandardInstrumentations si(module.getContext(), false);
-  si.registerCallbacks(pic, &fam);
+  si.registerCallbacks(pic, &mam);
 
   llvm::PassBuilder pb(target_machine_, pto, {}, &pic);
 

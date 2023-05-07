@@ -35,7 +35,7 @@ from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import map_fn
@@ -650,7 +650,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # b/141166460
     rt = RaggedTensor.from_value_rowids([1, 2, 3], [0, 0, 2])
     c = array_ops.placeholder_with_default(True, None)
-    result = control_flow_ops.cond(c, lambda: rt, lambda: rt)
+    result = cond.cond(c, lambda: rt, lambda: rt)
     self.assertAllEqual(rt, result)
 
   def testGraphMismatch(self):

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union
 
 import numpy
 
@@ -23,13 +23,12 @@ from .xla_extension import Layout as Layout
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
-from .xla_extension import Buffer as Buffer
 from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
-from .xla_extension import DeviceArrayBase as DeviceArrayBase
 from .xla_extension import DeviceAssignment as DeviceAssignment
+from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
 from .xla_extension import LoadedExecutable as LoadedExecutable
 from .xla_extension import FftType as FftType
@@ -53,9 +52,10 @@ _version: int
 
 mlir_api_version: int
 
-bfloat16: numpy.dtype
-float8_e4m3fn: numpy.dtype
-float8_e5m2: numpy.dtype
+bfloat16: Type[numpy.generic]
+float8_e4m3fn: Type[numpy.generic]
+float8_e4m3b11fnuz: Type[numpy.generic]
+float8_e5m2: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 _NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
@@ -94,6 +94,10 @@ def make_interpreter_client() -> Client:
 
 
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> Client:
+  ...
+
+
+def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
   ...
 
 
@@ -225,3 +229,4 @@ def register_custom_call_target(
     name: str, fn: Callable, platform: str = ...
 ) -> None:
   ...
+def encode_inspect_sharding_callback(handler: Any) -> bytes: ...

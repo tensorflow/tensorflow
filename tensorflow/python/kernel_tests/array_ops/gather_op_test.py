@@ -18,7 +18,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -680,11 +680,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherRefVariable(self):
     with self.cached_session():
-      v = variables.RefVariable(constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      v = ref_variable.RefVariable(
+          constant_op.constant([[1, 2], [3, 4], [5, 6]]))
       self.evaluate(variables.global_variables_initializer())
       gather = array_ops.gather(v, [0, 2])
-      if not context.executing_eagerly():  # .op doesn't make sense in Eager
-        self.assertEqual("GatherV2", gather.op.name)
       self.assertAllEqual([[1, 2], [5, 6]], gather)
 
   @test_util.run_in_graph_and_eager_modes
@@ -694,8 +693,6 @@ class GatherTest(test.TestCase, parameterized.TestCase):
           constant_op.constant([[1, 2], [3, 4], [5, 6]]))
       self.evaluate(variables.global_variables_initializer())
       gather = array_ops.gather(v, [0, 2])
-      if not context.executing_eagerly():  # .op doesn't make sense in Eager
-        self.assertEqual("ResourceGather", gather.op.inputs[0].op.type)
       self.assertAllEqual([[1, 2], [5, 6]], gather)
 
 if __name__ == "__main__":

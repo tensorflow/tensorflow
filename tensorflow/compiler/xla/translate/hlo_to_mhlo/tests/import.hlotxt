@@ -315,6 +315,9 @@ add {
 
   // CHECK: %[[VAL_8:.*]] = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
   %constant.8 = f8e4m3fn[4] constant({1, 2, 3, 4})
+
+  // CHECK: %[[VAL_9:.*]] = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3B11FNUZ>
+  %constant.9 = f8e4m3b11fnuz[4] constant({1, 2, 3, 4})
 }
 
 // TODO(b/129422361) Potentially update when copy, reshape, and conv have actual
@@ -399,11 +402,17 @@ add {
   // CHECK-NEXT:  %1 = mhlo.convert %0 : (tensor<4xf8E5M2>) -> tensor<4xf32>
   %convert.4 = f32[4] convert(f8e5m2[4] %convert.3)
 
-  // CHECK-NEXT:  %2 = mhlo.convert %1 : (tensor<4xf32>) -> tensor<4xf8E4M3FN>
-  %convert.5 = f8e4m3fn[4] convert(f32[4] %convert.4)
+  // CHECK-NEXT:  %2 = mhlo.convert %1 : (tensor<4xf32>) -> tensor<4xf8E4M3B11FNUZ>
+  %convert.5 = f8e4m3b11fnuz[4] convert(f32[4] %convert.4)
 
-  // CHECK-NEXT:  %3 = mhlo.convert %2 : (tensor<4xf8E4M3FN>) -> tensor<4xf32>
-  ROOT %convert.6 = f32[4] convert(f8e4m3fn[4] %convert.5)
+  // CHECK-NEXT:  %3 = mhlo.convert %2 : (tensor<4xf8E4M3B11FNUZ>) -> tensor<4xf32>
+  %convert.6 = f32[4] convert(f8e4m3b11fnuz[4] %convert.5)
+
+  // CHECK-NEXT:  %4 = mhlo.convert %3 : (tensor<4xf32>) -> tensor<4xf8E4M3FN>
+  %convert.7 = f8e4m3fn[4] convert(f32[4] %convert.6)
+
+  // CHECK-NEXT:  %5 = mhlo.convert %4 : (tensor<4xf8E4M3FN>) -> tensor<4xf32>
+  ROOT %convert.8 = f32[4] convert(f8e4m3fn[4] %convert.7)
 }
 
 // CHECK-LABEL:  func private @test_stochastic_convert(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xui32>) -> tensor<4x3xi8>
@@ -580,9 +589,17 @@ add {
   // CHECK-NEXT:  %2 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<1x1xf32>
   %dot.5 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={default,default}
 
+  // CHECK-NEXT:  %3 = mhlo.reshape %arg1 : (tensor<4x1xf32>) -> tensor<4xf32>
+  // CHECK-NEXT:  %4 = "mhlo.dot"(%3, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<4xf32>, tensor<4x1xf32>) -> tensor<1xf32>
+  reshape.0 = f32[4]{0} reshape(f32[4, 1] Arg_1.2)
+  %dot.6 = f32[1] dot(reshape.0, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={default,default}
+
+  // CHECK-NEXT:  %5 = "mhlo.dot"(%arg0, %3) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1xf32>
+  %dot.7 = f32[1] dot(%Arg_0.1, reshape.0), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={default,default}
+
   // TODO(b/129709049) consider making this default precision config inferred.
   // CHECK-NEXT:  "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<1x1xf32>
-  ROOT %dot.6 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %dot.8 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 // CHECK-LABEL:  func private @test_s4_dot(%arg0: tensor<1x4xi4>, %arg1: tensor<4x1xi4>) -> tensor<1x1xi8>
@@ -638,6 +655,19 @@ add {
   // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
   reshape.0 = f32[4]{0} reshape(f32[4, 1] Arg_0.1)
   ROOT %dot.7 = f32[1] dot(%reshape.0, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+// CHECK-LABEL:  @test_dot_general_high_rank
+// CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
+// CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
+%test_dot_general_high_rank (Arg_0.1: s16[14,6,1,12,16], Arg_1.2: s16[6,3]) -> s16[14,1,12,16,3] {
+  %Arg_0.1 = s16[14,6,1,12,16] parameter(0)
+  %Arg_1.2 = s16[6,3] parameter(1)
+  // CHECK:  "mhlo.dot_general"(%arg0, %arg1)
+  // CHECK-SAME: lhs_contracting_dimensions = [1]
+  // CHECK-SAME: rhs_contracting_dimensions = [0]
+  // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
+  ROOT %dot.1 = s16[14,1,12,16,3] dot(%Arg_0.1, %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 // CHECK-LABEL:  func private @test_dynamic_slice

@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     """Imports benchmark."""
-    BM_COMMIT = "d572f4777349d43653b21d6c2fc63020ab326db2"
-    BM_SHA256 = "5467caa302752e1f4911b08759364c7d572325d4bf3893bd6b9e09ae7789770d"
+    BM_COMMIT = "f7547e29ccaed7b64ef4f7495ecfff1c9f6f3d03"
+    BM_SHA256 = "552ca3d4d1af4beeb1907980f7096315aa24150d6baf5ac1e5ad90f04846c670"
     tf_http_archive(
         name = "com_google_benchmark",
         sha256 = BM_SHA256,

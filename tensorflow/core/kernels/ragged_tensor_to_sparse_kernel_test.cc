@@ -182,7 +182,7 @@ TEST_F(RaggedTensorToSparseTest, NoSplits) {
                    .Attr("T", dtype)
                    .Finalize(node_def()));
   EXPECT_TRUE(absl::StartsWith(
-      InitOp().error_message(),
+      InitOp().message(),
       "Value for attr 'RAGGED_RANK' of 0 must be at least minimum 1"));
 }
 
@@ -190,8 +190,7 @@ TEST_F(RaggedTensorToSparseTest, InvalidArg_BadSplitStart) {
   BuildRaggedTensorToSparseGraph<int>({{5, 7, 10}},      // splits
                                       TensorShape({0}),  // values.shape
                                       {});               // values
-  EXPECT_EQ("First value of ragged splits must be 0.",
-            RunOpKernel().error_message());
+  EXPECT_EQ("First value of ragged splits must be 0.", RunOpKernel().message());
 }
 
 TEST_F(RaggedTensorToSparseTest, InvalidArg_BadSplitLengths1) {
@@ -201,7 +200,7 @@ TEST_F(RaggedTensorToSparseTest, InvalidArg_BadSplitLengths1) {
   EXPECT_EQ(
       "Final value of ragged splits must match the length "
       "the corresponding ragged values.",
-      RunOpKernel().error_message());
+      RunOpKernel().message());
 }
 
 TEST_F(RaggedTensorToSparseTest, InvalidArg_BadSplitLengths2) {
@@ -211,14 +210,14 @@ TEST_F(RaggedTensorToSparseTest, InvalidArg_BadSplitLengths2) {
   EXPECT_EQ(
       "Final value of ragged splits must match the length "
       "the corresponding ragged values.",
-      RunOpKernel().error_message());
+      RunOpKernel().message());
 }
 
 TEST_F(RaggedTensorToSparseTest, InvalidArg_EmptySplits) {
   BuildRaggedTensorToSparseGraph<int>({{}},              // splits
                                       TensorShape({0}),  // values.shape
                                       {});               // values
-  EXPECT_EQ("ragged splits may not be empty.", RunOpKernel().error_message());
+  EXPECT_EQ("ragged splits may not be empty.", RunOpKernel().message());
 }
 
 }  // namespace

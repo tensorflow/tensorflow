@@ -352,6 +352,22 @@ func.func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   func.return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testMul32BitUInt
+func.func @testMul32BitUInt(tensor<? x ui32>, tensor<? x ui32>) -> tensor<? x ui32> {
+^bb0(%arg0: tensor<? x ui32>, %arg1: tensor<? x ui32>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x ui32>
+  func.return %0#0 : tensor<? x ui32>
+}
+
+// CHECK-LABEL: testMul16BitInt
+func.func @testMul16BitInt(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i16> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i16>
+  func.return %0#0 : tensor<? x i16>
+}
+
 // CHECK-LABEL: testMulComplex
 func.func @testMulComplex(tensor<? x complex<f32>>, tensor<? x complex<f32>>) -> tensor<? x complex<f32>> {
 ^bb0(%arg0: tensor<? x complex<f32>>, %arg1: tensor<? x complex<f32>>):
@@ -392,6 +408,14 @@ func.func @mul_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi3
 ^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
   // expected-error @+1 {{Operands do not have valid shapes}}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
+  func.return %0#0 : tensor<1x1x1x1x1xi32>
+}
+
+// -----
+
+func.func @add_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
+^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
   func.return %0#0 : tensor<1x1x1x1x1xi32>
 }
 
@@ -1429,6 +1453,7 @@ func.func @unpackQuantized(%arg0: tensor<2x3x!quant.uniform<u8:f32, 0.02>>) -> t
 // -----
 
 func.func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
+  // expected-error @+2 {{failed to infer returned types}}
   // expected-error @+1 {{output count should match 'num' attribute}}
   %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   func.return %0#0 : tensor<2xi32>
@@ -1437,6 +1462,7 @@ func.func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
 // -----
 
 func.func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
+  // expected-error @+2 {{failed to infer returned types}}
   // expected-error @+1 {{attribute 'axis' should be in range [-rank, rank), got axis = 2, and rank = 2}}
   %0:3 = "tfl.unpack"(%arg0) {axis = 2 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   func.return %0#0 : tensor<2xi32>
@@ -1445,6 +1471,7 @@ func.func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
 // -----
 
 func.func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
+  // expected-error @+2 {{failed to infer returned types}}
   // expected-error @+1 {{attribute 'axis' should be in range [-rank, rank), got axis = -3, and rank = 2}}
   %0:3 = "tfl.unpack"(%arg0) {axis = -3 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   func.return %0#0 : tensor<2xi32>
@@ -1453,6 +1480,7 @@ func.func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
 // -----
 
 func.func @unpack(%arg0: tensor<i32>) -> tensor<2xi32> {
+  // expected-error @+2 {{failed to infer returned types}}
   // expected-error @+1 {{input should be of rank larger than 0}}
   %0:3 = "tfl.unpack"(%arg0) {axis = 0 : i32, num = 3 : i32} : (tensor<i32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   func.return %0#0 : tensor<2xi32>
@@ -1461,6 +1489,7 @@ func.func @unpack(%arg0: tensor<i32>) -> tensor<2xi32> {
 // -----
 
 func.func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
+  // expected-error @+2 {{failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<2xi32>', 'tensor<2xi32>', 'tensor<2xi32>' are incompatible with return type(s) of operation 'tensor<2xi32>', 'tensor<2x1xi32>', 'tensor<2xi32>'}}
   %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2x1xi32>, tensor<2xi32>)
   func.return %0#0 : tensor<2xi32>
@@ -3120,4 +3149,35 @@ func.func @testUnsortedSegmentMin(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %
   %0 = "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
   func.return %0 : tensor<8xf32>
   // CHECK: return %0 : tensor<8xf32>
+}
+
+
+// -----
+
+// CHECK-LABEL: testBitcast
+func.func @testBitcast(%arg0: tensor<8xui32>) -> tensor<8xi32> {
+  // CHECK: "tfl.bitcast"(%arg0)
+  %0 = "tfl.bitcast"(%arg0) : (tensor<8xui32>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+  // CHECK: return %0 : tensor<8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: testBitwiseXor
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.bitwise_xor"(%arg0, %arg1)
+  %0 = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
+}
+
+// -----
+
+// CHECK-LABEL: testRightShift
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.right_shift"(%arg0, %arg1)
+  %0 = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
 }

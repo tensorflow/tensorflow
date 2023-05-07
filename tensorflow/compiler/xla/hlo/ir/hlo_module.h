@@ -103,6 +103,12 @@ class HloModule {
   // Removes unused computations.
   Status RemoveUnusedComputations();
 
+  // Marks duplicate fusions with the same name to be able to group them for
+  // analysis purposes (e.g. through Xprof).
+  void MarkFusionDuplications(
+      const absl::flat_hash_map<HloComputation*, HloComputation*>&
+          replacements);
+
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
   // if applicable.
@@ -110,12 +116,22 @@ class HloModule {
   // This function iterates over all instructions in the module to find
   // computations to replace. We could speed it up by keeping track of users of
   // computations.
+  //
+  // N.B.: This function does not update the computations_ field of the
+  // HloModule with the newly added compututations. Therefore, along with
+  // invoking this function, if a replacement computation is not already present
+  // in module, it should be separately added into the module using
+  // `AddEmbeddedComputation`.
   void ReplaceComputations(
       const absl::flat_hash_map<HloComputation*, HloComputation*>&
           replacements);
 
   const std::string& name() const { return name_; }
   void set_name(std::string name) { name_ = std::move(name); }
+
+  // Move computations from the input module to this one, while ensuring that
+  // the names of instructions within the computations are unchanged.
+  void MoveComputationsFrom(HloModule* module);
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
@@ -330,7 +346,7 @@ class HloModule {
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
   void Print(Printer* printer) const {
-    return Print(printer, HloPrintOptions());
+    return Print(printer, HloPrintOptions::Default());
   }
   void Print(Printer* printer, const HloPrintOptions& options) const;
 
@@ -338,14 +354,14 @@ class HloModule {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  std::string ToString() const { return ToString(HloPrintOptions()); }
+  std::string ToString() const { return ToString(HloPrintOptions::Default()); }
   std::string ToString(const HloPrintOptions& options) const;
 
   // Returns a Cord representation of the module.
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
   absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
@@ -571,6 +587,11 @@ class HloModule {
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
+
+  // Get 128-bit fingerprint of the module by printing it using the given print
+  // options.
+  std::string GetFingerprint128(const HloPrintOptions& options =
+                                    HloPrintOptions::ModuleFingerprint()) const;
 
  private:
   HloComputation* AddComputationInternal(

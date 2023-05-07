@@ -16,12 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
-#include <list>
+#include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -29,7 +28,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -48,15 +46,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
-
 namespace {
-struct CanonicalAsyncOp {
-  HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute
-};
+bool IsNopInstruction(const HloInstruction& hlo) {
+  HloOpcode op = hlo.opcode();
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         hlo.IsEffectiveBitcast();
+}
+}  // namespace
 
 CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
@@ -80,7 +79,14 @@ CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-}  // namespace
+/*static*/ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
+                                              const HloGraphNode& target) {
+  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
+  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
+  return from_op.outer == HloOpcode::kAsyncStart &&
+         target_op.outer == HloOpcode::kAsyncDone &&
+         from_op.inner == target_op.inner;
+}
 
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
@@ -88,11 +94,7 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
   // fusion/convolution with 1 async op or 5 loop fusions with an async op.
   static constexpr TimeCost kLowLatency = 1.0;
   static constexpr TimeCost kHighLatency = 5000.0;
-  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
-  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
-  if (from_op.outer == HloOpcode::kAsyncStart &&
-      target_op.outer == HloOpcode::kAsyncDone &&
-      from_op.inner == target_op.inner) {
+  if (IsAsyncPair(from, target)) {
     return kHighLatency;
   }
   // Every other instruction we consider synchronous, which means the
@@ -125,6 +127,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
         return true;
       default:
         return false;
@@ -146,6 +149,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
         return true;
       default:
         return false;
@@ -167,6 +171,8 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
         return ResourceType::kAllToAll;
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
+      case HloOpcode::kReduceScatter:
+        return ResourceType::kReduceScatter;
       default:
         return ResourceType::kNoResource;
     }
@@ -306,6 +312,8 @@ void AsyncTracker::SetConcurrentResourceLimits(
       config_.all_gather_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllReduce)] =
       config_.all_reduce_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kReduceScatter)] =
+      config_.reduce_scatter_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendRecv)] =
       config_.send_recv_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendHost)] =
@@ -340,7 +348,31 @@ absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
     case ResourceTypeToIndex(ResourceType::kRecvHost):
       return "kRecvHost";
     default:
-      return "not a default resource";
+      return "Not a valid default resource";
+  }
+}
+
+absl::string_view AsyncTracker::GetResourceUsageName(
+    ResourceUsageType resource_usage_type) const {
+  return GetResourceUsageName(ResourceUsageTypeToIndex(resource_usage_type));
+}
+
+ResourceHazardType AsyncTracker::GetResourceHazardType(
+    int64_t resource_type) const {
+  return ResourceHazardType::kUnshareable;
+}
+
+absl::string_view AsyncTracker::GetResourceUsageName(
+    int64_t resource_usage_type) const {
+  switch (resource_usage_type) {
+    case ResourceUsageTypeToIndex(ResourceUsageType::kNoResource):
+      return "kNoResource";
+    case ResourceUsageTypeToIndex(ResourceUsageType::kResourceOccupy):
+      return "kResourceOccupy";
+    case ResourceUsageTypeToIndex(ResourceUsageType::kResourceRelease):
+      return "kResourceRelease";
+    default:
+      return "Not a valid resource usage type";
   }
 }
 
@@ -650,10 +682,39 @@ class ReadySetLt {
     // discovering the closest "done" to every instruction and prioritize
     // those that are closer rather than ones that are further away.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            ShouldScheduleAsyncDone(*a.node), a,
-            ShouldScheduleAsyncDone(*b.node), b, "kScheduleDone")) {
+            ShouldScheduleAsyncDone(a), a, ShouldScheduleAsyncDone(b), b,
+            "kScheduleDone")) {
       return *value;
     }
+
+    if (sched_state_.config.enable_release_start_policy) {
+      // Prioritise scheduling ready "start" ops, to avoid useless extension of
+      // start-done latencies. This benefits future latency ops, as ops
+      // postponed here may be used to hide not-yet-scheduled latency ops.
+      const ApproximateLatencyEstimator::TimeCost a_ready_interval =
+          a.node->GetReadyTime() - sched_state_.current_time;
+      const ApproximateLatencyEstimator::TimeCost b_ready_interval =
+          b.node->GetReadyTime() - sched_state_.current_time;
+      bool a_ready_and_release =
+          a_ready_interval <= 0 &&
+          a.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+      bool b_ready_and_release =
+          b_ready_interval <= 0 &&
+          b.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_ready_and_release, a, b_ready_and_release, b,
+              "kScheduleStart")) {
+        return *value;
+      }
+      if (a_ready_and_release && b_ready_and_release) {
+        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                a_ready_interval < b_ready_interval, a,
+                b_ready_interval < a_ready_interval, b, "kScheduleStart")) {
+          return *value;
+        }
+      }
+    }
+
     const ApproximateLatencyEstimator::TimeCost a_ready_interval =
         std::max(a.node->GetReadyTime() - sched_state_.current_time, 0.0);
     const ApproximateLatencyEstimator::TimeCost b_ready_interval =
@@ -785,9 +846,7 @@ class ReadySetLt {
     return ready_nodes_if_scheduled;
   }
   static bool IsNop(const HloGraphNode& gn) {
-    return gn.GetInstr().opcode() == HloOpcode::kGetTupleElement ||
-           gn.GetInstr().opcode() == HloOpcode::kBitcast ||
-           gn.GetInstr().IsEffectiveBitcast();
+    return IsNopInstruction(gn.GetInstr());
   }
   bool IsResourceConstrained(
       DefaultSchedulerCore::ScheduleCandidate& cand) const {
@@ -813,13 +872,16 @@ class ReadySetLt {
     }
     return *cand.resource_constrained;
   }
-  bool ShouldScheduleAsyncDone(const HloGraphNode& gn) const {
-    if (!gn.DoesOccupyAnyResource()) {
+  bool ShouldScheduleAsyncDone(
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand) const {
+    if (!gn_cand.node->DoesOccupyAnyResource()) {
       return false;
     }
-    return !ShouldDelaySendHostDone(gn);
+    return !ShouldDelaySendHostDone(gn_cand);
   }
-  bool ShouldDelaySendHostDone(const HloGraphNode& gn) const {
+  bool ShouldDelaySendHostDone(
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand) const {
+    const HloGraphNode& gn = *gn_cand.node;
     if (!gn.UsesResourceType(ResourceType::kSendHost).has_value() ||
         gn.GetInstr().opcode() != HloOpcode::kSendDone) {
       return false;
@@ -830,7 +892,26 @@ class ReadySetLt {
         sched_state_.sched_graph.GetNode(gn.GetInstr().operand(0));
     const LatencyEstimator::TimeCost latency =
         sched_state_.latency_estimator->GetLatencyBetween(start, gn);
-    if (start.GetReadyTime() - sched_state_.current_time <= latency) {
+    if (!gn_cand.estimated_connected_send_ready_time.has_value()) {
+      HloGraphNode::TimeCost start_ready_time = 0;
+      for (const auto& succ : start.GetSuccessors()) {
+        // If any successor is not ready skip this logic. We detect this by
+        // checking that ready time is set to max. This should never happen
+        // because sends always have 1 or 2 successors that should be scheduled
+        // or ready already, but in case somebody comes up with different
+        // patterns lets keep this check here.
+        if (succ.Target().GetReadyTime() >=
+            std::numeric_limits<HloGraphNode::TimeCost>::max()) {
+          return false;
+        }
+        start_ready_time = std::max(
+            start_ready_time, succ.Latency() + succ.Target().GetReadyTime());
+      }
+      gn_cand.estimated_connected_send_ready_time = start_ready_time;
+    }
+    if (*gn_cand.estimated_connected_send_ready_time -
+            sched_state_.current_time <=
+        latency) {
       return false;
     }
     return true;
@@ -1155,7 +1236,8 @@ HloScheduleGraph::HloScheduleGraph(
   }
 }
 
-std::string HloScheduleGraph::ToString() const {
+std::string HloScheduleGraph::ToString(
+    const AsyncTracker* async_tracker) const {
   std::string result;
   std::vector<std::pair<const HloGraphNode*, int>> stack;
   for (const auto& node : nodes_) {
@@ -1179,7 +1261,7 @@ std::string HloScheduleGraph::ToString() const {
     }
   }
   for (auto it = order.rbegin(), e = order.rend(); it != e; ++it) {
-    absl::StrAppend(&result, (*it)->ToString());
+    absl::StrAppend(&result, (*it)->ToString(async_tracker));
   }
   return result;
 }
@@ -1201,6 +1283,17 @@ std::vector<HloGraphNode*> HloScheduleGraph::FindBottomRoots() const {
   return roots;
 }
 
+std::vector<HloGraphNode*> HloScheduleGraph::FindTopRoots() const {
+  std::vector<HloGraphNode*> roots;
+  for (const HloInstruction* instr : original_order_) {
+    HloGraphNode& node = GetNode(instr);
+    if (node.GetIndegree() == 0) {
+      roots.push_back(&node);
+    }
+  }
+  return roots;
+}
+
 void HloScheduleGraph::InitializeGraphAnalysis(
     const AsyncTracker* async_tracker) {
   absl::flat_hash_map<HloGraphNode*, int> current_rank;
@@ -1209,6 +1302,7 @@ void HloScheduleGraph::InitializeGraphAnalysis(
     HloGraphNode& node = GetNode(instr);
     current_rank[&node] = node.GetIndegree();
     node.SetAsyncDepth(0.0);
+    node.SetDepth(0.0);
     if (node.GetIndegree() == 0) {
       stack.push_back(&node);
     }
@@ -1221,11 +1315,17 @@ void HloScheduleGraph::InitializeGraphAnalysis(
         node->SetAsyncDepth(
             std::max(pred.Target().GetAsyncDepth() + pred.Latency(),
                      node->GetAsyncDepth()));
+        node->SetDepth(std::max(
+            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
+            node->GetDepth()));
       }
     } else {
       for (auto& pred : node->GetPredecessors()) {
         node->SetAsyncDepth(
             std::max(pred.Target().GetAsyncDepth(), node->GetAsyncDepth()));
+        node->SetDepth(std::max(
+            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
+            node->GetDepth()));
       }
     }
     for (auto& succ : node->GetSuccessors()) {
@@ -1275,7 +1375,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                                            latency_estimator_);
   sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
   VLOG(5) << "Just built graph:";
-  XLA_VLOG_LINES(5, sched_state.sched_graph.ToString());
+  XLA_VLOG_LINES(5, sched_state.sched_graph.ToString(async_tracker_));
   async_tracker_->SetConcurrentResourceLimits(
       sched_state.max_concurrent_resource);
   // Collect the bottom roots of the graph (nodes that don't have any
@@ -1292,6 +1392,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                                roots.end());
   // Schedule in order bottom up.
   while (!sched_state.ready_set.empty()) {
+    VLOG(10) << "Current ready time: " << sched_state.current_time;
     VLOG(10) << "Current ready queue:";
     XLA_VLOG_LINES(10, [&sched_state]() {
       struct LogFormatter {
@@ -1315,6 +1416,10 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   }
   module_pressure_state_->UpdatePressureStateForComputation(
       computation, memory_pressure_tracker.pressure_state());
+  absl::c_reverse(sched_state.new_sequence_reversed);
+  if (post_processing_fn_) {
+    post_processing_fn_(sched_state);
+  }
   CHECK_EQ(sched_state.new_sequence_reversed.size(),
            sched_state.sched_graph.GetOriginalInstrList().size())
       << "Not all instructions have been scheduled "
@@ -1322,9 +1427,8 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       << sched_state.sched_graph.GetOriginalInstrList().size();
   VLOG(1) << "Total time: "
           << sched_state.sched_graph
-                 .GetNode(sched_state.new_sequence_reversed.back())
+                 .GetNode(sched_state.new_sequence_reversed.front())
                  .GetReadyTime();
-  absl::c_reverse(sched_state.new_sequence_reversed);
 
   const auto& debug_options = xla::GetDebugOptionsFromFlags();
   if (debug_options.xla_dump_latency_hiding_schedule() &&

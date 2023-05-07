@@ -14,7 +14,7 @@
 # ==============================================================================
 """Operations for generating random numbers."""
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
@@ -210,7 +210,7 @@ def _convert_to_state_tensor(t):
 
 
 def get_replica_id():
-  rctx = ds_context.get_replica_context()
+  rctx = distribute_lib.get_replica_context()
   if rctx is None:
     return None
   return rctx.replica_id_in_sync_group
@@ -445,8 +445,8 @@ class Generator(autotrackable.AutoTrackable):
         the same random state) across all architectures (CPU, GPU, XLA etc).
     """
     # TODO(b/175072242): Remove distribution-strategy dependencies in this file.
-    if ds_context.has_strategy():
-      self._distribution_strategy = ds_context.get_strategy()
+    if distribute_lib.has_strategy():
+      self._distribution_strategy = distribute_lib.get_strategy()
     else:
       self._distribution_strategy = None
     if copy_from is not None:
@@ -606,25 +606,25 @@ class Generator(autotrackable.AutoTrackable):
       # replica.
       return update_fn(self.state)
     if self._distribution_strategy is not None:
-      with ds_context.enter_or_assert_strategy(self._distribution_strategy):
-        if ds_context.in_cross_replica_context():
+      with distribute_lib.enter_or_assert_strategy(self._distribution_strategy):
+        if distribute_lib.in_cross_replica_context():
           # Code that operates on all replicas of a variable cannot be saved
           # without retracing.
           values_util.mark_as_unsaveable()
-        if (ds_context.in_cross_replica_context() or
+        if (distribute_lib.in_cross_replica_context() or
             "CentralStorage" in type(self._distribution_strategy).__name__):
           # In cross-replica context we need to use strategy.extended.update.
           # In CentralStorageStrategy we also need to use
           # strategy.extended.update (even for replica context),
           # because variable updates here must be within merge_call.
-          return ds_context.get_strategy().extended.update(
+          return distribute_lib.get_strategy().extended.update(
               self.state, update_fn)
     return update_fn(self.state)
 
   def _preprocess_key(self, key):
     if self._distribution_strategy is None:
       return key
-    with ds_context.enter_or_assert_strategy(self._distribution_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribution_strategy):
       replica_id = get_replica_id()
       if replica_id is not None:
         replica_id = array_ops_stack.stack([replica_id, 0], axis=0)

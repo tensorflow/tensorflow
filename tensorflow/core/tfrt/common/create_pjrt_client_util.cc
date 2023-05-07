@@ -17,12 +17,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <set>
+#include <utility>
 
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
-#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/compiler/xla/pjrt/tf_pjrt_client.h"
+#include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
+#include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
 namespace tensorflow {
@@ -40,22 +40,20 @@ StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
   if (!tsl::errors::IsNotFound(existing_pjrt_client.status())) {
     return existing_pjrt_client;
   }
+  std::unique_ptr<xla::PjRtClient> pjrt_client;
   // TODO(b/260799193): use XlaPlatformInfo to pass device-specific options.
   // This info should be set in the plugin init for next pluggable device.
-  if (device_type != DEVICE_XLA_GPU) {
-    return errors::Unimplemented(
-        "The PJRT client for ", device_type,
-        " is not created explicitly before its first use and creating this "
-        "PJRT client on the first use is not implemented.");
-  }
-  xla::GpuAllocatorConfig allocator_config;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_client,
-                      xla::GetStreamExecutorGpuClient(
-                          /*asynchronous=*/true, allocator_config,
-                          /*distributed_client=*/nullptr,
-                          /*node_id=*/0, allowed_devices));
-  // Gets a pointer of pjrt_client because the ownership of pjrt_client will be
-  // transferred in the SetPjRtClientInTFGlobalResourceManager call below.
+
+  // TODO(b/280111106): make PjrtClientFactoryOptions an input of
+  // GetOrCreatePjRtClient.
+  xla::PjrtClientFactoryOptions options = xla::PjrtClientFactoryOptions();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                      xla::PjrtClientFactoryRegistry::Get().GetPjrtClient(
+                          device_type, options));
+  pjrt_client = xla::TfPjRtClient::CreateTfPjRtClient(std::move(client));
+
+  // Gets a pointer of pjrt_client because the ownership of pjrt_client will
+  // be transferred in the SetPjRtClientInTFGlobalResourceManager call below.
   auto pjrt_client_ptr = pjrt_client.get();
   TF_RETURN_IF_ERROR(SetPjRtClientInTFGlobalResourceManager(
       device_type, std::move(pjrt_client)));

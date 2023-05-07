@@ -18,7 +18,6 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
-#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,10 +38,6 @@ namespace profiler {
 
 namespace {
 
-using tensorflow::profiler::Device;
-using tensorflow::profiler::Resource;
-using tensorflow::profiler::Trace;
-using tensorflow::profiler::TraceEvent;
 using tensorflow::profiler::XSpace;
 
 void BuildDeviceAndResources(uint32 device_id, const XPlaneVisitor& plane,
@@ -112,26 +107,6 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
 
 }  // namespace
 
-void MaybeDropEventsForTraceViewer(std::vector<TraceEvent*>& events,
-                                   uint32 limit) {
-  const size_t trace_event_size = events.size();
-  if (trace_event_size <= limit) return;  // Nothing to do.
-  // Sort the events according to start time.
-  std::vector<uint64> timestamps;
-  timestamps.reserve(trace_event_size);
-  for (const TraceEvent* const event : events) {
-    timestamps.push_back(event->timestamp_ps());
-  }
-  std::partial_sort(timestamps.begin(), timestamps.begin() + limit,
-                    timestamps.end(), std::less<uint64>());
-  uint64 cutoff_timestamp = timestamps[limit - 1];
-  events.erase(std::remove_if(events.begin(), events.end(),
-                              [&](const TraceEvent* const event) {
-                                return event->timestamp_ps() > cutoff_timestamp;
-                              }),
-               events.end());
-}
-
 uint64 GetTraceViewerMaxEvents() {
   constexpr uint64 kMaxEvents = 1000000;
   // Testing only env variable, not recommended for use
@@ -143,7 +118,7 @@ uint64 GetTraceViewerMaxEvents() {
   }
 }
 
-TraceContainer ConvertXSpaceToTraceEvents(const XSpace& xspace) {
+TraceContainer ConvertXSpaceToTraceContainer(const XSpace& xspace) {
   TraceContainer container;
   const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
   if (host_plane != nullptr) {
@@ -165,19 +140,16 @@ TraceContainer ConvertXSpaceToTraceEvents(const XSpace& xspace) {
     uint32 device_id = kFirstDeviceId + xplane.Id();
     ConvertXPlaneToTraceEvents(device_id, xplane, container);
   }
-
   // Trace viewer (non-streaming) has scalability issues, we need to drop
   // events to avoid loading failure for trace viewer.
   uint64 viewer_max_events = GetTraceViewerMaxEvents();
-  MaybeDropEventsForTraceViewer(container.YieldUnsortedEvents(),
-                                viewer_max_events);
+  container.CapEvents(viewer_max_events);
   return container;
 }
 
 void ConvertXSpaceToTraceEventsString(const XSpace& xspace,
                                       std::string* content) {
-  TraceContainer const container = ConvertXSpaceToTraceEvents(xspace);
-  container.trace().SerializeToString(content);
+  ConvertXSpaceToTraceContainer(xspace).FlushAndSerializeEvents(content);
 }
 
 }  // namespace profiler

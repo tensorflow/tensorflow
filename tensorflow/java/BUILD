@@ -439,6 +439,7 @@ tf_cc_binary(
             "-z defs",
             "-s",
             "-Wl,--version-script,$(location {})".format(LINKER_VERSION_SCRIPT),
+            "-Wl,--undefined-version",
         ],
     }),
     linkshared = 1,

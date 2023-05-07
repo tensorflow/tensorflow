@@ -110,7 +110,13 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateFunctionRenamingPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorMultiDeviceExpansionPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorAllReduceLoweringPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorAllToAllLoweringPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorReduceScatterLoweringPass();
@@ -142,6 +148,9 @@ CreateDTensorInferShapesForRestoreV2Op();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorSetHloShardingPass(
     std::optional<bool> check_layout_use_xla_spmd = std::optional<bool>(false));
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorLayoutToXlaShardingOpPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass();

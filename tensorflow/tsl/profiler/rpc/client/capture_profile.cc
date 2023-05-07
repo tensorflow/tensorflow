@@ -119,7 +119,7 @@ inline bool ShouldRetryTracing(Status status) {
          // removed" error message. This should not be treated as an
          // unrecoverable error.
          (status.code() == error::Code::UNKNOWN &&
-          status.error_message() == "Stream removed");
+          status.message() == "Stream removed");
 }
 
 Status Profile(const std::string& repository_root,
@@ -255,10 +255,10 @@ Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir,
       tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
   if (also_export_trace_json) {
     tsl::profiler::TraceContainer container =
-        tsl::profiler::ConvertXSpaceToTraceEvents(xspace);
+        tsl::profiler::ConvertXSpaceToTraceContainer(xspace);
     return tsl::profiler::SaveGzippedToolData(
         repository_root, run, host, "trace.json.gz",
-        tsl::profiler::TraceEventsToJson(container));
+        tsl::profiler::TraceContainerToJson(container));
   }
   return OkStatus();
 }

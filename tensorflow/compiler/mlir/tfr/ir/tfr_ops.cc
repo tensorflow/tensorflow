@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -144,7 +145,8 @@ TFRDialect::TFRDialect(MLIRContext *context)
 Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (arith::ConstantOp::isBuildableWith(value, type))
-    return builder.create<arith::ConstantOp>(loc, type, value);
+    return builder.create<arith::ConstantOp>(loc, type,
+                                             value.cast<TypedAttr>());
   if (func::ConstantOp::isBuildableWith(value, type))
     return builder.create<func::ConstantOp>(loc, type,
                                             value.cast<FlatSymbolRefAttr>());
@@ -921,6 +923,16 @@ Region *TFRFuncOp::getCallableRegion() {
 // CallableOpInterface
 ArrayRef<Type> TFRFuncOp::getCallableResults() {
   return getFunctionType().getResults();
+}
+
+// CallableOpInterface
+::mlir::ArrayAttr TFRFuncOp::getCallableArgAttrs() {
+  return getArgAttrs().value_or(nullptr);
+}
+
+// CallableOpInterface
+::mlir::ArrayAttr TFRFuncOp::getCallableResAttrs() {
+  return getResAttrs().value_or(nullptr);
 }
 
 //===----------------------------------------------------------------------===//

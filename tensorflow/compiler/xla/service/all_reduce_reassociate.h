@@ -32,12 +32,20 @@ namespace xla {
 
 class AllReduceReassociate : public HloModulePass {
  public:
+  explicit AllReduceReassociate(bool reassociate_converted_ar = false)
+      : reassociate_converted_ar_(reassociate_converted_ar) {}
+
   absl::string_view name() const override { return "all-reduce-reassociate"; }
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  // Specify whether we should reassociate allreduces that are consumed by
+  // Convert nodes.
+  bool reassociate_converted_ar_;
 };
 
 }  // namespace xla

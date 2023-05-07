@@ -81,9 +81,13 @@ class ElementOrErrorIterator : public TaskIterator {
     return OkStatus();
   }
 
-  StatusOr<Tensor> Save() override { return Tensor(); }
+  StatusOr<std::vector<Tensor>> Save() override {
+    return std::vector<Tensor>{};
+  }
 
-  Status Restore(const Tensor& saved_iterator) override { return OkStatus(); }
+  Status Restore(const std::vector<Tensor>& saved_iterator) override {
+    return OkStatus();
+  }
 
   int64_t Cardinality() const override { return elements_.size(); }
 
@@ -161,7 +165,7 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
   // files are deleted.
   EXPECT_THAT(ReadSnapshot<int64_t>(
                   tsl::io::JoinPath(writer_params.CommittedChunksDirectory(),
-                                    "chunk_0_0"),
+                                    "chunk_0_0_10"),
                   compression, range),
               IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 
@@ -188,7 +192,7 @@ TEST_P(SnapshotStreamWriterParameterizedTest, StreamAlreadyCompleted) {
 
   EXPECT_THAT(ReadSnapshot<int64_t>(
                   tsl::io::JoinPath(writer_params.CommittedChunksDirectory(),
-                                    "chunk_0_0"),
+                                    "chunk_0_0_10"),
                   compression, range),
               IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 
@@ -198,7 +202,7 @@ TEST_P(SnapshotStreamWriterParameterizedTest, StreamAlreadyCompleted) {
   EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
   EXPECT_THAT(ReadSnapshot<int64_t>(
                   tsl::io::JoinPath(writer_params.CommittedChunksDirectory(),
-                                    "chunk_0_0"),
+                                    "chunk_0_0_10"),
                   compression, range),
               IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
@@ -219,7 +223,7 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
   for (int i = 0; i < 10; ++i) {
     EXPECT_THAT(ReadSnapshot<int64_t>(
                     tsl::io::JoinPath(writer_params.CommittedChunksDirectory(),
-                                      absl::StrCat("chunk_0_", i)),
+                                      absl::StrCat("chunk_0_", i, "_1")),
                     compression,
                     /*num_elements=*/1),
                 IsOkAndHolds(ElementsAre(i)));
@@ -302,7 +306,7 @@ TEST(SnapshotStreamWriterTest, EmptyDataset) {
 
   EXPECT_THAT(ReadSnapshot<int64_t>(
                   tsl::io::JoinPath(writer_params.CommittedChunksDirectory(),
-                                    "chunk_0_0"),
+                                    "chunk_0_0_0"),
                   tsl::io::compression::kSnappy, /*num_elements=*/0),
               IsOkAndHolds(IsEmpty()));
 }

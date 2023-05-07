@@ -84,6 +84,7 @@ def experimental_convert_saved_model_v1_to_mlir(
     exported_names,
     tags,
     lift_variables,
+    include_variables_in_initializers,
     upgrade_legacy,
     show_debug_info,
 ):
@@ -92,6 +93,7 @@ def experimental_convert_saved_model_v1_to_mlir(
       str(exported_names).encode('utf-8'),
       str(tags).encode('utf-8'),
       lift_variables,
+      include_variables_in_initializers,
       upgrade_legacy,
       show_debug_info,
   )
@@ -105,3 +107,23 @@ def experimental_run_pass_pipeline(mlir_txt, pass_pipeline, show_debug_info):
 
 def experimental_write_bytecode(filename, mlir_txt):
   return ExperimentalWriteBytecode(filename.encode('utf-8'), mlir_txt.encode())
+
+
+def experimental_tflite_to_tosa_bytecode(
+    flatbuffer,
+    bytecode,
+    use_external_constant=False,
+    ordered_input_arrays=None,
+    ordered_output_arrays=None,
+):
+  if ordered_input_arrays is None:
+    ordered_input_arrays = []
+  if ordered_output_arrays is None:
+    ordered_output_arrays = []
+  return ExperimentalTFLiteToTosaBytecode(
+      flatbuffer.encode('utf-8'),
+      bytecode.encode('utf-8'),
+      use_external_constant,
+      ordered_input_arrays,
+      ordered_output_arrays,
+  )

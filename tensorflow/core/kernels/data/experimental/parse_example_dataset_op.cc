@@ -741,7 +741,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           // former may be interpreted by a caller as the end of sequence.
           return errors::InvalidArgument(
               "Function invocation produced OutOfRangeError: ",
-              result->status.error_message());
+              result->status.message());
         }
         *end_of_sequence = result->end_of_input;
         return result->status;
@@ -855,8 +855,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             CodeKey(index), static_cast<int64_t>(status.code())));
         if (!status.ok()) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
-                                                 status.error_message()));
+          TF_RETURN_IF_ERROR(writer->WriteScalar(
+              ErrorMessageKey(index), std::string(status.message())));
         }
         return OkStatus();
       }
@@ -866,9 +866,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         int64_t code_int;
         TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
-        error::Code code = static_cast<error::Code>(code_int);
+        absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-        if (code != error::Code::OK) {
+        if (code != absl::StatusCode::kOk) {
           tstring error_message;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(ErrorMessageKey(index), &error_message));

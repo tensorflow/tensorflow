@@ -1382,7 +1382,7 @@ Status OptimizeGraph(
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {
     Status added_device = item.AddDevice(d->name());
-    if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    if (!added_device.ok()) VLOG(3) << added_device.message();
   }
   VLOG(3) << "Grappler available devices: "
           << absl::StrJoin(item.devices(), ", ");
@@ -1414,12 +1414,11 @@ Status OptimizeGraph(
     for (const FunctionDef& fdef : out_graph.library().function()) {
       const string& func_name = fdef.signature().name();
       if (flib->Contains(func_name)) {
-        StackTracesMap stack_traces = flib->GetStackTraces(func_name);
+        StackTracesMap stack_traces = *flib->GetStackTraces(func_name);
         TF_RETURN_IF_ERROR(
             flib->ReplaceFunction(func_name, fdef, stack_traces));
       } else {
-        TF_RETURN_IF_ERROR(
-            flib->AddFunctionDef(fdef, flib->GetStackTraces(func_name)));
+        TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
       }
     }
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <algorithm>
+#include <climits>
 #include <functional>
 #include <numeric>
 #include <optional>
@@ -71,6 +72,7 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(float) / 4,   // F8E4M3FN = 20
     sizeof(int8_t),      // S4 = 21
     sizeof(int8_t),      // U4 = 22
+    sizeof(float) / 4,   // F8E4M3B11FNUZ = 23
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 
@@ -528,6 +530,24 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*to));
 }
 
+/* static */ bool ShapeUtil::IsEffectivelyMostMajorDimension(
+    const Shape& shape, int64_t dimension) {
+  // Check if the dimension is most major as returned by LayoutUtil::Major(0).
+  // If not, and the most major dimension's size is 1, then we can repeat the
+  // same check for next most major dimension as returned by
+  // LayoutUtil::Major(1) and so on.
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+    int64_t major_dimension = LayoutUtil::Major(shape.layout(), i);
+    if (major_dimension == dimension) {
+      return true;
+    }
+    if (shape.dimensions(major_dimension) != 1) {
+      return false;
+    }
+  }
+  return false;
+}
+
 /* static */ bool ShapeUtil::ElementIsIntegral(const Shape& shape) {
   return primitive_util::IsIntegralType(shape.element_type());
 }
@@ -553,6 +573,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case S64:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case F16:
     case BF16:
     case F32:
@@ -592,7 +613,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsEmptyTuple(const Shape& shape) {
-  return shape.IsTuple() && TupleElementCount(shape) == 0;
+  return shape.IsTuple() && shape.tuple_shapes().empty();
 }
 
 /* static */ int64_t ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -602,7 +623,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ const Shape& ShapeUtil::GetTupleElementShape(const Shape& shape,
                                                           int64_t index) {
-  CHECK(shape.IsTuple());
   CHECK_GT(TupleElementCount(shape), index);
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape.tuple_shapes(index)));
   return shape.tuple_shapes(index);
@@ -619,8 +639,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                          int64_t limit) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
   CHECK(tuple.IsTuple());
-  CHECK_LE(start, TupleElementCount(tuple));
-  CHECK_LE(limit, TupleElementCount(tuple));
+  CHECK_LE(start, tuple.tuple_shapes_size());
+  CHECK_LE(limit, tuple.tuple_shapes_size());
 
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);
@@ -661,7 +681,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
-  return shape.IsArray() && ElementsIn(shape) == 0;
+  return shape.IsArray() &&
+         absl::c_any_of(shape.dimensions(), [](int64_t d) { return d == 0; });
 }
 
 /* static */ bool ShapeUtil::IsScalarWithElementType(
@@ -816,55 +837,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ int64_t ShapeUtil::ByteSizeOfPrimitiveType(
     PrimitiveType primitive_type) {
-  switch (primitive_type) {
-    case PRED:
-      return sizeof(int8_t);
-    case S4:
-      return sizeof(int8_t);
-    case S8:
-      return sizeof(int8_t);
-    case S16:
-      return sizeof(int16_t);
-    case S32:
-      return sizeof(int32_t);
-    case S64:
-      return sizeof(int64_t);
-    case U4:
-      return sizeof(uint8_t);
-    case U8:
-      return sizeof(uint8_t);
-    case U16:
-      return sizeof(uint16_t);
-    case U32:
-      return sizeof(uint32_t);
-    case U64:
-      return sizeof(uint64_t);
-    case F8E5M2:
-      return sizeof(float) / 4;
-    case F8E4M3FN:
-      return sizeof(float) / 4;
-    case BF16:
-      return sizeof(float) / 2;
-    case F16:
-      return sizeof(float) / 2;
-    case F32:
-      return sizeof(float);
-    case F64:
-      return sizeof(double);
-    case C64:
-      return sizeof(complex64);
-    case C128:
-      return sizeof(complex128);
-    case TOKEN:
-      // Tokens require no space.
-      return 0;
-    case TUPLE:
-    case OPAQUE_TYPE:
-      LOG(FATAL) << PrimitiveType_Name(primitive_type)
-                 << " primitive type has no definitive size";
-    default:
-      LOG(FATAL) << "Unhandled primitive type " << primitive_type;
-  }
+  return primitive_util::ByteWidth(primitive_type);
 }
 
 /* static */ int64_t ShapeUtil::ByteSizeOf(const Shape& shape,
@@ -2027,6 +2000,11 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     int64_t dim_size = shape_dimensions[minor_to_major[dim]];
     num_of_elements *= dim_size;
   }
+
+  if (ShapeUtil::ElementHasBitWidth(shape, 4)) {
+    return num_of_elements / 2;
+  }
+
   return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
 }
 
@@ -2037,7 +2015,9 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     indices.push_back(dim - 1);
   }
   int64_t size = LayoutUtil::LinearIndex(shape, indices) + 1;
-  return (size * ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()));
+  int64_t num_bits = size * primitive_util::BitWidth(shape.element_type());
+
+  return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
 }
 
 int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {

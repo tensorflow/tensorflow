@@ -15,8 +15,11 @@ limitations under the License.
 
 #include <fenv.h>  // NOLINT
 
+#include <array>
 #include <cmath>
 #include <limits>
+#include <tuple>
+#include <utility>
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/exhaustive/exhaustive_op_test_utils.h"
@@ -330,6 +333,21 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
   }
 })
 
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Logistic, {
+  EvaluateOp fn = +[](float x) { return 1.0f / (1.0f + std::exp(-x)); };
+
+  Run(
+      Logistic, fn, +[](NativeT) {
+        // Notice that we use the same absolute and relative tolerance.
+        // Since Logistic(x) -> 0 for x -> -Inf, the relative error
+        // is actually enormous for x < -5, say.
+        // For example, Logistic(-13.8183346) = 1.9967556e-06 while the expected
+        // value is 9.97178972e-07.
+        float tol = 200.0f * std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec(tol, tol);
+      });
+})
+
 // It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
 // this *did* find a bug, namely that some backends were assuming sqrt(x) ==
 // pow(x, 0.5), but this is not true for x == -inf.
@@ -514,7 +532,17 @@ UNARY_TEST_BF16(Tan, {
 // UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan) { Run(Atan, std::atan); }
 // UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan2) { Run(Atan2, std::atan2); }
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, { Run(Erf, std::erf); })
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, {
+  Run(
+      Erf, std::erf, +[](NativeT x) {
+        NativeT tol =
+            std::max(std::numeric_limits<NativeT>::epsilon(),
+                     NativeT(4 * std::numeric_limits<float>::epsilon()));
+        NativeT abs_tol = std::min(tol, NativeT(1 - std::abs(std::erf(x))));
+        return ErrorSpec(abs_tol, tol);
+      });
+})
+
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, { Run(Erfc, std::erfc); })
 
 UNARY_TEST_F32(ErfInv, { Run(ErfInv, HostErfInv); })

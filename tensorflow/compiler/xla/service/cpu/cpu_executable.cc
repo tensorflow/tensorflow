@@ -81,14 +81,15 @@ CpuExecutable::CpuExecutable(
 
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
-  llvm::Expected<llvm::JITEvaluatedSymbol> sym =
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
       jit_->FindCompiledSymbol(entry_function_name);
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
-  CHECK(*sym) << "Symbol " << entry_function_name << " not found.";
+  CHECK(sym->getAddress()) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
+  compute_function_ =
+      reinterpret_cast<ComputeFunctionType>(sym->getAddress().getValue());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
   jit_->DoneCompiling();
@@ -267,6 +268,9 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
     std::unique_ptr<BufferAssignment> buffer_assignment,
     XlaFrameworkMapping xla_framework_mapping,
     runtime::JitExecutable::Options opts) {
+  VLOG(1) << "Load serialized Cpu executable from object file: module="
+          << hlo_module->name();
+
   runtime::DialectRegistry dialects;
   opts.compiler.register_dialects(dialects);
   auto threading = mlir::MLIRContext::Threading::DISABLED;
@@ -521,14 +525,24 @@ Status XlaRuntimeCpuExecutable::Execute(
   for (int64_t index : xla_framework_mapping_.inputs) {
     TF_RETURN_IF_ERROR(append_converted_buffer(index));
   }
-  // If we have a tuple (possibly empty) as output, then .output_is_tuple
-  // is set and .result should be ignored.
+
+  int64_t result_index = xla_framework_mapping_.result;
   if (xla_framework_mapping_.output_is_tuple) {
-    for (int64_t index : xla_framework_mapping_.flattened_outputs) {
-      TF_RETURN_IF_ERROR(append_converted_buffer(index));
+    size_t num_outputs = xla_framework_mapping_.flattened_outputs.size();
+    for (size_t i = 0; i < num_outputs; ++i) {
+      int64_t output_index = xla_framework_mapping_.flattened_outputs[i];
+
+      TF_RETURN_IF_ERROR(append_converted_buffer(output_index));
+
+      // Populate the output tuple with a pointer to this result.
+      // TODO(b/249078472): make this work with nested tuples, if needed.
+      assert(result_index != -1);
+      void** results =
+          static_cast<void**>(descriptor_table[result_index].data());
+      results[i] = descriptor_table[output_index].data();
     }
-  } else if (xla_framework_mapping_.result != -1) {
-    TF_RETURN_IF_ERROR(append_converted_buffer(xla_framework_mapping_.result));
+  } else if (result_index != -1) {
+    TF_RETURN_IF_ERROR(append_converted_buffer(result_index));
   }
 
   runtime::Executable::CallFrame call_frame;

@@ -137,8 +137,8 @@ Status HloPassPipeline::RunInvariantCheckers(
       XLA_VLOG_LINES(2, hlo->ToString());
       return tsl::errors::CreateWithUpdatedMessage(
           changed_status.status(),
-          absl::StrCat(changed_status.status().error_message(),
-                       "\n\nFailed after ", after_pass_name));
+          absl::StrCat(changed_status.status().message(), "\n\nFailed after ",
+                       after_pass_name));
     }
     TF_RET_CHECK(!changed_status.value())
         << "invariant checkers must not change the graph";
@@ -189,7 +189,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
           auto status_or = RunHelper(pass, hlo, execution_threads);
           if (!status_or.ok()) {
             compilation_stats_->RecordPassError(
-                pass_name, tsl::error_name(status_or.status().code()));
+                pass_name, absl::StatusCodeToString(status_or.status().code()));
           }
           return status_or;
         };
@@ -212,8 +212,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
                                                   absl::string_view pass_name) {
         auto status = RunInvariantCheckers(hlo, pass_name);
         if (!status.ok()) {
-          compilation_stats_->RecordPassError(pass_name,
-                                              tsl::error_name(status.code()));
+          compilation_stats_->RecordPassError(
+              pass_name, absl::StatusCodeToString(status.code()));
         }
         return status;
       };

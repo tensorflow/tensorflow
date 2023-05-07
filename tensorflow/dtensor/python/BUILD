@@ -18,7 +18,7 @@ package(
 # A list of all modules linked into TensorFlow.
 
 py_library(
-    name = "core",
+    name = "dtensor",
     srcs = ["__init__.py"],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
@@ -46,9 +46,8 @@ pytype_strict_library(
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -121,7 +120,6 @@ pytype_strict_library(
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/checkpoint:graph_view",
@@ -134,6 +132,8 @@ pytype_strict_library(
         "//tensorflow/python/training:py_checkpoint_reader",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -149,7 +149,7 @@ pytype_strict_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
     ],
 )
@@ -187,14 +187,13 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/util:_pywrap_utils",
         "//third_party/py/numpy",
     ],
 )
@@ -250,12 +249,13 @@ pytype_strict_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:remote_utils",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu:topology",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -272,8 +272,8 @@ pytype_strict_library(
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -305,8 +305,8 @@ pytype_strict_library(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/types",
-        "//tensorflow/python/util",
+        "//tensorflow/python/types:data",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )

@@ -14,11 +14,9 @@
 # ==============================================================================
 """Tests for DTensor multi-client setup."""
 import os
-import sys
 
 from absl import flags
 import numpy as np
-import portpicker
 
 from tensorflow.dtensor.python import accelerator_util
 from tensorflow.dtensor.python import api as d_api
@@ -26,6 +24,7 @@ from tensorflow.dtensor.python import config as d_config
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import layout as d_layout
 from tensorflow.dtensor.python import mesh_util
+from tensorflow.dtensor.python.tests import multi_client_test_util
 from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager import backprop
@@ -41,12 +40,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as tf_test
 
 
-_NUM_DEVICES = flags.DEFINE_integer(
-    'num_devices', 4, 'Number of local devices. '
-    '4 is the only allowed value for TPU.')
-_NUM_CLIENTS = flags.DEFINE_integer(
-    'num_clients', 2, 'Number of clients. 0 for local mode.'
-    '2 is the only allowed value for TPU.')
 _MODEL_DIM_SIZE = flags.DEFINE_integer('model_dim_size', 4,
                                        'Size of the model dimension.')
 
@@ -208,98 +201,15 @@ class DTensorMNISTTest(tf_test.TestCase):
       self.assertAllClose(i, array_ops.ones((2, 2)), atol=1e-5)
 
 
-def multi_client_main():
-  """Creates a Flock of TensorFlow Processes on localhost."""
-  flags.FLAGS(sys.argv, known_only=True)
-  num_clients = _NUM_CLIENTS.value or 1
-  num_devices = _NUM_DEVICES.value
+def client_config_function(config_params):
+  num_clients = config_params['num_clients']
+  dtensor_client_id = config_params['client_id']
+  dtensor_jobs = config_params['worker_jobs']
+  num_devices = config_params['num_devices']
 
-  # No GPU visible to the flock controller.
-  os.environ['CUDA_VISIBLE_DEVICES'] = ''
-
-  # Python multiprocess module in OSS.
-  mp_context = test_backend_util.get_mp_context()
-
-  print('Check per client log in Test artifacts.', flush=True)
-
-  # Inverts the order of ports intentionally to rule out ordering bugs.
-  server_ports = sorted(
-      [portpicker.pick_unused_port() for _ in range(num_clients)], reverse=True)
-
-  additional_ports = sorted(
-      [portpicker.pick_unused_port() for _ in range(num_clients)]
-  )
-
-  # Starts processes
-  procs = []
-  for client_idx in range(num_clients):
-    proc = mp_context.Process(
-        target=run_client,
-        args=(client_idx, server_ports, additional_ports, num_devices),
-        name=f'Client-{client_idx}',
-    )
-    proc.start()
-    procs.append(proc)
-
-  # Joins processes
-  exitcode = 0
-  for proc in procs:
-    proc.join()
-    if proc.exitcode != 0:
-      exitcode = proc.exitcode
-
-  sys.exit(exitcode)
-
-
-def run_client(idx, server_ports, additional_ports, num_devices):
-  """Runs test.main() from a DTensor Client process on localhost.
-
-  This function runs in a separate process so that the eager context is
-  proprely separated, which resembles real world multi-client setup.
-
-  Virtual devices are configured before test.main() is called.
-
-  Each client is configured to only have access to the physical GPU device
-  corresponding to its client id via CUDA_VISIBLE_DEVICES.
-
-  Each client is configured to only have access to some TPU cores
-  corresponding to its client id via flags.
-
-  The clients redirects stdout and stderr to files under Test Artifacts.
-
-  Args:
-    idx: integer task number represents the client's id from global picture.
-    server_ports: A list of ports that is allocated and to be used to construct
-      GRPC server. server_ports[idx] will be the GRPC server on the
-      corresponding client.
-    additional_ports: A list of ports that is allocated and to be used to
-      construct the backends.
-    num_devices: Number of devices per client.
-  """
-  # Python ForkServer doesn't parse the absl flags.
-  flags.FLAGS(sys.argv, known_only=True)
-
-  test_backend_util.slice_host_devices_for_multiworker(
-      _NUM_CLIENTS.value, idx, additional_ports
-  )
-
-  artifact_dir = os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR', '')
-
-  # Redirect extra client's stderr/stdout to undeclared outputs on sponge.
-  if artifact_dir:
-    with open(
-        os.path.join(artifact_dir, f'test-client-process-{idx}.log'),
-        'wb') as fp:
-      os.dup2(fp.fileno(), 1)
-      os.dup2(fp.fileno(), 2)
-
-  # Set up cluster and enable collectives.
-  dtensor_jobs = [f'localhost:{port:06d}' for port in server_ports]
-
-  # Configures DTensor multi-client environment variables.
   # pylint: disable=protected-access
-  if _NUM_CLIENTS.value != 0:
-    os.environ[d_config._DT_CLIENT_ID] = f'{idx}'
+  if num_clients != 0:
+    os.environ[d_config._DT_CLIENT_ID] = f'{dtensor_client_id}'
     os.environ[d_config._DT_JOB_NAME] = 'worker'
     os.environ[d_config._DT_JOBS] = ','.join(dtensor_jobs)
   # pylint: enable=protected-access
@@ -311,20 +221,12 @@ def run_client(idx, server_ports, additional_ports, num_devices):
   else:
     device_type = 'CPU'
 
-  reset_logical_devices(device_type, num_devices)
-
-  # The following function call never returns.
-  tf_test.main()
-
-
-def reset_logical_devices(device_type, num_devices):
-  """Ensures multi-client with the number of logical devices for CPU/GPU/TPU."""
+  # reset_logical_devices
   test_util.reset_context()
   if device_type != 'TPU':
     # Configure virtual devices. This does not initialize the TensorFlow
     # context.
     test_util.reset_logical_devices(device_type, num_devices)
-
   accelerator_util.initialize_accelerator_system(
       device_type, enable_coordination_service=True)
 
@@ -332,8 +234,9 @@ def reset_logical_devices(device_type, num_devices):
   logical_devices = test_util.list_local_logical_devices(device_type)
   assert len(logical_devices) == num_devices, (
       logical_devices,
-      f'Test is misconfigured: expecting {num_devices} logical_devices.')
+      f'Test is mis-configured: expecting {num_devices} logical_devices.')
 
 
 if __name__ == '__main__':
-  test_backend_util.handle_test_main(multi_client_main)
+  test_backend_util.handle_test_main(
+      multi_client_test_util.multi_client_main, client_config_function)

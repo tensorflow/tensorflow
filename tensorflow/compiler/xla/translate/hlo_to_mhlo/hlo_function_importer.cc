@@ -85,12 +85,16 @@ std::string SanitizeFunctionName(llvm::StringRef name) {
 }
 
 // Returns whether the instruction is a default dot operation.
+// Supports vector.vector, vector.matrix, matrix.vector, and matrix.matrix.
+// Default operations have lhs_contracting dimension is 1 (or zero for vector)
+// and the rhs_contracting dimension is zero, and there are no batch dimensions.
 bool DotIsDefault(const HloInstruction* instruction) {
+  // If LHS/RHS has rank greater than 2, not default dot
   const auto& operands = instruction->operands();
-  // eg. vector[3] dot matrix[3, 2] => [2] not default dot
-  if (operands[0]->shape().rank() < operands[1]->shape().rank()) {
+  if (operands[0]->shape().rank() > 2 || operands[1]->shape().rank() > 2) {
     return false;
   }
+
   auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
@@ -405,7 +409,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
                                                : FuncOp::Visibility::Private;
   function.setVisibility(visibility);
 
-  for (auto& entry : llvm::enumerate(computation.parameter_instructions())) {
+  for (const auto& entry :
+       llvm::enumerate(computation.parameter_instructions())) {
     HloParameterInstruction* parameter =
         Cast<HloParameterInstruction>(entry.value());
     if (parameter->has_sharding()) {
@@ -2028,7 +2033,7 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
 }
 
 Status HloFunctionImporter::GetMlirTypes(
-    const std::vector<HloInstruction*>& instructions,
+    absl::Span<const HloInstruction* const> instructions,
     llvm::SmallVectorImpl<mlir::Type>* types) {
   for (auto instruction : instructions) {
     TF_ASSIGN_OR_RETURN(auto ret_type, ConvertShapeToType<RankedTensorType>(

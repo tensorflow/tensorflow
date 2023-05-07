@@ -452,21 +452,44 @@ LogicalResult TransferTFAttributesToTFUniformAttributes(
   // Set the attributes for ops with the attr_map attribute.
   for (Operation& inner_op : quantized_func.getBody().front().getOperations()) {
     if (auto uniform_op =
-            llvm::dyn_cast<TF::UniformQuantizedConvolutionHybridOp>(inner_op)) {
+            llvm::dyn_cast<TF::UniformQuantizedConvolutionHybridOp>(inner_op);
+        uniform_op != nullptr) {
       if (failed(FillAttributesForUniformQuantizedConvolutionOp(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
         return failure();
     } else if (auto uniform_op =
-                   llvm::dyn_cast<TF::UniformQuantizedConvolutionOp>(
-                       inner_op)) {
+                   llvm::dyn_cast<TF::UniformQuantizedConvolutionOp>(inner_op);
+               uniform_op != nullptr) {
       if (failed(FillAttributesForUniformQuantizedConvolutionOp(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
         return failure();
     } else if (auto uniform_op =
-                   llvm::dyn_cast<TF::UniformQuantizedDotHybridOp>(inner_op)) {
+                   llvm::dyn_cast<TF::UniformQuantizedDotHybridOp>(inner_op);
+               uniform_op != nullptr) {
       if (failed(FillAttributesForUniformQuantizedDotOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformQuantizedAddOp>(inner_op);
+               uniform_op != nullptr) {
+      if (failed(FillAttributesForUniformQuantizedAddOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformQuantizedClipByValueOp>(inner_op);
+               uniform_op != nullptr) {
+      if (failed(FillAttributesForUniformQuantizedClipByValueOp(
+              rewriter, uniform_op, identifier_to_attr, quantization_method,
+              enable_per_channel_quantization)))
+        return failure();
+    } else if (auto uniform_op =
+                   llvm::dyn_cast<TF::UniformRequantizeOp>(inner_op);
+               uniform_op != nullptr) {
+      if (failed(FillAttributesForUniformRequantizeOp(
               rewriter, uniform_op, identifier_to_attr, quantization_method,
               enable_per_channel_quantization)))
         return failure();
@@ -535,15 +558,28 @@ LogicalResult TransferAttributes(func::FuncOp float_func,
 }
 
 // Get the corresponding quantized function name from the given function name.
-std::string GetQuantizedFunctionName(StringRef func_name) {
+std::string GetQuantizedFunctionName(StringRef func_name,
+                                     const bool is_hybrid) {
   if (func_name.startswith(kQuantizedFuncPrefix)) return func_name.str();
   if (!func_name.startswith(kCompositeFuncPrefix)) return "";
 
-  return llvm::Twine(kQuantizedFuncPrefix)
-      .concat(llvm::Twine(
-          func_name.substr(kCompositeFuncPrefix.size()).rsplit("_fn").first))
-      .concat("_fn")
-      .str();
+  auto base_function_name =
+      llvm::Twine(kQuantizedFuncPrefix)
+          .concat(llvm::Twine(func_name.substr(kCompositeFuncPrefix.size())
+                                  .rsplit("_fn")
+                                  .first));
+
+  return is_hybrid
+             ? base_function_name.concat("_float_output").concat("_fn").str()
+             : base_function_name.concat("_fn").str();
+}
+
+bool ContainsQuantizedReusltType(ArrayRef<Type> result_types) {
+  for (auto current_type : result_types) {
+    if (!current_type.dyn_cast<TensorType>().getElementType().isF32())
+      return true;
+  }
+  return false;
 }
 
 // Unwraps quantization parameters of PartitionedCall ops with quantized
@@ -554,20 +590,17 @@ class QuantizeFunctionPattern
   explicit QuantizeFunctionPattern(MLIRContext* context,
                                    const QuantMethod quantization_method,
                                    const OpSet target_opset,
-                                   const bool enable_per_channel_quantization,
-                                   const bool enable_legacy_weight_only)
+                                   const bool enable_per_channel_quantization)
       : OpRewritePattern<TF::PartitionedCallOp>(context),
         quantization_method_(quantization_method),
         target_opset_(target_opset),
-        enable_per_channel_quantization_(enable_per_channel_quantization),
-        enable_legacy_weight_only_(enable_legacy_weight_only) {}
+        enable_per_channel_quantization_(enable_per_channel_quantization) {}
 
  private:
   QuantMethod quantization_method_ =
       tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
   OpSet target_opset_ = OpSet::TF;
   bool enable_per_channel_quantization_;
-  bool enable_legacy_weight_only_;
 
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
@@ -579,24 +612,20 @@ class QuantizeFunctionPattern
     if (!f_attr.getValue().startswith(kCompositeFuncPrefix)) {
       return failure();
     }
-    // Determines if all required float input/outputs are now quantized.
-    bool has_quantized_types = true;
-    switch (quantization_method_) {
-      case tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE:
-        has_quantized_types &= IsQuantizedCallforDynamicRange(call_op);
-        break;
-      case tensorflow::quantization::QuantizationMethod::STATIC_RANGE:
-        has_quantized_types &= IsQuantizedCallforStaticRange(call_op);
-        break;
-      case tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY:
-        // Skipping input type check for weight-only quantization as it can be
-        // dequantized beforehand for the legacy scheme.
-        has_quantized_types &= !enable_legacy_weight_only_;
-        break;
-      default:
-        call_op->emitError("The quantization method is not supported.");
-        return failure();
+
+    bool has_quantized_types = false;
+    if (quantization_method_ ==
+        tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
+      // Skipping input type check for weight-only quantization as it can be
+      // dequantized beforehand for the legacy scheme.
+      has_quantized_types = true;
+    } else {
+      // Determines if all required float input/outputs are now quantized.
+      // Either one of the criteria needs to meet.
+      has_quantized_types |= IsQuantizedCallforDynamicRange(call_op);
+      has_quantized_types |= IsQuantizedCallforStaticRange(call_op);
     }
+
     if (!has_quantized_types) return failure();
 
     SmallVector<Value, 4> args;
@@ -703,7 +732,6 @@ class QuantizeFunctionPattern
         result_types.push_back(result_type);
         continue;
       }
-
       if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
         ShapedType new_result_type = ConvertIntToQint(
             result_type.cast<ShapedType>(), rewriter.getContext());
@@ -730,8 +758,14 @@ class QuantizeFunctionPattern
         dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
     rewriter.setInsertionPointAfter(float_func);
 
+    // Applies only for hybrid ops in SRQ.
+    const bool is_hybrid =
+        !ContainsQuantizedReusltType(result_types) &&
+        (quantization_method_ ==
+         tensorflow::quantization::QuantizationMethod::STATIC_RANGE);
     const std::string quantized_function_name =
-        GetQuantizedFunctionName(f_attr.getValue());
+        GetQuantizedFunctionName(f_attr.getValue(), is_hybrid);
+
     const mlir::func::FuncOp quantized_func =
         dyn_cast<func::FuncOp>(symbol_table.lookup(quantized_function_name));
     mlir::func::FuncOp new_quantized_func =
@@ -816,7 +850,7 @@ class QuantizeFunctionPattern
     // the length of the "_fn" suffix.
     const size_t fn_suffix_length = 3;
     std::string quantized_function_name =
-        GetQuantizedFunctionName(f_attr.getValue());
+        GetQuantizedFunctionName(f_attr.getValue(), /*is_hybrid=*/false);
     quantized_function_name.replace(
         quantized_function_name.size() - fn_suffix_length, fn_suffix_length,
         kFloatOutputFuncPrefix);
@@ -905,7 +939,8 @@ class QuantizeConstPattern
       // TODO(b/225793355): It adds TensorProtoAttr to the constant as a
       // workaround.
       tensorflow::TensorProto tensor_proto;
-      if (!mlir::tfg::ConvertToTensorProto(tensor_proto_attr, &tensor_proto)
+      if (!mlir::tfg::ConvertToTensorProto(
+               tensor_proto_attr.cast<ElementsAttr>(), &tensor_proto)
                .ok()) {
         return failure();
       }
@@ -1047,7 +1082,8 @@ class QuantizationSummary {
 
   // Get the representative name attribute value of a composite function.
   FailureOr<StringRef> GetRepresentativeName(StringRef func_name) {
-    std::string quantized_func_name = GetQuantizedFunctionName(func_name);
+    std::string quantized_func_name =
+        GetQuantizedFunctionName(func_name, /*is_hybrid=*/false);
     auto quantized_func = dyn_cast_or_null<func::FuncOp>(
         symbol_table_.lookup(quantized_func_name));
     // Quantized function does not exist for weight-only case.
@@ -1125,13 +1161,16 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
     signalPassFailure();
   }
 
-  RewritePatternSet patterns(ctx);
-  patterns.add<QuantizeFunctionPattern>(
-      ctx, quantization_method_, target_opset_,
-      enable_per_channel_quantization_, enable_legacy_weight_only_);
+  // Legacy weight-only does not require quantized ops.
+  if (!enable_legacy_weight_only_) {
+    RewritePatternSet patterns(ctx);
+    patterns.add<QuantizeFunctionPattern>(ctx, quantization_method_,
+                                          target_opset_,
+                                          enable_per_channel_quantization_);
 
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
-    signalPassFailure();
+    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+      signalPassFailure();
+    }
   }
 
   // Constant quantization is a lossy transformation, so they are applied only

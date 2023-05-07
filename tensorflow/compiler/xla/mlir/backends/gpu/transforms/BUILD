@@ -44,6 +44,8 @@ cc_library(
     compatible_with = [],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/runtime/utils:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
@@ -57,6 +59,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ControlFlowDialect",

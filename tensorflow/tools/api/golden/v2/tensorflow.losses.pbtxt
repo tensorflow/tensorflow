@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CategoricalFocalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalHinge"
     mtype: "<type \'type\'>"
   }
@@ -103,6 +107,10 @@ tf_module {
   member_method {
     name: "categorical_crossentropy"
     argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.0\', \'-1\'], "
+  }
+  member_method {
+    name: "categorical_focal_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\'], "
   }
   member_method {
     name: "categorical_hinge"

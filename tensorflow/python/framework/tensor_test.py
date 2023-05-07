@@ -353,6 +353,50 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       _ = spec._cast([1, 2, 3], ctx)
 
+  @parameterized.named_parameters(
+      (
+          "list",
+          [[
+              [tensor.TensorSpec(None, name="a")],
+              [
+                  tensor.TensorSpec(None, name="b"),
+                  tensor.TensorSpec(None, name="c"),
+              ],
+          ]],
+      ),
+      (
+          "tuple",
+          ((
+              (tensor.TensorSpec(None, name="a"),),
+              (
+                  tensor.TensorSpec(None, name="b"),
+                  tensor.TensorSpec(None, name="c"),
+              ),
+          )),
+      ),
+      (
+          "dict",
+          {
+              "a": {"key": tensor.TensorSpec(None, name="a")},
+              "b": [tensor.TensorSpec(None, name="b")],
+              "c": (tensor.TensorSpec(None, name="c"),),
+          },
+      ),
+  )
+  def testFlatten(self, structure):
+    generated_type = trace_type.from_value(
+        structure, trace_type.InternalTracingContext(is_legacy_signature=True)
+    )
+    flattened = generated_type._flatten()
+    self.assertEqual(
+        flattened,
+        [
+            tensor.TensorSpec(None, name="a"),
+            tensor.TensorSpec(None, name="b"),
+            tensor.TensorSpec(None, name="c"),
+        ],
+    )
+
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 

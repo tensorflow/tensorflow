@@ -143,7 +143,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
@@ -2564,7 +2564,7 @@ class FeatureTransformationCache(object):
             message='Feature (key: {}) cannot have rank 0. Given: {}'.format(
                 key, feature_tensor))
     ]):
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(1, array_ops.rank(feature_tensor)),
           lambda: expand_dims(feature_tensor), lambda: feature_tensor)
 

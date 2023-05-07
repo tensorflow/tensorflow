@@ -94,59 +94,134 @@ bool SupportsEpilogueFusion(PrimitiveType type) {
 }
 
 bool IsF8Type(const HloInstruction *instr) {
-  if (instr->shape().element_type() == F8E4M3FN ||
-      instr->shape().element_type() == F8E5M2) {
-    return true;
-  } else {
-    return false;
-  }
+  return primitive_util::IsF8Type(instr->shape().element_type());
 }
 
-bool IsF8TypeRecursiveImpl(const HloInstruction *instr,
-                           absl::flat_hash_set<int> &visited_instrs) {
+// Recursively collects unary, pad, divide or multiply operands of instr until
+// an instruction with FP8 element type is reached. Returns std::nullopt when no
+// FP8 instruction is reached.
+std::optional<std::vector<HloInstruction *>> FindF8SubgraphRecursive(
+    HloInstruction *instr, absl::flat_hash_set<int> &visited_instrs,
+    std::vector<HloInstruction *> subgraph) {
   // Avoid visiting the same instruction more than once.
   if (!visited_instrs.emplace(instr->unique_id()).second) {
-    return false;
+    return std::nullopt;
   }
+  subgraph.emplace_back(instr);
   if (IsF8Type(instr)) {
-    return true;
+    return subgraph;
   } else {
     if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide ||
         instr->opcode() == HloOpcode::kPad) {
-      return IsF8TypeRecursiveImpl(instr->operand(0), visited_instrs);
+      return FindF8SubgraphRecursive(instr->mutable_operand(0), visited_instrs,
+                                     subgraph);
     } else if (instr->opcode() == HloOpcode::kMultiply) {
-      return IsF8TypeRecursiveImpl(instr->operand(0), visited_instrs) ||
-             IsF8TypeRecursiveImpl(instr->operand(1), visited_instrs);
-    } else {
+      for (int k = 0; k < 2; ++k) {
+        auto mult_subgraph = FindF8SubgraphRecursive(instr->mutable_operand(k),
+                                                     visited_instrs, subgraph);
+        if (mult_subgraph.has_value()) {
+          return mult_subgraph;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+}
+
+// Returns whether instr and its operands describe a pattern which is compatible
+// with rewriting the dot operating on instr into an FP8 Custom Call. If
+// applicable, captures the operand of the Custom Call, its scaling factor,
+// whether the scaling factor is applied by multiplication and intermediate
+// unary ops.
+bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
+                          HloInstruction *&x_scale, bool &x_mult_scale,
+                          std::vector<HloInstruction *> &x_unary_ops) {
+  absl::flat_hash_set<int> visited_instrs;
+  std::optional<std::vector<HloInstruction *>> subgraph =
+      FindF8SubgraphRecursive(instr, visited_instrs,
+                              std::vector<HloInstruction *>{});
+
+  if (!subgraph.has_value()) {
+    return false;
+  }
+  std::reverse(subgraph->begin(), subgraph->end());
+
+  // Directly operating on an FP8 operand.
+  if (subgraph->size() == 1) {
+    x = (*subgraph)[0];
+    return true;
+  }
+
+  // When not operating directly on an FP8 operand, the second and
+  // third instructions in the subgraph must describe a dequantization, i.e. a
+  // convert instruction followed by a multiply/divide instruction.
+  if (subgraph->size() > 2 &&
+      Match((*subgraph)[2],
+            m::MultiplyAnyOrder(m::Convert(m::Op(&x)),
+                                m::Broadcast(m::Op(&x_scale))))) {
+    x_mult_scale = true;
+  } else if (subgraph->size() > 2 &&
+             Match((*subgraph)[2], m::Divide(m::Convert(m::Op(&x)),
+                                             m::Broadcast(m::Op(&x_scale))))) {
+    x_mult_scale = false;
+  } else {
+    VLOG(1) << "Possible intended FP8 GEMM operating on "
+            << instr->ToShortString() << " not rewritten into FP8 Custom Call.";
+    return false;
+  }
+
+  auto preserves_element_type = [](const HloInstruction *instr) -> bool {
+    return ShapeUtil::SameElementType(instr->shape(),
+                                      instr->operand(0)->shape());
+  };
+  for (int i = 3; i < subgraph->size(); ++i) {
+    // The remaining instructions must be commutative with dequantization.
+    // Bitcast, broadcast, copy, pad, reshape and slice instructions are
+    // supported.
+    if (!Match((*subgraph)[i],
+               m::AnyOf<HloInstruction>(
+                   m::Bitcast().WithPredicate(preserves_element_type),
+                   m::Broadcast(), m::Copy(), m::Pad(), m::Reshape(),
+                   m::Slice()))) {
+      VLOG(1) << "Possible intended FP8 GEMM operating on "
+              << instr->ToShortString()
+              << " not rewritten into FP8 Custom Call.";
       return false;
     }
   }
-}
 
-bool IsF8TypeRecursive(const HloInstruction *instr) {
-  absl::flat_hash_set<int> visited_instrs;
-  return IsF8TypeRecursiveImpl(instr, visited_instrs);
-}
-
-void VlogF8PatternMiss(const HloInstruction *instr) {
-  if (Match(instr, m::Dot(m::Op().WithPredicate(IsF8TypeRecursive),
-                          m::Op().WithPredicate(IsF8TypeRecursive)))) {
-    VLOG(1) << "Possible intended FP8 GEMM " << instr->ToShortString()
-            << " not rewritten into FP8 Custom Call.";
-  }
-}
-
-bool IsCublasSupportedMatrixMultiplication(
-    const HloInstruction &dot, se::CudaComputeCapability compute_capability) {
-  if (!IsMatrixMultiplication(dot)) {
-    return false;
-  }
-  if (IsF8Type(dot.operand(0)) || IsF8Type(dot.operand(1))) {
-    // cuBLAS LT only supports F8 matmuls on Hopper and above.
-    return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
-  }
+  x_unary_ops = {subgraph->begin() + 3, subgraph->end()};
   return true;
 }
+
+// Transposes a matrix by swapping the contracting and non-contracting
+// dimension. There must be only one contracting and only one non-contracting
+// dimension. Keeps the layout the same.
+HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
+                                absl::Span<const int64_t> batch_dims) {
+  // Identify the dimensional order which describes a transpose of the
+  // contracting and non-contracting dimensions of the GEMM.
+  std::vector<int64_t> permutation(instr->shape().dimensions_size(), -1);
+  // Discard the batch dimensions.
+  for (int64_t batch_dim : batch_dims) {
+    permutation[batch_dim] = batch_dim;
+  }
+  // Identify the non-contracting dimension.
+  int non_contracting_dim;
+  for (int i = 0; i < instr->shape().dimensions_size(); ++i) {
+    if (permutation[i] == -1 && contracting_dim != i) {
+      non_contracting_dim = i;
+    }
+  }
+  permutation[non_contracting_dim] = contracting_dim;
+  permutation[contracting_dim] = non_contracting_dim;
+
+  Shape new_shape = ShapeUtil::PermuteDimensions(permutation, instr->shape());
+  *new_shape.mutable_layout() = instr->shape().layout();
+  return instr->AddInstruction(
+      HloInstruction::CreateTranspose(new_shape, instr, permutation));
+}
+
 
 // If the bias is a sequence of ops that depend only on broadcasts of
 // constants, materialize the bias if it's small.
@@ -249,19 +324,9 @@ auto OptionalSlice(HloInstruction **optional_slice, Pattern pattern) {
 }
 
 template <typename Pattern>
-auto OptionalBitcastPreservingElementType(HloInstruction **optional_bitcast,
-                                          Pattern pattern) {
-  return m::AnyOf<HloInstruction>(
-      m::Bitcast(optional_bitcast, pattern)
-          .WithPredicate([](const HloInstruction *instr) {
-            return ShapeUtil::SameElementType(instr->shape(),
-                                              instr->operand(0)->shape());
-          }),
-      std::move(pattern));
-}
-
-auto ConvertFromF8(HloInstruction **instr) {
-  return m::Convert(m::Op(instr).WithPredicate(IsF8Type));
+auto OptionalConvert(HloInstruction **optional_convert, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Convert(optional_convert, pattern),
+                                  std::move(pattern));
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -276,111 +341,39 @@ auto ConvertFromF8(HloInstruction **instr) {
 // and provided C has no other users).
 // We then guide the buffer assignment to alias the buffer of the custom call
 // and C.
+//
+// For scaled FP8 GEMMs on Hopper systems, the following steps mentioned in
+// RFC #22 (https://github.com/openxla/xla/discussions/22) are elided and
+// rewritten into a Custom Call:
+//
+// 1. Cast each input from FP8 to a wider type such as FP16 or FP32.
+// 2. Unscale each input by multiplying each input by the corresponding input
+// scale.
+// 3. Evaluate the matrix multiplication on the scaled inputs.
+// 4. Compute the maximum of the absolute values in the result of the GEMM
+// (DAmax).
+// 5. Scale the output by dividing the output by the output scale.
+// 6. Cast the output back to FP8. Since saturation should be done on
+// overflow, this is represented by a Clamp instruction followed by a Convert
+// instruction.
+
+// Steps 1 through 3 can be elided independently of the remainder. Steps 5 and
+// 6 are elided only if steps 1 through 3 were successfully transformed. Step
+// 4 requires steps 5 and 6, i.e. the computation of DAmax can be elided only
+// when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(
-      se::CudaComputeCapability cuda_compute_capability)
-      : cuda_compute_capability_(cuda_compute_capability) {}
-
-  // For scaled FP8 GEMMs on Hopper systems, the following steps mentioned in
-  // RFC #22 (https://github.com/openxla/xla/discussions/22) are elided and
-  // rewritten into a Custom Call:
-  //
-  // 1. Cast each input from FP8 to a wider type such as FP16 or FP32.
-  // 2. Unscale each input by multiplying each input by the corresponding input
-  // scale.
-  // 3. Evaluate the matrix multiplication on the scaled inputs.
-  // 4. Compute the maximum of the absolute values in the result of the GEMM
-  // (DAmax).
-  // 5. Scale the output by dividing the output by the output scale.
-  // 6. Cast the output back to FP8. Since saturation should be done on
-  // overflow, this is represented by a Clamp instruction followed by a Convert
-  // instruction.
-
-  // Steps 1 through 3 can be elided independently of the remainder. Steps 5 and
-  // 6 are elided only if steps 1 through 3 were successfully transformed. Step
-  // 4 requires steps 5 and 6, i.e. the computation of DAmax can be elided only
-  // when the output of the GEMM is requested in FP8 format.
-  StatusOr<bool> TryRewriteFp8Gemm(HloInstruction *dot_instr,
-                                   GemmBackendConfig &gemm_backend_config) {
-    TF_ASSIGN_OR_RETURN(
-        bool gemm_is_supported_by_cublas_lt,
-        GemmIsSupportedByCublasLt(*dot_instr, gemm_backend_config));
-    if (!gemm_is_supported_by_cublas_lt) {
-      return false;
-    }
-
-    HloInstruction *a, *b, *a_scale, *b_scale, *a_binary, *b_binary,
-        *a_bitcast = nullptr, *b_bitcast = nullptr;
-    // Attempt to elide an FP8 GEMM with scaled inputs as described by steps 1
-    // through 3 detailed above and rewrite into a Custom Call.
-    if (Match(
-            dot_instr,
-            m::Dot(
-                m::AnyOf<HloInstruction>(
-                    OptionalBitcastPreservingElementType(
-                        &a_bitcast,
-                        m::MultiplyAnyOrder(&a_binary, ConvertFromF8(&a),
-                                            m::Broadcast(m::Op(&a_scale)))),
-                    OptionalBitcastPreservingElementType(
-                        &a_bitcast, m::Divide(&a_binary, ConvertFromF8(&a),
-                                              m::Broadcast(m::Op(&a_scale))))),
-                m::AnyOf<HloInstruction>(
-                    OptionalBitcastPreservingElementType(
-                        &b_bitcast,
-                        m::MultiplyAnyOrder(&b_binary, ConvertFromF8(&b),
-                                            m::Broadcast(m::Op(&b_scale)))),
-                    OptionalBitcastPreservingElementType(
-                        &b_bitcast,
-                        m::Divide(&b_binary, ConvertFromF8(&b),
-                                  m::Broadcast(m::Op(&b_scale)))))))) {
-      TF_ASSIGN_OR_RETURN(
-          bool created_call,
-          CreateF8CustomCall(
-              dot_instr, gemm_backend_config, a, b, a_scale, b_scale, a_bitcast,
-              b_bitcast,
-              /*a_mult_scale=*/a_binary->opcode() == HloOpcode::kMultiply,
-              /*b_mult_scale=*/b_binary->opcode() == HloOpcode::kMultiply));
-      if (created_call) {
-        return true;
-      }
-    }
-
-    // Attempt to rewrite an FP8 GEMM directly operating on the unscaled but
-    // possibly type converted FP8 operands into a Custom Call.
-    if (Match(dot_instr, m::AnyOf<HloInstruction>(
-                             m::Dot(ConvertFromF8(&a), ConvertFromF8(&b)),
-                             m::Dot(m::Op(&a).WithPredicate(IsF8Type),
-                                    m::Op(&b).WithPredicate(IsF8Type))))) {
-      TF_ASSIGN_OR_RETURN(
-          bool created_call,
-          CreateF8CustomCall(dot_instr, gemm_backend_config, a, b));
-      if (created_call) {
-        return true;
-      }
-    }
-
-    // Warn when a GEMM (indirectly) operating on FP8 operands and possibly
-    // intended to be rewritten into an FP8 Custom Call is not pattern matched.
-    if (VLOG_IS_ON(1)) {
-      VlogF8PatternMiss(dot_instr);
-    }
-
-    // Did not rewrite as FP8 CublasLt CustomCall.
-    return false;
-  }
+  explicit GemmRewriterVisitor(GpuVersion gpu_version)
+      : gpu_version_(gpu_version) {}
 
   Status HandleDot(HloInstruction *instr) override {
-    if (!IsCublasSupportedMatrixMultiplication(*instr,
-                                               cuda_compute_capability_)) {
+    if (!IsMatrixMultiplication(*instr)) {
       return OkStatus();
     }
 
     CHECK(!instr->IsRank2Transpose());
-    HloInstruction *lhs = instr->mutable_operand(0);
-    HloInstruction *rhs = instr->mutable_operand(1);
-    CHECK(!lhs->IsRank2Transpose());
-    CHECK(!rhs->IsRank2Transpose());
+    CHECK(!instr->mutable_operand(0)->IsRank2Transpose());
+    CHECK(!instr->mutable_operand(1)->IsRank2Transpose());
 
     // Create a GemmBackendConfig based on the instruction.
     GemmBackendConfig gemm_backend_config;
@@ -392,10 +385,37 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     *gemm_backend_config.mutable_precision_config() = instr->precision_config();
 
     // First try to match the fp8 gemm pattern.
-    TF_ASSIGN_OR_RETURN(bool rewrote_dot,
-                        TryRewriteFp8Gemm(instr, gemm_backend_config));
-    if (rewrote_dot) {
-      return OkStatus();
+    TF_ASSIGN_OR_RETURN(bool supported_by_cublaslt,
+                        GemmIsSupportedByCublasLt(*instr, gemm_backend_config));
+    HloInstruction *a, *b, *a_scale = nullptr, *b_scale = nullptr;
+    std::vector<HloInstruction *> a_unary_ops, b_unary_ops;
+    bool a_mult_scale, b_mult_scale;
+    if (supported_by_cublaslt &&
+        Match(instr,
+              m::Dot(m::Op().WithPredicate([&](const HloInstruction *instr) {
+                return IsSupportedF8Pattern(const_cast<HloInstruction *>(instr),
+                                            a, a_scale, a_mult_scale,
+                                            a_unary_ops);
+              }),
+                     m::Op().WithPredicate([&](const HloInstruction *instr) {
+                       return IsSupportedF8Pattern(
+                           const_cast<HloInstruction *>(instr), b, b_scale,
+                           b_mult_scale, b_unary_ops);
+                     })))) {
+      TF_ASSIGN_OR_RETURN(
+          bool created_call,
+          CreateF8CustomCall(instr, gemm_backend_config, a, b, a_scale, b_scale,
+                             a_mult_scale, b_mult_scale, a_unary_ops,
+                             b_unary_ops));
+      if (created_call) {
+        return OkStatus();
+      }
+    }
+
+    if (IsF8Type(instr->operand(0))) {
+      // Couldn't rewrite as an FP8 cublasLt custom call, so turn into an FP16
+      // dot and below it will be rewritten as an FP16 cublas or cublasLt call.
+      TF_ASSIGN_OR_RETURN(instr, TurnF8DotIntoF16Dot(instr));
     }
 
     // Couldn't rewrite as an FP8 cublasLt custom call, rewrite as a cublas or
@@ -406,7 +426,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const Shape &output_shape = instr->shape();
     HloInstruction *gemm_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
-            output_shape, {lhs, rhs}, gemm_custom_call_target));
+            output_shape,
+            {instr->mutable_operand(0), instr->mutable_operand(1)},
+            gemm_custom_call_target));
     TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
     return OkStatus();
@@ -475,17 +497,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
     HloInstruction *optional_slice = nullptr;
+    HloInstruction *optional_convert = nullptr;
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM,
     // including when slicing is applied to the result.
     if (Match(instr,
               m::AddAnyOrder(
-                  OptionalSlice(&optional_slice,
-                                CublasLtMatmul(&existing_gemm).WithOneUser())
+                  OptionalSlice(
+                      &optional_slice,
+                      CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
-                  m::Broadcast(&bias, m::Op())))) {
-      TF_ASSIGN_OR_RETURN(
-          bool was_fused,
-          FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
+                  m::Broadcast(&bias,
+                               OptionalConvert(&optional_convert, m::Op()))))) {
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseVectorBiasAdd(instr, bias, existing_gemm,
+                                            optional_slice, optional_convert));
 
       if (was_fused) {
         return OkStatus();
@@ -610,23 +635,27 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  StatusOr<bool> CreateF8CustomCall(
-      HloInstruction *instr, GemmBackendConfig &gemm_backend_config,
-      HloInstruction *a, HloInstruction *b, HloInstruction *a_scale = nullptr,
-      HloInstruction *b_scale = nullptr, HloInstruction *a_bitcast = nullptr,
-      HloInstruction *b_bitcast = nullptr, bool a_mult_scale = true,
-      bool b_mult_scale = true) {
+  StatusOr<bool> CreateF8CustomCall(HloInstruction *instr,
+                                    GemmBackendConfig &gemm_backend_config,
+                                    HloInstruction *a, HloInstruction *b,
+                                    HloInstruction *a_scale,
+                                    HloInstruction *b_scale, bool a_mult_scale,
+                                    bool b_mult_scale,
+                                    std::vector<HloInstruction *> a_unary_ops,
+                                    std::vector<HloInstruction *> b_unary_ops) {
+    auto cuda_compute_capability_ =
+        std::get<se::CudaComputeCapability>(gpu_version_);
     // FP8 GEMM kernels are only available on Hopper and newer architectures.
     if (!cuda_compute_capability_.IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
       VLOG(1) << "FP8 Custom Calls require Hopper or newer architecture.";
       return false;
     }
-#if CUDA_VERSION < 11080
-    // FP8 GEMM kernels are only available with CUDA 11.8 and above
-    VLOG(1) << "FP8 Custom Calls require CUDA 11.8 or newer.";
+#if CUDA_VERSION < 12000
+    // FP8 GEMM kernels are only available with CUDA 12.0 and above
+    VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
     return false;
-#endif
+#endif  // CUDA_VERSION < 12000
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
@@ -639,32 +668,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    // cuBLASLt FP8 GEMM kernels require the non-batch dimensions of the
-    // operands to be multiples of 16.
-    absl::Span<const int64_t> a_dims =
-        (a_bitcast ? a_bitcast : a)->shape().dimensions();
-    absl::Span<const int64_t> b_dims =
-        (b_bitcast ? b_bitcast : b)->shape().dimensions();
-    absl::Span<const int64_t> a_batch_dims =
-        gemm_backend_config.dot_dimension_numbers().lhs_batch_dimensions();
-    absl::Span<const int64_t> b_batch_dims =
+    absl::Span<const int64_t> batch_dims =
         gemm_backend_config.dot_dimension_numbers().rhs_batch_dimensions();
-    for (int i = 0; i < a_dims.size(); ++i) {
-      if (a_dims[i] % 16 && !absl::c_linear_search(a_batch_dims, i)) {
-        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-                << " into FP8 Custom Call. The non-batch dimensions of A must "
-                   "be multiples of 16.";
-        return false;
-      }
-    }
-    for (int i = 0; i < b_dims.size(); ++i) {
-      if (b_dims[i] % 16 && !absl::c_linear_search(b_batch_dims, i)) {
-        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-                << " into FP8 Custom Call. The non-batch dimensions of B must "
-                   "be multiples of 16.";
-        return false;
-      }
-    }
 
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
@@ -721,7 +726,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // fusion of the scaling and conversion of D into the Custom Call. Fusing
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
-#if CUDA_VERSION > 12000
+
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
@@ -732,7 +737,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
       }
     }
-#endif  // CUDA_VERSION > 12000
+
     // If a matrix bias was not fused, set C to a matrix of zeros.
     if (!c) {
       Literal c_literal = LiteralUtil::Zero(c_type);
@@ -756,11 +761,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  "dimension.";
       return false;
     }
-    if ((a_bitcast ? a_bitcast : a)->shape().dimensions_size() -
-                a_batch_dims.size() !=
+    if ((a_unary_ops.empty() ? a : a_unary_ops.back())
+                    ->shape()
+                    .dimensions_size() -
+                batch_dims.size() !=
             2 ||
-        (b_bitcast ? b_bitcast : b)->shape().dimensions_size() -
-                b_batch_dims.size() !=
+        (b_unary_ops.empty() ? b : b_unary_ops.back())
+                    ->shape()
+                    .dimensions_size() -
+                batch_dims.size() !=
             2) {
       VLOG(1) << "Failed to rewrite " << instr->ToShortString()
               << "into FP8 Custom Call. A and B must have one non-contracting "
@@ -768,120 +777,123 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    // Shift any bitcasts to the unconverted and unscaled operands.
-    if (a_bitcast) {
-      a = instr->AddInstruction(a_bitcast->CloneWithNewOperands(
-          ShapeUtil::MakeShapeWithDenseLayout(
-              a->shape().element_type(), a_bitcast->shape().dimensions(),
-              a_bitcast->shape().layout().minor_to_major()),
-          {a}));
-    }
-    if (b_bitcast) {
-      b = instr->AddInstruction(b_bitcast->CloneWithNewOperands(
-          ShapeUtil::MakeShapeWithDenseLayout(
-              b->shape().element_type(), b_bitcast->shape().dimensions(),
-              b_bitcast->shape().layout().minor_to_major()),
-          {b}));
-    }
-
-    // Identify the dimensional order which describes a transpose of the
-    // contracting and non-contracting dimensions of the GEMM.
-    auto transp_dim_order =
-        [](HloInstruction *x, int64_t x_contracting_dim,
-           absl::Span<const int64_t> x_batch_dims) -> std::vector<int64_t> {
-      std::vector<int64_t> dims(x->shape().dimensions_size(), -1);
-      // Discard the batch dimensions.
-      for (int64_t batch_dim : x_batch_dims) {
-        dims[batch_dim] = batch_dim;
-      }
-      // Identify the non-contracting dimension.
-      int non_contracting_dim;
-      for (int i = 0; i < x->shape().dimensions_size(); ++i) {
-        if (dims[i] == -1 && x_contracting_dim != i) {
-          non_contracting_dim = i;
+    // Sequentially apply the collected unary and pad ops to the unconverted and
+    // unscaled operands.
+    auto shift_unary_ops =
+        [&instr](HloInstruction *&x,
+                 std::vector<HloInstruction *> &x_unary_ops) -> void {
+      for (HloInstruction *unary_op : x_unary_ops) {
+        std::vector<HloInstruction *> operands = {x};
+        if (unary_op->opcode() == HloOpcode::kPad) {
+          HloInstruction *convert =
+              instr->AddInstruction(HloInstruction::CreateConvert(
+                  ShapeUtil::ChangeElementType(unary_op->operand(1)->shape(),
+                                               x->shape().element_type()),
+                  unary_op->mutable_operand(1)));
+          operands.emplace_back(convert);
         }
+        x = instr->AddInstruction(unary_op->CloneWithNewOperands(
+            ShapeUtil::MakeShapeWithDenseLayout(
+                x->shape().element_type(), unary_op->shape().dimensions(),
+                unary_op->shape().layout().minor_to_major()),
+            operands));
       }
-      dims[non_contracting_dim] = x_contracting_dim;
-      dims[x_contracting_dim] = non_contracting_dim;
-      return dims;
+      return;
     };
+    shift_unary_ops(a, a_unary_ops);
+    shift_unary_ops(b, b_unary_ops);
 
-    auto transp_dims =
-        [](HloInstruction *x,
-           absl::Span<const int64_t> transp_dim_order) -> std::vector<int64_t> {
-      std::vector<int64_t> transp_dims;
-      transp_dims.reserve(x->shape().dimensions_size());
-      for (int64_t dim : transp_dim_order) {
-        transp_dims.emplace_back(x->shape().dimensions(dim));
-      }
-      return transp_dims;
-    };
-    // Plain transpose on a or b. Plain transposes a matrix by permuting its
-    // dimension without changing storage order.
-    auto plain_transpose =
-        [&](HloInstruction **x,
-            const absl::Span<const int64_t> &contracting_dims,
-            const absl::Span<const int64_t> &batch_dims) {
-          std::vector<int64_t> new_dim_order =
-              transp_dim_order(*x, contracting_dims[0], batch_dims);
-          *x = instr->AddInstruction(HloInstruction::CreateTranspose(
-              ShapeUtil::MakeShapeWithDenseLayout(
-                  (*x)->shape().element_type(), transp_dims(*x, new_dim_order),
-                  (*x)->shape().layout().minor_to_major()),
-              *x, new_dim_order));
-        };
-
-    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
-    // be transposed. If the result of the GEMM is not in column major order, A
-    // and B are later exchanged, and B is transposed here instead.
-    // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
     TF_ASSIGN_OR_RETURN(bool a_is_col_major,
                         MatrixIsColumnMajor(*instr, gemm_backend_config, "a"));
     TF_ASSIGN_OR_RETURN(bool b_is_col_major,
                         MatrixIsColumnMajor(*instr, gemm_backend_config, "b"));
 
-    // Apply necessary transposes to accommodate canonicalize matmul(lhs and rhs
-    // contracting dims are 1 and 0). Also assuming transpose folding pass later
-    // will remove duplcated transposes. The last transpose is required by
-    // cublas fp8 matmul restriction.
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
-    int a_batch_dim_offset = a_batch_dims.size();
-    int b_batch_dim_offset = b_batch_dims.size();
+    int batch_dim_offset = batch_dims.size();
 
+    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
+    // be row-major. If A is column-major, swap the contracting and
+    // non-contracting dimension and transpose the matrix to effectively make it
+    // column-major.
+    // TODO(philipphack): Remove once cuBLASLt supports A being column-major
     if (a_is_col_major) {
-      // Swap contracting dimensions and convert a to row major
-      CHECK(a_contracting_dims[0] == a_batch_dim_offset ||
-            a_contracting_dims[0] == a_batch_dim_offset + 1);
-      if (a_contracting_dims[0] == a_batch_dim_offset) {
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
+      CHECK(a_contracting_dims[0] == batch_dim_offset ||
+            a_contracting_dims[0] == batch_dim_offset + 1);
+      if (a_contracting_dims[0] == batch_dim_offset) {
+        dim_nums->set_lhs_contracting_dimensions(0, batch_dim_offset + 1);
       } else {
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset);
+        dim_nums->set_lhs_contracting_dimensions(0, batch_dim_offset);
       }
-      plain_transpose(&a, a_contracting_dims, a_batch_dims);
+      a = TransposeMatrix(a, a_contracting_dims[0], batch_dims);
     }
 
+    // Similarly, cuBLASLt requires the second operand to be column-major, so
+    // make it column-major if it is currently row-major.
     if (!b_is_col_major) {
-      // Swap contracting dimensions and convert b to col major
-      CHECK(b_contracting_dims[0] == b_batch_dim_offset ||
-            b_contracting_dims[0] == b_batch_dim_offset + 1);
-      if (b_contracting_dims[0] == b_batch_dim_offset) {
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset + 1);
+      CHECK(b_contracting_dims[0] == batch_dim_offset ||
+            b_contracting_dims[0] == batch_dim_offset + 1);
+      if (b_contracting_dims[0] == batch_dim_offset) {
+        dim_nums->set_rhs_contracting_dimensions(0, batch_dim_offset + 1);
       } else {
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
+        dim_nums->set_rhs_contracting_dimensions(0, batch_dim_offset);
       }
-      plain_transpose(&b, b_contracting_dims, b_batch_dims);
+      b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
-    std::unique_ptr<HloInstruction> new_custom_call =
-        HloInstruction::CreateCustomCall(
-            instr->shape(), {a, b, c, scales_f32[0], scales_f32[1], one, one},
-            kCublasLtMatmulF8CallTarget);
+
+    // Pad the non-batch dimensions of the operands to multiples of 16 as
+    // required by cuBLASLt.
+    auto pad_operand = [&instr, &batch_dims](HloInstruction *&x) -> void {
+      PaddingConfig padding_config;
+      Shape padded_shape = x->shape();
+      for (int i = 0; i < x->shape().rank(); ++i) {
+        auto dimension = padding_config.add_dimensions();
+        if (!absl::c_linear_search(batch_dims, i)) {
+          int64_t padded_dimension =
+              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
+          dimension->set_edge_padding_low(0);
+          dimension->set_edge_padding_high(padded_dimension -
+                                           x->shape().dimensions(i));
+          dimension->set_interior_padding(0);
+          padded_shape.set_dimensions(i, padded_dimension);
+        }
+      }
+      if (!ShapeUtil::Equal(padded_shape, x->shape())) {
+        HloInstruction *zero =
+            instr->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::Zero(x->shape().element_type())));
+        x = instr->AddInstruction(
+            HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
+      }
+      return;
+    };
+    pad_operand(a);
+    pad_operand(b);
+    pad_operand(c);
+
+    HloInstruction *new_custom_call =
+        instr->AddInstruction(HloInstruction::CreateCustomCall(
+            ShapeUtil::MakeShapeWithDenseLayout(
+                instr->shape().element_type(), c->shape().dimensions(),
+                instr->shape().layout().minor_to_major()),
+            {a, b, c, scales_f32[0], scales_f32[1], one, one},
+            kCublasLtMatmulF8CallTarget));
 
     TF_RETURN_IF_ERROR(
         new_custom_call->set_backend_config(gemm_backend_config));
-    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call.get()));
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call));
+
+    // Slice the result of the GEMM if the operands were padded.
+    HloInstruction *slice = nullptr;
+    if (c->shape().dimensions() != instr->shape().dimensions()) {
+      std::vector<int64_t> start_indices(instr->shape().rank(), 0);
+      std::vector<int64_t> strides(instr->shape().rank(), 1);
+      slice = instr->AddInstruction(HloInstruction::CreateSlice(
+          instr->shape(), new_custom_call, start_indices,
+          instr->shape().dimensions(), strides));
+    }
     TF_RETURN_IF_ERROR(
-        ReplaceWithNewInstruction(instr, std::move(new_custom_call)));
+        ReplaceInstruction(instr, slice ? slice : new_custom_call));
     return true;
   }
 
@@ -918,19 +930,32 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const std::vector<HloInstruction *> gemm_users = existing_gemm->users();
     HloInstruction *reduce_damax = nullptr;
     if (gemm_users.size() == 2) {
+      // In the presence of a ReLU activation, the abs instruction is elided
+      // since abs(ReLU(x)) = ReLU(x).
+      TF_ASSIGN_OR_RETURN(auto config,
+                          existing_gemm->backend_config<GemmBackendConfig>());
       for (int i = 0; i < gemm_users.size(); ++i) {
-        if (gemm_users[i]->opcode() == HloOpcode::kAbs &&
-            gemm_users[i]->users().size() == 1 &&
-            gemm_users[i]->users()[0]->opcode() == HloOpcode::kReduce &&
-            gemm_users[i]->users()[0]->operands().size() == 2 &&
-            gemm_users[i]->users()[0]->operand(1)->opcode() ==
-                HloOpcode::kConstant &&
-            ShapeUtil::IsScalar(
-                gemm_users[i]->users()[0]->operand(1)->shape())) {
-          HloInstruction *reduce = gemm_users[i]->users()[0];
+        HloInstruction *maybe_reduce = nullptr;
+        if (gemm_users[i]->opcode() == HloOpcode::kAbs) {
+          if (gemm_users[i]->users().size() != 1) continue;
+          maybe_reduce = gemm_users[i]->users()[0];
+        } else {
+          // If there is no Abs instruction, relu is required as epilogue to
+          // ensure all values are nonnegative.
+          if (config.epilogue() != GemmBackendConfig::BIAS_RELU &&
+              config.epilogue() != GemmBackendConfig::RELU)
+            continue;
+          maybe_reduce = gemm_users[i];
+        }
+
+        if (maybe_reduce->opcode() == HloOpcode::kReduce &&
+            maybe_reduce->operands().size() == 2 &&
+            maybe_reduce->operand(1)->opcode() == HloOpcode::kConstant &&
+            ShapeUtil::IsScalar(maybe_reduce->operand(1)->shape())) {
+          HloInstruction *reduce = maybe_reduce;
           HloComputation *reduce_comp = reduce->to_apply();
           HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
-          if (reduce->operand(1)->literal().Get<float>({}) <= 0. &&
+          if (reduce->operand(1)->literal().GetAsDouble({}) <= 0. &&
               reduce_comp_root->opcode() == HloOpcode::kMaximum &&
               reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
               reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
@@ -1122,7 +1147,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
                                    HloInstruction *broadcast,
                                    HloInstruction *gemm,
-                                   HloInstruction *slice = nullptr) {
+                                   HloInstruction *slice = nullptr,
+                                   HloInstruction *convert = nullptr) {
     TF_RET_CHECK(ShapeUtil::Compatible(
         broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
 
@@ -1166,17 +1192,57 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // Replace add(gemm, broadcast) with fused new_gemm.
-    config.set_epilogue(GemmBackendConfig::BIAS);
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    operands.push_back(bias);
+    // When (non-trivial) matrix and vector bias co-exist for FP8 matmul, just
+    // fuse matrix bias.
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+        config.beta() != 0.0) {
+      return true;
+    }
 
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+        bias->shape().element_type() == F32) {
+      if (convert == nullptr) {
+        return false;
+      }
+
+      HloInstruction *bias_f16_or_bf16 = convert->mutable_operand(0);
+      auto compatible_bias_type = [](const PrimitiveType bias_type,
+                                     const PrimitiveType output_type) {
+        if (bias_type == BF16) {
+          return output_type == F8E4M3FN || output_type == F8E5M2 ||
+                 output_type == F32 || output_type == BF16;
+        } else if (bias_type == F16) {
+          return output_type == F16 || output_type == F8E4M3FN ||
+                 output_type == F8E5M2;
+        }
+        return false;
+      };
+
+      // cuBLAS LT does not support FP32 biases on matmuls with FP8 inputs,
+      // even if the matmul output is FP32. We do not unconditionally convert
+      // the bias to a supported precision (F16 or BF16) because this lowers
+      // precision. Instead, we only fuse the bias if the bias itself is a
+      // convert from F16 or BF16, fusing the input of the convert instruction
+      // to the matmul.
+      if (compatible_bias_type(bias_f16_or_bf16->shape().element_type(),
+                               gemm->shape().element_type())) {
+        bias = bias_f16_or_bf16;
+      } else {
+        VLOG(1) << "Epilogue fusion of FP32 vector bias into FP8 GEMM is "
+                   "currently not supported. See the cublasLT support matrix.";
+        return false;
+      }
+    }
+
+    // Replace add(gemm, broadcast) with fused new_gemm.
+    operands.push_back(bias);
+    config.set_epilogue(GemmBackendConfig::BIAS);
     std::unique_ptr<HloInstruction> result =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     TF_RETURN_IF_ERROR(result->set_backend_config(config));
     TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
-
     if (slice != nullptr) {
       result = slice->CloneWithNewOperands(
           slice->shape(), {slice->parent()->AddInstruction(std::move(result))});
@@ -1260,7 +1326,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  se::CudaComputeCapability cuda_compute_capability_;
+  GpuVersion gpu_version_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
   // be rewritten into.
@@ -1480,6 +1546,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
+    auto cuda_compute_capability_ =
+        std::get<se::CudaComputeCapability>(gpu_version_);
     if (cuda_compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       // cuBlasLt has an implementation for complex data with compute type
       // 32F_FAST_32TF that uses tensor cores and that is free from the
@@ -1521,20 +1589,47 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Check that the size of the non-contracting dimension is not too large.
     return lhs_non_contracting_dimension_size <= kMaxDimensionSize;
   }
+
+  // Turns an F8 dot into an F16 dot, converting operands to F16 and
+  // converting the output back to F8.
+  StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
+    DCHECK(IsF8Type(instr));
+    DCHECK(IsF8Type(instr->operand(0)));
+    DCHECK(IsF8Type(instr->operand(1)));
+
+    // Convert operands to F16
+    for (int i = 0; i < 2; ++i) {
+      Shape operand_f16_shape = instr->operand(i)->shape();
+      operand_f16_shape.set_element_type(F16);
+      HloInstruction *convert =
+          instr->AddInstruction(HloInstruction::CreateConvert(
+              operand_f16_shape, instr->mutable_operand(i)));
+      TF_RETURN_IF_ERROR(instr->ReplaceOperandWith(i, convert));
+    }
+
+    // Clone instruction and convert output to F8
+    Shape output_f16_shape = instr->shape();
+    output_f16_shape.set_element_type(F16);
+    HloInstruction *f16_dot =
+        instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
+    HloInstruction *convert_to_f8 = instr->AddInstruction(
+        HloInstruction::CreateConvert(instr->shape(), f16_dot));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
+    return f16_dot;
+  }
 };
 
-StatusOr<bool> RunOnComputation(
-    HloComputation *computation,
-    se::CudaComputeCapability cuda_compute_capability) {
-  GemmRewriterVisitor visitor(cuda_compute_capability);
+StatusOr<bool> RunOnComputation(HloComputation *computation,
+                                GpuVersion gpu_version) {
+  GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
 }  // anonymous namespace
 
-GemmRewriter::GemmRewriter(se::CudaComputeCapability cuda_compute_capability)
-    : cuda_compute_capability_(cuda_compute_capability) {}
+GemmRewriter::GemmRewriter(GpuVersion gpu_version)
+    : gpu_version_(gpu_version) {}
 
 StatusOr<bool> GemmRewriter::Run(
     HloModule *module,
@@ -1542,8 +1637,8 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
-        bool result, RunOnComputation(computation, cuda_compute_capability_));
+    TF_ASSIGN_OR_RETURN(bool result,
+                        RunOnComputation(computation, gpu_version_));
     changed |= result;
   }
   return changed;

@@ -336,7 +336,7 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     HloInstruction* producer = defs_before_uses.back();
 
     // Copy on purpose: to use after removing the producer.
-    std::string producer_name = producer->name();
+    absl::string_view producer_name = producer->name();
     defs_before_uses.pop_back();
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.

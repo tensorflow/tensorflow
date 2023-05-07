@@ -1,3 +1,4 @@
+
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -717,9 +718,9 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   if (!(start_tensor && limit_tensor && delta_tensor)) return nullptr;
 
   // Operands should all be scalars
-  assert(start_tensor.getType().getRank() == 0 &&
-         limit_tensor.getType().getRank() == 0 &&
-         delta_tensor.getType().getRank() == 0);
+  assert(start_tensor.getShapedType().getRank() == 0 &&
+         limit_tensor.getShapedType().getRank() == 0 &&
+         delta_tensor.getShapedType().getRank() == 0);
   Type elem_type = getType().cast<ShapedType>().getElementType();
   if (elem_type.isSignlessInteger() || elem_type.isUnsignedInteger()) {
     auto start_attr = start_tensor.getValues<IntegerAttr>()[0];
@@ -2321,6 +2322,18 @@ void TPUExecuteOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// WriteTrainingPredictions
+//===----------------------------------------------------------------------===//
+
+void WriteTrainingPredictionsOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(1);
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::WriteTrainingPredictions::get());
+}
+
+//===----------------------------------------------------------------------===//
 // TPUExecuteAndUpdateVariablesOp
 //===----------------------------------------------------------------------===//
 
@@ -2372,7 +2385,7 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
         .isa<ResourceType>();
   });
 
-  for (auto &entry : llvm::enumerate(resource_handles)) {
+  for (const auto &entry : llvm::enumerate(resource_handles)) {
     Value value = entry.value();
     effects.emplace_back(MemoryEffects::Read::get(), value,
                          ResourceEffects::Variable::get());
@@ -2660,7 +2673,7 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult ToBoolOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
       tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
@@ -2734,11 +2747,13 @@ LogicalResult TransposeOp::verify() {
       const int64_t y_idx = e.index();
       const int64_t y_dim = y_type.getDimSize(y_idx);
       int64_t x_idx = e.value().getSExtValue();
-      if (x_idx < 0) x_idx += x_type.getRank();
-      if (x_idx < 0) {
+      int64_t x_rank = x_type.getRank();
+      if (x_idx < -x_rank || x_idx >= x_rank) {
         return op.emitOpError(
-            llvm::formatv("perm[{0}] must be in [-rank, rank)", x_idx));
+            llvm::formatv("perm[{0}]={1} must be in range [-{2}, {2})", y_idx,
+                          x_idx, x_rank));
       }
+      if (x_idx < 0) x_idx += x_rank;
       const int64_t x_dim = x_type.getDimSize(x_idx);
       if (!ShapedType::isDynamic(y_dim) && !ShapedType::isDynamic(x_dim) &&
           y_dim != x_dim) {
@@ -3467,7 +3482,8 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
@@ -3490,7 +3506,7 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     return set_unranked_results();
   }
 
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     if (lhs_rank != rhs_rank && lhs_rank != 0 && rhs_rank != 0) {
       return emitOptionalError(
           location,
@@ -3605,7 +3621,8 @@ LogicalResult XlaConvV2Op::verify() {
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
@@ -3675,9 +3692,10 @@ LogicalResult XlaReduceWindowOp::verify() {
   auto check = [&](mlir::Value val, std::string attr_name) -> LogicalResult {
     ElementsAttr attr;
     if (matchPattern(val, m_Constant(&attr))) {
-      if (attr.getType().getRank() != 1) {
-        return op.emitOpError() << "expects the rank of " << attr_name
-                                << "to be 1, got " << attr.getType().getRank();
+      if (attr.getShapedType().getRank() != 1) {
+        return op.emitOpError()
+               << "expects the rank of " << attr_name << "to be 1, got "
+               << attr.getShapedType().getRank();
       }
       if (input_ty.hasRank()) {
         int64_t input_rank = input_ty.getRank();
@@ -3705,11 +3723,11 @@ LogicalResult XlaReduceWindowOp::verify() {
 
   ElementsAttr padding;
   if (matchPattern(op.getPadding(), m_Constant(&padding))) {
-    const ShapedType &padding_ty = padding.getType();
+    const ShapedType &padding_ty = cast<ShapedType>(padding.getType());
     if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2) {
       return op.emitOpError()
              << "expects padding to be a matrix with minor dimension 2, got "
-             << padding.getType().getShape();
+             << padding.getShapedType().getShape();
     }
   }
 
@@ -3762,11 +3780,11 @@ LogicalResult XlaSelectAndScatterOp::verify() {
 
   ElementsAttr padding;
   if (matchPattern(op.getPadding(), m_Constant(&padding))) {
-    const ShapedType &padding_ty = padding.getType();
+    const ShapedType &padding_ty = cast<ShapedType>(padding.getType());
     if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2) {
       return op.emitOpError()
              << "expects padding to be a matrix with minor dimension 2, got "
-             << padding.getType().getShape();
+             << padding.getShapedType().getShape();
     }
   }
 
@@ -3922,8 +3940,8 @@ LogicalResult XlaVariadicSortOp::verify() {
 
   ElementsAttr dimension;
   if (matchPattern(op.getDimension(), m_Constant(&dimension))) {
-    if (dimension.getType().getRank() != 0 ||
-        dimension.getType().getNumElements() != 1)
+    if (dimension.getShapedType().getRank() != 0 ||
+        dimension.getShapedType().getNumElements() != 1)
       return op.emitOpError() << "dimension must be a scalar";
   }
 
@@ -4106,6 +4124,26 @@ LogicalResult UniformQuantizedDotOp::verify() {
 
 LogicalResult UniformQuantizedConvolutionOp::verify() {
   return VerifyLhsRhsBothUniformQuantizedOp(*this);
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedAddOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedAddOp::verify() {
+  return VerifyLhsRhsBothUniformQuantizedOp(*this);
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedClipByValueOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedClipByValueOp::verify() {
+  UniformQuantizedClipByValueOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
+                                   op.getQuantizationAxis());
 }
 
 }  // namespace TF

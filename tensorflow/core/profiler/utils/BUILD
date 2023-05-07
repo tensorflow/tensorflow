@@ -180,6 +180,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -143,9 +143,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "4d047b1ba16e00740aa32f95cc80b40329524bfa175844f9fc61891acc912982",
-        strip_prefix = "XNNPACK-06b2705f1b3e1ba0f161dd2979e2901ce93014e3",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/06b2705f1b3e1ba0f161dd2979e2901ce93014e3.zip"),
+        sha256 = "c979b62e8b77af60dfd7567f22ade20d5a9d4d0888f8a2d60d155fc0d31b22ab",
+        strip_prefix = "XNNPACK-b9d4073a6913891ce9cbd8965c8d506075d2a45a",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/b9d4073a6913891ce9cbd8965c8d506075d2a45a.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -174,17 +174,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "3c7b842cd67989810955b220fa1116e7e2ed10660a8cfb632118146a64992c30",
-        strip_prefix = "cudnn-frontend-0.7.3",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.7.3.zip"),
-    )
-
-    tf_http_archive(
-        name = "mkl_dnn",
-        build_file = "//third_party/mkl_dnn:mkldnn.BUILD",
-        sha256 = "a0211aeb5e7dad50b97fa5dffc1a2fe2fe732572d4164e1ee8750a2ede43fbec",
-        strip_prefix = "oneDNN-0.21.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v0.21.3.tar.gz"),
+        sha256 = "bfcf778030831f325cfc13ae5995388cc834fbff2995a297ba580d9ec65ca3b6",
+        strip_prefix = "cudnn-frontend-0.8",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.8.zip"),
     )
 
     tf_http_archive(
@@ -193,6 +185,14 @@ def _tf_repositories():
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
         strip_prefix = "oneDNN-2.7.3",
         urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.7.3.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "onednn_v3",
+        build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
+        sha256 = "28e31f2d576e1a7e3a796f5c33c1d733c256078cff1c48b9e2a692d5975e1401",
+        strip_prefix = "oneDNN-3.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -214,7 +214,11 @@ def _tf_repositories():
         sha256 = "e20a060d3c4f803889d96c2f0b865004ba3ef4e228299a44339ea1c1ba827c85",
         strip_prefix = "ComputeLibrary-22.11",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_fixed_format_kernels_striding.patch", "//third_party/compute_library:acl_openmp_fix.patch"],
+        patch_file = [
+            "//third_party/compute_library:compute_library.patch",
+            "//third_party/compute_library:acl_fixed_format_kernels_striding.patch",
+            "//third_party/compute_library:acl_openmp_fix.patch",
+        ],
         urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.11.tar.gz"),
     )
 
@@ -502,10 +506,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "dfb8582a05a893e305783047d791ffef5e167d295cf8d12b9eb9cfa0991ca5a9",
-        strip_prefix = "curl-7.88.0",
+        sha256 = "cdb38b72e36bc5d33d5b8810f8018ece1baa29a8f215b4495e495ded82bbf3c7",
+        strip_prefix = "curl-7.88.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.88.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.88.1.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule

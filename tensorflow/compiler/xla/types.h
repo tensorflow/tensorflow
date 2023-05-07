@@ -23,6 +23,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 
 namespace xla {
@@ -54,10 +55,13 @@ struct i4 {
   explicit operator complex64() const { return complex64(v); }
   explicit operator complex128() const { return complex128(v); }
 
-  i4 operator+(const i4& other) const { return i4((v + other.v) & 0x0F); }
-  i4 operator-(const i4& other) const { return i4((v - other.v) & 0x0F); }
-  i4 operator*(const i4& other) const { return i4((v * other.v) & 0x0F); }
-  i4 operator/(const i4& other) const { return i4((v / other.v) & 0x0F); }
+  i4 operator+(const i4& other) const { return i4((v + other.v)); }
+  i4 operator-(const i4& other) const { return i4((v - other.v)); }
+  i4 operator*(const i4& other) const { return i4((v * other.v)); }
+  i4 operator/(const i4& other) const { return i4((v / other.v)); }
+
+  i4 operator>>(const int amount) const { return i4((v >> amount)); }
+  i4 operator<<(const int amount) const { return i4((v << amount)); }
 
   bool operator==(const i4& other) const { return v == other.v; }
   bool operator!=(const i4& other) const { return v != other.v; }
@@ -88,6 +92,11 @@ struct i4 {
     is >> value;
     num = i4(static_cast<UnderlyingTy>(value));
     return is;
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const i4& i) {
+    absl::Format(&sink, "%d", i.v);
   }
 
   std::string to_string() const { return std::to_string(v); }

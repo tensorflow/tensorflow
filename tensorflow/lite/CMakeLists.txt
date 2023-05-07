@@ -218,6 +218,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 endif()
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   find_library(ANDROID_LOG_LIB log)
+  list(APPEND TFLITE_TARGET_DEPENDENCIES
+    log
+  )
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
@@ -237,13 +240,19 @@ if(_TFLITE_ENABLE_MMAP)
 else()
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_android\\.cc$")
+
+# Handle TFLite logging source.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_.*\\.cc$")
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_android.cc)
+elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_ios.cc)
+else()
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_default.cc)
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_ios\\.cc$")
-endif()
+
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
+populate_tflite_source_vars("core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
 populate_tflite_source_vars("core/async/c" TFLITE_CORE_ASYNC_C_SRCS)
@@ -347,6 +356,14 @@ if(TFLITE_ENABLE_GPU)
     enable_language(OBJCXX)
     list(APPEND TFLITE_DELEGATES_METAL_SRCS
       ${TFLITE_SOURCE_DIR}/delegates/gpu/metal_delegate.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer_convert.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/common.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/compute_task.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_arguments.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_device.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_spatial_tensor.cc
     )
     add_library(metal_delegate STATIC
       ${TFLITE_DELEGATES_METAL_SRCS}
@@ -354,8 +371,28 @@ if(TFLITE_ENABLE_GPU)
     target_include_directories(metal_delegate PUBLIC
       ${CMAKE_BINARY_DIR}/abseil-cpp
       ${CMAKE_BINARY_DIR}/flatbuffers/include
+      PRIVATE ${TENSORFLOW_SOURCE_DIR}
     )
-
+    #
+    # generate flatbuffers header for inference_context
+    #
+    if(FLATBUFFERS_FLATC_EXECUTABLE)
+      set(FLATC ${FLATBUFFERS_FLATC_EXECUTABLE})
+    else()
+      set(FLATC flatc)
+    endif()
+    add_custom_command(
+        OUTPUT ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+        COMMAND ${FLATC} --scoped-enums
+        -I ${TENSORFLOW_SOURCE_DIR}
+        -o ${TFLITE_SOURCE_DIR}/delegates/gpu/metal
+        -c ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.fbs
+    )
+    add_custom_target(
+        inference_context_cc_fbs
+        DEPENDS ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+    )
+    add_dependencies(metal_delegate inference_context_cc_fbs)
     #
     # supplementary libraries for libmetal_delegate
     #
@@ -363,11 +400,9 @@ if(TFLITE_ENABLE_GPU)
         buffer
         compute_task
         inference_context
-        linear_storage
         metal_arguments
         metal_device
         metal_spatial_tensor
-        texture2d
     )
    SET(METAL_DELEGATE_PATH ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/)
 
@@ -511,6 +546,7 @@ endif()
 
 # TFLite library
 set(_ALL_TFLITE_SRCS
+  ${TFLITE_CORE_ACCELERATION_SRCS}
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_C_SRCS}
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}
@@ -554,6 +590,7 @@ set(_ALL_TFLITE_HDRS ${_ALL_TFLITE_SRCS})
 list(FILTER _ALL_TFLITE_HDRS INCLUDE REGEX ".*\\.h$")
 target_include_directories(tensorflow-lite
   PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  ${CMAKE_BINARY_DIR}/gemmlowp
 )
 target_link_libraries(tensorflow-lite
   PUBLIC
@@ -568,7 +605,6 @@ target_link_libraries(tensorflow-lite
     farmhash
     fft2d_fftsg2d
     flatbuffers::flatbuffers
-    gemmlowp
     ruy::ruy
     pthreadpool
     ${CMAKE_DL_LIBS}

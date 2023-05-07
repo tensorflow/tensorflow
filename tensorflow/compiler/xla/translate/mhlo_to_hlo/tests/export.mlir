@@ -606,6 +606,9 @@ func.func @main() {
   // CHECK: f8e4m3fn[4] constant({1, 2, 3, 4})
   %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
 
+  // CHECK: f8e4m3b11fnuz[4] constant({1, 2, 3, 4})
+  %cst_13 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3B11FNUZ>
+
   func.return
 }
 
@@ -856,6 +859,50 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  schedule=SCHEDULE_EARLIEST
 // CHECK-SAME:  backend_config="bar"
 
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tuple<tensor<2x3xf32>> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> tuple<tensor<2x3xf32>>
+  func.return %0 : tuple<tensor<2x3xf32>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  (f32[2,3]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tuple<tensor<2x3xf32>, tensor<4x5xf16>> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> tuple<tensor<2x3xf32>, tensor<4x5xf16>>
+  func.return %0 : tuple<tensor<2x3xf32>, tensor<4x5xf16>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  (f32[2,3], f16[4,5]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<4x5xf16>) {
+  %0:2 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<4x5xf16>)
+  func.return %0#0, %0#1 : tensor<2x3xf32>, tensor<4x5xf16>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  [[OUTS:%.*]] = (f32[2,3], f16[4,5]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-DAG:  [[OUT0:%.*]] = f32[2,3] get-tuple-element((f32[2,3], f16[4,5]) [[OUTS]]), index=0
+// CHECK-DAG:  [[OUT1:%.*]] = f16[4,5] get-tuple-element((f32[2,3], f16[4,5]) [[OUTS]]), index=1
+// CHECK:  ROOT
+// CHECK-SAME: (f32[2,3], f16[4,5]) tuple(f32[2,3] [[OUT0]], f16[4,5] [[OUT1]])
 
 // -----
 

@@ -14,23 +14,43 @@ py_library(
 )
 
 py_library(
+    name = "autograph_util",
+    srcs = ["autograph_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/impl:api",
+        "//tensorflow/python/util:tf_decorator",
+    ],
+)
+
+py_library(
+    name = "transform",
+    srcs = ["transform.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/python:__subpackages__"],
+    deps = [],
+)
+
+py_library(
     name = "atomic_function",
     srcs = ["atomic_function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:functional_ops",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:c_api_util",
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:function_utils",
     ],
 )
 
@@ -38,7 +58,7 @@ py_library(
     name = "monomorphic_function",
     srcs = ["monomorphic_function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":atomic_function",
         ":attributes",
@@ -55,22 +75,24 @@ py_library(
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:forwardprop_util",
         "//tensorflow/python/eager:graph_only_ops",
-        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/types",
-        "//tensorflow/python/util",
+        "//tensorflow/python/types:core",
+        "//tensorflow/python/util:_pywrap_utils",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:object_identity",
     ],
 )
 
@@ -78,13 +100,32 @@ py_library(
     name = "tracing_compiler",
     srcs = ["tracing_compiler.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":attributes",
         ":function_context",
         ":monomorphic_function",
+        ":tf_method_target",
+        ":transform",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/polymorphism:function_cache",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/util:tf_decorator",
+    ],
+)
+
+py_library(
+    name = "tf_method_target",
+    srcs = ["tf_method_target.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/python/autograph/impl:__pkg__",
+        "//tensorflow/python/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -95,23 +136,31 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attributes",
+        ":autograph_util",
         ":compiler_ir",
         ":eager_function_run",
         ":function_spec",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:object_identity",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:traceback_utils",
     ],
 )
 
@@ -130,6 +179,7 @@ cuda_py_test(
         ":polymorphic_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:data_flow_ops",
@@ -159,6 +209,9 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -203,12 +256,14 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -243,25 +298,15 @@ cuda_py_test(
     shard_count = 5,
     deps = [
         ":polymorphic_function",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_library(
-    name = "quarantine",
-    srcs = ["quarantine.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
-    deps = [
-        ":atomic_function",
-        ":eager_function_run",
-        ":tracing_compiler",
     ],
 )
 
@@ -272,7 +317,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:_pywrap_utils",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -284,7 +330,6 @@ tf_py_test(
     deps = [
         ":monomorphic_function",
         ":polymorphic_function",
-        ":quarantine",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -311,6 +356,9 @@ tf_py_test(
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -326,6 +374,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -341,6 +390,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -407,7 +457,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
@@ -423,6 +473,7 @@ tf_py_test(
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )
 
@@ -438,7 +489,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -471,6 +522,6 @@ tf_xla_py_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
     ],
 )

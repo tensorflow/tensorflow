@@ -14,12 +14,14 @@
 # ==============================================================================
 """Tests for DTensor input pipeline utilities."""
 
+import contextlib
 import threading
 
 from absl.testing import parameterized
 
 import numpy as np
 
+from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import input_util
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.dtensor.python import mesh_util
@@ -133,13 +135,10 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
 
     iterator = iter(dataset.batch(batch_size, drop_remainder=True))
     output, iters = train_fn(iterator, num_batches)
-    # Try one more iteration which will raise an exception since the iterator is
-    # exhausted.
-    with self.assertRaises(exception):
-      train_fn(iterator, 1)
 
     d_iterator = iter(d_dataset)
     d_output, d_iters = train_fn(d_iterator, num_batches)
+    mesh_util.barrier(self.mesh)
 
     # Try one more iteration which will raise an exception since the iterator is
     # exhausted.
@@ -149,6 +148,41 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
       # calls after invoking the tf.function to ensure any pending error is
       # raised.
       mesh_util.barrier(self.mesh)
+
+    self.assertEqual(iters, d_iters)
+    self.assertDTensorEqual(output, images_layout, d_output)
+
+  @parameterized.named_parameters(('Eager', False), ('Graph', True))
+  def testForInIteration(self, is_graph):
+    batch_size = 8
+    num_batches = 4
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(
+        self._images([batch_size * num_batches, 8, 8, 3]))
+    images_layout = Layout.batch_sharded(
+        self.mesh, batch_dim=MESH_DIM_BATCH, rank=4)
+
+    d_dataset = input_util.DTensorDataset(
+        dataset=dataset,
+        global_batch_size=batch_size,
+        mesh=self.mesh,
+        layouts=images_layout,
+        batch_dim=MESH_DIM_BATCH)
+
+    def train(iterator):
+      iters = 1
+      output = next(iterator)
+      for img in iterator:
+        output += img
+        iters += 1
+      return output, iters
+
+    train_fn = polymorphic_function.function(train) if is_graph else train
+
+    iterator = iter(dataset.batch(batch_size, drop_remainder=True))
+    output, iters = train_fn(iterator)
+
+    d_iterator = iter(d_dataset)
+    d_output, d_iters = train_fn(d_iterator)
 
     self.assertEqual(iters, d_iters)
     self.assertDTensorEqual(output, images_layout, d_output)
@@ -167,12 +201,16 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
         layouts=images_layout,
         batch_dim=MESH_DIM_BATCH)
 
+    self.assertEqual(d_dataset.element_spec.shape, [batch_size, 8, 8, 3])
+
     def train(iterator):
       return next(iterator)
 
     train_fn = polymorphic_function.function(train) if is_graph else train
 
     d_iterator = iter(d_dataset)
+    self.assertEqual(d_iterator.element_spec.shape, [batch_size, 8, 8, 3])
+
     d_images = train_fn(d_iterator)
 
     expected = next(iter(dataset.batch(batch_size, drop_remainder=True)))
@@ -443,35 +481,45 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
           ),
       ),
       is_graph=[False, True],
+      through_dtensor=[False, True],
   )
-  def testIterWithLayouts(self, images_sharding, labels_sharding, is_graph):
-    batch_size = 32
-    dataset = dataset_ops.DatasetV2.from_tensors(
-        (self.images, self.labels)
-    ).repeat()
-    batched_dataset = dataset.batch(batch_size, drop_remainder=True)
+  def testIterWithLayouts(
+      self, images_sharding, labels_sharding, is_graph, through_dtensor
+  ):
+    if through_dtensor:
+      scope = api.default_mesh(self.mesh)
+    else:
+      scope = contextlib.nullcontext()
 
-    images_layout = Layout(images_sharding, self.mesh)
-    labels_layout = Layout(labels_sharding, self.mesh)
-    layouts = (images_layout, labels_layout)
-    batch_dim = None
-    if MESH_DIM_BATCH in images_sharding or MESH_DIM_BATCH in labels_sharding:
-      batch_dim = MESH_DIM_BATCH
+    with scope:
+      batch_size = 32
+      dataset = dataset_ops.DatasetV2.from_tensors(
+          (self.images, self.labels)
+      ).repeat()
+      batched_dataset = dataset.batch(batch_size, drop_remainder=True)
 
-    d_dataset = input_util.DTensorDataset(
-        dataset=dataset,
-        global_batch_size=batch_size,
-        mesh=self.mesh,
-        layouts=layouts,
-        batch_dim=batch_dim)
+      images_layout = Layout(images_sharding, self.mesh)
+      labels_layout = Layout(labels_sharding, self.mesh)
+      layouts = (images_layout, labels_layout)
+      batch_dim = None
+      if MESH_DIM_BATCH in images_sharding or MESH_DIM_BATCH in labels_sharding:
+        batch_dim = MESH_DIM_BATCH
 
-    def train(iterator):
-      return next(iterator)
+      d_dataset = input_util.DTensorDataset(
+          dataset=dataset,
+          global_batch_size=batch_size,
+          mesh=self.mesh,
+          layouts=layouts,
+          batch_dim=batch_dim,
+      )
 
-    train_fn = polymorphic_function.function(train) if is_graph else train
+      def train(iterator):
+        return next(iterator)
 
-    d_iterator = iter(d_dataset)
-    d_images, d_labels = train_fn(d_iterator)
+      train_fn = polymorphic_function.function(train) if is_graph else train
+
+      d_iterator = iter(d_dataset)
+      d_images, d_labels = train_fn(d_iterator)
 
     iterator = iter(batched_dataset)
     images, labels = train_fn(iterator)

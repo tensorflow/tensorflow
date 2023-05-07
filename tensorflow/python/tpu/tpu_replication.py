@@ -19,7 +19,7 @@ from typing import Any, Callable, List, Optional, Text, Tuple, Union
 from absl import logging
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
@@ -67,9 +67,9 @@ def is_tpu_strategy(strategy: Any) -> bool:
 
 def _enclosing_tpu_device_assignment(
 ) -> Optional[device_assignment_lib.DeviceAssignment]:
-  if not distribution_strategy_context.has_strategy():
+  if not distribute_lib.has_strategy():
     return None
-  strategy = distribution_strategy_context.get_strategy()
+  strategy = distribute_lib.get_strategy()
   if not is_tpu_strategy(strategy):
     return None
   return strategy.extended._device_assignment  # pylint: disable=protected-access

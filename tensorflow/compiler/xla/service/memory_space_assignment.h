@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment.pb.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 
 namespace xla {
@@ -152,6 +153,46 @@ class MemorySpaceAssignmentCostAnalysis {
   float GetMemoryBoundedness(
       const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
       Cache* cache = nullptr) const;
+
+  // If enabled in Options::pipeline_overhead_window_size_mib, returns the
+  // overhead of accessing the default memory, in seconds. The source of the
+  // overhead is the software pipelining ovehead. The lowering of the operations
+  // typically use tiling to copy one window at a time from default memory, and
+  // perform compute:
+  //
+  // Pipeline overhead:                          <->
+  //                        +----+----+----+----+
+  // Copy from default mem: |    |    |    |    |
+  //                        +----+----+----+----+
+  //                            \    \    \    \
+  //                             \    \    \    \
+  //                              V    V    V    V
+  //                             +--+ +--+ +--+ +--+
+  // Compute:                    |  | |  | |  | |  |
+  //                             +--+ +--+ +--+ +--+
+  float GetDefaultMemoryAccessOverhead(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
+
+  // Returns the amount of time the default memory bandwidth is idle, while
+  // executing this instruction, in seconds.  This value can be multiplied with
+  // the default memory bandwidth to get the amount of bytes that are available
+  // to be copied to/from default memory during the execution of this
+  // instruction.
+  float GetDefaultMemoryBandwidthIdleTime(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
+
+  // Returns the bytes accessed from alternate memory.
+  float GetBytesAccessedFromAlternateMemory(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
 
   // Returns the elapsed time in seconds due to compute only.
   float GetInstructionElapsedDueToCompute(
@@ -720,6 +761,8 @@ class MemorySpaceAssignment {
     std::optional<int64_t> cross_program_prefetch_index_;
   };
 
+  // TODO(b/275905276): create a SlicedCopyAllocation
+
   // An allocation in the default memory space that mirrors another Allocation
   // object. This is useful to model an eviction that happens before a while op
   // so that we don't need to redundantly evict the buffer after the while op as
@@ -1024,43 +1067,86 @@ class MemorySpaceAssignment {
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
 };
 
-// Config to override preferred prefetch / copy start location for a target
-// instruction, to immediately before/after a reference instruction.
-class OverridePreferredPrefetchTime {
-  // Place copy start of element indexed into operand_index_ of the (possibly
-  // tuple) operand at operand_number_ of instruction with name
-  // instruction_name_ and place it before or after (depending on placement_)
-  // the reference instruction with name reference_instruction_name_.
+// Filters prefetches by matching against multiple filters and overrides the
+// preferred prefetch time for matching prefetches by the provided override
+// strategy.
+class FilterUpdatePreferredPrefetch {
  public:
-  enum class Placement { kBefore, kAfter };
-  std::string instruction_name_;
-  int64_t operand_number_;
-  ShapeIndex operand_index_;
-  Placement placement_;
-  std::string reference_instruction_name_;
+  // Supported filters for prefetch filtering by operand size, instruction name,
+  // operand number and operand index matching.
+  enum class FilterType {
+    OP_SIZE_LTE,  // sting value: op_size_lte, filter value type: integer
+    OP_SIZE_GTE,  // sting value: op_size_gte, filter value type: integer
+    INSTRUCTION_NAME_EXACT,  // sting value: instruction_name_exact,
+                             // filter value type: string
+    OP_NUMBER_EXACT,         // sting value: op_number_exact,
+                             // filter value type: integer
+    OP_INDEX_EXACT  // sting value: op_index_exact, filter value type: string
+                    // (empty string for {}, 1 for {1} and 1#2 for {1,2})
+  };
+  // Strategies to compute new perferred prefetch time. Prefetch eagerness
+  // sets prefetch time to a time within the live-range depending on a value,
+  // e.g. 0.5 sets it exactly in the middle of the live-range. Put after
+  // instruction or put before instruction finds an instruction in the schedule
+  // and puts the preferred prefetch time before or after the found instruction.
+  enum class OverrideType {
+    PREFETCH_EAGERNESS,     // sting value: prefetch_eagerness,
+                            // override value type : float
+    PUT_AFTER_INSTRUCTION,  // sting value: put_after_instruction,
+                            // override value type: string
+    PUT_BEFORE_INSTRUCTION  // sting value: put_before_instruction,
+                            // override value type: string
+  };
+  std::vector<std::pair<FilterType, std::string>> filter_list_;
+  OverrideType override_type_;
+  std::string override_value_;
 
-  OverridePreferredPrefetchTime(std::string inst_name, int64_t op_num,
-                                ShapeIndex op_idx, Placement p,
-                                std::string ref_inst_name)
-      : instruction_name_(inst_name),
-        operand_number_(op_num),
-        operand_index_(op_idx),
-        placement_(p),
-        reference_instruction_name_(ref_inst_name) {}
+  std::string ToString() const { return config_string_; }
 
-  // For debugging use only.
-  std::string ToString() const;
+  static StatusOr<std::vector<FilterUpdatePreferredPrefetch>>
+  ParseFilterUpdatePreferredPrefetches(std::string config);
 
-  static StatusOr<
-      std::vector<memory_space_assignment::OverridePreferredPrefetchTime>>
-  ParseOverridePreferredPrefetchTimesConfig(
-      std::string override_preferred_prefetch_times_config);
+  static StatusOr<bool> IsOpSizeGte(int64_t operand_size, std::string config);
+
+  static StatusOr<bool> IsOpSizeLte(int64_t operand_size, std::string config);
+
+  static StatusOr<bool> IsInstructionNameExact(
+      absl::string_view instruction_name, std::string config);
+
+  static StatusOr<bool> IsOpNumberExact(int64_t operand_number,
+                                        std::string config);
+
+  static StatusOr<bool> IsOpIndexExact(const ShapeIndex& operand_index,
+                                       std::string config);
+
+  StatusOr<std::optional<int64_t>> GetPrefetchByEagerness(
+      int64_t earliest_prefetch_time, int64_t latest_prefetch_time) const;
+
+  StatusOr<std::optional<int64_t>> GetPrefetchTimeAfterInstruction(
+      const absl::flat_hash_map<const xla::HloInstruction*,
+                                xla::HloLiveRange::LogicalTime>& schedule)
+      const;
+
+  StatusOr<std::optional<int64_t>> GetPrefetchTimeBeforeInstruction(
+      const absl::flat_hash_map<const xla::HloInstruction*,
+                                xla::HloLiveRange::LogicalTime>& schedule)
+      const;
 
  private:
+  std::string config_string_;
+  StatusOr<xla::HloLiveRange::LogicalTime> GetScheduleTimeFromInstructionName(
+      const absl::flat_hash_map<const xla::HloInstruction*,
+                                xla::HloLiveRange::LogicalTime>& schedule)
+      const;
+
+  static StatusOr<FilterType> ParseFilterType(std::string config);
+
+  static StatusOr<OverrideType> ParseOverrideType(std::string config);
+
   static StatusOr<ShapeIndex> ParseOperandIndex(std::string config);
 
-  static StatusOr<OverridePreferredPrefetchTime>
-  ParseOverridePreferredPrefetchTimeConfig(std::string config);
+  static StatusOr<FilterUpdatePreferredPrefetch>
+  ParseFilterUpdatePreferredPrefetch(std::string config);
 };
 
 // The different options to be passed to the Run() API.
@@ -1196,9 +1282,16 @@ struct Options {
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
 
-  // Config to override preferred prefetch times for operands of specific
-  // instructions to before or after given reference instructions.
-  std::vector<OverridePreferredPrefetchTime> override_preferred_prefetch_times;
+  // The window size used to calculate the pipeline overhead when HLO accesses
+  // the default memory, in MiB.
+  float pipeline_overhead_window_size_mib = 0;
+
+  // Config to filter prefetches and update preferred prefetch times for the
+  // filtered prefetches according to an update config.
+  std::vector<FilterUpdatePreferredPrefetch> filter_update_preferred_prefetches;
+
+  // Options for slicing prefetches into smaller asynchronously copied pieces.
+  SlicedPrefetchOptions sliced_prefetch_options;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1447,6 +1540,9 @@ class AlternateMemoryBestFitHeap
     absl::Span<const int64_t> all_use_times;
   };
 
+  // TODO(b/275905276): create a SlicedAllocationRequest that contains the
+  // original AllocationRequest, plus slice times and sizes
+
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -1594,6 +1690,10 @@ class AlternateMemoryBestFitHeap
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
+  // TODO(b/275905276): change FindBestChunkCandidate() signature to take a
+  // SlicedAllocationRequest (which can indicate 0 slices), and return a
+  // vector of chunks
+
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
   // it is given.
@@ -1671,6 +1771,8 @@ class AlternateMemoryBestFitHeap
       MemorySpaceAssignment::AllocationSequence* allocations,
       AliasedOffset* aliased_offset, float resource,
       std::optional<int> cross_program_prefetch_index = std::nullopt);
+
+  // TODO(b/275905276): create AddAsyncSlicedCopy
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back

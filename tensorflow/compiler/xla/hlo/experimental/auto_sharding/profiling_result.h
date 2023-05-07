@@ -137,8 +137,7 @@ class ProfilingResult {
   // Make a string key of a replica_groups.
   std::string Group2Str(
       const std::vector<std::vector<int64_t>>& replica_groups) const {
-    std::string str;
-    absl::StrAppend(&str, "(");
+    std::string str("(");
     for (const auto& group : replica_groups) {
       absl::StrAppend(&str, "(", absl::StrJoin(group, ","), ")");
     }

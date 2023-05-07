@@ -26,10 +26,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module as module_lib
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as load_lib
 from tensorflow.python.saved_model import save as save_lib
@@ -233,7 +233,7 @@ class TransformTest(test.TestCase, parameterized.TestCase):
         i = constant_op.constant(1.0)
         c = lambda i: math_ops.less(i, 3.0)
         b = lambda i: (math_ops.add(i, z, name="x_plus_y"))
-        i = control_flow_ops.while_loop_v2(c, b, [i])
+        i = while_loop.while_loop_v2(c, b, [i])
         return i
 
       y = add()

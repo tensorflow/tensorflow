@@ -1957,6 +1957,15 @@ func.func @iota_f32() -> tensor<7x10xf32> {
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
 
+// CHECK-PRIMITIVE-LABEL: func @iota_f32
+// CHECK-PRIMITIVE: %[[EMPTY:.*]] = tensor.empty()
+// CHECK-PRIMITIVE: linalg.map outs(%[[EMPTY]] : tensor<7x10xf32>
+// CHECK-PRIMITIVE-SAME: {someattr}
+// CHECK-PRIMITIVE:        %[[INDEX:.*]] = linalg.index 1
+// CHECK-PRIMITIVE-NEXT:   %[[INT_CAST:.*]] = arith.index_cast %[[INDEX]] : index to i64
+// CHECK-PRIMITIVE-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i64 to f32
+// CHECK-PRIMITIVE-NEXT:   linalg.yield %[[FLOAT_CAST]]
+
 // -----
 
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
@@ -6119,3 +6128,23 @@ func.func @clamp_complex(%min: tensor<8xcomplex<f32>>,
   %result = mhlo.clamp %min, %operand, %max : tensor<8xcomplex<f32>>
   func.return %result : tensor<8xcomplex<f32>>
 }
+
+// -----
+
+// CHECK-LABEL: func @reshape_sparse_encoding
+// CHECK-PRIMITIVE-LABEL: func @reshape_sparse_encoding
+
+#ST_3D = #sparse_tensor.encoding<{
+  dimLevelType = ["compressed", "compressed", "compressed"]
+}>
+
+#ST_4D = #sparse_tensor.encoding<{
+  dimLevelType = ["compressed", "compressed", "compressed", "compressed"]
+}>
+
+func.func @reshape_sparse_encoding(%arg0: tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D>
+  func.return %0 : tensor<1x784x1x1xf32, #ST_4D>
+}
+// CHECK: tensor.collapse_shape %{{.*}} {{\[}}[0, 1, 2]] : tensor<1x49x16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>> into tensor<784xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>
+// CHECK-NEXT: tensor.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]] : tensor<784xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>> into tensor<1x784x1x1xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed", "compressed" ] }>>

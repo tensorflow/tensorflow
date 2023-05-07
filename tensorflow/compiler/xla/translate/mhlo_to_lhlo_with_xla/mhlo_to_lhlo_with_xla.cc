@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <climits>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -104,6 +103,12 @@ tsl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
                       HloModule::CreateModuleConfigFromProto(
                           module_proto, xla::GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
+}
+
+bool IsSyncCollective(const HloInstruction* instr) {
+  auto backend_config =
+      instr->backend_config<xla::gpu::CollectiveBackendConfig>().value();
+  return backend_config.is_sync();
 }
 
 }  // namespace
@@ -352,16 +357,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       // LMHLO is already ordered. This assumption may be broken after
       // introducing async regions and partial orders.
       return nullptr;
-    case HloOpcode::kAllToAll:
-      return EmitAllToAllOp(instr);
-    case HloOpcode::kAllGather:
-      return EmitAllGatherOp(instr);
     case HloOpcode::kAllGatherStart:
       return EmitAllGatherStartOp(instr);
     case HloOpcode::kAllGatherDone:
       return EmitAllGatherDoneOp(instr);
-    case HloOpcode::kAllReduce:
-      return EmitAllReduceOp(instr);
     case HloOpcode::kAllReduceStart:
       return EmitAllReduceStartOp(instr);
     case HloOpcode::kAllReduceDone:
@@ -370,12 +369,8 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitAsyncStartOp(instr);
     case HloOpcode::kAsyncDone:
       return EmitAsyncDoneOp(instr);
-    case HloOpcode::kReduceScatter:
-      return EmitReduceScatterOp(instr);
     case HloOpcode::kBitcast:
       return EmitBitcast(instr);
-    case HloOpcode::kCollectivePermute:
-      return EmitCollectivePermuteOp(instr);
     case HloOpcode::kCollectivePermuteStart:
       return EmitCollectivePermuteStartOp(instr);
     case HloOpcode::kCollectivePermuteDone:
@@ -998,9 +993,18 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
       auto const config,
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
-  TF_RET_CHECK(custom_call->operand_count() == 7);
+  int ops_num = custom_call->operand_count();
+  TF_RET_CHECK(ops_num == 7 || ops_num == 8);
 
-  llvm::SmallVector<Value, 9> operands;
+  TF_ASSIGN_OR_RETURN(
+      bool has_vector_bias,
+      xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+
+  bool has_damax = custom_call->shape().IsTuple();
+  xla::ShapeIndex output_index =
+      has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  llvm::SmallVector<Value, 10> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
@@ -1008,13 +1012,21 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(4), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
-
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  if (has_vector_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(7), &operands));
+  }
+  if (has_damax) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, {1}));
+  }
   auto op = CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulF8Op>(custom_call,
                                                                 operands);
 
   SetMatmulAttributes(op, config, builder_);
-
+  int32_t operand_sizes[] = {
+      1, 1, 1, 1, 1, 1, 1, 1, has_vector_bias ? 1 : 0, has_damax ? 1 : 0};
+  op->setAttr(op.getOperandSegmentSizeAttr(),
+              builder_.getDenseI32ArrayAttr(operand_sizes));
   TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
                       AsLhloEpilogue(config.epilogue()));
   op.setEpilogueAttr(lmhlo_gpu::CublasLtMatmulEpilogueAttr::get(
@@ -1325,20 +1337,6 @@ tsl::StatusOr<OpT> LhloDialectEmitter::EmitDoneOp(
                               token.mapped());
 }
 
-tsl::StatusOr<lmhlo::AllToAllOp> LhloDialectEmitter::EmitAllToAllOp(
-    const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto all_to_all_op,
-                      CreateOpWithoutAttrs<lmhlo::AllToAllOp>(instr));
-  auto* all_to_all = xla::Cast<xla::HloAllToAllInstruction>(instr);
-  TF_RETURN_IF_ERROR(
-      SetupCommonCollectiveOpAttributes(all_to_all_op, instr, builder_));
-  if (all_to_all->split_dimension().has_value()) {
-    all_to_all_op.setSplitDimensionAttr(
-        builder_.getI64IntegerAttr(*all_to_all->split_dimension()));
-  }
-  return all_to_all_op;
-}
-
 tsl::StatusOr<lmhlo_gpu::AllToAllStartOp>
 LhloDialectEmitter::EmitAllToAllStartOp(const xla::HloInstruction* instr) {
   // All the input of async-done (which wraps the all-to-all) are also
@@ -1360,6 +1358,7 @@ LhloDialectEmitter::EmitAllToAllStartOp(const xla::HloInstruction* instr) {
     all_to_all_start_op.setSplitDimensionAttr(
         builder_.getI64IntegerAttr(*all_to_all->split_dimension()));
   }
+  all_to_all_start_op.setIsSync(IsSyncCollective(instr));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_to_all_start_op.getToken()});
@@ -1370,20 +1369,6 @@ LhloDialectEmitter::EmitAllToAllStartOp(const xla::HloInstruction* instr) {
 tsl::StatusOr<lmhlo_gpu::AllToAllDoneOp> LhloDialectEmitter::EmitAllToAllDoneOp(
     const HloInstruction* instr) {
   return EmitDoneOp<lmhlo_gpu::AllToAllDoneOp>(instr);
-}
-
-tsl::StatusOr<lmhlo::AllGatherOp> LhloDialectEmitter::EmitAllGatherOp(
-    const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto all_gather_op,
-                      CreateOpWithoutAttrs<lmhlo::AllGatherOp>(instr));
-  auto* all_gather = xla::Cast<xla::HloAllGatherInstruction>(instr);
-  TF_RETURN_IF_ERROR(
-      SetupCommonCollectiveOpAttributes(all_gather_op, instr, builder_));
-  all_gather_op.setUseGlobalDeviceIdsAttr(
-      builder_.getBoolAttr(all_gather->use_global_device_ids()));
-  all_gather_op.setAllGatherDimensionAttr(
-      builder_.getI64IntegerAttr(all_gather->all_gather_dimension()));
-  return all_gather_op;
 }
 
 tsl::StatusOr<lmhlo_gpu::AllGatherStartOp>
@@ -1408,7 +1393,7 @@ LhloDialectEmitter::EmitAllGatherStartOp(const HloInstruction* instr) {
       builder_.getBoolAttr(all_gather->use_global_device_ids()));
   all_gather_start_op.setAllGatherDimensionAttr(
       builder_.getI64IntegerAttr(all_gather->all_gather_dimension()));
-
+  all_gather_start_op.setIsSync(IsSyncCollective(instr));
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_gather_start_op.getToken()});
   TF_RET_CHECK(was_inserted) << "all-gather-start already lowered";
@@ -1418,21 +1403,6 @@ LhloDialectEmitter::EmitAllGatherStartOp(const HloInstruction* instr) {
 tsl::StatusOr<lmhlo_gpu::AllGatherDoneOp>
 LhloDialectEmitter::EmitAllGatherDoneOp(const HloInstruction* instr) {
   return EmitDoneOp<lmhlo_gpu::AllGatherDoneOp>(instr);
-}
-
-tsl::StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
-    const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto all_reduce_op,
-                      CreateOpWithoutAttrs<lmhlo::AllReduceOp>(instr));
-  auto* all_reduce = xla::Cast<xla::HloAllReduceInstruction>(instr);
-  TF_RETURN_IF_ERROR(
-      SetupCommonCollectiveOpAttributes(all_reduce_op, instr, builder_));
-  all_reduce_op.setUseGlobalDeviceIdsAttr(
-      builder_.getBoolAttr(all_reduce->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], symbol_table_,
-      &all_reduce_op.getComputation(), &builder_));
-  return all_reduce_op;
 }
 
 tsl::StatusOr<lmhlo_gpu::AllReduceStartOp>
@@ -1454,6 +1424,8 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
       SetupCommonCollectiveOpAttributes(all_reduce_start_op, instr, builder_));
   all_reduce_start_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
+  all_reduce_start_op.setIsSync(IsSyncCollective(instr));
+
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], symbol_table_,
       &all_reduce_start_op.getComputation(), &builder_));
@@ -1504,23 +1476,6 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitAsyncDoneOp(
   }
 }
 
-tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
-    const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto reduce_scatter_op,
-                      CreateOpWithoutAttrs<lmhlo::ReduceScatterOp>(instr));
-  auto* ars = xla::Cast<xla::HloReduceScatterInstruction>(instr);
-  TF_RETURN_IF_ERROR(
-      SetupCommonCollectiveOpAttributes(reduce_scatter_op, instr, builder_));
-  reduce_scatter_op.setUseGlobalDeviceIdsAttr(
-      builder_.getBoolAttr(ars->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], symbol_table_,
-      &reduce_scatter_op.getComputation(), &builder_));
-  reduce_scatter_op.setScatterDimensionAttr(
-      builder_.getI64IntegerAttr(ars->scatter_dimension()));
-  return reduce_scatter_op;
-}
-
 tsl::StatusOr<lmhlo_gpu::ReduceScatterStartOp>
 LhloDialectEmitter::EmitReduceScatterStartOp(const xla::HloInstruction* instr) {
   // All the input of async-done (which wraps the reduce-scatter) are also
@@ -1543,6 +1498,7 @@ LhloDialectEmitter::EmitReduceScatterStartOp(const xla::HloInstruction* instr) {
       builder_.getBoolAttr(reduce_scatter->use_global_device_ids()));
   reduce_scatter_start_op.setScatterDimensionAttr(
       builder_.getI64IntegerAttr(reduce_scatter->scatter_dimension()));
+  reduce_scatter_start_op.setIsSync(IsSyncCollective(instr));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *reduce_scatter->to_apply(), symbol_table_,
       &reduce_scatter_start_op.getComputation(), &builder_));
@@ -1556,20 +1512,6 @@ LhloDialectEmitter::EmitReduceScatterStartOp(const xla::HloInstruction* instr) {
 tsl::StatusOr<lmhlo_gpu::ReduceScatterDoneOp>
 LhloDialectEmitter::EmitReduceScatterDoneOp(const xla::HloInstruction* instr) {
   return EmitDoneOp<lmhlo_gpu::ReduceScatterDoneOp>(instr);
-}
-
-tsl::StatusOr<lmhlo::CollectivePermuteOp>
-LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto permute_op,
-                      CreateOpWithoutAttrs<lmhlo::CollectivePermuteOp>(instr));
-  auto* permute = xla::Cast<xla::HloCollectivePermuteInstruction>(instr);
-  SetupChannelIdAttribute(permute_op, permute, builder_);
-  mlir::NamedAttribute source_target_pairs_attr =
-      xla::HloFunctionImporter::ConvertSourceTargetPairs(
-          permute->source_target_pairs(), &builder_);
-  permute_op->setAttr(source_target_pairs_attr.getName(),
-                      source_target_pairs_attr.getValue());
-  return permute_op;
 }
 
 tsl::StatusOr<lmhlo_gpu::CollectivePermuteStartOp>
@@ -1594,6 +1536,7 @@ LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
           permute->source_target_pairs(), &builder_);
   permute_start_op->setAttr(source_target_pairs_attr.getName(),
                             source_target_pairs_attr.getValue());
+  permute_start_op.setIsSync(IsSyncCollective(instr));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, permute_start_op.getToken()});
@@ -1975,8 +1918,10 @@ tsl::Status LhloDialectEmitter::Initialize() {
   mlir::IntegerAttr unique_id =
       builder_.getI32IntegerAttr(computation_.parent()->unique_id());
   module_->setAttr("hlo.unique_id", unique_id);
-  std::string function_name =
-      computation_.name().empty() ? "__compute" : computation_.name();
+  llvm::StringRef function_name =
+      computation_.name().empty() ? "__compute"
+                                  : llvm::StringRef(computation_.name().data(),
+                                                    computation_.name().size());
 
   // Create the function as () -> (), we'll compute the arguments from the
   // buffer allocation and update the type then.

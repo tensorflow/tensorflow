@@ -58,7 +58,6 @@ cc_library(
     deps = [
         ":dataset_utils",
         ":stats_utils",
-        "@com_google_absl//absl/time",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -66,6 +65,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/time",
     ] + if_not_mobile([
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
@@ -462,6 +462,9 @@ cc_library(
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],

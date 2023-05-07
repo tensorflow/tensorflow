@@ -26,7 +26,7 @@ Status AppendTpuEmbeddingErrorPayload(Status obj) {
     return OkStatus();
   } else {
     const std::string error_message =
-        absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.error_message());
+        absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.message());
     Status status(obj.code(), error_message);
     TPUEmbeddingError error_payload;
     status.SetPayload(kTpuEmbeddingErrorUrl,
@@ -40,7 +40,7 @@ bool HasTpuEmbeddingErrorPayload(const Status& status) {
 }
 
 bool HasTpuEmbeddingErrorMessage(const Status& status) {
-  return absl::StrContains(status.error_message(), kTpuEmbeddingErrorMessage);
+  return absl::StrContains(status.message(), kTpuEmbeddingErrorMessage);
 }
 
 }  // namespace tensorflow::tpu

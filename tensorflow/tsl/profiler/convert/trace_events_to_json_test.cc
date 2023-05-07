@@ -78,7 +78,8 @@ TEST(TraceEventsToJson, JsonConversion) {
   event->set_name("E2.2.1 # \"comment\"");
   event->set_timestamp_ps(105000);
 
-  Json::Value json = ToJsonValue(TraceEventsToJson(container));
+  container.CapEvents(2);
+  Json::Value json = ToJsonValue(TraceContainerToJson(container));
 
   Json::Value expected_json = ToJsonValue(R"(
   {

@@ -156,7 +156,7 @@ StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
 
 // Builds a LocalDeviceState for each GPU present.
 StatusOr<std::map<int, std::unique_ptr<LocalDeviceState>>>
-BuildLocalDeviceStates(LocalClient* xla_client, bool asynchronous) {
+BuildLocalDeviceStates(LocalClient* xla_client) {
   std::map<int, std::unique_ptr<LocalDeviceState>> addressable_devices;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
@@ -223,15 +223,15 @@ GetStreamExecutorGpuDeviceAllocator(
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states) {
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   for (auto& ordinal_and_device : local_device_states) {
     const se::DeviceDescription& description =
         ordinal_and_device.second->executor()->GetDeviceDescription();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
-        description.name(), description.device_vendor(),
-        /*node_id=*/0);
+        description.name(), description.device_vendor(), node_id);
     devices.push_back(std::move(device));
   }
   return devices;
@@ -367,8 +367,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
                       GetGpuXlaClient(platform_name, allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
-  TF_ASSIGN_OR_RETURN(local_device_states,
-                      BuildLocalDeviceStates(xla_client, asynchronous));
+  TF_ASSIGN_OR_RETURN(local_device_states, BuildLocalDeviceStates(xla_client));
   EnablePeerAccess(xla_client->backend().stream_executors());
   TF_ASSIGN_OR_RETURN(
       auto allocator,
@@ -384,7 +383,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
         std::move(local_device_states), std::move(distributed_client), node_id,
         &devices, gpu_run_options.get()));
   } else {
-    devices = BuildLocalDevices(std::move(local_device_states));
+    devices = BuildLocalDevices(std::move(local_device_states), node_id);
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(

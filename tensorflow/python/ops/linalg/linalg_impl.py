@@ -23,6 +23,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
@@ -30,6 +31,7 @@ from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import stateless_random_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -322,22 +324,22 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     is_finite = math_ops.is_finite(math_ops.reduce_max(l1_norm))
     nan = constant_op.constant(np.nan, matrix.dtype)
-    result = control_flow_ops.cond(
+    result = tf_cond.cond(
         is_finite, lambda: linalg_ops.matrix_solve(-u + v, u + v),
         lambda: array_ops.fill(array_ops.shape(matrix), nan))
     max_squarings = math_ops.reduce_max(squarings)
     i = const(0.0)
 
     def c(i, _):
-      return control_flow_ops.cond(is_finite,
-                                   lambda: math_ops.less(i, max_squarings),
-                                   lambda: constant_op.constant(False))
+      return tf_cond.cond(is_finite,
+                          lambda: math_ops.less(i, max_squarings),
+                          lambda: constant_op.constant(False))
 
     def b(i, r):
       return i + 1, array_ops.where_v2(
           math_ops.less(i, squarings), math_ops.matmul(r, r), r)
 
-    _, result = control_flow_ops.while_loop(c, b, [i, result])
+    _, result = while_loop.while_loop(c, b, [i, result])
     if not matrix.shape.is_fully_defined():
       return array_ops.reshape(
           result,
@@ -1344,7 +1346,7 @@ def eigh_tridiagonal(alpha,
           # unrolled while loop.
           unroll_cnt = blocksize
           cond = lambda i, q, count: math_ops.less(i, n)
-          _, _, count = control_flow_ops.while_loop(
+          _, _, count = while_loop.while_loop(
               cond, unrolled_steps, [i, q, count], back_prop=False)
           return count
 
@@ -1453,9 +1455,9 @@ def eigh_tridiagonal(alpha,
           return i + 1, lower, upper
 
         # Start parallel binary searches.
-        _, lower, upper = control_flow_ops.while_loop(continue_binary_search,
-                                                      binary_search_step,
-                                                      [0, lower, upper])
+        _, lower, upper = while_loop.while_loop(continue_binary_search,
+                                                binary_search_step,
+                                                [0, lower, upper])
         return midpoint(lower, upper)
 
     def _compute_eigenvectors(alpha, beta, eigvals):
@@ -1532,7 +1534,7 @@ def eigh_tridiagonal(alpha,
                 eigenvectors, update_indices, vectors_to_update)
             return cluster_idx + 1, eigenvectors
 
-          _, eigenvectors = control_flow_ops.while_loop(
+          _, eigenvectors = while_loop.while_loop(
               lambda i, ev: math_ops.less(i, num_clusters),
               orthogonalize_cluster, [0, eigenvectors])
           return eigenvectors
@@ -1564,9 +1566,9 @@ def eigh_tridiagonal(alpha,
           v = orthogonalize_close_eigenvectors(v)
           return i + 1, v, nrm_v, nrm_v_old
 
-        _, v, nrm_v, _ = control_flow_ops.while_loop(continue_iteration,
-                                                     inverse_iteration_step,
-                                                     [0, v0, nrm_v, zero_nrm])
+        _, v, nrm_v, _ = while_loop.while_loop(continue_iteration,
+                                               inverse_iteration_step,
+                                               [0, v0, nrm_v, zero_nrm])
         return transpose(v)
 
     alpha = ops.convert_to_tensor(alpha, name='alpha')

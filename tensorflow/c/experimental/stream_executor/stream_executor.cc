@@ -204,7 +204,7 @@ struct HostCallbackContext {
 void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   HostCallbackContext* host_ctx = static_cast<HostCallbackContext*>(ctx);
   tsl::Status s = std::move(host_ctx->callback)();
-  Set_TF_Status_from_Status(status, s);
+  tsl::Set_TF_Status_from_Status(status, s);
   delete host_ctx;
 }
 
@@ -237,7 +237,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     tsl::Status status = ValidateSPDeviceMemoryBase(mem);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
     }
     return DeviceMemoryBaseFromC(mem);
   }
@@ -284,7 +284,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     }
     tsl::Status status = ValidateSPAllocatorStats(c_stats);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
       return absl::nullopt;
     }
     ::stream_executor::AllocatorStats stats;

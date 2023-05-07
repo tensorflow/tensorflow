@@ -287,7 +287,7 @@ class ShapeUtil {
   // element type changed to type.
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
-  // Retursn a shape with same dimensions but with all dimensions set to static.
+  // Returns a shape with same dimensions but with all dimensions set to static.
   static Shape MakeStaticShape(const Shape& original);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.
@@ -325,6 +325,12 @@ class ShapeUtil {
 
   // Copy the dynamic dimensions property from one shape to another.
   static void CopyDynamicDimensions(Shape* to, const Shape& from);
+
+  // Returns true if the given dimension is effectively the most major dimension
+  // of the shape taking into account any unit dimensions. Requires that the
+  // shape has a layout.
+  static bool IsEffectivelyMostMajorDimension(const Shape& shape,
+                                              int64_t dimension);
 
   // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }

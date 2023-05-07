@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -53,11 +55,19 @@ using mlir::gpu::LaunchFuncOp;
 
 class OutlineCudaGraphsPass
     : public impl::OutlineCudaGraphsPassBase<OutlineCudaGraphsPass> {
+ public:
+  OutlineCudaGraphsPass() = default;
+  explicit OutlineCudaGraphsPass(int cuda_graph_level)
+      : cuda_graph_level_(cuda_graph_level) {}
+
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<func::FuncDialect, runtime::RuntimeDialect>();
   }
+
+ private:
+  int cuda_graph_level_ = 3;
 };
 
 //===----------------------------------------------------------------------===//
@@ -102,15 +112,12 @@ using CloneOp = OpCapture<kClone, T, Ts...>;
 // Capture gpu operations by moving them into graph capture function.
 struct LaunchFuncOpCapture : public MoveOp<LaunchFuncOp> {};
 
-// TODO(b/270426911): Right now GEMM/Convolution with runtime autotuning can't
-// be captured by a cuda graph. However, longer term the proper fix is to make
-// autotuning "cuda-graph-aware", and run autotuning on a separate stream that
-// is not in capture mode.
+template <typename T>
 struct ConvOpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
-    if (auto conv = llvm::dyn_cast<lmhlo_gpu::ConvForwardFusedOp>(op)) {
-      // GEMM that does runtime autotuning should not be captured, since CUDA
-      // graphs do not support operations that allocate memory.
+    if (auto conv = llvm::dyn_cast<T>(op)) {
+      // Convolution that does runtime autotuning should not be captured, since
+      // CUDA graphs do not support operations that allocate memory.
       lmhlo_gpu::ConvolutionBackendConfigAttr backend_config =
           conv.getBackendConfig();
       if (backend_config.getAlgorithm() != -1) {
@@ -120,6 +127,20 @@ struct ConvOpCapture : public OpCapturePattern {
     return failure();
   }
 };
+
+// TODO(b/270426911): Right now GEMM/Convolution with runtime autotuning can't
+// be captured by a cuda graph. However, longer term the proper fix is to make
+// autotuning "cuda-graph-aware", and run autotuning on a separate stream that
+// is not in capture mode.
+struct ConvForwardOpCapture : public ConvOpCapture<lmhlo_gpu::ConvForwardOp> {};
+struct ConvBackwardInputOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvBackwardInputOp> {};
+struct ConvBackwardFilterOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvBackwardFilterOp> {};
+struct ConvForwardFusedOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvForwardFusedOp> {};
+struct ConvForwardFusedSideInputOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvForwardFusedSideInputOp> {};
 
 struct GemmOpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
@@ -136,9 +157,34 @@ struct GemmOpCapture : public OpCapturePattern {
   }
 };
 
+struct MemcpyOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
+      // We use a heuristic to identify the direction of the memcpy operation,
+      // if the operand was allocated by alloca op or is a global memref, then
+      // it must be a memref on the host.
+      auto IsHostMemRef = [](Value value) {
+        auto* op = value.getDefiningOp();
+        return llvm::isa_and_nonnull<memref::AllocaOp, memref::GetGlobalOp>(op);
+      };
+
+      auto IsDeviceToDevice = [&](mlir::gpu::MemcpyOp op) {
+        return !IsHostMemRef(op.getDst()) && !IsHostMemRef(op.getSrc());
+      };
+
+      // Device-to-host Memcpy cannot be captured by CUDA graphs.
+      if (IsDeviceToDevice(memcpy)) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
+
 // Capture pure operations by cloning them into graph capture function.
 struct ConstantOpCapture : public CloneOp<arith::ConstantOp> {};
 struct ViewOpCapture : public CloneOp<memref::ViewOp> {};
+struct ReinterpretCastOpCapture : public CloneOp<memref::ReinterpretCastOp> {};
 
 //===----------------------------------------------------------------------===//
 
@@ -286,7 +332,10 @@ static LogicalResult Outline(unsigned ordinal,
   unsigned num_move_captures = llvm::count_if(seq, [](auto capture) {
     return capture.second == OpCapturePattern::Capture::kMove;
   });
-  if (num_move_captures < 2) return failure();
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  int32_t graph_capture_threshold =
+      debug_options.xla_gpu_cuda_graph_capture_threshold();
+  if (num_move_captures < graph_capture_threshold) return failure();
 
   SymbolTable& sym_table = custom_calls.sym_table();
   MLIRContext* ctx = sym_table.getOp()->getContext();
@@ -303,6 +352,15 @@ static LogicalResult Outline(unsigned ordinal,
   auto func = b.create<func::FuncOp>(
       "xla.gpu.cuda.graph.capture",
       FunctionType::get(ctx, TypeRange(ValueRange(args)), TypeRange()));
+
+  for (auto op : seq) {
+    mlir::Operation* captured_op = op.first;
+    if (isa<lmhlo_gpu::GEMMOp>(captured_op)) {
+      func->setAttr(b.getStringAttr("xla.requires_blas"),
+                    BoolAttr::get(ctx, true));
+      break;
+    }
+  }
 
   // Add graph capture function to the module.
   sym_table.insert(func);
@@ -369,11 +427,25 @@ void OutlineCudaGraphsPass::runOnOperation() {
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
   OpCapturePatternSet patterns;
-  patterns.emplace_back(new LaunchFuncOpCapture());
-  patterns.emplace_back(new ConvOpCapture());
-  patterns.emplace_back(new ConstantOpCapture());
-  patterns.emplace_back(new GemmOpCapture());
-  patterns.emplace_back(new ViewOpCapture());
+
+  if (cuda_graph_level_ >= 1) {
+    // Enable capturing fusions and memcpies.
+    patterns.emplace_back(new LaunchFuncOpCapture());
+    patterns.emplace_back(new ConstantOpCapture());
+    patterns.emplace_back(new ViewOpCapture());
+    patterns.emplace_back(new MemcpyOpCapture());
+    patterns.emplace_back(new ReinterpretCastOpCapture());
+  }
+
+  if (cuda_graph_level_ >= 2) {
+    // Enable capturing conv/gemms.
+    patterns.emplace_back(new ConvForwardOpCapture());
+    patterns.emplace_back(new ConvBackwardInputOpCapture());
+    patterns.emplace_back(new ConvBackwardFilterOpCapture());
+    patterns.emplace_back(new ConvForwardFusedOpCapture());
+    patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
+    patterns.emplace_back(new GemmOpCapture());
+  }
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
@@ -384,6 +456,11 @@ void OutlineCudaGraphsPass::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass() {
   return std::make_unique<OutlineCudaGraphsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass(
+    int cuda_graph_level) {
+  return std::make_unique<OutlineCudaGraphsPass>(cuda_graph_level);
 }
 
 }  // namespace gpu

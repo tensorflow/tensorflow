@@ -1324,7 +1324,7 @@ class HloFusionInstruction : public HloCallableInstruction {
   HloInstruction* fused_parameter(int64_t parameter_number) const;
 
   // Returns the vector of fused parameters inside this fusion instruction.
-  const std::vector<HloInstruction*>& fused_parameters() const;
+  const HloInstruction::InstructionVector& fused_parameters() const;
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
@@ -1421,7 +1421,7 @@ class HloRngInstruction : public HloInstruction {
 class HloParameterInstruction : public HloInstruction {
  public:
   explicit HloParameterInstruction(int64_t parameter_number, const Shape& shape,
-                                   const std::string& name);
+                                   absl::string_view name);
   int64_t parameter_number() const { return parameter_number_; }
 
   // Sets and gets the whether all replicas will receive the same parameter data
@@ -1724,9 +1724,7 @@ class HloReduceWindowInstruction : public HloInstruction {
   absl::InlinedVector<const Shape*, 2> input_shapes() const {
     absl::InlinedVector<const Shape*, 2> shapes;
     for (const auto* op : inputs()) {
-      VLOG(2) << "Pushing input array shape for: " << op->ToString() << "\n";
       shapes.push_back(&op->shape());
-      VLOG(2) << "Pushed shape: " << shapes.back()->ToString() << "\n";
     }
     return shapes;
   }

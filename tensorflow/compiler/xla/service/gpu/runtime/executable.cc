@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/send_recv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/topk.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
@@ -94,6 +95,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
   RegisterSendRecvCustomCalls(registry);
+  RegisterTopkCustomCall(registry);
 
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
@@ -366,6 +368,8 @@ Status GpuRuntimeExecutable::Execute(
 #if GOOGLE_CUDA
   StreamExecutorGraphInstances::Snapshot graph_instances =
       graph_instances_(executor)->snapshot();
+  CapturedFunctionExecutionCount::Snapshot execution_count =
+      captured_function_counts_(executor)->snapshot();
 #endif  // GOOGLE_CUDA
 
   // State cached globally for gpu executable.
@@ -387,7 +391,7 @@ Status GpuRuntimeExecutable::Execute(
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances,
+      &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.

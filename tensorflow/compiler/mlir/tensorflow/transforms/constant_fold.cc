@@ -16,6 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold.h"
 
 #include <algorithm>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -24,12 +28,26 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
 namespace mlir {
 namespace TF {
+
+static bool IsOk(const tensorflow::Status& s) {
+  if (s.ok()) return true;
+  VLOG(2) << s.message();
+  return false;
+}
+
+#define RETURN_FAILURE_IF_ERROR(expr) \
+  if (!IsOk(expr)) {                  \
+    return mlir::failure();           \
+  }
 
 // Implements a TF specific policy on when constant folding is allowed.
 // Policy:
@@ -71,13 +89,127 @@ static bool ShouldBeFolded(Operation* inst) {
 #ifdef TF_DISABLE_CONSTANT_FOLDING
   constexpr int64_t kResultsSizeThreshold = 0;
 #else
-  constexpr int64_t kResultsSizeThreshold = (1 << 23);   // 1 MB
+  constexpr int64_t kResultsSizeThreshold = (1 << 23);  // 1 MB
 #endif
-  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 1 GB
+  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 128 MB
 
   return (operands_size <= kOperandsSizeThreshold) &&
          (has_unknown_shape || (results_size <= kResultsSizeThreshold) ||
           (results_size <= kSizeFactor * operands_size));
+}
+
+static const tensorflow::tfrt_stub::FallbackState& GetDefaultFallbackState() {
+  static const auto* const fallback_state = []() {
+    tensorflow::SessionOptions session_options;
+    tensorflow::FunctionDefLibrary fdef_lib;
+    auto fallback_state =
+        tensorflow::tfrt_stub::FallbackState::CreateWithCpuDevice(
+            session_options, fdef_lib)
+            .value();
+    return fallback_state.release();
+  }();
+
+  return *fallback_state;
+}
+
+static std::function<void(std::function<void()>)>* GetDefaultRunner() {
+  static auto* const default_runner =
+      new std::function<void(std::function<void()>)>(
+          [](const std::function<void()>& f) { f(); });
+  return default_runner;
+}
+
+static mlir::LogicalResult EvaluateOperation(
+    mlir::Operation* inst, llvm::ArrayRef<mlir::ElementsAttr> operands,
+    llvm::SmallVectorImpl<mlir::Attribute>* results) {
+  // If any operand is nullptr returns true for a failure.
+  // TODO(b/120678030): remove this constraint if we find operators can be
+  // evaluated with some unknown operands.
+  if (std::any_of(operands.begin(), operands.end(),
+                  [](mlir::Attribute operand) { return !operand; })) {
+    VLOG(1) << "Can't evaluate since not all operands are constant.";
+    return mlir::failure();
+  }
+
+  // Builds TF operation and sets all the attributes.
+  std::string node_name = "unnamed";
+  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
+    node_name = std::string(attr.getValue());
+  }
+  auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(
+      inst, node_name.c_str(), /*ignore_unregistered_attrs=*/true);
+  RETURN_FAILURE_IF_ERROR(node_def_or.status());
+  const auto& node_def = node_def_or.value();
+
+  const auto& fallback_state = GetDefaultFallbackState();
+
+  // Explicitly set device to Host CPU instead of the device present in device
+  // attribute of the MLIR op. The assigned device might be remote, not
+  // available during compilation or compilation only device for on demand
+  // execution which may create a recursion if used for constant folding.
+  auto host_cpu = tensorflow::DeviceNameUtils::FullName(
+      /*job=*/"localhost", /*replica=*/0, /*task=*/0, /*type=*/"CPU", /*id=*/0);
+
+  auto statusor_runner = tensorflow::tfrt_stub::OpKernelRunner::Create(
+      node_def->op(), node_def->name(), host_cpu, operands.size(),
+      [&](tensorflow::AttrValueMap* attr_value_map) {
+        *attr_value_map = node_def->attr();
+        return tensorflow::OkStatus();
+      },
+      fallback_state.device_manager(),
+      fallback_state.process_function_library_runtime());
+  RETURN_FAILURE_IF_ERROR(statusor_runner.status());
+  const auto& runner = *statusor_runner;
+
+  VLOG(1) << "Start to evaluate node: " << node_def->DebugString();
+
+  std::vector<tensorflow::Tensor> inputs;
+
+  // Adds inputs to the TF operation.
+  for (const auto operand : operands) {
+    tensorflow::Tensor tensor;
+    RETURN_FAILURE_IF_ERROR(tensorflow::ConvertToTensor(operand, &tensor));
+    inputs.push_back(std::move(tensor));
+  }
+
+  std::vector<tensorflow::TensorValue> input_values;
+  for (auto& tensor : inputs) {
+    input_values.emplace_back();
+    input_values.back().tensor = &tensor;
+  }
+
+  tensorflow::OpKernelContext::Params params;
+  params.inputs = input_values;
+  params.device = runner.device();
+  params.op_kernel = runner.op_kernel();
+  // Still use original device's resource_manager.
+  params.resource_manager = runner.resource_manager();
+  params.input_alloc_attrs = runner.input_alloc_attrs();
+  params.output_attr_array = runner.output_alloc_attrs().data();
+  // Following two parameters are used to support executing tf.data via
+  // fallback.
+  params.function_library = runner.function_library_runtime();
+  params.runner = GetDefaultRunner();
+
+  // Executes the TF operation.
+  tensorflow::OpKernelContext op_kernel_context(&params);
+  runner.Run(&op_kernel_context);
+  RETURN_FAILURE_IF_ERROR(op_kernel_context.status());
+
+  // Converts the outputs to MLIR attributes.
+  mlir::Builder builder(inst->getContext());
+
+  for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
+    DCHECK(op_kernel_context.mutable_output(i));
+    auto attr_or = tensorflow::ConvertTensor(
+        *op_kernel_context.mutable_output(i), &builder);
+    RETURN_FAILURE_IF_ERROR(attr_or.status());
+    results->push_back(attr_or.value());
+  }
+
+  VLOG(1) << "Evaluate node " << node_name << " successfully!";
+
+  return mlir::success();
 }
 
 LogicalResult ConstantFoldFallbackHook(
@@ -136,13 +268,6 @@ LogicalResult ConstantFoldFallbackHook(
   // size/size increase due to folding.
   if (!ShouldBeFolded(inst)) return failure();
 
-  // TODO(jpienaar): Currently this persists the entire program execution. This
-  // should instead be per module/set from the Graph being executed in TF (if
-  // any) so that the value of variables in the context could be read.
-  // Note: Sharing the context is fine as ops are side-effect free.
-  static TFE_Context* ctx = GetContextForConstantFold();
-  if (!ctx) return failure();
-
   // Returns directly if any of the operands is not an elements attributes.
   if (std::any_of(operands.begin(), operands.end(), [](Attribute attr) {
         return !attr || !attr.isa<ElementsAttr>();
@@ -160,8 +285,7 @@ LogicalResult ConstantFoldFallbackHook(
   static auto* mu = new tensorflow::mutex();
   tensorflow::mutex_lock l(*mu);
   SmallVector<Attribute, 8> constants;
-  LogicalResult status =
-      tensorflow::EvaluateOperation(inst, inputs, ctx, &constants);
+  LogicalResult status = EvaluateOperation(inst, inputs, &constants);
   results.assign(constants.begin(), constants.end());
   return status;
 }

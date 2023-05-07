@@ -1,7 +1,8 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
@@ -11,7 +12,7 @@ package(
 )
 
 # Transitive dependencies of this target will be included in the pip package.
-py_library(
+py_strict_library(
     name = "tools_pip",
     data = [
         ":freeze_graph",
@@ -38,13 +39,19 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
     srcs_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/util:compat",
+    ],
 )
 
-py_test(
+py_strict_test(
     name = "saved_model_utils_test",
     size = "small",
     srcs = ["saved_model_utils_test.py"],
@@ -54,32 +61,37 @@ py_test(
     visibility = ["//visibility:private"],
     deps = [
         ":saved_model_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/saved_model",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
     srcs_version = "PY3",
     deps = [
         ":saved_model_utils",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:no_contrib",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:py_checkpoint_reader",
-        "//tensorflow/python:training",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:loader",
-        "@six_archive//:six",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:saver",
+        "@absl_py//absl:app",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
     python_version = "PY3",
@@ -87,16 +99,27 @@ py_binary(
     deps = [":freeze_graph_main_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "freeze_graph_main_lib",
     srcs = ["freeze_graph.py"],
     srcs_version = "PY3",
     deps = [
-        ":freeze_graph_lib",
+        ":saved_model_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:py_checkpoint_reader",
+        "//tensorflow/python/training:saver",
+        "@absl_py//absl:app",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "import_pb_to_tensorboard",
     srcs = ["import_pb_to_tensorboard.py"],
     python_version = "PY3",
@@ -104,22 +127,21 @@ py_binary(
     deps = [":import_pb_to_tensorboard_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "import_pb_to_tensorboard_lib",
     srcs = ["import_pb_to_tensorboard.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",
-        "//tensorflow/python:client",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/summary",
+        ":saved_model_utils",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/summary:summary_py",
+        "@absl_py//absl:app",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "freeze_graph_test",
     size = "small",
     srcs = ["freeze_graph_test.py"],
@@ -128,19 +150,30 @@ py_test(
     deps = [
         ":freeze_graph_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:training",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:saver",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.py"],
     python_version = "PY3",
@@ -148,48 +181,49 @@ py_binary(
     deps = [":inspect_checkpoint_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "inspect_checkpoint_lib",
     srcs = ["inspect_checkpoint.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:platform",
         "//tensorflow/python:py_checkpoint_reader",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:flags",
+        "//third_party/py/numpy",
+        "@absl_py//absl:app",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "strip_unused_lib",
     srcs = ["strip_unused_lib.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "module_util",
     srcs = ["module_util.py"],
     srcs_version = "PY3",
 )
 
-py_binary(
+py_strict_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":strip_unused_lib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "@six_archive//:six",
+        "//tensorflow/python/framework:dtypes",
+        "@absl_py//absl:app",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "strip_unused_test",
     size = "small",
     srcs = ["strip_unused_test.py"],
@@ -199,31 +233,34 @@ py_test(
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "optimize_for_inference_lib",
     srcs = ["optimize_for_inference_lib.py"],
     srcs_version = "PY3",
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "optimize_for_inference",
     srcs = ["optimize_for_inference.py"],
     python_version = "PY3",
@@ -231,22 +268,21 @@ py_binary(
     deps = [":optimize_for_inference_main_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "optimize_for_inference_main_lib",
     srcs = ["optimize_for_inference.py"],
     srcs_version = "PY3",
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "@six_archive//:six",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:gfile",
+        "@absl_py//absl:app",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "optimize_for_inference_test",
     size = "small",
     srcs = ["optimize_for_inference_test.py"],
@@ -256,30 +292,35 @@ py_test(
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "selective_registration_header_lib",
     srcs = ["selective_registration_header_lib.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:platform",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_kernel_registry",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "print_selective_registration_header",
     srcs = ["print_selective_registration_header.py"],
     python_version = "PY3",
@@ -288,30 +329,31 @@ py_binary(
     deps = [":print_selective_registration_header_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "print_selective_registration_header_lib",
     srcs = ["print_selective_registration_header.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":selective_registration_header_lib",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "print_selective_registration_header_test",
     srcs = ["print_selective_registration_header_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":selective_registration_header_lib",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "saved_model_cli",
     srcs = ["saved_model_cli.py"],
     python_version = "PY3",
@@ -319,7 +361,7 @@ py_binary(
     deps = [":saved_model_cli_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "saved_model_cli_lib",
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY3",
@@ -330,29 +372,59 @@ py_library(
         # broken saved_model_cli.
         ":saved_model_aot_compile",
         ":saved_model_utils",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
         "@absl_py//absl/flags:argparse_flags",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/compiler/tensorrt:trt_convert_py",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/util:compat",
     ] + if_google([
         "//tensorflow/core/tfrt/tfrt_session",
         "//tensorflow_text:tensorflow_text",
     ]),
 )
 
-py_library(
+py_strict_library(
     name = "saved_model_aot_compile",
     srcs = ["saved_model_aot_compile.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:versions",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/training:saver",
     ] + if_xla_available(
         ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
     ),
 )
 
-py_test(
+py_strict_test(
     name = "saved_model_cli_test",
     srcs = ["saved_model_cli_test.py"],
     data = [
@@ -363,26 +435,38 @@ py_test(
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:parsing_config",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/debug/wrappers:local_cli_wrapper",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:autotrackable",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "make_aot_compile_models",
     srcs = ["make_aot_compile_models.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/saved_model",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@six_archive//:six",
     ],
 )
 

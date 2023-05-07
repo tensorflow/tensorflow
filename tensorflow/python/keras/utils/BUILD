@@ -73,6 +73,7 @@ py_library(
     deps = [
         ":data_utils",
         ":io_utils",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:backend",
     ],
 )
@@ -155,12 +156,13 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/distribute",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
@@ -234,7 +236,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:tf_export",
     ],
 )

@@ -314,8 +314,8 @@ TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
     Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
                             &run_metadata);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                  "disable_output_partition_graphs"));
+    EXPECT_TRUE(
+        absl::StrContains(s.message(), "disable_output_partition_graphs"));
   }
 
   TF_CHECK_OK(session->Close());
@@ -875,7 +875,7 @@ void CreateInvalidGraph(const string& graph_def_ascii,
   Status s = session->Create(graph);
 
   ASSERT_FALSE(s.ok());
-  EXPECT_NE(s.error_message().find(error_substring), string::npos);
+  EXPECT_NE(s.message().find(error_substring), string::npos);
 }
 
 TEST(SessionTest, InvalidOpName) {
@@ -1029,7 +1029,7 @@ TEST(SessionTest, ExtendValidation) {
 
   Status s = session->Extend(extension);
   ASSERT_FALSE(s.ok());
-  EXPECT_NE(s.error_message().find("Illegal op input name"), string::npos);
+  EXPECT_NE(s.message().find("Illegal op input name"), string::npos);
 
   // 2. Succeed with a valid node.
   success = protobuf::TextFormat::ParseFromString(R"(
@@ -1057,7 +1057,7 @@ TEST(SessionTest, ExtendValidation) {
   ASSERT_TRUE(success);
   s = session->Extend(extension);
   ASSERT_FALSE(s.ok());
-  EXPECT_NE(s.error_message().find("'b', which was created by a previous call"),
+  EXPECT_NE(s.message().find("'b', which was created by a previous call"),
             string::npos);
 }
 // Tests that Create() with "operation_timeout_in_ms" set times out.

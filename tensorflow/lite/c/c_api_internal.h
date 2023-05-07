@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdarg.h>
 
+#include <functional>
 #include <memory>
 #include <mutex>  // NOLINT
 #include <vector>
@@ -25,7 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 #include "tensorflow/lite/signature_runner.h"
@@ -55,32 +56,42 @@ struct TfLiteOpResolverCallbacks {
   // code.  The `user_data` parameter will be set to the
   // `op_resolver_user_data` value that was passed to
   // `TfLiteInterpreterOptionsSetOpResolver`.
-  const TfLiteRegistration* (*find_builtin_op)(void* user_data,
-                                               TfLiteBuiltinOperator op,
-                                               int version);
+  std::function<const TfLiteRegistration*(
+      void* user_data, TfLiteBuiltinOperator op, int version)>
+      find_builtin_op;
   // Callback that finds the op registration of a custom operator by op name.
   // The `user_data` parameter will be set to the `op_resolver_user_data` value
   // that was passed to `TfLiteInterpreterOptionsSetOpResolver`.
-  const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
-                                              int version);
+  std::function<const TfLiteRegistration*(void* user_data, const char* op,
+                                          int version)>
+      find_custom_op;
 
-  // `find_builtin_op` which returns `TfLiteRegistration_V2`.
-  const TfLiteRegistration_V2* (*find_builtin_op_v2)(void* user_data,
-                                                     TfLiteBuiltinOperator op,
-                                                     int version);
-  // `find_custom_op` which returns `TfLiteRegistration_V2`.
-  const TfLiteRegistration_V2* (*find_custom_op_v2)(void* user_data,
-                                                    const char* op,
-                                                    int version);
+  // Variant of `find_builtin_op` which returns `TfLiteRegistration_V2`.
+  std::function<const TfLiteRegistration_V2*(
+      void* user_data, TfLiteBuiltinOperator op, int version)>
+      find_builtin_op_v2;
+  // Variant of `find_custom_op` which returns `TfLiteRegistration_V2`.
+  std::function<const TfLiteRegistration_V2*(void* user_data, const char* op,
+                                             int version)>
+      find_custom_op_v2;
 
-  // `find_builtin_op` which returns `TfLiteRegistration_V1`.
-  const TfLiteRegistration_V1* (*find_builtin_op_v1)(void* user_data,
-                                                     TfLiteBuiltinOperator op,
-                                                     int version);
-  // `find_custom_op` which returns `TfLiteRegistration_V1`.
-  const TfLiteRegistration_V1* (*find_custom_op_v1)(void* user_data,
-                                                    const char* op,
-                                                    int version);
+  // Varant of `find_builtin_op` which returns `TfLiteRegistration_V1`.
+  std::function<const TfLiteRegistration_V1*(
+      void* user_data, TfLiteBuiltinOperator op, int version)>
+      find_builtin_op_v1;
+  // Varant of `find_custom_op` which returns `TfLiteRegistration_V1`.
+  std::function<const TfLiteRegistration_V1*(void* user_data, const char* op,
+                                             int version)>
+      find_custom_op_v1;
+
+  // Variant of `find_builtin_op` which returns `TfLiteRegistrationExternal`.
+  std::function<const TfLiteRegistrationExternal*(
+      void* user_data, TfLiteBuiltinOperator op, int version)>
+      find_builtin_op_external;
+  // Variant of `find_custom_op` which returns `TfLiteRegistrationExternal`.
+  std::function<const TfLiteRegistrationExternal*(void* user_data,
+                                                  const char* op, int version)>
+      find_custom_op_external;
 };
 
 // This struct mirrors the tflite::ErrorResolver C++ abstract base class.
@@ -187,8 +198,9 @@ class CallbackOpResolver : public ::tflite::OpResolver {
   template <class LegacyRegistrationT>
   TfLiteRegistration* BuildBuiltinOpFromLegacyRegistration(
       tflite::BuiltinOperator op, int version,
-      const LegacyRegistrationT* (*legacy_find_builtin_op)(
-          void* user_data, TfLiteBuiltinOperator op, int version)) const {
+      std::function<const LegacyRegistrationT*(
+          void* user_data, TfLiteBuiltinOperator op, int version)>
+          legacy_find_builtin_op) const {
     if (legacy_find_builtin_op) {
       // Get a deprecated Registration object to create a Registration.
       const LegacyRegistrationT* legacy_registration = legacy_find_builtin_op(
@@ -220,9 +232,9 @@ class CallbackOpResolver : public ::tflite::OpResolver {
   template <class LegacyRegistrationT>
   TfLiteRegistration* BuildCustomOpFromLegacyRegistration(
       const char* op, int version,
-      const LegacyRegistrationT* (*legacy_find_custom_op)(void* user_data,
-                                                          const char* op,
-                                                          int version)) const {
+      std::function<const LegacyRegistrationT*(void* user_data, const char* op,
+                                               int version)>
+          legacy_find_custom_op) const {
     if (legacy_find_custom_op) {
       // Get a deprecated Registration object to create a Registration.
       const LegacyRegistrationT* legacy_registration =

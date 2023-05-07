@@ -1693,7 +1693,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   auto value = attributes.get("value");
   if (!value) return emitOptionalError(location, "missing attribute 'value'");
@@ -1936,7 +1936,8 @@ static LogicalResult inferConvReturnTypeComponents(
 
 LogicalResult Conv2DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv2DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
@@ -2134,7 +2135,8 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
 LogicalResult Conv3DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv3DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;

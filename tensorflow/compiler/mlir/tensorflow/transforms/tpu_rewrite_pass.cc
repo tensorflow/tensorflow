@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -21,6 +22,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -82,7 +85,12 @@ constexpr char kBadArrayAttrLengthMsg[] =
 
 namespace {
 struct TPURewritePass : public impl::TPURewritePassBase<TPURewritePass> {
+  explicit TPURewritePass(llvm::StringRef _module_name)
+      : module_name(_module_name) {}
+
   void runOnOperation() override;
+
+  llvm::StringRef module_name;
 };
 
 // Creates a missing attribute error message.
@@ -90,7 +98,8 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(const std::string& module_name,
+                                          func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
@@ -98,7 +107,8 @@ LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
-      ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
+      ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()),
+                       absl::StrCat("module_", module_name));
   auto parent_module = entry_func->getParentOfType<ModuleOp>();
   auto versions_attr = parent_module->getAttr(kVersionsAttr);
   if (!versions_attr)
@@ -207,6 +217,15 @@ LogicalResult SetMetadataProtoArgs(
   // Set args metadata in proto.
   mlir::StringAttr replication_attr_name = mlir::StringAttr::get(
       op.getContext(), "mhlo.is_same_data_across_replicas");
+
+  auto dynamic_arg_idx = op->getAttrOfType<ArrayAttr>(TF::kDynamicArgIndexAttr);
+  llvm::SmallSet<int, 4> dynamic_arg_idx_set;
+  if (dynamic_arg_idx) {
+    for (auto idx : dynamic_arg_idx.getValue()) {
+      dynamic_arg_idx_set.insert(idx.dyn_cast<IntegerAttr>().getInt());
+    }
+  }
+
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int index = operand_type_and_idx.index();
@@ -217,7 +236,7 @@ LogicalResult SetMetadataProtoArgs(
     if (!status.ok())
       return op.emitOpError(
           llvm::formatv("failed to determine operand type at index {0}: {1}",
-                        index, status.error_message()));
+                        index, status.message()));
 
     arg->set_dtype(dtype);
     // TODO(lyandy): Support other arg kinds.
@@ -247,6 +266,10 @@ LogicalResult SetMetadataProtoArgs(
     mlir::UnitAttr attr = op.getFuncOp().getArgAttrOfType<mlir::UnitAttr>(
         index, replication_attr_name);
     arg->set_is_same_data_across_replicas(attr != nullptr);
+
+    // Currently only support first dimension to be bounded dynamic.
+    arg->mutable_is_bounded_dynamic_dim()->Add(
+        dynamic_arg_idx_set.contains(index));
   }
 
   return success();
@@ -336,12 +359,14 @@ tf_device::LaunchOp WrapOpInLaunch(OpBuilder* builder, Location loc,
 // Create a `tf._TPUCompileMlir` that contains a MLIR module that is
 // functionally equivalent to the function referenced by cluster_func.
 Operation* BuildCompileOp(
-    tf_device::ClusterFuncOp cluster_func, int num_replicas,
-    int num_cores_per_replica, llvm::StringRef compilation_device,
+    llvm::StringRef module_name, tf_device::ClusterFuncOp cluster_func,
+    int num_replicas, int num_cores_per_replica,
+    llvm::StringRef compilation_device,
     std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     OpBuilder* builder, bool tpu_compile_metadata_debug) {
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
+  if (!module_name.empty()) metadata.set_module_name(module_name.str());
   if (failed(SetMetadataProtoFromClusterFuncOp(
           cluster_func, num_replicas, num_cores_per_replica,
           std::move(xla_device_assignment), &metadata)))
@@ -373,7 +398,10 @@ Operation* BuildCompileOp(
           func_attr.getValue());
 
   std::string txt_module;
-  if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
+  if (failed(EncapsulateFuncAndSerialize(
+          module_name.empty() ? "unknown_graph" : module_name.str(), func,
+          &txt_module)))
+    return nullptr;
 
   auto compilation_status_type =
       RankedTensorType::get({}, builder->getType<TF::StringType>());
@@ -419,23 +447,23 @@ void AssignDevicesToReplicate(
   for (int core = 0; core < num_cores_per_replica; ++core) {
     llvm::SmallVector<StringRef, 8> devices_by_core;
     devices_by_core.reserve(num_replicas);
-    for (int replica = 0; replica < num_replicas; ++replica)
+    llvm::SmallVector<StringRef, 8> hosts_by_core;
+    hosts_by_core.reserve(num_replicas);
+    for (int replica = 0; replica < num_replicas; ++replica) {
       devices_by_core.push_back(tpu_devices[replica][core].device);
+      hosts_by_core.push_back(tpu_devices[replica][core].host);
+    }
 
     device_attrs.push_back(
         builder->getNamedAttr(tensorflow::GetDeviceAliasForLogicalCore(core),
                               builder->getStrArrayAttr(devices_by_core)));
+
+    // For data parallelism, also add replicated host devices, as these are
+    // necessary for outside compilation.
+    device_attrs.push_back(builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForHostOfLogicalCore(core),
+        builder->getStrArrayAttr(hosts_by_core)));
   }
-
-  // For data parallelism, also add replicated host devices, as these are
-  // necessary for outside compilation.
-  llvm::SmallVector<StringRef, 8> hosts;
-  hosts.reserve(num_replicas);
-  for (int replica = 0; replica < num_replicas; ++replica)
-    hosts.push_back(tpu_devices[replica][0].host);
-
-  device_attrs.push_back(builder->getNamedAttr(
-      tensorflow::kTPUReplicatedHost, builder->getStrArrayAttr(hosts)));
 
   replicate->setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attrs));
 }
@@ -715,7 +743,7 @@ int GetNumResultsPreCluster(tf_device::ParallelExecuteOp parallel_execute) {
 }
 
 LogicalResult Rewrite(
-    tf_device::ClusterFuncOp cluster_func,
+    llvm::StringRef module_name, tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
     ArrayRef<TF::TPUCompilationResultOp> compilation_result, OpBuilder* builder,
     bool tpu_compile_metadata_debug) {
@@ -782,7 +810,7 @@ LogicalResult Rewrite(
   if (!status_or_device_coodinates.ok())
     return cluster_func.emitError()
            << "error in fetching tpu device coordinates: "
-           << status_or_device_coodinates.status().error_message();
+           << status_or_device_coodinates.status().message();
 
   // Determine compilation and execution devices.
   auto status_or_tpu_device_assignment =
@@ -792,7 +820,7 @@ LogicalResult Rewrite(
   if (!status_or_tpu_device_assignment.ok())
     return cluster_func.emitError()
            << "error in fetching TPU compilation/execution devices: "
-           << status_or_tpu_device_assignment.status().error_message();
+           << status_or_tpu_device_assignment.status().message();
 
   // Create compile op.
   auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
@@ -800,11 +828,11 @@ LogicalResult Rewrite(
   // Create the TPUCompileMlir and TPUCompileSucceededAssert outside of
   // the parallel_execute.
   builder->setInsertionPoint(old_parallel_execute);
-  Operation* compile_op =
-      BuildCompileOp(cluster_func, num_replicas, num_cores_per_replica,
-                     tpu_device_assignment.compilation_device,
-                     std::move(tpu_device_assignment.xla_device_assignment),
-                     builder, tpu_compile_metadata_debug);
+  Operation* compile_op = BuildCompileOp(
+      module_name, cluster_func, num_replicas, num_cores_per_replica,
+      tpu_device_assignment.compilation_device,
+      std::move(tpu_device_assignment.xla_device_assignment), builder,
+      tpu_compile_metadata_debug);
   if (!compile_op) return failure();
 
   // This replaces _TPUCompileMlir placeholder ops that are required
@@ -940,7 +968,7 @@ void TPURewritePass::runOnOperation() {
     auto cluster_id = op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
     if (!cluster_id) return WalkResult::advance();
 
-    if (failed(Rewrite(op, devices.device_names(),
+    if (failed(Rewrite(module_name, op, devices.device_names(),
                        compilation_results[cluster_id], &builder,
                        tpu_compile_metadata_debug_)))
       return WalkResult::interrupt();
@@ -970,8 +998,9 @@ void TPURewritePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass() {
-  return std::make_unique<TPURewritePass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass(
+    llvm::StringRef module_name) {
+  return std::make_unique<TPURewritePass>(module_name);
 }
 
 }  // namespace TFTPU

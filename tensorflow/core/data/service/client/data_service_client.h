@@ -140,6 +140,11 @@ class DataServiceClient {
       const TaskInfo& task_info);
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const std::string& protocol, const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateGrpcWorkerClient(
+      const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+  CreateAlternativeWorkerClientWithGrpcFallback(const std::string& protocol,
+                                                const TaskInfo& task_info);
   void Heartbeat();
   void UpdateTasks(const ClientHeartbeatResponse& resp);
   bool ShouldReadFromTask(const TaskInfo& task) const;

@@ -320,6 +320,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (ctx->warm_start()) {
         TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
       }
+      cond_var_->notify_all();
       return OkStatus();
     }
 
@@ -547,9 +548,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
                               static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(absl::StrCat(prefix(), "::", index),
-                                ErrorMessageKey(), status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            absl::StrCat(prefix(), "::", index), ErrorMessageKey(),
+            std::string(status.message())));
       }
       return OkStatus();
     }
@@ -559,9 +560,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                             CodeKey(), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(absl::StrCat(prefix(), "::", index),

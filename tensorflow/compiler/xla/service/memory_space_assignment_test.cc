@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -561,8 +562,7 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest,
-       OverridePreferredPrefetchTestBeforePlacement) {
+TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -600,10 +600,85 @@ TEST_P(MemorySpaceAssignmentTest,
   options.max_size_in_bytes = 128;
   options.alignment_in_bytes = 8;
   options.verify = true;
+  auto config = "op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5";
   TF_ASSERT_OK_AND_ASSIGN(
-      options.override_preferred_prefetch_times,
-      memory_space_assignment::OverridePreferredPrefetchTime::
-          ParseOverridePreferredPrefetchTimesConfig("add:1::before:negate.3"));
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_before_instruction:"
+      "negate.3";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
   AssignMemorySpace(module.get(), -1, 10, 2, options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
@@ -633,7 +708,7 @@ TEST_P(MemorySpaceAssignmentTest,
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, OverridePreferredPrefetchTestAfterPlacement) {
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -671,10 +746,13 @@ TEST_P(MemorySpaceAssignmentTest, OverridePreferredPrefetchTestAfterPlacement) {
   options.max_size_in_bytes = 128;
   options.alignment_in_bytes = 8;
   options.verify = true;
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
+      "negate.1";
   TF_ASSERT_OK_AND_ASSIGN(
-      options.override_preferred_prefetch_times,
-      memory_space_assignment::OverridePreferredPrefetchTime::
-          ParseOverridePreferredPrefetchTimesConfig("add:1::after:negate.1"));
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
   AssignMemorySpace(module.get(), -1, 10, 2, options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
@@ -704,7 +782,7 @@ TEST_P(MemorySpaceAssignmentTest, OverridePreferredPrefetchTestAfterPlacement) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_P(MemorySpaceAssignmentTest, OverridePreferredPrefetchTooLateTest) {
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -742,17 +820,13 @@ TEST_P(MemorySpaceAssignmentTest, OverridePreferredPrefetchTooLateTest) {
   options.max_size_in_bytes = 128;
   options.alignment_in_bytes = 8;
   options.verify = true;
-  auto multi_config =
-      "random_name.1:1:1#2:after:random_name.0;add:1::after:negate.5";
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
+      "negate.5";
   TF_ASSERT_OK_AND_ASSIGN(
-      options.override_preferred_prefetch_times,
-      memory_space_assignment::OverridePreferredPrefetchTime::
-          ParseOverridePreferredPrefetchTimesConfig(multi_config));
-  // Ensure both configurations were parsed.
-  EXPECT_EQ(2, options.override_preferred_prefetch_times.size());
-  // Ensure parsing correctness for first config.
-  EXPECT_EQ("random_name.1:1:{1,2}:after:random_name.0",
-            options.override_preferred_prefetch_times.front().ToString());
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
   AssignMemorySpace(module.get(), -1, 10, 2, options);
 
   // Ensure the Async copy is not scheduled.
@@ -772,6 +846,226 @@ TEST_P(MemorySpaceAssignmentTest, OverridePreferredPrefetchTooLateTest) {
   EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5;instruction_"
+      "name_exact:add:op_number_exact:1:put_after_instruction:negate.1";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config =
+      "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
+      "negate.1;op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[4], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  auto config = "op_size_gte:25:op_size_lte:24:prefetch_eagerness:0.5";
+  TF_ASSERT_OK_AND_ASSIGN(
+      options.filter_update_preferred_prefetches,
+      memory_space_assignment::FilterUpdatePreferredPrefetch::
+          ParseFilterUpdatePreferredPrefetches(config));
+  AssignMemorySpace(module.get(), -1, 10, 2, options);
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+  // Ensure the CopyStart/CopyDone schedules.
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[2], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetch) {
@@ -4645,11 +4939,9 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
               kAlternateMemorySpace);
     const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
     EXPECT_EQ(gte1->user_count(), 2);
-    EXPECT_NE(absl::c_find_if(gte1->users(),
-                              [](const HloInstruction* use) {
-                                return use->opcode() == HloOpcode::kCopyStart;
-                              }),
-              gte1->users().end());
+    EXPECT_NE(
+        absl::c_find_if(gte1->users(), HloPredicateIsOp<HloOpcode::kCopyStart>),
+        gte1->users().end());
   }
 }
 
@@ -7991,6 +8283,188 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
   EXPECT_FALSE(interval_picker.Done());
   EXPECT_EQ(interval_picker.Next(), 1);
   EXPECT_TRUE(interval_picker.Done());
+}
+
+class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
+ protected:
+  Status Initialize(const HloModule* module,
+                    float pipeline_overhead_window_size_mib = 0.0) {
+    HloCostAnalysis::Options options;
+    options_.alternate_mem_bandwidth_bytes_per_second = 128;
+    options_.async_copy_bandwidth_bytes_per_second = 32;
+    options_.pipeline_overhead_window_size_mib =
+        pipeline_overhead_window_size_mib;
+    options.shape_size = ShapeSize;
+    options.set_flops_per_second(8);
+    options.set_bytes_per_second(32);
+    options.set_transcendentals_per_second(16);
+    hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(options);
+    TF_RETURN_IF_ERROR(
+        module->entry_computation()->Accept(hlo_cost_analysis_.get()));
+    TF_ASSIGN_OR_RETURN(cost_analysis_,
+                        MemorySpaceAssignmentCostAnalysis::Create(
+                            *hlo_cost_analysis_, options_, *module));
+    return OkStatus();
+  }
+
+  Options options_;
+  std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
+  std::unique_ptr<MemorySpaceAssignmentCostAnalysis> cost_analysis_;
+};
+
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, NoPipelineOverhead) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    ROOT add = f32[2,4] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(Initialize(module.get()));
+
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  const float expected_compute_elapsed =
+      /*num_flops=*/8 / /*flops_per_second=*/8.0;
+  LOG(INFO) << "Expected compute elapsed = " << expected_compute_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add),
+            expected_compute_elapsed);
+  float expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/32.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add),
+            expected_memory_elapsed);
+
+  // This HLO is memory-bound.
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsed(*add),
+            expected_memory_elapsed);
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedInAlternateMemory(*add, {}, {}),
+      expected_memory_elapsed);
+
+  // Put operand 0 in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {}),
+            expected_memory_elapsed);
+
+  // Put operand 0 and output in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}, {{}}),
+      expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {{}}),
+            expected_memory_elapsed);
+
+  // Put everything in alternate memory. We're now compute bound.
+  expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/128.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_compute_elapsed);
+}
+
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, PipelineOverhead) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    ROOT add = f32[2,4] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // Set the window size 64B.
+  TF_ASSERT_OK(
+      Initialize(module.get(),
+                 /*pipeline_overhead_window_size_mib=*/(64.0 / 1024 / 1024)));
+
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  const float expected_compute_elapsed =
+      /*num_flops=*/8 / /*flops_per_second=*/8.0;
+  LOG(INFO) << "Expected compute elapsed = " << expected_compute_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add),
+            expected_compute_elapsed);
+  float expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/32.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add),
+            expected_memory_elapsed);
+
+  float expected_overhead = expected_compute_elapsed * 2 / 3;
+  LOG(INFO) << "Expected overhead = " << expected_overhead;
+  EXPECT_EQ(cost_analysis_->GetDefaultMemoryAccessOverhead(*add),
+            expected_overhead);
+  // This HLO is memory-bound.
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsed(*add),
+            expected_memory_elapsed + expected_overhead);
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedInAlternateMemory(*add, {}, {}),
+      expected_memory_elapsed + expected_overhead);
+
+  // Put operand 0 in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetDefaultMemoryAccessOverhead(*add, {{0, {}}}),
+            expected_overhead);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {}),
+            expected_memory_elapsed + expected_overhead);
+
+  // Put operand 0 and output in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  expected_overhead = expected_compute_elapsed / 3;
+  LOG(INFO) << "Expected overhead = " << expected_overhead;
+  EXPECT_EQ(
+      cost_analysis_->GetDefaultMemoryAccessOverhead(*add, {{0, {}}}, {{}}),
+      expected_overhead);
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}, {{}}),
+      expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {{}}),
+            expected_memory_elapsed + expected_overhead);
+
+  // Put everything in alternate memory. We're now compute bound.
+  expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/128.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  expected_overhead = 0;
+  LOG(INFO) << "Expected overhead = " << expected_overhead;
+  EXPECT_EQ(cost_analysis_->GetDefaultMemoryAccessOverhead(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_overhead);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_compute_elapsed);
 }
 
 }  // namespace

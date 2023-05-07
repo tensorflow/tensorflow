@@ -19,7 +19,7 @@ func.func private @tpu_func_0_optim0(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2
   %2 = "tf.Transpose"(%0, %cst_0) {device = ""} : (tensor<1x3x4x3xbf16>, tensor<4xi32>) -> tensor<1x3x3x4xbf16>
   %3 = "tf.TPUReplicatedInput"(%2) {device = "", index = -1 : i64, is_mirrored_variable = false, is_packed = false} : (tensor<1x3x3x4xbf16>) -> tensor<1x3x3x4xbf16>
   %4 = "tf.Transpose"(%3, %cst_1) {_tpu_replicate = "cluster", device = ""} : (tensor<1x3x3x4xbf16>, tensor<4xi32>) -> tensor<1x3x4x3xbf16>
-  %5 = "tf.Conv2D"(%4, %cst) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xbf16>, tensor<2x3x3x2xbf16>) -> tensor<1x3x2x2xbf16>
+  %5 = "tf.Conv2D"(%4, %cst) {_tpu_replicate = "cluster", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xbf16>, tensor<2x3x3x2xbf16>) -> tensor<1x3x2x2xbf16>
   %6 = "tf.TPUReplicatedOutput"(%5) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
   %7 = "tf.Cast"(%6) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
   func.return %7 : tensor<1x3x2x2xf32>
@@ -43,9 +43,7 @@ func.func @serving_default(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor
 // The contents of `@serving_default` should have been inlined to `@batch_func`.
 // CHECK: func.func @serving_default(%[[ARG0:.*]]: tensor<1xf32>, %[[ARG1:.*]]: tensor<1xf32>) -> tensor<1xf32>
 // CHECK-NOT: tf.BatchFunction
-// CHECK: %[[IDENTITY0:.*]] = "tf.Identity"(%[[ARG0]])
-// CHECK: %[[IDENTITY1:.*]] = "tf.Identity"(%[[ARG1]])
-// CHECK: %[[ADD0:.*]] = "tf.AddV2"(%[[IDENTITY0]], %[[IDENTITY1]])
+// CHECK: %[[ADD0:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]])
 // CHECK: return %[[ADD0]] : tensor<1xf32>
 
 func.func private @batched_func(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {

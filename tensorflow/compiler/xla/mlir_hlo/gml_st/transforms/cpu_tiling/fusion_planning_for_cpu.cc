@@ -22,11 +22,9 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/TilingInterface.h"
@@ -60,9 +58,14 @@ bool isElementwiseOp(Operation* op) {
 
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
+  // Verify that only known ops are fused.
+  if (!isa<linalg::LinalgDialect, tensor::TensorDialect, thlo::THLODialect>(
+          producerOp->getDialect()))
+    return false;
+
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
 
-  if (isa<linalg::FillOp>(producerOp)) {
+  if (isa<linalg::FillOp, tensor::EmptyOp>(producerOp)) {
     auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(consumerOp);
     if (!dstStyleOp) return false;
 
@@ -96,7 +99,7 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
 
   for (auto& use : op->getUses()) {
     auto* useOp = use.getOwner();
-    // This op can be potentially fused into one of the consumens. Wait until
+    // This op can be potentially fused into one of the consumers. Wait until
     // that other op is processed.
     if (useOp && allowedToFuse(useOp, op.getOperation())) return failure();
   }
@@ -147,33 +150,6 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   return success();
 }
 
-// Duplicate linalg.fill op with rank-0 tensors results that have multiple
-// users. If linalg.fill is used inside and outside of a fusion cluster, it will
-// not be fused and can break some other passes that expect linalg.reduce inits
-// to be linalg.fill.
-LogicalResult copyConstantLikeFillOp(linalg::FillOp fillOp,
-                                     PatternRewriter& rewriter) {
-  // Only modify ops that fill rank-0 tensors.
-  if (fillOp.getRank(fillOp.getDpsInitOperand(0)) != 0) return failure();
-
-  // Nothing to do, because the op has 0 or 1 users.
-  if (std::distance(fillOp->user_begin(), fillOp->user_end()) <= 1)
-    return failure();
-
-  bool modified = false;
-  for (auto& use : llvm::make_early_inc_range(fillOp->getUses())) {
-    Operation* ownerOp = use.getOwner();
-
-    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
-    if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
-
-    auto newFillOp = cast<linalg::FillOp>(rewriter.clone(*fillOp));
-    use.set(newFillOp.getResult(0));
-    modified = true;
-  }
-  return success(modified);
-}
-
 // Add attributes with tile sizes for parallel and reduction dimensions.
 // Attribute is empty if there is nothing to tile across respective dimensions.
 struct ComputeTileSizesPattern : public OpRewritePattern<gml_st::FusionOp> {
@@ -220,21 +196,20 @@ struct FusionPlanningForCpuPass
 
   void runOnOperation() override {
     func::FuncOp f = getOperation();
-    MLIRContext* context = &getContext();
+    MLIRContext* ctx = &getContext();
 
     // Cleanup passes to prepare ops for better clustering.
     {
-      RewritePatternSet patterns(context);
-      patterns.add(copyConstantLikeFillOp);
+      RewritePatternSet patterns(ctx);
+      populateDuplicateInitOpsPatterns(patterns);
 
-      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();
-      }
     }
 
     // Move ops to gml_st.fusion clusters.
     {
-      RewritePatternSet patterns(context);
+      RewritePatternSet patterns(ctx);
       patterns.add(fusionPattern<linalg::MapOp>);
       patterns.add(fusionPattern<linalg::MatmulOp>);
       patterns.add(fusionPattern<linalg::ReduceOp>);
@@ -256,12 +231,11 @@ struct FusionPlanningForCpuPass
 
     // Add attributes with tile sizes.
     {
-      RewritePatternSet patterns(context);
-      patterns.add<ComputeTileSizesPattern>(context, vectorSize);
+      RewritePatternSet patterns(ctx);
+      patterns.add<ComputeTileSizesPattern>(ctx, vectorSize);
 
-      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();
-      }
     }
   }
 };
@@ -270,14 +244,13 @@ struct InlineFusionClustersPass
     : public impl::InlineFusionClustersPassBase<InlineFusionClustersPass> {
   void runOnOperation() override {
     func::FuncOp f = getOperation();
-    MLIRContext* context = &getContext();
+    MLIRContext* ctx = &getContext();
 
-    RewritePatternSet patterns(context);
+    RewritePatternSet patterns(ctx);
     patterns.add(inlineFusionCluster);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
   }
 };
 

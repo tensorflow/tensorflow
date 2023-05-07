@@ -285,6 +285,7 @@ TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
     CpuBackendContext* cpu_backend_context =
         CpuBackendContext::GetFromContext(context);
     pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+    threadpool = nullptr;
     status = xnn_run_square_root_nc_f32(
         channel_dim, channel_dim, channel_dim, batch_size,
         GetTensorData<float>(input), GetTensorData<float>(output),

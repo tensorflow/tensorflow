@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -55,6 +57,12 @@ StreamExecutorGraphInstances* GraphInstances::operator()(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(&mutex_);
   return &graphs_[executor];
+}
+
+CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
+    se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mutex_);
+  return &counts_[executor];
 }
 
 //===----------------------------------------------------------------------===//
@@ -104,9 +112,10 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 
   // Initialize (with memoization) BlasSupport here because cublasCreate fails
   // during cuda graph capturing.
-  // TODO(b/272559361): The initialization should be conditional.
-  if (!executor->AsBlas()) {
-    return absl::InternalError("Failed to initialize BLAS support");
+  if (function_ref.RequiresBlas()) {
+    if (!executor->AsBlas()) {
+      return absl::InternalError("Failed to initialize BLAS support");
+    }
   }
 
   StatusOr<StreamPool::Ptr> capture_stream =
@@ -115,7 +124,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   if (!capture_stream.ok())
     return absl::InternalError(
         absl::StrFormat("Failed to borrow a stream for graph capture: %s",
-                        capture_stream.status().error_message()));
+                        capture_stream.status().message()));
 
   // TODO(ezhulenev): Pass graph capture context explicitly to the custom calls
   // via UserData to be able to detect when executing custom call in graph
@@ -177,6 +186,48 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   return std::move(*captured);
 }
 
+static absl::Status RunGraphWithoutCapture(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
+    CustomCall::UserData user_data) {
+  // Prepare options for executing graph capture function.
+  Executable::ExecuteOpts opts;
+  opts.custom_call_data = &user_data;
+
+  std::string error;
+  runtime::DiagnosticEngine diagnostic_engine;
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& diagnostic) {
+    error.append(diagnostic.status().message());
+    return runtime::success();
+  });
+  opts.diagnostic_engine = &diagnostic_engine;
+
+  // Graph capture function should not launch any async tasks.
+  opts.async_task_runner = reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
+
+  Arguments<ScalarArg, MemrefDesc> args(fwd_args.size());
+
+  for (size_t i = 0; i < fwd_args.size(); ++i) {
+    // `index` argument passed as int64_t.
+    if (auto idx = fwd_args.get<int64_t>(i); succeeded(idx)) {
+      args.emplace_back<ScalarArg>(*idx);
+      continue;
+    }
+
+    // Pass `memref` argument as a MemrefDesc.
+    if (auto memref = fwd_args.get<StridedMemrefView>(i); succeeded(memref)) {
+      args.emplace_back<MemrefDesc>(memref->dtype, memref->data, /*offset=*/0,
+                                    memref->sizes, memref->strides);
+      continue;
+    }
+
+    return absl::InvalidArgumentError("Unsupported argument type");
+  }
+
+  return function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode())
+      .status();
+}
+
 #endif  // #if GOOGLE_CUDA
 
 //===----------------------------------------------------------------------===//
@@ -190,6 +241,7 @@ static absl::Status LaunchGraph(
     StreamExecutorKernels::Snapshot* kernels,
     StreamExecutorConvRunners::Snapshot* convs,
     StreamExecutorGraphInstances::Snapshot* instances,
+    CapturedFunctionExecutionCount::Snapshot* counts,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
     NonAtomicallyUpgradeableRWLock* gpu_lock,
     CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
@@ -208,6 +260,24 @@ static absl::Status LaunchGraph(
                                 temp_buffer, kernels, convs, executable,
                                 gemm_config, gpu_lock);
   };
+
+  absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>*> get_count =
+      counts->GetOrCreate(
+          capture.ordinal,
+          []() -> absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>> {
+            return std::make_unique<std::atomic<uint64_t>>(0);
+          });
+  if (!get_count.ok()) return get_count.status();
+  uint64_t count = (**get_count)->fetch_add(1);
+  uint64_t instantiation_threshold =
+      debug_options->xla_gpu_cuda_graph_instantiation_threshold();
+  if (count < instantiation_threshold) {
+    // Run captured graph directly.
+    absl::Status result = RunGraphWithoutCapture(run_options, function_ref,
+                                                 fwd_args, user_data());
+    if (!result.ok()) return result;
+    return absl::OkStatus();
+  }
 
   absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
       capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
@@ -267,6 +337,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<StreamExecutorKernels::Snapshot*>()
         .UserData<StreamExecutorConvRunners::Snapshot*>()
         .UserData<StreamExecutorGraphInstances::Snapshot*>()
+        .UserData<CapturedFunctionExecutionCount::Snapshot*>()
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .UserData<NonAtomicallyUpgradeableRWLock*>()

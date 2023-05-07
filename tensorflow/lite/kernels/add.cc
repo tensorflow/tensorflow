@@ -89,6 +89,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteAddParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
+  TF_LITE_ENSURE(context, params);
+
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -143,7 +145,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input2->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
-    general_scale_int16 = !params || !params->pot_scale_int16;
+    general_scale_int16 = !params->pot_scale_int16;
 
     if (!general_scale_int16) {
       // Do preparation in the case of the scale parameter is power of 2.
@@ -252,13 +254,13 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int32_t);
+        TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, int32_t);
       } else {
         TF_LITE_ADD(reference_ops, Add, int32_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, int32_t);
+        TF_LITE_ADD(optimized_ops, BroadcastAdd6DSlow, int32_t);
       } else {
         TF_LITE_ADD(optimized_ops, Add, int32_t);
       }
@@ -266,13 +268,13 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
   } else if (output->type == kTfLiteInt64) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int64_t);
+        TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, int64_t);
       } else {
         TF_LITE_ADD(reference_ops, Add, int64_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, int64_t);
+        TF_LITE_ADD(optimized_ops, BroadcastAdd6DSlow, int64_t);
       } else {
         TF_LITE_ADD(optimized_ops, Add, int64_t);
       }
@@ -280,7 +282,7 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, float);
+        TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, float);
       } else {
         TF_LITE_ADD(reference_ops, Add, float);
       }
@@ -297,7 +299,7 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
                              &output_activation_max);
     SetActivationParams(output_activation_min, output_activation_max,
                         &op_params);
-    reference_ops::BroadcastAdd4DSlow<int16_t, true>(
+    reference_ops::BroadcastAdd6DSlow<int16_t, true>(
         op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
         GetTensorShape(input2), GetTensorData<int16_t>(input2),
         GetTensorShape(output), GetTensorData<int16_t>(output));
@@ -336,7 +338,7 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     if (output->type == kTfLiteInt8) {
       if (kernel_type == kReference) {
         if (need_broadcast) {
-          TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
+          TF_LITE_ADD(reference_integer_ops, BroadcastAdd6DSlow, int8_t);
         } else {
           TF_LITE_ADD(reference_integer_ops, Add, int8_t);
         }
@@ -349,7 +351,7 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
       }
     } else if (output->type == kTfLiteInt16) {
       if (need_broadcast) {
-        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int16_t);
+        TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, int16_t);
       } else {
         if (kernel_type == kReference) {
           reference_ops::Add(
@@ -363,7 +365,7 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       if (kernel_type == kReference) {
         if (need_broadcast) {
-          TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, uint8_t);
+          TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, uint8_t);
         } else {
           TF_LITE_ADD(reference_ops, Add, uint8_t);
         }

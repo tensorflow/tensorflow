@@ -20,8 +20,11 @@ from absl.testing import parameterized
 
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_management
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.compiler.xla.experimental import xla_sharding
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import tpu_replicated_variable
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -39,6 +42,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
@@ -79,6 +83,66 @@ class TPUStrategyModelParallelismTest(
     strategy_test_lib.TwoDeviceDistributionTestBase,
     parameterized.TestCase):
 
+  @parameterized.named_parameters([("packed", True), ("unpacked", False)])
+  def test_spmd_variable_structure(self, enable_packing):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    # pylint: disable=protected-access
+    if enable_packing:
+      self.assertTrue(strategy._enable_packed_variable_in_eager_mode,
+                      "packed variables should be enabled by default")
+    else:
+      strategy._enable_packed_variable_in_eager_mode = False
+    # pylint: enable=protected-access
+
+    tensor = constant_op.constant([[0., 1.], [2., 3.]])
+
+    # Test TPUMirroredVariable and TPUSyncOnReadVariable
+    with strategy.scope():
+      v = variables.Variable(
+          tensor, name="v", synchronization=vs.VariableSynchronization.ON_READ)
+      w = variables.Variable(
+          tensor, name="w", synchronization=vs.VariableSynchronization.ON_WRITE)
+
+    def test_read(x):
+      @def_function.function
+      def fn():
+        return x.read_value()
+
+      results = strategy.run(fn)
+      results = strategy.experimental_local_results(results)
+
+      for i in range(num_replicas):
+        self.assertAllClose(results[i], tensor)
+
+    def test_structure(values):
+      for i, value in enumerate(values):
+        self.assertIsInstance(
+            value, tpu_replicated_variable.TPUReplicatedVariable)
+        packed_var = getattr(value, "_packed_var", None)
+        if enable_packing:
+          if i == 0:
+            self.assertIsInstance(packed_var, packed.PackedDistributedVariable)
+          else:
+            self.assertIs(packed_var, values[0]._packed_var,  # pylint: disable=protected-access
+                          "all vals should share the same packed var instance")
+        else:
+          self.assertIsNone(packed_var)
+
+      if enable_packing:
+        # pylint: disable=protected-access
+        resources = sum((value._vars for value in values), [])
+        dist_vars = packed_var._distributed_variables
+        # pylint: enable=protected-access
+        self.assertLen(resources, len(dist_vars))
+        for dist_var, resource in zip(dist_vars, resources):
+          self.assertIs(dist_var, resource)
+
+    test_read(v)
+    test_structure(v.values)
+    test_read(w)
+    test_structure(w.values)
+
   def test_logical_device_assignment(self):
     strategy, num_replicas = get_tpu_strategy()
     with strategy.scope():
@@ -97,7 +161,7 @@ class TPUStrategyModelParallelismTest(
 
     @def_function.function
     def f(x):
-      replica_ctx = distribution_strategy_context.get_replica_context()
+      replica_ctx = distribute_lib.get_replica_context()
       with replica_ctx.experimental_logical_device(0):
         y = v * x
       with replica_ctx.experimental_logical_device(1):
@@ -123,8 +187,8 @@ class TPUStrategyModelParallelismTest(
       def __init__(self, v, w):
         super(PartitionedModel, self).__init__()
 
-        assert distribution_strategy_context.has_strategy()
-        strategy = distribution_strategy_context.get_strategy()
+        assert distribute_lib.has_strategy()
+        strategy = distribute_lib.get_strategy()
 
         with strategy.extended.experimental_logical_device(0):
           self.v = variables.Variable(v)
@@ -132,7 +196,7 @@ class TPUStrategyModelParallelismTest(
           self.w = variables.Variable(w)
 
       def __call__(self, x):
-        replica_ctx = distribution_strategy_context.get_replica_context()
+        replica_ctx = distribute_lib.get_replica_context()
         with replica_ctx.experimental_logical_device(0):
           y = self.v * x
         with replica_ctx.experimental_logical_device(1):
@@ -425,6 +489,33 @@ class TPUStrategyModelParallelismTest(
     self.assertAllEqual(
         (arg + 3) * num_replicas,
         self.evaluate(strategy.reduce("SUM", result, axis=None)))
+
+  # Tests auto_to_manual_spmd_partition and manual_to_auto_spmd_partition.
+  # The internal versions of these ops are XlaSpmdFullToShardShape and
+  # XlaSpmdShardToFullShape.
+  def test_manual_sharding_ops(self):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    @def_function.function
+    def fn(x):
+      x_split = strategy.experimental_split_to_logical_devices(x, [1, 2])
+      split_sharding = xla_sharding.get_op_sharding(x_split.op)
+      x_manual = xla_sharding.auto_to_manual_spmd_partition(
+          x_split, split_sharding
+      )
+      y_manual = x_manual + 1
+      y_split = xla_sharding.manual_to_auto_spmd_partition(
+          y_manual, split_sharding, (2, 2)
+      )
+      return y_split
+
+    arg = constant_op.constant(0, shape=(2, 2), dtype=dtypes.int64)
+    result = strategy.run(fn, args=(arg,))
+    self.assertAllEqual(
+        (arg + 1) * num_replicas,
+        self.evaluate(strategy.reduce("SUM", result, axis=None)),
+    )
+
 
 if __name__ == "__main__":
   test.main()

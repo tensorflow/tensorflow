@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 namespace tfrt {
@@ -53,7 +53,7 @@ class CppTests : public ::testing::TestWithParam<const char*> {
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(GetParam(), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
   }
 };
 
@@ -185,7 +185,7 @@ TEST_P(CppTests, TestFunctionCacheWithAdd) {
   {
     tensorflow::AbstractContext* ctx_raw = nullptr;
     tensorflow::Status s = BuildImmediateExecutionContext(true, &ctx_raw);
-    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -193,7 +193,7 @@ TEST_P(CppTests, TestFunctionCacheWithAdd) {
   {
     tensorflow::AbstractTensorHandle* x_raw = nullptr;
     tensorflow::Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
-    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -201,7 +201,7 @@ TEST_P(CppTests, TestFunctionCacheWithAdd) {
   {
     tensorflow::AbstractTensorHandle* y_raw = nullptr;
     tensorflow::Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &y_raw);
-    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(tensorflow::errors::OK, s.code()) << s.message();
     y.reset(y_raw);
   }
 

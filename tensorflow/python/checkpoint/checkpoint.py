@@ -24,6 +24,7 @@ import time
 import weakref
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import async_checkpoint_helper
 from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
@@ -48,7 +49,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import path_helpers
@@ -65,7 +66,6 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -494,7 +494,7 @@ def _default_getter(name,
                                           shape_list,
                                           dtype=dtype)
 
-    return variables.VariableV1(
+    return variable_v1.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
@@ -1412,7 +1412,6 @@ class TrackableSaver:
     global _ASYNC_CHECKPOINT_THREAD
     if _ASYNC_CHECKPOINT_THREAD is not None:
       _ASYNC_CHECKPOINT_THREAD.join()
-
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()
     if graph_building:
@@ -2275,12 +2274,10 @@ class Checkpoint(autotrackable.AutoTrackable):
   def _async_checkpointer(self):
     """Returns an instantiated AsyncCheckpointHelper."""
     if self._async_checkpointer_impl is None:
-      ach = LazyLoader(
-          "async_checkpoint_helper", globals(),
-          "tensorflow.python.checkpoint.async_checkpoint_helper"
-      )
-      self._async_checkpointer_impl = ach.AsyncCheckpointHelper(
-          Checkpoint, **self._kwargs)
+      self._async_checkpointer_impl = (
+          async_checkpoint_helper.AsyncCheckpointHelper(
+              Checkpoint,
+              **self._kwargs))
 
     return self._async_checkpointer_impl
 
@@ -2303,7 +2300,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      if context.executing_eagerly():
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
         return self._async_checkpointer()._write(  # pylint: disable=protected-access
             file_prefix, options, write_done_callback)
       else:
@@ -2325,20 +2333,21 @@ class Checkpoint(autotrackable.AutoTrackable):
 
     end_time = time.time()
 
-    # This records the time checkpoint._write() blocks on the main thread.
-    metrics.AddCheckpointWriteDuration(
-        api_label=_CHECKPOINT_V2,
-        microseconds=_get_duration_microseconds(start_time, end_time),
-    )
+    if not checkpoint_context.in_async_metrics_context():
+      # This records the time checkpoint._write() blocks on the main thread.
+      metrics.AddCheckpointWriteDuration(
+          api_label=_CHECKPOINT_V2,
+          microseconds=_get_duration_microseconds(start_time, end_time),
+      )
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
-      metrics.AddTrainingTimeSaved(
-          api_label=_CHECKPOINT_V2,
-          microseconds=_get_duration_microseconds(
-              _END_TIME_OF_LAST_WRITE, end_time
-          ),
-      )
+      if not checkpoint_context.in_async_metrics_context():
+        metrics.AddTrainingTimeSaved(
+            api_label=_CHECKPOINT_V2,
+            microseconds=_get_duration_microseconds(
+                _END_TIME_OF_LAST_WRITE, end_time)
+        )
       if checkpoint_context.in_preemption_save_context():
         _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
             _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
@@ -2361,6 +2370,13 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     self._maybe_create_save_counter()
     return self._save_counter
+
+  def sync(self):
+    """Wait for any outstanding save or restore operations."""
+    # Subclasses of Checkpoint may not have `_async_checkpointer_impl` so use
+    # `getattr` for safer check.
+    if getattr(self, "_async_checkpointer_impl", None) is not None:
+      self._async_checkpointer_impl.sync()
 
   def save(self, file_prefix, options=None):
     # pylint:disable=line-too-long
@@ -2408,7 +2424,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      if context.executing_eagerly():
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
         return self._async_checkpointer().save(file_prefix, options)
       else:
         logging.warning(

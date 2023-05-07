@@ -21,7 +21,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -30,7 +29,7 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
@@ -345,12 +344,12 @@ class EagerFunctionTest(xla_test.XLATestCase):
       v = resource_variable_ops.ResourceVariable(1.0)
       w = resource_variable_ops.ResourceVariable(0.0)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def g(x):
         w.assign(w.read_value() + x)
         return v.read_value() + x * w.read_value()
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def f():
         return g(1.0) + g(2.0) + g(3.0) + g(4.0) + g(5.0)
 
@@ -362,11 +361,11 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(10.0)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def g():
         return v.read_value()
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def f():
         return g() + g() + g() + g() + g()
 
@@ -376,11 +375,11 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(0.0)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def g(x):
         v.assign(x)
 
-      @function.defun_with_attributes(attributes={'_noinline': True})
+      @def_function.function(experimental_attributes={'_noinline': True})
       def f():
         g(1.0)
         g(2.0)
@@ -637,7 +636,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(pred, value):
         fn1 = lambda: math_ops.add(value, 1.0)
         fn2 = lambda: math_ops.subtract(value, 1.0)
-        return control_flow_ops.cond(pred, fn1, fn2)
+        return cond.cond(pred, fn1, fn2)
 
       plus_one = f(constant_op.constant(True), constant_op.constant(10.0))
       minus_one = f(constant_op.constant(False), constant_op.constant(10.0))

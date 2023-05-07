@@ -35,6 +35,7 @@ package_group(
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/core/tpu/...",
         "//tensorflow/python/compiler/...",
+        "//tensorflow/python/util/...",
     ],
 )
 
@@ -42,6 +43,7 @@ package_group(
     name = "friends",
     includes = [":internal"],
     packages = [
+        "//platforms/performance/automl/...",
         "//tensorflow/...",
         "//tensorflow_federated/cc/core/impl/executors/...",
         "//tensorflow_models/...",
@@ -210,6 +212,7 @@ filegroup(
         "//tensorflow/compiler/xla:cpu_runtime_hdrs",
         "//tensorflow/compiler/xla/service:custom_call_status_hdrs",
         "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
+        "//tensorflow/compiler/xla/service/cpu:xla_runtime_runner_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "//tensorflow/tsl/framework:xla_cpu_runtime_hdrs",
@@ -226,6 +229,7 @@ filegroup(
         "//tensorflow/compiler/xla:cpu_runtime_srcs",
         "//tensorflow/compiler/xla/service:custom_call_status_srcs",
         "//tensorflow/compiler/xla/service/cpu:runtime_srcs",
+        "//tensorflow/compiler/xla/service/cpu:xla_runtime_runner_srcs",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "//tensorflow/tsl/platform:xla_cpu_runtime_srcs",
@@ -282,7 +286,9 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "//third_party/eigen3",
@@ -371,6 +377,7 @@ cc_library(
         # binary produced by tfcompile.
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -403,10 +410,10 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
     ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:cpu_plugin",
@@ -417,14 +424,32 @@ cc_library(
     ),
 )
 
+tf_cc_test(
+    name = "graph_compiler_test",
+    srcs = ["graph_compiler_test.cc"],
+    deps = [
+        ":graph_compiler_util",
+        ":tf2xla_proto_cc",
+        ":xla_compilation_device",
+        ":xla_compiler",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "xla_compiler",
     srcs = [
         "const_analysis.cc",
         "graph_compiler.cc",
         "xla_compiler.cc",
-        "xla_op_kernel.cc",
         "xla_cpu_backend.cc",
+        "xla_op_kernel.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
     ]) + if_rocm_is_configured([
@@ -442,8 +467,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
-        ":layout_util",
         ":host_compute_metadata_proto_cc",
+        ":layout_util",
         ":rearrange_function_argument",
         ":sharding_util",
         ":side_effect_util",
@@ -455,22 +480,13 @@ cc_library(
         ":xla_helpers",
         ":xla_op_registry",
         ":xla_resource",
-        "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_compile_util",
+        "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
+        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/utils:array_container_utils",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
-        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util_no_tf_dialect_passes",
-        "//tensorflow/compiler/xla/client:value_inference",
-        "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -479,11 +495,12 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/core/util:overflow",
-        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/compiler/xla/service:computation_placer_hdr",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -491,6 +508,14 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ] + if_libtpu([
         ":xla_tpu_backend_registration",
     ]),
@@ -1336,8 +1361,9 @@ cc_library(
     deps = [
         ":xla_compiler",
         "//tensorflow/compiler/jit:xla_compile_util",
-        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/utils:array_container_utils",
+        "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1378,5 +1404,43 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+filegroup(
+    name = "tf2xla_opset_hdrs",
+    srcs = [
+        "tf2xla_opset.h",
+    ],
+    visibility = ["//tensorflow/python/util:__pkg__"],
+)
+
+cc_library(
+    name = "tf2xla_opset",
+    srcs = [
+        "tf2xla_opset.cc",
+    ],
+    hdrs = ["tf2xla_opset.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        ":tf2xla_util",
+        ":xla_op_registry",
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tf2xla_opset_test",
+    srcs = [
+        "tf2xla_opset_test.cc",
+    ],
+    deps = [
+        ":tf2xla_opset",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

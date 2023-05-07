@@ -98,8 +98,7 @@ Status SingleMachine::Provision() {
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         return errors::Unavailable("Unknown TF GPU device with id ",
-                                   tf_device_id.value(), ": ",
-                                   s.error_message());
+                                   tf_device_id.value(), ": ", s.message());
       }
       attr = GetLocalGPUInfo(platform_device_id);
     } else if (dev.device_type().find("XLA") == string::npos) {
@@ -216,7 +215,7 @@ Status SingleMachine::GetPeakMemoryUsage(
   // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
   // the AllocatorStats would be collected.
   if (!cpu_allocator_stats_enabled_) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "Tracking allocation for CPU is not enabled.");
   }
 
@@ -228,7 +227,7 @@ Status SingleMachine::GetPeakMemoryUsage(
   for (Device* device : devices) {
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Tracking allocation is not enabled.");
     }
     absl::optional<AllocatorStats> stats = allocator->GetStats();
@@ -445,7 +444,7 @@ Status SingleMachine::ClearAllocatorStats() const {
   // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
   // the AllocatorStats would be collected.
   if (!cpu_allocator_stats_enabled_) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "Tracking allocation for CPU is not enabled.");
   }
 
@@ -456,12 +455,12 @@ Status SingleMachine::ClearAllocatorStats() const {
   for (Device* device : devices) {
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Tracking allocation is not enabled.");
     }
     if (!allocator->ClearStats()) {
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           absl::StrCat("Clearing allocation stats is not supported for ",
                        device->name()));
     }

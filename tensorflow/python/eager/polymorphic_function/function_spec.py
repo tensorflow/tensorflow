@@ -337,17 +337,10 @@ class FunctionSpec(object):
     Returns:
       A `string`.
     """
-    args = list(self._arg_names)
+    summary = f"{self._function_type!r}"
     if default_values:
-      for (i, default) in self._arg_indices_to_default_values.items():
-        args[i] += "={}".format(default)
-    if self._fullargspec.kwonlyargs:
-      args.append("*")
-      for arg_name in self._fullargspec.kwonlyargs:
-        args.append(arg_name)
-        if default_values and arg_name in self._fullargspec.kwonlydefaults:
-          args[-1] += "={}".format(self._fullargspec.kwonlydefaults[arg_name])
-    return f"{self._name}({', '.join(args)})"
+      summary += f", defaults: {self.default_values!r}"
+    return summary
 
   def canonicalize_function_inputs(self, args, kwargs):
     """Canonicalizes `args` and `kwargs`.

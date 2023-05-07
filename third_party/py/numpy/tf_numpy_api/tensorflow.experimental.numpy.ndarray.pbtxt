@@ -10,15 +10,7 @@ tf_class {
     mtype: "<type \'set\'>"
   }
   member {
-    name: "device"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {
@@ -30,24 +22,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "op"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "shape"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "value_index"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'op\', \'value_index\', \'dtype\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "consumers"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "eval"

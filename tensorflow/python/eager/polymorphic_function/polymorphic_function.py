@@ -75,6 +75,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import autograph_util
 from tensorflow.python.eager.polymorphic_function import compiler_ir
 from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
@@ -85,6 +86,7 @@ from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -216,19 +218,20 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
   supported.
   """
 
-  def __init__(self,
-               initial_value=None,
-               trainable=None,
-               caching_device=None,
-               name=None,
-               dtype=None,
-               constraint=None,
-               add_initializers_to=None,
-               lifted_initializer_graph=None,
-               synchronization=None,
-               aggregation=None,
-               shape=None,
-               **unused_kwargs):
+  def __init__(
+      self,
+      initial_value=None,
+      trainable=None,
+      caching_device=None,
+      name=None,
+      dtype=None,
+      constraint=None,
+      add_initializers_to=None,
+      synchronization=None,
+      aggregation=None,
+      shape=None,
+      **unused_kwargs,
+  ):
     """Creates a variable.
 
     Args:
@@ -236,8 +239,8 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called.
-        (Note that initializer functions from init_ops.py must first be bound
-         to a shape before being used here.)
+        (Note that initializer functions from init_ops.py must first be bound to
+        a shape before being used here.)
       trainable: If `True`, GradientTapes automatically watch uses of this
         Variable.
       caching_device: Optional device string or function describing where the
@@ -247,26 +250,24 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         deduplicate copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
-      dtype: If set, initial_value will be converted to the given type.
-        If None, either the datatype will be kept (if initial_value is
-       a Tensor) or float32 will be used (if it is a Python object convertible
-       to a Tensor).
+      dtype: If set, initial_value will be converted to the given type. If None,
+        either the datatype will be kept (if initial_value is a Tensor) or
+        float32 will be used (if it is a Python object convertible to a Tensor).
       constraint: An optional projection function to be applied to the variable
         after being updated by an `Optimizer` (e.g. used to implement norm
         constraints or value constraints for layer weights). The function must
         take as input the unprojected Tensor representing the value of the
-        variable and return the Tensor for the projected value
-        (which must have the same shape). Constraints are not safe to
-        use when doing asynchronous distributed training.
+        variable and return the Tensor for the projected value (which must have
+        the same shape). Constraints are not safe to use when doing asynchronous
+        distributed training.
       add_initializers_to: if not None and not in legacy graph mode, the
         initializer tensor will be added to this map in addition to adding the
         assignment to the function.
-      lifted_initializer_graph: FuncGraph to try to lift initializers to.
-      synchronization: Indicates when a distributed variable will be
-        aggregated. Accepted values are constants defined in the class
+      synchronization: Indicates when a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
-        `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize.
+        `AUTO` and the current `DistributionStrategy` chooses when to
+        synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -384,7 +385,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         # Capture the handle ahead of time in order to avoid querying the shape
         # of the handle which helps async execution performance
         graph.capture(self._handle, shape=())
-        control_flow_ops.cond(
+        cond.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
 
@@ -430,22 +431,6 @@ def _evaluate_var_is_initialized(variables):
           numpy_value = all_initialized
         var_is_initialized[index] = numpy_value
   return var_is_initialized
-
-
-class FunctionDeleter:
-  """An object responsible for cleaning up the function graph."""
-
-  __slots__ = ["func_graph"]
-
-  def __init__(self, func_graph):
-    self.func_graph = func_graph
-
-  def __del__(self):
-    try:
-      func_graph_module.dismantle_func_graph(self.func_graph)
-    except:  # pylint: disable=bare-except
-      # Note: bare except here because this can be noisy at shutdown time.
-      pass
 
 
 class OptionalXlaContext:
@@ -657,6 +642,10 @@ class Function(core.GenericFunction, trackable.Trackable):
     except AttributeError:
       name = "function"
 
+    if self._autograph:
+      fn = autograph_util.py_func_from_autograph(
+          fn, self._experimental_autograph_options)
+
     return tracing_compiler.TracingCompiler(
         fn,
         name,
@@ -682,7 +671,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       add_initializers_to: Where to collect variable initializers, if not None.
     """
     created_variables = []
-    lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
     def variable_capturing_scope(next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
@@ -692,8 +680,8 @@ class Function(core.GenericFunction, trackable.Trackable):
       if not enable_variable_lifting:
         return next_creator(**kwds)
       v = UnliftedInitializerVariable(
-          add_initializers_to=add_initializers_to,
-          lifted_initializer_graph=lifted_initializer_graph, **kwds)
+          add_initializers_to=add_initializers_to, **kwds
+      )
       created_variables.append(weakref.ref(v))
       return v
 
@@ -702,8 +690,6 @@ class Function(core.GenericFunction, trackable.Trackable):
         variable_capturing_scope)
     self._variable_creation_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
-    self._lifted_initializer_graph = lifted_initializer_graph
-    self._graph_deleter = FunctionDeleter(self._lifted_initializer_graph)
     self._concrete_variable_creation_fn = (
         self._variable_creation_fn    # pylint: disable=protected-access
         ._get_concrete_function_internal_garbage_collected(
@@ -921,7 +907,7 @@ class Function(core.GenericFunction, trackable.Trackable):
                 v.handle))
       # We want to call no_variable_creation if possible because it avoids
       # recomputing potentially expensive initializers.
-      return control_flow_ops.cond(
+      return cond.cond(
           condition,
           lambda: self._no_variable_creation_fn(*inner_args, **inner_kwds),
           functools.partial(

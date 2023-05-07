@@ -17,8 +17,8 @@ limitations under the License.
 #include <string>
 
 #include "flatbuffers/idl.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_fbs_contents-inl.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_fbs_contents-inl.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/tools/logging.h"
 

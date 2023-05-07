@@ -24,7 +24,7 @@ import re
 import site
 import traceback
 
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 
 _NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = fr"{{{{(?P<type>{_NAME_REGEX}) (?P<name>{_NAME_REGEX})}}}}"
@@ -435,7 +435,7 @@ def _build_node_error_message(op):
   return "\n".join(node_error_message)
 
 
-def interpolate(message, graph):
+def interpolate_graph(message, graph):
   """Interpolates an error message.
 
   The error message can contain tags of form `{{node_type node_name}}`

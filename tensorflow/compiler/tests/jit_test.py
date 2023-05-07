@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -358,7 +359,7 @@ class XlaCompilationTest(test.TestCase):
       c = array_ops.placeholder(dtypes.bool)
       with jit_scope():
         z = x + 1.0
-        w = control_flow_ops.cond(c, lambda: z, lambda: y)
+        w = cond.cond(c, lambda: z, lambda: y)
         t = math_ops.add(z, w)
 
       # If JIT compilation chooses to cluster z and t, then execution will

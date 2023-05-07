@@ -70,7 +70,6 @@ import builtins
 import numbers
 import numpy as np
 
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1071,25 +1070,32 @@ def saturate_cast(value, dtype, name=None):
     # in_dtype is real, but out_dtype could be complex.
     out_real_dtype = dtype.real_dtype
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
+      # The output min/max may not actually be representable in the
+      # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
+      # behavior when trying to cast a value outside the valid range of the
+      # target type. We work around this by nudging the min/max to fall within
+      # the valid output range.  The catch is that we may actually saturate
+      # to a value less than the true saturation limit, but this is the best we
+      # can do in order to avoid UB without introducing a separate SaturateCast
+      # op.
+      min_limit = in_dtype.as_numpy_dtype(out_real_dtype.min)
+      if min_limit < out_real_dtype.min:
+        min_limit = np.nextafter(
+            out_real_dtype.min, 0, dtype=in_dtype.as_numpy_dtype
+        )
 
-      # Wrap changes to maintain TensorFlow's forward-compatibility window.
-      if not dtype.is_complex and not tf_compat.forward_compatible(2023, 1, 16):
-        # Old behavior using max/min.
-        if in_dtype.min < dtype.min:
-          value = gen_math_ops.maximum(
-              value,
-              ops.convert_to_tensor(dtype.min, dtype=value.dtype, name="min"))
-        if in_dtype.max > dtype.max:
-          value = gen_math_ops.minimum(
-              value,
-              ops.convert_to_tensor(dtype.max, dtype=value.dtype, name="max"))
-      else:
-        # New behavior using clip.
-        value = gen_math_ops._clip_by_value(
-            value,
-            ops.convert_to_tensor(out_real_dtype.min, dtype=in_dtype),
-            ops.convert_to_tensor(out_real_dtype.max, dtype=in_dtype),
-            name="clamp")
+      max_limit = in_dtype.as_numpy_dtype(out_real_dtype.max)
+      if max_limit > out_real_dtype.max:
+        max_limit = np.nextafter(
+            out_real_dtype.max, 0, dtype=in_dtype.as_numpy_dtype
+        )
+
+      value = gen_math_ops._clip_by_value(
+          value,
+          ops.convert_to_tensor(min_limit, dtype=in_dtype),
+          ops.convert_to_tensor(max_limit, dtype=in_dtype),
+          name="clamp",
+      )
     return cast(value, dtype, name=name)
 
 
@@ -1695,17 +1701,38 @@ def div_no_nan(x, y, name=None):
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
-    x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    y: A `Tensor` whose dtype is compatible with `x`.
+    x: A `Tensor` of a floating or integer dtype.
+    y: A `Tensor` with the same dtype as `x` and a compatible shape.
     name: A name for the operation (optional).
 
   Returns:
-    The element-wise value of the x divided by y.
+    The element-wise quotient as in `tf.math.divide(x, y)`,
+    except that division by zero produces `0.0`, not `nan`.
   """
 
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+      # Treat this case specially like divide() does above.
+      y = ops.convert_to_tensor(y, name="y")
+      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+    else:
+      x = ops.convert_to_tensor(x, name="x")
+      y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError as e:
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in tf.math.divide_no_nan. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}."
+      ) from e
+    if dtype is not None:
+      x = cast(x, dtype)
+      y = cast(y, dtype)
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 

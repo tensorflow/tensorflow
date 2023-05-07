@@ -519,123 +519,6 @@ tsl::Status ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
   }
 }
 
-bool ROCMBlas::DoBlasGemvWithProfiling(
-    Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, float alpha,
-    const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &x,
-    int incx, float beta, DeviceMemory<float> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
-                                     incx, beta, y, incy,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemvWithProfiling(
-    Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, double alpha,
-    const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &x,
-    int incx, double beta, DeviceMemory<double> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
-                                     incx, beta, y, incy,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemvWithProfiling(
-    Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,
-    std::complex<float> alpha, const DeviceMemory<std::complex<float>> &a,
-    int lda, const DeviceMemory<std::complex<float>> &x, int incx,
-    std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
-                                     incx, beta, y, incy,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemvWithProfiling(
-    Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,
-    std::complex<double> alpha, const DeviceMemory<std::complex<double>> &a,
-    int lda, const DeviceMemory<std::complex<double>> &x, int incx,
-    std::complex<double> beta, DeviceMemory<std::complex<double>> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
-                                     incx, beta, y, incy,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemmWithProfiling(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
-    int lda, const DeviceMemory<Eigen::half> &b, int ldb, float beta,
-    DeviceMemory<Eigen::half> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
-                                     lda, b, ldb, beta, c, ldc,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemmWithProfiling(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
-    const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
-    int ldc, blas::ProfileResult *output_profile_result) {
-  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
-                                     lda, b, ldb, beta, c, ldc,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemmWithProfiling(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
-    const DeviceMemory<double> &b, int ldb, double beta,
-    DeviceMemory<double> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
-                                     lda, b, ldb, beta, c, ldc,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemmWithProfiling(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, std::complex<float> alpha,
-    const DeviceMemory<std::complex<float>> &a, int lda,
-    const DeviceMemory<std::complex<float>> &b, int ldb,
-    std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
-                                     lda, b, ldb, beta, c, ldc,
-                                     output_profile_result);
-}
-
-bool ROCMBlas::DoBlasGemmWithProfiling(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, std::complex<double> alpha,
-    const DeviceMemory<std::complex<double>> &a, int lda,
-    const DeviceMemory<std::complex<double>> &b, int ldb,
-    std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
-                                     lda, b, ldb, beta, c, ldc,
-                                     output_profile_result);
-}
-
-template <typename T>
-bool ROCMBlas::DoBlasGemvWithProfilingImpl(
-    Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, const T &alpha,
-    const DeviceMemory<T> &a, int lda, const DeviceMemory<T> &x, int incx,
-    const T &beta, DeviceMemory<T> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  // ROCM TODO: properly implement the interface
-  return false;
-}
-
-template <typename T, typename ParamType>
-bool ROCMBlas::DoBlasGemmWithProfilingImpl(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, const ParamType &alpha, const DeviceMemory<T> &a,
-    int lda, const DeviceMemory<T> &b, int ldb, const ParamType &beta,
-    DeviceMemory<T> *c, int ldc, blas::ProfileResult *output_profile_result) {
-  // ROCM TODO: properly implement the interface
-  return false;
-}
 tsl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
@@ -696,7 +579,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
               : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
       if (!a_status) {
         return tsl::Status(
-            tsl::error::INTERNAL,
+            absl::StatusCode::kInternal,
             "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
       src_ptr = reinterpret_cast<char *>(raw_ptrs[i]);
@@ -712,7 +595,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
              : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
   if (!a_status)
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
   return tsl::OkStatus();
 }
@@ -875,7 +758,7 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
                         batch_stride_c, batch_count);
   }
   if (!ok)
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "failed BLAS call, see log for details");
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,
@@ -1244,8 +1127,7 @@ void initialize_rocblas() {
                 });
 
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to register rocBLAS factory: "
-                 << status.error_message();
+      LOG(ERROR) << "Unable to register rocBLAS factory: " << status.message();
     }
 
     PluginRegistry::Instance()->SetDefaultFactory(

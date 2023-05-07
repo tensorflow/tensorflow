@@ -179,11 +179,12 @@ constexpr std::underlying_type_t<T> to_underlying(T value) noexcept {
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(absl::Span<D> dest, int64_t dest_base, int64_t dest_stride,
-                 absl::Span<const S> src, int64_t src_base, int64_t src_stride,
+void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
                  int64_t count) {
-  for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
-    dest[dest_base] = static_cast<D>(src[src_base]);
+  const S* src_end = src + count * src_stride;
+  DCHECK_LT(src, src_end);
+  for (; src < src_end; dest += dest_stride, src += src_stride) {
+    *dest = static_cast<D>(*src);
   }
 }
 
@@ -254,22 +255,25 @@ Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
-  return InvalidArgument("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::InvalidArgument(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
-  return Unimplemented("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::Unimplemented(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status InternalErrorStrCat(Args&&... concat) {
-  return InternalError("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(tsl::errors::Internal(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status ResourceExhaustedStrCat(Args&&... concat) {
-  return ResourceExhausted("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::ResourceExhausted(std::forward<Args>(concat)...));
 }
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
@@ -331,6 +335,9 @@ std::string RoundTripFpToString(tsl::float8_e5m2 value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3.
 std::string RoundTripFpToString(tsl::float8_e4m3fn value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3B11.
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value);
 
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
@@ -525,10 +532,8 @@ SignedIntegerTypeForSizeType<sizeof(T)> ToSignMagnitude(T input) {
 
 template <typename T>
 constexpr int NanPayloadBits() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  // Floating point types with NaNs have payloads.
-  if (!std::numeric_limits<T>::has_quiet_NaN) {
+  // Floating point types with signaling NaNs have payloads.
+  if constexpr (!std::numeric_limits<T>::has_signaling_NaN) {
     return 0;
   }
   return std::numeric_limits<T>::digits - 1;
@@ -536,19 +541,17 @@ constexpr int NanPayloadBits() {
 
 template <typename T>
 constexpr uint64_t QuietNanWithoutPayload() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  if (const int bits = NanPayloadBits<T>()) {
-    return uint64_t{1} << (bits > 0 ? (bits - 1) : 0);
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
+    return uint64_t{1} << (bits - 1);
   }
   return 0;
 }
 
 template <typename T>
 constexpr uint64_t NanPayloadBitMask() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  if (const int bits = NanPayloadBits<T>()) {
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
     return LsbMask<uint64_t>(bits);
   }
   return 0;
@@ -556,8 +559,7 @@ constexpr uint64_t NanPayloadBitMask() {
 
 template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
+  static_assert(NanPayloadBits<T>() > 0);
   using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   const T val = std::numeric_limits<T>::quiet_NaN();
   auto rep = absl::bit_cast<RepT>(val);
@@ -672,9 +674,14 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 std::pair<float, float> SplitF64ToF32(double x);
 
 class HloInstruction;
+class HloModule;
 
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
+using HloModulePredicate = std::function<bool(const HloModule*)>;
+
+inline bool HloPredicateTrue(const HloInstruction*) { return true; }
+inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;

@@ -22,7 +22,11 @@ cc_library_with_tflite(
     name = "delegate_loader",
     srcs = ["delegate_loader.cc"],
     hdrs = ["delegate_loader.h"],
-    tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
+    tflite_deps = ["//tensorflow/lite/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
@@ -34,7 +38,7 @@ cc_library_with_tflite(
     name = "stable_delegate_interface",
     hdrs = ["stable_delegate_interface.h"],
     generate_opaque_delegate_target = True,
-    tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
+    tflite_deps = ["//tensorflow/lite/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
 )
 
@@ -59,9 +63,9 @@ tflite_cc_shared_object(
     deps = [
         ":stable_delegate_interface",
         ":version_script.lds",
-        "//tensorflow/lite/core/shims:c_api",
-        "//tensorflow/lite/core/shims:xnnpack_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin",
+        "//tensorflow/lite/c:c_api",
     ],
 )
 
@@ -71,8 +75,8 @@ cc_test(
     data = ["//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate"],
     deps = [
         ":delegate_loader",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -81,12 +85,12 @@ cc_library(
     name = "tflite_settings_json_parser",
     srcs = [
         "tflite_settings_json_parser.cc",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs_contents-inl.h",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs_contents-inl.h",
     ],
     hdrs = ["tflite_settings_json_parser.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/tools:logging",
         "@flatbuffers",
@@ -112,7 +116,7 @@ cc_test(
     ],
     deps = [
         ":tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],

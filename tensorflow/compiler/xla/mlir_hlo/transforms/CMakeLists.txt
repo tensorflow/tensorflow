@@ -39,12 +39,14 @@ add_mlir_library(MLIRBufferTransforms
 
   DEPENDS
   LMHLOTransformsPassIncGen
+  MLIRDeallocationPassesIncGen
 
   LINK_COMPONENTS
   Core
 
   LINK_LIBS PUBLIC
   ChloOps
+  GmlStBufferizableOpInterface
   GmlStDialect
   MLIRGPUOps
   MLIRHLOAnalysis
@@ -56,6 +58,8 @@ add_mlir_library(MLIRBufferTransforms
   MLIRShapeDialect
   MLIRTransformDialectTransforms
   MLIRTransforms
+  MLIRX86VectorDialect
+  MLIRX86VectorTransforms
   MhloDialect
   THLODialect
   ThloBufferizableOpInterface

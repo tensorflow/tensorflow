@@ -193,6 +193,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             CpuBackendContext::GetFromContext(context);
         pthreadpool_t threadpool =
             cpu_backend_context->get_xnnpack_threadpool();
+        threadpool = nullptr;
         enum xnn_status status = xnn_status_invalid_parameter;
         if (std::is_same<OpType, MaximumOp>::value) {
           status = xnn_run_maximum_nd_f32(

@@ -28,8 +28,10 @@ CastFunctorType GetCpuCastFromUint64(DataType dst_dtype) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromUint64(DataType dst_dtype) {
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-  CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, uint64);
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+  CAST_CASE(GPUDevice, uint64, bfloat16);
+#else
+  CURRY_TYPES3(CAST_CASE, GPUDevice, uint64);
 #endif
   return nullptr;
 }

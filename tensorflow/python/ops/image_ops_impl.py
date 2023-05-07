@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
@@ -512,7 +513,7 @@ def _random_flip(image, flip_index, random_func, scope_name):
     def f_rank3():
       uniform_random = random_func(shape=[], minval=0, maxval=1.0)
       mirror_cond = math_ops.less(uniform_random, .5)
-      result = control_flow_ops.cond(
+      result = tf_cond.cond(
           mirror_cond,
           lambda: array_ops.reverse(image, [flip_index]),
           lambda: image,
@@ -530,7 +531,7 @@ def _random_flip(image, flip_index, random_func, scope_name):
 
     if shape.ndims is None:
       rank = array_ops.rank(image)
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     if shape.ndims == 3:
       return f_rank3()
     elif shape.ndims == 4:
@@ -642,7 +643,7 @@ def _flip(image, flip_index, scope_name):
 
     if shape.ndims is None:
       rank = array_ops.rank(image)
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return f_rank3()
     elif shape.ndims == 4:
@@ -708,7 +709,7 @@ def rot90(image, k=1, name=None):
       def f_rank4():
         return _rot90_4D(image, k, scope)
 
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return _rot90_3D(image, k, scope)
     elif shape.ndims == 4:
@@ -841,7 +842,7 @@ def transpose(image, name=None):
       def f_rank4():
         return array_ops.transpose(image, [0, 2, 1, 3], name=name)
 
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
@@ -2498,6 +2499,8 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating and not dtype.is_integer:
     raise AttributeError('dtype must be either floating point or integer')
+  if not image.dtype.is_floating and not image.dtype.is_integer:
+    raise AttributeError('image dtype must be either floating point or integer')
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
@@ -3221,8 +3224,8 @@ tf_export(
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 
-  `image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
-  where `channels` is:
+  `image` is a rank-N Tensor of type uint8 or uint16 with shape `batch_dims +
+  [height, width, channels]`, where `channels` is:
 
   *   1: for grayscale.
   *   2: for grayscale + alpha.
@@ -3235,7 +3238,7 @@ def encode_png(image, compression=-1, name=None):
 
   Args:
     image: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
-      3-D with shape `[height, width, channels]`.
+      Rank N >= 3 with shape `batch_dims + [height, width, channels]`.
     compression: An optional `int`. Defaults to `-1`. Compression level.
     name: A name for the operation (optional).
 
@@ -4551,9 +4554,9 @@ def ssim_multiscale(img1,
           remainder = tails[0] % divisor_tensor
           need_padding = math_ops.reduce_any(math_ops.not_equal(remainder, 0))
           # pylint: disable=cell-var-from-loop
-          padded = control_flow_ops.cond(need_padding,
-                                         lambda: do_pad(flat_imgs, remainder),
-                                         lambda: flat_imgs)
+          padded = tf_cond.cond(need_padding,
+                                lambda: do_pad(flat_imgs, remainder),
+                                lambda: flat_imgs)
           # pylint: enable=cell-var-from-loop
 
           downscaled = [
@@ -5627,11 +5630,11 @@ def non_max_suppression_padded_v2(boxes,
           value=boxes, num_or_size_splits=4, axis=2)
       y_1_is_min = math_ops.reduce_all(
           math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
-      y_min, y_max = control_flow_ops.cond(
+      y_min, y_max = tf_cond.cond(
           y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
       x_1_is_min = math_ops.reduce_all(
           math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
-      x_min, x_max = control_flow_ops.cond(
+      x_min, x_max = tf_cond.cond(
           x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
       boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
   # TODO(@bhack): https://github.com/tensorflow/tensorflow/issues/56089

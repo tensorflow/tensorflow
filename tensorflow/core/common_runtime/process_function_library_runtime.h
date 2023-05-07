@@ -404,16 +404,15 @@ class ProcessFunctionLibraryRuntime {
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
-  Status CreateRendezvous(FunctionLibraryRuntime::Options& opts,
-                          Rendezvous** created_rendezvous) const;
-
-  void CleanupCreatedRendezvous(const Rendezvous* created_rendezvous,
-                                const int64_t step_id) const;
+  Status CreateRendezvous(
+      FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous>* created_rendezvous) const;
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
-      const Rendezvous* rendezvous) const;
+      FunctionLibraryRuntime::DoneCallback done,
+      const FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous> rendezvous) const;
 
   void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
                FunctionLibraryRuntime::DoneCallback done) const;

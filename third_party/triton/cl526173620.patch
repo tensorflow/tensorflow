@@ -1,0 +1,81 @@
+==== triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp#6 - triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp ====
+# action=edit type=text
+--- triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2023-04-07 13:02:50.000000000 -0700
++++ triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2023-04-21 17:35:14.000000000 -0700
+@@ -68,14 +68,14 @@ public:
+                   ConversionPatternRewriter &rewriter) const override {
+     Type retType = getTypeConverter()->convertType(op.getType());
+     auto value = adaptor.getValue().dyn_cast<DenseElementsAttr>();
+-    if (dyn_cast<RankedTensorType>(retType)) {
++    if (dyn_cast<RankedTensorType>(cast<ShapedType>(retType))) {
+       assert(value);
+       if (value.getElementType().isInteger(1) && value.isSplat())
+         // Workaround until https://reviews.llvm.org/D133743 is included.
+-        value = DenseElementsAttr::get(retType, value.getSplatValue<bool>());
++        value = DenseElementsAttr::get(cast<ShapedType>(retType), value.getSplatValue<bool>());
+       else
+         // This is a hack. We just want to add encoding
+-        value = value.reshape(retType);
++        value = value.reshape(cast<ShapedType>(retType));
+     }
+     addNamedAttrs(
+         rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, retType, value),
+==== triton/lib/Dialect/Triton/IR/Dialect.cpp#2 - triton/lib/Dialect/Triton/IR/Dialect.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/Triton/IR/Dialect.cpp	2023-04-07 13:02:50.000000000 -0700
++++ triton/lib/Dialect/Triton/IR/Dialect.cpp	2023-04-21 17:28:36.000000000 -0700
+@@ -47,5 +47,5 @@
+ Operation *TritonDialect::materializeConstant(OpBuilder &builder,
+                                               Attribute value, Type type,
+                                               Location loc) {
+-  return builder.create<arith::ConstantOp>(loc, type, value);
++  return builder.create<arith::ConstantOp>(loc, type, cast<TypedAttr>(value));
+ }
+==== triton/lib/Dialect/Triton/Transforms/Combine.cpp#3 - triton/lib/Dialect/Triton/Transforms/Combine.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/Triton/Transforms/Combine.cpp	2023-04-07 13:02:50.000000000 -0700
++++ triton/lib/Dialect/Triton/Transforms/Combine.cpp	2023-04-21 17:49:20.000000000 -0700
+@@ -40,10 +40,10 @@
+   Type resType = bcast_res.getType();
+   DenseElementsAttr res;
+   if (auto denseValue = value.dyn_cast<DenseElementsAttr>()) {
+-    res =
+-        DenseElementsAttr::get(resType, denseValue.getSplatValue<Attribute>());
++    res = DenseElementsAttr::get(cast<ShapedType>(resType),
++                                 denseValue.getSplatValue<Attribute>());
+   } else {
+-    res = DenseElementsAttr::get(resType, value);
++    res = DenseElementsAttr::get(cast<ShapedType>(resType), value);
+   }
+   return res;
+ }
+==== triton/lib/Dialect/Triton/Transforms/RewriteTensorPointer.cpp#1 - triton/lib/Dialect/Triton/Transforms/RewriteTensorPointer.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/Triton/Transforms/RewriteTensorPointer.cpp	2023-04-07 13:02:50.000000000 -0700
++++ triton/lib/Dialect/Triton/Transforms/RewriteTensorPointer.cpp	2023-04-21 17:48:23.000000000 -0700
+@@ -181,7 +181,8 @@
+     }
+ 
+     // Create tensor
+-    Value constant = builder.create<arith::ConstantOp>(loc, attr);
++    Value constant =
++        builder.create<arith::ConstantOp>(loc, cast<TypedAttr>(attr));
+     return builder.create<triton::SplatOp>(loc, otherTensorType, constant);
+   }
+ };
+==== triton/lib/Dialect/TritonGPU/IR/Dialect.cpp#10 - triton/lib/Dialect/TritonGPU/IR/Dialect.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/TritonGPU/IR/Dialect.cpp	2023-04-07 13:02:50.000000000 -0700
++++ triton/lib/Dialect/TritonGPU/IR/Dialect.cpp	2023-04-21 17:46:57.000000000 -0700
+@@ -1056,8 +1056,9 @@
+   // cvt(type, constant) -> constant
+   if (auto cst = llvm::dyn_cast<arith::ConstantOp>(arg))
+     if (auto ret = cst.getValue().dyn_cast<SplatElementsAttr>()) {
+-      auto newRet = SplatElementsAttr::get(op->getResultTypes().front(),
+-                                           ret.getSplatValue<Attribute>());
++      auto newRet =
++          SplatElementsAttr::get(cast<ShapedType>(op->getResultTypes().front()),
++                                 ret.getSplatValue<Attribute>());
+       rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, newRet);
+       return mlir::success();
+     }

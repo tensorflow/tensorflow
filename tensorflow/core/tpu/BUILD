@@ -11,12 +11,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/jit:__subpackages__",
-        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
-        "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
-        "//tensorflow/compiler/xla:__subpackages__",
-        "//tensorflow/compiler/xla/backends/profiler/tpu:__subpackages__",
-        "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
@@ -227,9 +222,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
         "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/framework:versions_proto_cc",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
@@ -330,8 +323,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_defs",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:tpu_ops",
         "//tensorflow/core:core_cpu",
@@ -342,6 +333,8 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_pass",
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_rewrite_helpers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + if_libtpu(["//tensorflow/compiler/jit"]),
 )
 
@@ -357,5 +350,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["tpu_global_init.h"],
-    visibility = ["//tensorflow_serving/model_servers:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )

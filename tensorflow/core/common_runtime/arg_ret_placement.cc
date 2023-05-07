@@ -174,38 +174,45 @@ static Status SetMemoryTypeHelper(
 
 // This helper function takes a list of pairs that contain an arg node.
 // Note that ints_on_device is only true for single device functions
-// (i.e. for cases where Placer is not run).
+// (i.e. for cases where Placer is not run). The DataType specified by the "T"
+// attr of input nodes is used.
 static Status SetMemoryTypeHelper(
     const std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes,
-    const DataTypeVector& dtypes, bool weak_flag, bool ints_on_device,
+    bool weak_flag, bool ints_on_device,
     std::vector<AllocatorAttributes>* alloc_attrs) {
-  DCHECK_EQ(arg_nodes.size(), dtypes.size());
   DCHECK(alloc_attrs != nullptr);
   alloc_attrs->reserve(arg_nodes.size());
-  for (int i = 0; i < arg_nodes.size(); ++i) {
-    TF_RETURN_IF_ERROR(
-        SetMemoryTypeForNode(arg_nodes[i].first, dtypes[i], /*is_arg=*/true,
-                             weak_flag, ints_on_device,
-                             /*memory_types=*/nullptr, alloc_attrs));
+  for (const auto& arg : arg_nodes) {
+    const AttrValue* attr_value = arg.first->attrs().Find("T");
+    if (attr_value == nullptr) {
+      return errors::Internal("Arg node missing T attribute");
+    }
+    DataType dtype = attr_value->type();
+    TF_RETURN_IF_ERROR(SetMemoryTypeForNode(
+        arg.first, dtype, /*is_arg=*/true, weak_flag, ints_on_device,
+        /*memory_types=*/nullptr, alloc_attrs));
   }
   return OkStatus();
 }
 
 // This helper function takes a list of pairs that contain a ret node.
 // Note that ints_on_device is only true for single device functions
-// (i.e. for cases where Placer is not run).
+// (i.e. for cases where Placer is not run). The DataType specified by the "T"
+// attr of input nodes is used.
 static Status SetMemoryTypeHelper(
-    const std::vector<std::pair<Node*, int>> ret_nodes,
-    const DataTypeVector& dtypes, bool weak_flag, bool ints_on_device,
-    std::vector<AllocatorAttributes>* alloc_attrs) {
-  DCHECK_EQ(ret_nodes.size(), dtypes.size());
+    const std::vector<std::pair<Node*, int>> ret_nodes, bool weak_flag,
+    bool ints_on_device, std::vector<AllocatorAttributes>* alloc_attrs) {
   DCHECK(alloc_attrs != nullptr);
   alloc_attrs->reserve(ret_nodes.size());
-  for (int i = 0; i < ret_nodes.size(); ++i) {
-    TF_RETURN_IF_ERROR(
-        SetMemoryTypeForNode(ret_nodes[i].first, dtypes[i], /*is_arg=*/false,
-                             weak_flag, ints_on_device,
-                             /*memory_types=*/nullptr, alloc_attrs));
+  for (const auto& ret : ret_nodes) {
+    const AttrValue* attr_value = ret.first->attrs().Find("T");
+    if (attr_value == nullptr) {
+      return errors::Internal("Ret node missing T attribute");
+    }
+    DataType dtype = attr_value->type();
+    TF_RETURN_IF_ERROR(SetMemoryTypeForNode(
+        ret.first, dtype, /*is_arg=*/false, weak_flag, ints_on_device,
+        /*memory_types=*/nullptr, alloc_attrs));
   }
   return OkStatus();
 }
@@ -271,34 +278,30 @@ Status WeakSetAllocAttrsForRets(const gtl::InlinedVector<Node*, 4>& nodes,
 
 Status SingleDeviceSetAllocAttrsForArgs(
     std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes,
-    const DataTypeVector& dtypes, bool ints_on_device,
-    std::vector<AllocatorAttributes>& alloc_attrs) {
-  return SetMemoryTypeHelper(arg_nodes, dtypes, /*weak_flag=*/false,
-                             ints_on_device, &alloc_attrs);
+    bool ints_on_device, std::vector<AllocatorAttributes>& alloc_attrs) {
+  return SetMemoryTypeHelper(arg_nodes, /*weak_flag=*/false, ints_on_device,
+                             &alloc_attrs);
 }
 
 Status WeakSingleDeviceSetAllocAttrsForArgs(
     std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes,
-    const DataTypeVector& dtypes, bool ints_on_device,
-    std::vector<AllocatorAttributes>& alloc_attrs) {
-  return SetMemoryTypeHelper(arg_nodes, dtypes, /*weak_flag=*/true,
-                             ints_on_device, &alloc_attrs);
+    bool ints_on_device, std::vector<AllocatorAttributes>& alloc_attrs) {
+  return SetMemoryTypeHelper(arg_nodes, /*weak_flag=*/true, ints_on_device,
+                             &alloc_attrs);
 }
 
 Status SingleDeviceSetAllocAttrsForRets(
-    const std::vector<std::pair<Node*, int>> ret_nodes,
-    const DataTypeVector& dtypes, bool ints_on_device,
+    const std::vector<std::pair<Node*, int>> ret_nodes, bool ints_on_device,
     std::vector<AllocatorAttributes>& alloc_attrs) {
-  return SetMemoryTypeHelper(ret_nodes, dtypes, /*weak_flag=*/false,
-                             ints_on_device, &alloc_attrs);
+  return SetMemoryTypeHelper(ret_nodes, /*weak_flag=*/false, ints_on_device,
+                             &alloc_attrs);
 }
 
 Status WeakSingleDeviceSetAllocAttrsForRets(
-    const std::vector<std::pair<Node*, int>> ret_nodes,
-    const DataTypeVector& dtypes, bool ints_on_device,
+    const std::vector<std::pair<Node*, int>> ret_nodes, bool ints_on_device,
     std::vector<AllocatorAttributes>& alloc_attrs) {
-  return SetMemoryTypeHelper(ret_nodes, dtypes, /*weak_flag=*/true,
-                             ints_on_device, &alloc_attrs);
+  return SetMemoryTypeHelper(ret_nodes, /*weak_flag=*/true, ints_on_device,
+                             &alloc_attrs);
 }
 
 }  // namespace tensorflow::full_type

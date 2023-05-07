@@ -56,6 +56,10 @@ constexpr char kGPUVendor[] = "tflite.gpu_vendor";
 // "opengl_es_3.2_v@328.0_(git@6fb5a5b,_ife855c4895)_(date:08/21/18)"
 constexpr char kOpenGLDriverVersion[] = "tflite.opengl_driver_version";
 
+// Allowlist use case. This property is used to allow joining multiple lists
+// into a single decision tree.
+constexpr char kUseCase[] = "tflite.use_case";
+
 // NNAPI-related properties.
 //
 // NNAPI accelerator name, returned by ANeuralNetworksDevice_getName. E.g.,
@@ -76,6 +80,7 @@ namespace gpu {
 constexpr char kStatus[] = "tflite.gpu.status";
 
 constexpr char kStatusSupported[] = "SUPPORTED";
+constexpr char kStatusUnknown[] = "UNKNOWN";
 constexpr char kStatusUnsupported[] = "UNSUPPORTED";
 
 enum class CompatibilityStatus {

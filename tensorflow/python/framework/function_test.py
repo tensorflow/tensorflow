@@ -35,9 +35,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -48,6 +49,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
@@ -113,7 +115,7 @@ class FunctionTest(test.TestCase):
       return a
 
     with ops.Graph().as_default():
-      var = variables.VariableV1([18.0])
+      var = variable_v1.VariableV1([18.0])
       call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
       self.assertEqual("MyIdentity", call.op.name)
       for cfg in _OptimizerOptions():
@@ -282,7 +284,7 @@ class FunctionTest(test.TestCase):
       tf_logging.info("cfg = %s", cfg)
       with session.Session(graph=g, config=cfg) as sess:
         out, = sess.run(dlogits, {logits: x, labels: y})
-      self.assertAllClose(out, np.exp(prob - y))
+      self.assertAllClose(out, np.exp(prob - y), rtol=1e-5)
 
   @test_util.disable_xla("b/124286351")  # No error is raised
   def testCustomGradientError(self):
@@ -417,7 +419,7 @@ class FunctionTest(test.TestCase):
     def Foo(x):
       y = logging_ops.Print(x, [], "Hello")
       with ops.control_dependencies([y]):
-        z = control_flow_ops.no_op()
+        z = gen_control_flow_ops.no_op()
       with ops.control_dependencies([z]):
         return x * 2
 
@@ -493,7 +495,7 @@ class FunctionTest(test.TestCase):
     with ops.device("CPU"):
       pred = array_ops.placeholder(dtypes.bool)
       x = array_ops.placeholder(dtypes.int32)
-      cond = control_flow_ops.cond(pred, lambda: x + 1, lambda: AssertFail(x))
+      cond = tf_cond.cond(pred, lambda: x + 1, lambda: AssertFail(x))
       # pylint: disable=unnecessary-lambda
       loop = while_loop.while_loop(lambda y: pred, lambda y: AssertFail(y), [x])
       # pylint: enable=unnecessary-lambda
@@ -816,7 +818,7 @@ class FunctionTest(test.TestCase):
 
       @function.Defun(dtypes.bool)
       def Foo(pred):
-        return control_flow_ops.cond(pred, lambda: x, lambda: x + 1)
+        return tf_cond.cond(pred, lambda: x, lambda: x + 1)
 
       y = Foo(True)
       z = Foo(False)

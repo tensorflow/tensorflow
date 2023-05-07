@@ -51,12 +51,12 @@ def LegalizeXlaAbiPass :
   let constructor = "createXlaAbiLegalizationPass()";
 }
 
-def LegalizeCollectiveOpsPass :
-   Pass<"xla-legalize-collective-ops", "mlir::func::FuncOp"> {
-  let summary = "Legalizes collective ops to AllToAll and regular ops.";
+def LegalizeLibraryOpsPass :
+   Pass<"xla-legalize-library-ops", "mlir::func::FuncOp"> {
+  let summary = "Legalizes ops that map to runtime library calls.";
 
   let description = [{
-      Lowers collective ops to xla_cpu ops.
+      Lowers ops that map to a runtime library to xla_cpu ops.
   }];
 
   let dependentDialects = [
@@ -64,7 +64,7 @@ def LegalizeCollectiveOpsPass :
     "mlir::xla_cpu::XlaCpuDialect"
   ];
 
-  let constructor = "createLegalizeCollectiveOpsPass()";
+  let constructor = "createLegalizeLibraryOpsPass()";
 }
 
 def LegalizeI1VectorTransferOpsPass :
@@ -120,7 +120,8 @@ def SparseCustomCallRewritingPass :
   }];
 
   let dependentDialects = [
-      "mlir::sparse_tensor::SparseTensorDialect"
+      "mlir::sparse_tensor::SparseTensorDialect",
+      "mlir::chlo::ChloDialect",
   ];
 
   let constructor = "createSparseCustomCallRewritingPass()";

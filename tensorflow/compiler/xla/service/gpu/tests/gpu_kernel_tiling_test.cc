@@ -80,8 +80,8 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
     HloModule unnested_transpose_2
 
     ENTRY unnested_transpose_2 {
-      para0 = f16[2,3,64]{2,1,0} parameter(0)
-      ROOT copy1 = f16[2,3,64]{1,0,2} copy(para0)
+      para0 = f16[2,3,4]{2,1,0} parameter(0)
+      ROOT copy1 = f16[2,3,4]{1,0,2} copy(para0)
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is not generated.  As in
@@ -844,7 +844,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr(
           "Number of physical blocks (4294967296) does not fit in an i32"));
 }

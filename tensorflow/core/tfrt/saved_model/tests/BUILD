@@ -15,6 +15,7 @@ package_group(
     packages = [
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
+        "//tensorflow/core/tfrt/utils/debug/...",
     ],
 )
 
@@ -167,6 +168,7 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:standard_ops",  # build_cleaner: keep
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -294,6 +296,7 @@ pytype_strict_binary(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:standard_ops",  # build_cleaner: keep
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
@@ -348,12 +351,12 @@ pytype_strict_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
@@ -372,6 +375,7 @@ pytype_strict_binary(
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -603,17 +607,15 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
-        "//tensorflow/core/tfrt/mla:mla_test_utils",
+        "//tensorflow/core/tfrt/graph_executor:config",
+        "//tensorflow/core/tfrt/graph_executor:test_config_proto_cc",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_mira_impl",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
-        "@com_google_googletest//:gtest",
+        "//testing/base/public:gunit_for_library_testonly",
         "@tf_runtime//:core_runtime_alwayslink",
-        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
-        "@tf_runtime//backends/cpu:tf_ops_alwayslink",
     ],
     alwayslink = 1,
 )

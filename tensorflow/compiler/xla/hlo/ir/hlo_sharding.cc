@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <numeric>
@@ -68,7 +69,8 @@ HloSharding HloSharding::PartialTile(
   if (replication_groups.size() == 1) {
     return Replicate(metadata);
   }
-  auto new_tile_dims = group_tile_assignment.dimensions();
+  std::vector<int64_t> new_tile_dims(group_tile_assignment.dimensions().begin(),
+                                     group_tile_assignment.dimensions().end());
   new_tile_dims.push_back(replication_groups[0].size());
   auto new_tile_assignment = Array<int64_t>(new_tile_dims);
   new_tile_assignment.Each(
@@ -90,7 +92,9 @@ HloSharding HloSharding::PartialTile(
     return Replicate(metadata);
   }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {
-    auto new_tile_dims = tile_assignment_last_dim_replicate.dimensions();
+    std::vector<int64_t> new_tile_dims(
+        tile_assignment_last_dim_replicate.dimensions().begin(),
+        tile_assignment_last_dim_replicate.dimensions().end());
     new_tile_dims.pop_back();
     auto fully_tiled = tile_assignment_last_dim_replicate;
     fully_tiled.Reshape(new_tile_dims);

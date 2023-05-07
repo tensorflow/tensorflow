@@ -70,8 +70,8 @@ StatusOr<llvm::DenseMap<int, Layout>> LayoutsFromPackedTensor(
   TF_ASSIGN_OR_RETURN(axis,
                       CanonicalizeAxis(axis,
                                        /*packed_rank=*/packed_layout.rank()));
-  const Layout unpacked_layout =
-      packed_layout.GetLayoutWithReducedDims({axis}, false);
+  TF_ASSIGN_OR_RETURN(const Layout unpacked_layout,
+                      packed_layout.GetLayoutWithReducedDims({axis}, false));
   llvm::DenseMap<int, Layout> layouts(num_unpacked_tensors);
   for (int i = 0; i < num_unpacked_tensors; ++i) {
     layouts[i] = unpacked_layout;
@@ -144,8 +144,9 @@ StatusOr<mlir::Operation*> PackSPMDExpander::ExpandOp(mlir::Operation* op) {
   // to match the output layout. E.g. if the output layout is not but the input
   // is, this would force a AllConcat on all inputs, rather than first packing
   // and emitting one AllConcat.
-  const Layout new_input_layout =
-      output_layout->GetLayoutWithReducedDims({axis}, /*keep_dims=*/false);
+  TF_ASSIGN_OR_RETURN(
+      const Layout new_input_layout,
+      output_layout->GetLayoutWithReducedDims({axis}, /*keep_dims=*/false));
 
   for (int i = 0; i < op->getNumOperands(); ++i) {
     TF_ASSIGN_OR_RETURN(const absl::optional<Layout> layout,

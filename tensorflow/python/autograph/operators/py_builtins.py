@@ -26,8 +26,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
@@ -273,8 +273,8 @@ def _tf_tensor_len(s):
     with ops.control_dependencies([control_flow_assert.Assert(False, [msg])]):
       return constant_op.constant(0, dtype=dtypes.int32)
 
-  return control_flow_ops.cond(rank > 0, lambda: array_ops.shape(s)[0],
-                               raise_zero_rank_error)
+  return cond.cond(rank > 0, lambda: array_ops.shape(s)[0],
+                   raise_zero_rank_error)
 
 
 def _py_len(s):
@@ -413,7 +413,7 @@ def _py_enumerate(s, start=0):
   return enumerate(s, start)
 
 
-def zip_(*iterables):
+def zip_(*iterables, strict=False):
   zip_fn = _py_zip
   # If the overridden function is not the same across all iterables, use _py_zip
   for x in iterables:
@@ -422,11 +422,15 @@ def zip_(*iterables):
       zip_fn = _py_zip
       break
     zip_fn = zip_override
-  return zip_fn(*iterables)
+  return zip_fn(*iterables, strict=strict)
 
 
-def _py_zip(*iterables):
-  return zip(*iterables)
+def _py_zip(*iterables, strict=False):
+  if strict:
+    return zip(*iterables, strict=True)
+  else:
+    # Python < 3.10 doesn't have `strict` kwarg.
+    return zip(*iterables)
 
 
 def map_(fn, *iterables):

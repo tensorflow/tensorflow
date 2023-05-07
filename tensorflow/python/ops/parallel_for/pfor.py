@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_switch_case
@@ -578,8 +579,8 @@ class WhileOp:
     for i, out_ta in enumerate(output_tas):
       inp = inputs[i]
       new_output_tas.append(
-          control_flow_ops.cond(not_all_done, lambda: out_ta,
-                                lambda: out_ta.write(0, inp)))
+          tf_cond.cond(not_all_done, lambda: out_ta,
+                       lambda: out_ta.write(0, inp)))
     # pylint: enable=cell-var-from-loop
     return not_all_done, indices, inputs, new_output_tas
 
@@ -651,7 +652,7 @@ class WhileOp:
       # not be used. Notice that the value returned by the loop is based on
       # TensorArrays and not directly on these returned values.
       # pylint: disable=cell-var-from-loop
-      new_output = control_flow_ops.cond(
+      new_output = tf_cond.cond(
           not_all_done,
           lambda: true_fn(control_inp, body_pfor, body_output, stacked),
           lambda: constant_op.constant([], dtype=out_dtype))
@@ -3881,7 +3882,7 @@ def _stack_tensor_list_shape(shape, first_dim):
       return first_dim
   else:
     shape = array_ops.reshape(shape, [-1])
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         math_ops.reduce_any(shape < 0),
         lambda: constant_op.constant(-1),
         lambda: array_ops.concat([first_dim, shape], axis=0))
@@ -4116,7 +4117,7 @@ def _convert_tensor_list_concat_v2(pfor_input):
   # Note that element_shape attribute can have incomplete shapes. This doesn't
   # seem to work well when creating another list and then doing a concat on it.
   # Hence we try to find the dynamic shape here.
-  element_shape = control_flow_ops.cond(
+  element_shape = tf_cond.cond(
       length > 0, lambda: array_ops.shape(
           list_ops.tensor_list_get_item(handle, 0, element_dtype, None)),
       lambda: constant_op.constant([0, 0], dtype=dtypes.int32))
@@ -4487,6 +4488,7 @@ def _convert_function_call(func, converter, inputs):
   assert isinstance(func.graph, func_graph.FuncGraph), func
   assert isinstance(converter, PFor)
 
+  graph_outputs = func.graph.outputs[:len(func.function_type.flat_outputs)]
   # TODO(agarwal): consider caching this function definition.
   @def_function.function
   def f(*args):
@@ -4496,17 +4498,16 @@ def _convert_function_call(func, converter, inputs):
     for inp, arg in zip(func.graph.inputs, args):
       converter._add_conversion(inp, arg)
     # Convert output tensors.
-    return tuple(
-        [converter._convert_helper(x).t for x in func._func_graph_outputs])
+    return tuple([converter._convert_helper(x).t for x in graph_outputs])
 
   call_outputs = f(*inputs)
-  assert len(call_outputs) == len(func._func_graph_outputs)
+  assert len(call_outputs) == len(graph_outputs)
   outputs = []
-  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
+  for call_output, output_tensor in zip(call_outputs, graph_outputs):
     func_output = converter._convert_helper(output_tensor)
     outputs.append(
-        wrap(call_output, func_output.is_stacked,
-             func_output.is_sparse_stacked))
+        wrap(call_output, func_output.is_stacked, func_output.is_sparse_stacked)
+    )
   return outputs
 
 
@@ -4614,7 +4615,7 @@ def _convert_if(pfor_input):
       outputs.append(wrap(out, True))
     return outputs
   else:
-    outputs = control_flow_ops.cond(
+    outputs = tf_cond.cond(
         cond,
         lambda: _outputs_for_branch(then_branch.name, None, pfor_input, inputs),
         lambda: _outputs_for_branch(else_branch.name, None, pfor_input, inputs))
@@ -4755,7 +4756,7 @@ class WhileV2:
           if inp.is_stacked:
             # Shapes may be tf.constant(-1) for fully dynamic, in which case
             # slicing is an error.
-            element_shape = control_flow_ops.cond(
+            element_shape = tf_cond.cond(
                 math_ops.equal(array_ops.rank(element_shape), 0),
                 lambda: element_shape,
                 lambda: element_shape[1:])
@@ -4922,7 +4923,7 @@ class WhileV2:
 
     # If all are done, we simply return `new_inputs`. Else we need to run the
     # body function.
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         not_all_done,
         true_fn,
         lambda: list(new_inputs)), mismatching_stacked_indices

@@ -21,12 +21,13 @@ tf_cc_test(
     name = "layout_to_xla_sharding_test",
     srcs = ["layout_to_xla_sharding_test.cc"],
     deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/dtensor/cc:layout_to_xla_sharding",
-        "//tensorflow/dtensor/cc:tensor_layout",
-        "//tensorflow/dtensor/proto:layout_proto_cc",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -42,5 +43,18 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "spmd_expander_test",
+    srcs = ["spmd_expander_test.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:test_main",
+        "//tensorflow/dtensor/mlir:spmd_expander",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -243,7 +243,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
       src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, &status);
-    ASSERT_TRUE(status.ok()) << status.error_message();
+    ASSERT_TRUE(status.ok()) << status.message();
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
@@ -1435,7 +1435,7 @@ TEST(CAPI, SavedModel) {
   ASSERT_TRUE(input_op != nullptr);
   Status status;
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, &status)}});
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   const tensorflow::string output_op_name(
       tensorflow::ParseTensorName(output_name).first);

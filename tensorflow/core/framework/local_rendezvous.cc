@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/local_rendezvous.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/strings/str_format.h"
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,22 +33,28 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 
 // Represents a blocked Send() or Recv() call in the rendezvous.
+// Item hols a reference to the owner rendezvous, to make
+// sure the local rendezvous outlives any pending requests and callbacks.
 struct LocalRendezvous::Item {
   enum Type { kSend = 0, kRecv = 1 };
 
-  Item(Rendezvous::Args send_args, const Tensor& value, bool is_dead)
-      : Item(send_args, kSend) {
+  Item(tsl::core::RefCountPtr<Rendezvous> rc_owner, Rendezvous::Args send_args,
+       const Tensor& value, bool is_dead,
+       activity_watcher::ActivityScope activity_scope)
+      : Item(std::move(rc_owner), send_args, kSend, std::move(activity_scope)) {
     send_state.value.Init(value);
     send_state.is_dead = is_dead;
   }
 
-  Item(Rendezvous::Args recv_args, Rendezvous::DoneCallback waiter,
-       CancellationToken cancellation_token)
-      : Item(recv_args, kRecv) {
+  Item(tsl::core::RefCountPtr<Rendezvous> rc_owner, Rendezvous::Args recv_args,
+       Rendezvous::DoneCallback waiter, CancellationToken cancellation_token,
+       activity_watcher::ActivityScope activity_scope)
+      : Item(std::move(rc_owner), recv_args, kRecv, std::move(activity_scope)) {
     recv_state.waiter.Init(std::move(waiter));
     recv_state.cancellation_token = cancellation_token;
   }
@@ -60,6 +72,7 @@ struct LocalRendezvous::Item {
 
   const Rendezvous::Args args;
   const Type type;
+  tsl::core::RefCountPtr<Rendezvous> rc_owner;
 
   // Link to next item in an ItemQueue.
   Item* next = nullptr;
@@ -77,8 +90,15 @@ struct LocalRendezvous::Item {
     } recv_state;
   };
 
+  activity_watcher::ActivityScope scope;
+
  private:
-  Item(Rendezvous::Args args, Type type) : args(args), type(type) {
+  Item(tsl::core::RefCountPtr<Rendezvous> rc_owner, Rendezvous::Args args,
+       Type type, activity_watcher::ActivityScope activity_scope)
+      : args(args),
+        type(type),
+        rc_owner(std::move(rc_owner)),
+        scope(std::move(activity_scope)) {
     if (args.device_context) {
       args.device_context->Ref();
     }
@@ -101,7 +121,7 @@ LocalRendezvous::~LocalRendezvous() {
   // Before destroying this rendezvous instance, make sure all the done-callback
   // calls have finished and the tensors have been released from the queue.
   bool table_not_empty = false;
-  for (int i = 0; i < table_buckets_.size(); ++i) {
+  for (int i = 0; i < num_buckets_; ++i) {
     auto& bucket = table_buckets_[i];
     {
       mutex_lock l(bucket.mu);
@@ -141,7 +161,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
 
   TF_RETURN_IF_ERROR(status());
 
-  int bucket_index = key_hash % table_buckets_.size();
+  int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
 
@@ -153,8 +173,22 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     // Only send-related fields need to be filled.
     // TODO(b/143786186): Investigate moving the allocation of `Item` outside
     // the lock.
+    auto rc_owner = tsl::core::GetNewRef(rc_owner_);
     DVLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
-    queue->push_back(new Item(send_args, val, is_dead));
+    activity_watcher::ActivityScope activity_scope(
+        [&]() {
+          return std::make_unique<activity_watcher::Activity>(
+              "LocalRendezvous::Send",
+              activity_watcher::ActivityCategory::kRendezvous,
+              activity_watcher::Activity::Attributes{
+                  {"Rendezvous", absl::StrFormat("%p", this)},
+                  {"key", std::string(key.FullKey())},
+                  {"key_hash", absl::StrCat(key_hash)},
+              });
+        },
+        /*level=*/1);
+    queue->push_back(new Item(std::move(rc_owner), send_args, val, is_dead,
+                              std::move(activity_scope)));
     bucket.mu.unlock();
     return OkStatus();
   }
@@ -174,18 +208,8 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   // Invoke the done-callback, without holding the lock.
   bucket.mu.unlock();
 
-  // Make sure the ref-count of the rendezvous won't reach 0 while the
-  // done_callback is running, which would otherwise become deadlock:
-  // the done_callback waits for the Unref() to return, while the destructor
-  // waits for the pending_callback_counter to reach 0.
-  core::RefCountPtr<const Rendezvous> rc_owner_ref;
-  if (rc_owner_) {
-    rc_owner_ref.reset(rc_owner_);
-    rc_owner_->Ref();
-  }
   DCHECK_EQ(item->type, Item::kRecv);
   (*item->recv_state.waiter)(OkStatus(), send_args, item->args, val, is_dead);
-  delete item;
   {
     mutex_lock l(bucket.mu);
     bucket.pending_callback_counter--;
@@ -193,6 +217,8 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
       bucket.pending_callback_cond_var.notify_all();
     }
   }
+  // Delete the item at last since it may unref and destruct the rendezvous.
+  delete item;
   return OkStatus();
 }
 
@@ -201,6 +227,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
                                 Rendezvous::DoneCallback done) {
   uint64 key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
+  tsl::core::RefCountPtr<Rendezvous> rc_keep_alive;
 
   auto s = status();
   if (!s.ok()) {
@@ -209,7 +236,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     return;
   }
 
-  int bucket_index = key_hash % table_buckets_.size();
+  int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
 
@@ -222,20 +249,6 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     CancellationToken token = CancellationManager::kInvalidToken;
     bool already_cancelled = false;
     if (cm != nullptr) {
-      // Increment the refcount when cancellation manager is present, to make
-      // sure the rendezvous outlives the recv and its cancel callbacks.
-      // This refcount is dropped in exactly one of the following cases:
-      // (1) Recv registers cancellation callback to cm, and then cm is
-      //     cancelled, unref in the cancellation callback;
-      // (2) Recv registers cancellation callback to cm, but cm is already
-      //     cancelled, unref in the already_cancelled check;
-      // (3) Recv is successful, and item done callback finishes deregistering
-      //     the cancellation callback, unref in the item done callback;
-      // (4) Recv is successful, but the item done callback fails to deregister
-      //     the cancellation callback because cm already StartCancel, in this
-      //     case the cancellation callback will be invoked by the cm anyway,
-      //     unref in the cancellation callback.
-      if (rc_owner_) rc_owner_->Ref();
       token = cm->get_cancellation_token();
       already_cancelled = !cm->RegisterCallback(token, [this, token, key_hash,
                                                         &bucket] {
@@ -281,14 +294,10 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
               Rendezvous::Args(), item->args, Tensor(), /*is_dead=*/false);
           delete item;
         }
-        // Unref case (1) and (4)
-        if (rc_owner_) rc_owner_->Unref();
       });
     }
     if (already_cancelled) {
       bucket.mu.unlock();
-      // Unref case (2)
-      if (rc_owner_) rc_owner_->Unref();
       done(StatusGroup::MakeDerived(
                errors::Cancelled("RecvAsync is cancelled.")),
            Rendezvous::Args(), recv_args, Tensor(), /*is_dead=*/false);
@@ -299,12 +308,25 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
 
     // TODO(b/143786186): Investigate moving the allocation of `Item` outside
     // the lock.
+    activity_watcher::ActivityScope activity_scope(
+        [&]() {
+          return std::make_unique<activity_watcher::Activity>(
+              "LocalRendezvous::RecvAsync",
+              activity_watcher::ActivityCategory::kRendezvous,
+              activity_watcher::Activity::Attributes{
+                  {"Rendezvous", absl::StrFormat("%p", this)},
+                  {"key", std::string(key.FullKey())},
+                  {"key_hash", absl::StrCat(key_hash)},
+              });
+        },
+        /*level=*/1);
+    auto rc_owner = tsl::core::GetNewRef(rc_owner_);
     if (cm != nullptr) {
       // NOTE(mrry): We must wrap `done` with code that deregisters the
       // cancellation callback before calling the `done` callback, because the
       // cancellation manager may no longer be live after `done` is called.
       queue->push_back(new Item(
-          recv_args,
+          std::move(rc_owner), recv_args,
           [this, cm, token, done = std::move(done)](
               const Status& s, const Rendezvous::Args& send_args,
               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
@@ -313,14 +335,14 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
             // StartAbort, Unref will happen inside the cancellation callback
             // when called by the CM.
             if (cm->TryDeregisterCallback(token)) {
-              // Unref case (3)
-              if (this->rc_owner_) this->rc_owner_->Unref();
+              // Ignore the return value.
             }
             done(s, send_args, recv_args, v, dead);
           },
-          token));
+          token, std::move(activity_scope)));
     } else {
-      queue->push_back(new Item(recv_args, std::move(done), token));
+      queue->push_back(new Item(std::move(rc_owner), recv_args, std::move(done),
+                                token, std::move(activity_scope)));
     }
 
     bucket.mu.unlock();
@@ -343,19 +365,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   // Invoke the done-callback, without holding the lock.
   bucket.mu.unlock();
 
-  // Make sure the ref-count of the rendezvous won't reach 0 while the
-  // done_callback is running, which would otherwise become deadlock:
-  // the done_callback waits for the Unref() to return, while the destructor
-  // wiats for the pending_callback_counter to reach 0.
-  core::RefCountPtr<const Rendezvous> rc_owner_ref;
-  if (rc_owner_) {
-    rc_owner_ref.reset(rc_owner_);
-    rc_owner_->Ref();
-  }
   DCHECK_EQ(item->type, Item::kSend);
   done(OkStatus(), item->args, recv_args, *item->send_state.value,
        item->send_state.is_dead);
-  delete item;
   {
     mutex_lock l(bucket.mu);
     bucket.pending_callback_counter--;
@@ -363,6 +375,8 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       bucket.pending_callback_cond_var.notify_all();
     }
   }
+  // Delete the item at last since it may unref and destruct the rendezvous.
+  delete item;
 }
 
 void LocalRendezvous::StartAbort(const Status& status) {
@@ -371,7 +385,10 @@ void LocalRendezvous::StartAbort(const Status& status) {
     mutex_lock l(mu_);
     status_.Update(status);
   }
-  for (int i = 0; i < table_buckets_.size(); ++i) {
+
+  // Keeps one Item to make sure the current rendezvous won't be destructed.
+  std::unique_ptr<Item> to_delete;
+  for (int i = 0; i < num_buckets_; ++i) {
     auto& bucket = table_buckets_[i];
     Table table;
     {
@@ -381,13 +398,20 @@ void LocalRendezvous::StartAbort(const Status& status) {
     for (auto& p : table) {
       Item* item = p.second.head;
       while (item != nullptr) {
-        if (item->type == Item::kRecv) {
-          (*item->recv_state.waiter)(status, Rendezvous::Args(),
-                                     Rendezvous::Args(), Tensor(), false);
+        switch (item->type) {
+          case Item::kRecv:
+            (*item->recv_state.waiter)(status, Rendezvous::Args(),
+                                       Rendezvous::Args(), Tensor(), false);
+            LOG(INFO) << "Local rendezvous recv item cancelled. Key hash: "
+                      << p.first;
+            break;
+          case Item::kSend:
+            LOG(INFO) << "Local rendezvous send item cancelled. Key hash: "
+                      << p.first;
+            break;
         }
-        Item* to_delete = item;
+        to_delete.reset(item);
         item = item->next;
-        delete to_delete;
       }
     }
   }

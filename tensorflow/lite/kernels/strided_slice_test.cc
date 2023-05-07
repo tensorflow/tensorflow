@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -65,7 +66,7 @@ class StridedSliceOpModel : public SingleOpModel {
                      use_simple_allocator);
     if (!const_tensors) {
       if (!input_data.empty()) {
-        SetInput(input_data);
+        SetInput(input_data, std::is_same<std::string, input_type>());
       }
       SetBegin(begin_data);
       SetEnd(end_data);
@@ -74,11 +75,11 @@ class StridedSliceOpModel : public SingleOpModel {
   }
 
   template <typename T>
-  void SetInput(const std::vector<T> data) {
+  void SetInput(const std::vector<T> data, std::false_type) {
     PopulateTensor<input_type>(input_, data);
   }
-  template <>
-  void SetInput(const std::vector<std::string> data) {
+  template <typename T>
+  void SetInput(const std::vector<T> data, std::true_type) {
     PopulateStringTensor(input_, data);
   }
   void SetBegin(const std::vector<int32_t> data) {
@@ -94,8 +95,8 @@ class StridedSliceOpModel : public SingleOpModel {
   std::vector<input_type> GetOutput() {
     return ExtractVector<input_type>(output_);
   }
-  std::vector<string> GetStringOutput() {
-    return ExtractVector<string>(output_);
+  std::vector<std::string> GetStringOutput() {
+    return ExtractVector<std::string>(output_);
   }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
@@ -110,7 +111,8 @@ class StridedSliceOpModel : public SingleOpModel {
 template <typename T>
 class StridedSliceOpTest : public ::testing::Test {};
 
-using DataTypes = ::testing::Types<float, uint8_t, int8_t, int16_t, int32_t>;
+using DataTypes =
+    ::testing::Types<float, uint8_t, uint32_t, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(StridedSliceOpTest, DataTypes);
 
 #if GTEST_HAS_DEATH_TEST
@@ -766,7 +768,8 @@ TYPED_TEST(StridedSliceOpTest, RunTwice) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
 
   auto setup_inputs = [&m]() {
-    m.template SetInput<TypeParam>({1, 2, 3, 4, 5, 6});
+    m.template SetInput<TypeParam>({1, 2, 3, 4, 5, 6},
+                                   std::is_same<std::string, TypeParam>());
     m.SetBegin({1, 0});
     m.SetEnd({2, 2});
     m.SetStrides({1, 1});

@@ -560,8 +560,8 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
       combinations.combine(
           mode=["eager"],
           distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
           ],
           use_iterator=[False, True]))
   def testIteratorAndDatasetEnumerateError(self, distribution, use_iterator):
@@ -586,8 +586,8 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
       combinations.combine(
           mode=["eager"],
           distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
           ]))
   def testIterableIteratorError(self, distribution):
     dataset = dataset_ops.Dataset.range(10).batch(2)
@@ -1599,11 +1599,6 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
                                        parameterized.TestCase):
   """Tests for PER_WORKER and PER_REPLICA's InputOptions variants."""
 
-  def setUp(self):
-    context._reset_context()
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
-    super(DistributedIteratorPerDeviceTest, self).setUp()
-
   @combinations.generate(
       combinations.combine(
           input_options=[
@@ -1623,7 +1618,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testDevicePlacementForPerWorkerValuesWithPrefetch(self, distribution,
@@ -1649,7 +1644,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           input_options=[
@@ -1701,7 +1696,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testDevicePlacementForInvalidCombinations(self, distribution,
@@ -1732,7 +1727,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testPrefetchBufferSizeInputOptions(self, distribution, input_options):
@@ -1769,7 +1764,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testOutputValuesForPerWorkerInputOptions(self, distribution,
@@ -1812,7 +1807,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testOutputValuesForPerReplicaInputOptions(self, distribution,

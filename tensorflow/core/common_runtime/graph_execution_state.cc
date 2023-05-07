@@ -67,7 +67,7 @@ namespace {
 bool IsCollectiveV2(const string& op) {
   return op == "CollectiveReduceV2" || op == "CollectiveGatherV2" ||
          op == "CollectiveBcastRecvV2" || op == "CollectiveBcastSendV2" ||
-         op == "ColectiveReduceScatterV2";
+         op == "ColectiveReduceScatterV2" || op == "ColectiveAllToAllV2";
 }
 }  // namespace
 
@@ -81,7 +81,8 @@ GraphExecutionState::GraphExecutionState(
       session_options_(options.session_options),
       session_handle_(options.session_handle),
       flib_def_(std::move(flib_def)),
-      graph_(nullptr) {}
+      graph_(nullptr),
+      run_placer_(options.run_placer) {}
 
 GraphExecutionState::~GraphExecutionState() {
   node_name_to_cost_id_map_.clear();
@@ -622,14 +623,16 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
-                /* default_local_device= */ nullptr,
-                session_options_ == nullptr ||
-                    session_options_->config.allow_soft_placement(),
-                session_options_ != nullptr &&
-                    session_options_->config.log_device_placement());
-  // TODO(mrry): Consider making the Placer cancellable.
-  TF_RETURN_IF_ERROR(placer.Run());
+  if (run_placer_) {
+    Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
+                  /* default_local_device= */ nullptr,
+                  session_options_ == nullptr ||
+                      session_options_->config.allow_soft_placement(),
+                  session_options_ != nullptr &&
+                      session_options_->config.log_device_placement());
+    // TODO(mrry): Consider making the Placer cancellable.
+    TF_RETURN_IF_ERROR(placer.Run());
+  }
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
@@ -665,7 +668,7 @@ Status GraphExecutionState::OptimizeGraph(
     // It's ok to skip invalid device annotations in Grappler.
     for (const Device* d : device_set_->devices()) {
       Status added_device = item.AddDevice(d->name());
-      if (!added_device.ok()) VLOG(3) << added_device.error_message();
+      if (!added_device.ok()) VLOG(3) << added_device.message();
     }
     VLOG(3) << "Grappler available devices: "
             << absl::StrJoin(item.devices(), ", ");
@@ -870,7 +873,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   Status s = OptimizeGraph(options, *graph_, flib_def_.get(), &optimized_graph,
                            &optimized_flib);
   if (!s.ok()) {
-    VLOG(2) << "Grappler optimization failed. Error: " << s.error_message();
+    VLOG(2) << "Grappler optimization failed. Error: " << s.message();
     // Simply copy the original graph and the function library if we couldn't
     // optimize it.
     optimized_graph.reset(new Graph(flib_def_.get()));

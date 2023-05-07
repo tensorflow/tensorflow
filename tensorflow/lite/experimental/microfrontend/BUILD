@@ -118,8 +118,8 @@ tf_custom_op_py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

@@ -642,6 +642,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
   } test_cases[] = {
       // clang-format off
       {0.0, 0.0},
+      {-0.0, -0.0},
       {1.0, 1.0},
       {-1.0, -1.0},
       {inf, nan},
@@ -727,6 +728,109 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive3) {
   }
 
   xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF16F8e4m3b11fnuzRoundtrip) {
+  // Convert from FP16 to FP8, then back to FP16
+  XlaBuilder builder(TestName());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  float inf = std::numeric_limits<float>::infinity();
+
+  struct TestCase {
+    float input;
+    float expected_roundtrip;
+  } test_cases[] = {
+      // clang-format off
+      {0.0, 0.0},
+      {-0.0, 0.0},
+      {1.0, 1.0},
+      {-1.0, -1.0},
+      {inf, nan},
+      // clang-format on
+      {0x1.1p0, 0x1p0},      // Round-to-even down
+      {0x1.3p0, 0x1.4p0},    // Round-to-even up
+      {0x1.Ep4, 0x1.Ep4},    // Max value
+      {0x1.EFCp4, 0x1.Ep4},  // Largest number that doesn't overflow
+      {0x1.Fp4, nan},        // Smallest number that overflows
+      {0x1p5, nan},          // Overflow
+      {0x1p-10, 0x1p-10},    // Smallest F8 normal
+      {0x1.Ep-11, 0x1p-10},  // Smallest number rounding up to normal
+
+      // Denormal tests
+      {0x1.0p-12, 0x1.0p-12},    // Denormal without rounding
+      {0x1.4p-12, 0x1.0p-12},    // Round-to-even down
+      {0x1.Cp-12, 0x1.0p-11},    // Round-to-even up
+      {0x1.5p-11, 0x1.4p-11},    // Round-to-nearest down
+      {0x1.3p-11, 0x1.4p-11},    // Round-to-nearest up
+      {0x1p-14, 0},              // Largest number that underflows
+      {0x1.004p-14, 0x1p-13},    // Smallest number that doesn't underflow
+      {0x1.DFCp-11, 0x1.Cp-11},  // Largest number that rounds to denormal
+  };
+
+  std::vector<Eigen::half> inputs;
+  std::vector<Eigen::half> expected_roundtrip;
+  for (auto test_case : test_cases) {
+    inputs.push_back(Eigen::half{test_case.input});
+    expected_roundtrip.push_back(Eigen::half{test_case.expected_roundtrip});
+  }
+
+  auto f8 = ConvertElementType(ConstantR1<Eigen::half>(&builder, inputs),
+                               F8E4M3B11FNUZ);
+  ConvertElementType(f8, F16);
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
+  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {},
+                                   ErrorSpec(0.));
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3b11fnuzF16RoundtripExhaustive) {
+  // Convert from FP8 to FP16, then back to FP8
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e4m3b11> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(i)));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3b11>(&builder, all_f8);
+  xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, F16);
+  ConvertElementType(all_f8_as_f16, F8E4M3B11FNUZ);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3b11fnuzF16RoundtripExhaustive2) {
+  // Convert from FP32 to FP8.
+  XlaBuilder builder(TestName());
+
+  std::vector<float> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(static_cast<float>(
+        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(i))));
+  }
+
+  xla::XlaOp all_f8_as_f32 = ConstantR1<float>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f32, F8E4M3B11FNUZ);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3b11fnuzF16RoundtripExhaustive3) {
+  // Convert from FP8 to FP32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e4m3b11> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(i)));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3b11>(&builder, all_f8);
   ConvertElementType(all_f8_as_f8, F32);
   ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }

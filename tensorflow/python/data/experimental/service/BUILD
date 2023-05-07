@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test", "tf_python_pybind_extension")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,7 +21,7 @@ tf_python_pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
     srcs_version = "PY3",
@@ -30,17 +31,19 @@ py_library(
     deps = [
         ":_pywrap_server_lib",
         ":_pywrap_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "server_lib_test",
     srcs = ["server_lib_test.py"],
     deps = [
         ":server_lib",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/profiler:profiler_client",
     ],
 )
@@ -56,7 +59,7 @@ tf_python_pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "service",
     srcs = ["__init__.py"],
     srcs_version = "PY3",

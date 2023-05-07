@@ -337,7 +337,7 @@ mlir::LogicalResult CombineAllReduceOps(
     if (!group_assignment.ok()) {
       return all_reduce.emitOpError(
           llvm::formatv("Failed to create a GroupAssignment due to {0}",
-                        group_assignment.status().error_message()));
+                        group_assignment.status().message()));
     }
     // Unit tests have only one slice. Always combine all all-reduces in them.
     if (group_assignment->num_slices() == 1 ||

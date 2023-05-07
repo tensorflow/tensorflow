@@ -86,7 +86,7 @@ tf_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )
@@ -99,7 +99,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )
@@ -113,6 +113,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients_impl",
@@ -135,6 +136,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -148,6 +150,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -163,6 +166,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients_impl",
@@ -187,7 +191,6 @@ cuda_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -246,7 +249,6 @@ cuda_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -259,8 +261,8 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:framework_for_generated_wrappers",

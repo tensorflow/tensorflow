@@ -29,8 +29,8 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "legalize_collective_ops.cc",
         "legalize_i1_vector_transfers.cc",
+        "legalize_library_ops.cc",
         "lmhlo_to_cpu_runtime.cc",
         "remove_copies_to_out_params.cc",
         "sparse_rewrite_passes.cc",
@@ -62,5 +62,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorDialect",
+        "@stablehlo//:chlo_ops",
     ],
 )

@@ -47,6 +47,8 @@ struct GraphExecutionStateOptions {
   // A map from node name to device name, representing the unchangeable
   // placement of stateful nodes.
   std::unordered_map<string, string> stateful_placements;
+  // Whether to run Placer on the graph.
+  bool run_placer = true;
 };
 
 // A ClientGraph is simply a sub-graph of the full graph as induced by
@@ -222,6 +224,9 @@ class GraphExecutionState {
 
   // The dataflow graph owned by this object.
   Graph* graph_;
+
+  // Whether to run Placer.
+  bool run_placer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphExecutionState);
 };

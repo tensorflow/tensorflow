@@ -71,17 +71,17 @@ inline pybind11::dict TFStatusPayloadToDict(TF_Status* status) {
 inline void MaybeRaiseFromStatus(const Status& status) {
   if (!status.ok()) {
     PyErr_SetString(internal::StatusToPyExc(status),
-                    status.error_message().c_str());
+                    tsl::NullTerminatedMessage(status));
     throw pybind11::error_already_set();
   }
 }
 
 inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
-  PyErr_SetObject(tensorflow::PyExceptionRegistry::Lookup(status.raw_code()),
-                  pybind11::make_tuple(pybind11::none(), pybind11::none(),
-                                       status.error_message(),
-                                       internal::StatusPayloadToDict(status))
-                      .ptr());
+  PyErr_SetObject(
+      tensorflow::PyExceptionRegistry::Lookup(status.raw_code()),
+      pybind11::make_tuple(pybind11::none(), pybind11::none(), status.message(),
+                           internal::StatusPayloadToDict(status))
+          .ptr());
 }
 
 inline void SetRegisteredErrFromTFStatus(TF_Status* status) {

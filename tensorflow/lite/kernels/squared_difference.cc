@@ -250,6 +250,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       CpuBackendContext* cpu_backend_context =
           CpuBackendContext::GetFromContext(context);
       pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      threadpool = nullptr;
       const enum xnn_status status = xnn_run_squared_difference_nd_f32(
           num_input1_dims, input1_shape.data(), num_input2_dims,
           input2_shape.data(), GetTensorData<float>(input1),

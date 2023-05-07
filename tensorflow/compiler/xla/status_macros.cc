@@ -116,7 +116,7 @@ MakeErrorStream::Impl::Impl(const Status& status,
       code_(!status.ok() ? static_cast<absl::StatusCode>(status.code())
                          : absl::StatusCode::kUnknown),
       prior_message_handling_(prior_message_handling),
-      prior_message_(status.error_message()),
+      prior_message_(status.message()),
       is_done_(false),
       // Error code type is not visible here, so we can't call
       // IsLoggedByDefault.

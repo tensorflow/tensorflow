@@ -47,7 +47,7 @@ class UnifiedCAPI
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 };
 

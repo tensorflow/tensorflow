@@ -26,7 +26,7 @@ namespace profiler {
 
 // Converts trace events in the trace proto to a JSON string that can be
 // consumed by catapult trace viewer.
-std::string TraceEventsToJson(const TraceContainer& container);
+std::string TraceContainerToJson(const TraceContainer& container);
 
 }  // namespace profiler
 }  // namespace tsl

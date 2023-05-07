@@ -1858,9 +1858,9 @@ ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], paramet
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
   pass.Run(&*module).value();
+  VLOG(3) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
-  // We do not move reduce operations due to potential memory considerations.
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 4);
   EXPECT_EQ(root->branch_computation(1)->instruction_count(), 8);
   // Expect the add.0 and convert.35 in brnach_1_comp.31 to be moved
@@ -2365,6 +2365,55 @@ ENTRY %xla_computation  {
               2);
   EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 2);
   EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes_size(), 2);
+}
+
+// Move partially used operands inside empty conditional branches.
+TEST_F(ConditionalCodeMotionTest, MovePartialyUsedOperands11) {
+  absl::string_view hlo_string =
+      R"(
+HloModule xla_computation
+
+region_2.494 {
+  Arg_.495 = (u32[], u32[]) parameter(0)
+  get-tuple-element = u32[] get-tuple-element(Arg_.495), index=1, metadata={op_type="Less" op_name="cond_1/Less"}
+  bitcast-convert = s32[] bitcast-convert(get-tuple-element), metadata={op_type="Less" op_name="cond_1/Less"}
+  constant.172 = s32[] constant(0), metadata={op_type="Less" op_name="cond_1/Less"}
+  compare = pred[] compare(bitcast-convert, constant.172), direction=LT, metadata={op_type="Less" op_name="cond_1/Less"}
+  constant.1 = u32[] constant(0)
+  compare.1 = pred[] compare(get-tuple-element, constant.1), direction=EQ, metadata={op_type="Less" op_name="cond_1/Less"}
+  get-tuple-element.2 = u32[] get-tuple-element(Arg_.495), index=0, metadata={op_type="Less" op_name="cond_1/Less"}
+  constant = u32[] constant(25000), metadata={op_type="Less" op_name="cond_1/Less"}
+  compare.2 = pred[] compare(get-tuple-element.2, constant), direction=LT, metadata={op_type="Less" op_name="cond_1/Less"}
+  and = pred[] and(compare.1, compare.2), metadata={op_type="Less" op_name="cond_1/Less"}
+  or = pred[] or(compare, and), metadata={op_type="Less" op_name="cond_1/Less"}
+  ROOT tuple.1 = (pred[]) tuple(or)
+}
+
+region_3.498 {
+  Arg_.499 = pred[] parameter(0)
+  ROOT tuple.2 = (pred[]) tuple(Arg_.499)
+}
+
+ENTRY %xla_computation  {
+  custom-call = u32[]{:T(256)} parameter(0)
+  bitcast-convert.31 = s32[]{:T(256)} parameter(1)
+  constant.202 = s32[]{:T(256)} parameter(2)
+  constant.21 = u32[]{:T(256)} parameter(3)
+  custom-call.1 = u32[]{:T(256)} parameter(4)
+  compare.38 = pred[]{:T(256)} compare(bitcast-convert.31, constant.202), direction=GT, metadata={op_type="GreaterEqual" op_name="GreaterEqual"}
+  compare.39 = pred[]{:T(256)} compare(custom-call, constant.21), direction=EQ, metadata={op_type="GreaterEqual" op_name="GreaterEqual"}
+  or.17 = pred[]{:T(256)} or(compare.38, compare.39), metadata={op_type="GreaterEqual" op_name="GreaterEqual"}
+  tuple.20 = (u32[]{:T(256)}, u32[]{:T(256)}) tuple(custom-call.1, custom-call), sharding={{maximal device=0}, {maximal device=0}}
+  ROOT conditional = (pred[]) conditional(or.17, tuple.20, or.17), true_computation=region_2.494, false_computation=region_3.498, metadata={op_type="If" op_name="cond_1"}
+}
+
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true, true);
+  pass.Run(&*module).value();
+  // No code motion is supposed to be done.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Conditional(op::Or(), op::Tuple(), op::Or()));
 }
 }  // namespace conditional_opt
 

@@ -574,7 +574,7 @@ Status PermuteSingle(absl::string_view location,
   DCHECK(values != nullptr);
   int permutation_size = permutation.size();
   if (values->size() != permutation_size) {
-    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match size of permutation ",
                                permutation_size, " @ ", location));
@@ -596,7 +596,7 @@ Status PermuteDouble(absl::string_view location,
   DCHECK(values != nullptr);
   int permutation_size = permutation.size();
   if (values->size() != permutation_size * 2) {
-    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match twice the size of permutation ",
                                permutation_size, " @ ", location));

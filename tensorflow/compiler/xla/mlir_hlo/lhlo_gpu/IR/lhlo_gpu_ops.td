@@ -174,7 +174,7 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandS
     I64Attr:$algorithm);
 }
 
-def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
+def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
@@ -184,6 +184,7 @@ def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$c_scale,
     Arg<LHLO_Buffer, "", [MemRead]>:$d_scale,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
     Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_amax,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
@@ -219,7 +220,8 @@ class LHLOGPU_AsyncCollectiveCommunicationOp<string name, list<Trait> traits = [
     I64ElementsAttr:$replica_groups,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<MHLO_ChannelHandle>:$channel_id,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids,
+    BoolAttr:$is_sync
   );
 }
 
@@ -245,7 +247,8 @@ def LHLOGPU_CollectivePermuteStartOp :
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$source_target_pairs,
-    OptionalAttr<MHLO_ChannelHandle>:$channel_id
+    OptionalAttr<MHLO_ChannelHandle>:$channel_id,
+    BoolAttr:$is_sync
   );
 }
 
@@ -255,7 +258,7 @@ def LHLOGPU_CollectivePermuteDoneOp: LHLOGPU_Op<"collective_permute_done"> {
 }
 
 def LHLOGPU_AllGatherStartOp :
-  LHLOGPU_AsyncCollectiveCommunicationOp<"all_gather_start", [SameOperandsElementType]> {
+  LHLOGPU_AsyncCollectiveCommunicationOp<"all_gather_start"> {
   let summary = "AllGatherStart operator";
   let description = [{
      Performs asynchronous concatenation across replicas.

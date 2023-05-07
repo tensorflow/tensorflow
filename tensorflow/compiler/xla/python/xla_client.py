@@ -24,6 +24,7 @@ import os
 from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
+import ml_dtypes
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -43,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 139
+_version = 151
 
 # Version number for MLIR:Python components.
-mlir_api_version = 46
+mlir_api_version = 47
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -103,6 +104,13 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
   if options is None:
     options = {}
   return _xla.get_c_api_client('tpu', options)
+
+
+DeviceTopology = _xla.DeviceTopology
+
+
+def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+  return _xla.get_default_c_api_topology('tpu')
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
@@ -194,9 +202,10 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
-bfloat16 = _xla.bfloat16_dtype()
-float8_e4m3fn = _xla.float8_e4m3fn_dtype()
-float8_e5m2 = _xla.float8_e5m2_dtype()
+bfloat16 = ml_dtypes.bfloat16
+float8_e4m3fn = ml_dtypes.float8_e4m3fn
+float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11
+float8_e5m2 = ml_dtypes.float8_e5m2
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -209,6 +218,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
+    PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
@@ -453,9 +463,7 @@ XlaComputation = _xla.XlaComputation
 XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
-Buffer = _xla.Buffer
 ArrayImpl = _xla.ArrayImpl
-DeviceArrayBase = _xla.DeviceArrayBase
 LoadedExecutable = _xla.LoadedExecutable
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
@@ -465,6 +473,25 @@ NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
+
+
+def LoadedExecutable_execute(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments)
+  return [x[0] for x in results.disassemble_into_single_device_arrays()]
+
+
+def LoadedExecutable_execute_with_token(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments, with_tokens=True)
+  return (
+      [x[0] for x in results.disassemble_into_single_device_arrays()],
+      results.consume_token().get_token(0),
+  )
+
+
+LoadedExecutable.execute = LoadedExecutable_execute
+LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
 
 
 def register_custom_call_target(
@@ -486,6 +513,7 @@ def register_custom_call_target(
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target
 register_custom_call_partitioner = _xla.register_custom_call_partitioner
+encode_inspect_sharding_callback = _xla.encode_inspect_sharding_callback
 hlo_sharding_util = _xla.hlo_sharding_util
 
 

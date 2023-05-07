@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/Passes.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -45,6 +47,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/AMX/AMXToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ArmNeon/ArmNeonToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ArmSVE/ArmSVEToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -55,24 +58,27 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
 
 namespace xla {
 namespace runtime {
 
 void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the compiled executables.
-  dialects->insert<
-      mlir::AffineDialect, mlir::arith::ArithDialect, mlir::async::AsyncDialect,
-      mlir::cf::ControlFlowDialect, mlir::linalg::LinalgDialect,
-      mlir::math::MathDialect, mlir::memref::MemRefDialect,
-      mlir::scf::SCFDialect, mlir::func::FuncDialect,
-      mlir::sparse_tensor::SparseTensorDialect, mlir::tensor::TensorDialect,
-      mlir::vector::VectorDialect, RuntimeDialect>();
+  dialects->insert<mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+                   mlir::async::AsyncDialect, mlir::cf::ControlFlowDialect,
+                   mlir::linalg::LinalgDialect, mlir::math::MathDialect,
+                   mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
+                   mlir::func::FuncDialect,
+                   mlir::sparse_tensor::SparseTensorDialect,
+                   mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
+                   RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerArmNeonDialectTranslation(*dialects);
   mlir::registerAMXDialectTranslation(*dialects);
   mlir::registerArmSVEDialectTranslation(*dialects);
+  mlir::registerBuiltinDialectTranslation(*dialects);
   mlir::registerLLVMDialectTranslation(*dialects);
   mlir::registerX86VectorDialectTranslation(*dialects);
 }
@@ -136,41 +142,29 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
     pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
     // Convert async to LLVM once everything else is in the LLVM dialect.
-    // TODO(b/267828330): Migrate to opaque pointers.
-    mlir::ConvertAsyncToLLVMPassOptions async_to_llvm_opts;
-    async_to_llvm_opts.useOpaquePointers = false;
-    pm.addPass(mlir::createConvertAsyncToLLVMPass(async_to_llvm_opts));
+    pm.addPass(mlir::createConvertAsyncToLLVMPass());
   } else {
     pm.addPass(mlir::xla_framework::CreateLegalizeXLAFrameworkToLLVMPass());
   }
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertLinalgToLLVMPassOptions linalg_to_llvm_opts;
-  linalg_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertLinalgToLLVMPass(linalg_to_llvm_opts));
-  pm.addPass(mlir::createConvertSCFToCFPass());
-
-  // Lower math dialect to LLVM/Libm.
-  mlir::ConvertMathToLLVMPassOptions mathOpts;
-  mathOpts.approximateLog1p = false;
-  pm.addPass(mlir::createConvertMathToLLVMPass(mathOpts));
-  pm.addPass(mlir::createConvertMathToLibmPass());
 
   // Convert everything else to LLVM dialect.
-  mlir::ConvertVectorToLLVMPassOptions vector_to_llvm_opts;
-  // TODO(b/267828330): Migrate to opaque pointers.
-  vector_to_llvm_opts.useOpaquePointers = false;
-  if (opts.math_avx2) vector_to_llvm_opts.x86Vector = true;
-  pm.addPass(mlir::createConvertVectorToLLVMPass(vector_to_llvm_opts));
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::FinalizeMemRefToLLVMConversionPassOptions memref_to_llvm_opts;
-  memref_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(
-      mlir::createFinalizeMemRefToLLVMConversionPass(memref_to_llvm_opts));
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertFuncToLLVMPassOptions func_to_llvm_opts;
-  func_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertFuncToLLVMPass(func_to_llvm_opts));
-  pm.addPass(mlir::createConvertComplexToLLVMPass());
+  mlir::GenericHostToLLVMPassOptions llvm_options;
+  llvm_options.enableAvx2 = opts.math_avx2;
+
+  const bool gpuCodegen = opts.xla_cpu_sparse_cuda_threads > 0;
+  if (gpuCodegen) {
+#ifdef MLIR_GPU_TO_CUBIN_PASS_ENABLE
+    pm.addNestedPass<mlir::gpu::GPUModuleOp>(
+        mlir::createGpuSerializeToCubinPass(opts.cuda_triplet, opts.cuda_arch,
+                                            opts.cuda_features));
+#endif
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
+    pm.addPass(mlir::createGpuToLLVMConversionPass());
+  }
+
+  pm.addPass(mlir::hlo::createGenericHostToLLVMPass(llvm_options));
+
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Prepare module for translation to LLVM.

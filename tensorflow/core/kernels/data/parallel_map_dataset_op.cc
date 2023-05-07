@@ -545,7 +545,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           // former may be interpreted by a caller as the end of sequence.
           return errors::InvalidArgument(
               "Function invocation produced OutOfRangeError: ",
-              result->status.error_message());
+              result->status.message());
         } else {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
@@ -665,8 +665,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           writer->WriteScalar(prefix, absl::StrCat("_", kErrorCode),
                               static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            prefix, absl::StrCat("_", kErrorMessage), status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix,
+                                               absl::StrCat("_", kErrorMessage),
+                                               std::string(status.message())));
       }
       return OkStatus();
     }
@@ -677,9 +678,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       int64_t code_int;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix, absl::StrCat("_", kErrorCode), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             prefix, absl::StrCat("_", kErrorMessage), &error_message));

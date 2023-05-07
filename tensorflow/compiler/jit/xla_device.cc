@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
-#include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -213,6 +212,7 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
                                             : DefaultPaddedShapeFn,
                     options.use_multiple_streams),
       device_ordinal_(options.device_ordinal),
+      device_name_(options.device_name),
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
       intra_op_parallelism_threads_(
@@ -272,7 +272,7 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   }
 
   if (xla_allocator_ == nullptr) {
-    if (UsePjRtForSingleDeviceCompilation()) {
+    if (UsePjRtForSingleDeviceCompilation(device_name_)) {
       VLOG(1) << "XlaDevice " << this << " uses AsyncValueAllocator";
       pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
       xla_allocator_ = pjrt_allocator_.get();
@@ -308,16 +308,14 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
 }
 
 StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
-  if (UsePjRtForSingleDeviceCompilation()) {
-    // TODO(b/262472386) Support shape_determination_fns with PJRT.
-    if (shape_determination_fns_.size() > 1) {
-      return errors::Unimplemented(
-          "Use PJRT with multiple ShapeDeterminationFn is not implemented.");
-    }
+  if (UsePjRtForSingleDeviceCompilation(device_name_)) {
     if (device_contexts_.empty()) {
-      device_contexts_.emplace_back(new PjRtDeviceContext());
-      VLOG(1) << "XlaDevice " << this << " new PjRtDeviceContext "
-              << device_contexts_[0];
+      for (const auto& iter : shape_determination_fns_) {
+        auto device_context = new PjRtDeviceContext(iter);
+        VLOG(1) << "XlaDevice " << this << " new PjRtDeviceContext "
+                << device_context;
+        device_contexts_.emplace_back(device_context);
+      }
       if (use_accelerator_device_info_) {
         auto accelerator_device_info =
             std::make_unique<DeviceBase::AcceleratorDeviceInfo>();

@@ -33,8 +33,12 @@ template <typename FP>
 XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const FP> coefficients) {
   static_assert(std::is_floating_point<FP>::value,
                 "Template-argument 'FP' must be a floating-point type");
-  XlaOp poly = ScalarLike(x, 0.0);
-  for (FP c : coefficients) {
+  if (coefficients.empty()) {
+    return ScalarLike(x, FP(0.0));
+  }
+  XlaOp poly = ScalarLike(x, coefficients[0]);
+  for (int i = 1; i < coefficients.size(); ++i) {
+    FP c = coefficients[i];
     poly = poly * x + ScalarLike(x, c);
   }
   return poly;
@@ -296,23 +300,27 @@ XlaOp Erfc(XlaOp x) {
   });
 }
 
-// Compute a polynomial approximation of the error function.
-// This is the same approximation used by Eigen.
+// Compute a rational approximation of the error function.
 static XlaOp ErfImpl32(XlaOp x) {
-  static const std::array<float, 7> kAlpha{
-      -2.72614225801306e-10f, 2.77068142495902e-08f,  -2.10102402082508e-06f,
-      -5.69250639462346e-05f, -7.34990630326855e-04f, -2.95459980854025e-03f,
-      -1.60960333262415e-02f,
-  };
+  static const std::array<float, 5> kAlpha{
+      0.00022905065861350646f, 0.0034082910107109506f, 0.050955695062380861f,
+      0.18520832239976145f, 1.128379143519084f};
 
-  static const std::array<float, 5> kBeta{
-      -1.45660718464996e-05f, -2.13374055278905e-04f, -1.68282697438203e-03f,
-      -7.37332916720468e-03f, -1.42647390514189e-02f,
-  };
+  static const std::array<float, 7> kBeta{-1.1791602954361697e-7,
+                                          0.000023547966471313185f,
+                                          0.0010179625278914885f,
+                                          0.014070470171167667f,
+                                          0.11098505178285362f,
+                                          0.49746925110067538f,
+                                          1.0f};
 
-  x = Clamp(ScalarLike(x, -4.f), x, ScalarLike(x, 4.f));
+  // We clamp x to be within [-c;c] where c = erfinv(1-2^-23), outside of
+  // which x should be +/-1.
+  constexpr float kErfInvOneMinusHalfULP = 3.7439211627767994f;
+  x = Clamp(ScalarLike(x, -kErfInvOneMinusHalfULP), x,
+            ScalarLike(x, kErfInvOneMinusHalfULP));
   auto x2 = x * x;
-  return x * EvaluatePolynomial<float>(x2, kAlpha) /
+  return (x * EvaluatePolynomial<float>(x2, kAlpha)) /
          EvaluatePolynomial<float>(x2, kBeta);
 }
 
@@ -330,10 +338,8 @@ XlaOp Erf(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
-      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl32(x),
-                    ScalarLike(x, 1) - ErfcImpl32(x));
-    });
+    return DoWithUpcastToF32(x, {BF16, F16},
+                             [](XlaOp x) { return ErfImpl32(x); });
   });
 }
 

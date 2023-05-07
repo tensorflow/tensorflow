@@ -15,6 +15,15 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    srcs = [
+        "types.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "types",
     hdrs = ["types.h"],
@@ -127,7 +136,7 @@ cc_test(
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_without_op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
 )

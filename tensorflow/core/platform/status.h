@@ -24,7 +24,6 @@ limitations under the License.
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
-using tsl::error_name;
 using tsl::FromAbslStatus;
 using tsl::OkStatus;
 using tsl::SourceLocation;
