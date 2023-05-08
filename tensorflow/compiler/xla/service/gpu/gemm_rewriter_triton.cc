@@ -89,6 +89,7 @@ bool IsTritonSupportedInputType(PrimitiveType t, GpuVersion gpu_version) {
   switch (t) {
     case PRED:
     case S8:
+    case S16:
     case S32:
     case F16:
     case F32:
