@@ -69,6 +69,9 @@ MIOPENKERNELS=$( \
 		    true )
 DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated ${MIOPENKERNELS}
 
+#install hipblasLT if available
+DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated hipblaslt-dev || true
+
 # Ensure the ROCm target list is set up
 printf '%s\n' ${GPU_DEVICE_TARGETS} | tee -a "$ROCM_PATH/bin/target.lst"
 touch "${ROCM_PATH}/.info/version"
