@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdlib>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 namespace {
 

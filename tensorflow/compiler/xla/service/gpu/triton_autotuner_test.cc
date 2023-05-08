@@ -173,7 +173,7 @@ ENTRY e {
 // CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{5e-3, 5e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm256) {
@@ -196,7 +196,7 @@ ENTRY e {
 // CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-2, 1e-2}));
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonAutotunerTest, SelectsSplitK) {
@@ -222,7 +222,7 @@ ENTRY e {
 ; CHECK: ROOT %fusion.1
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{1e-1, 1e-1}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.5, /*arel=*/1e-1}));
 }
 
 TEST_F(TritonAutotunerTest, SkipConfigsProducingDeviantResults) {
@@ -275,7 +275,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,

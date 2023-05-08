@@ -198,16 +198,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<pybind11::bytes> SerializeExecutable(
       const PyLoadedExecutable& executable) const;
   StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
-      const std::string& serialized, CompileOptions options,
+      const std::string& serialized, std::optional<CompileOptions> options,
       std::vector<pybind11::capsule> host_callbacks);
-
-  // TODO(skyewm): remove when jax stop providing hlo_module
-  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
-      const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
-      CompileOptions options, std::vector<pybind11::capsule> host_callbacks) {
-    return DeserializeExecutable(serialized, options,
-                                 std::move(host_callbacks));
-  }
 
   StatusOr<pybind11::bytes> HeapProfile();
 

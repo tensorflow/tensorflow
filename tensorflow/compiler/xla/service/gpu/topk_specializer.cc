@@ -62,8 +62,6 @@ StatusOr<HloInstruction*> SmallBufferOptimization(
   bool has_batch = data_shape.dimensions_size() == 2;
   constexpr size_t max_k = 16;
   constexpr size_t min_n = 1024;
-  // TODO(doak): Remove this bound once we have a topk splitter pass.
-  constexpr size_t max_n = 1024 * 1024;
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);
   size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
   if (k > max_k) {
@@ -71,9 +69,6 @@ StatusOr<HloInstruction*> SmallBufferOptimization(
   }
   if (n < min_n) {
     return InvalidArgument("Input too small (n=%d, min_n=%d)", n, min_n);
-  }
-  if (n > max_n) {
-    return InvalidArgument("Input too large (n=%d, min_n=%d)", n, max_n);
   }
   HloComputation* comp = topk->parent();
   HloInstruction* new_topk =

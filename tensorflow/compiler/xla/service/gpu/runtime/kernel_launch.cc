@@ -30,6 +30,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
+#endif  // #if GOOGLE_CUDA
+
 namespace xla {
 namespace gpu {
 
@@ -50,9 +54,12 @@ StreamExecutorKernels* GpuExecutableKernels::operator()(
 static absl::Status LaunchImpl(
     const ServiceExecutableRunOptions* run_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
+<<<<<<< HEAD
 #if GOOGLE_CUDA
     CapturingCudaGraph* capturing_cuda_graph,
 #endif
+=======
+>>>>>>> upstream/master
     State<std::unique_ptr<se::KernelBase>> device_kernel,
     int32_t shared_memory_bytes, int32_t grid_size_x, int32_t grid_size_y,
     int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
@@ -78,7 +85,13 @@ static absl::Status LaunchImpl(
   assert((**kernel)->name() == name && "unexpected loaded kernel");
 
 #if GOOGLE_CUDA
+<<<<<<< HEAD
   if (capturing_cuda_graph->capturing()) {
+=======
+  absl::StatusOr<bool> is_capturing = se::gpu::IsStreamCapturing(stream);
+  if (!is_capturing.ok()) return is_capturing.status();
+  if (is_capturing.value()) {
+>>>>>>> upstream/master
     VLOG(3) << "Launching " << (**kernel)->name()
             << "during CUDA graph capture";
   } else {
@@ -87,7 +100,10 @@ static absl::Status LaunchImpl(
 #else
   VLOG(3) << "Launching " << (**kernel)->name();
 #endif
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
   absl::InlinedVector<se::DeviceMemoryBase, 8> buffer_args(
       args_size_including_temp_buffer);
 
@@ -125,9 +141,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<const std::string*>()
         .UserData<const std::vector<uint8_t>*>()
         .UserData<se::DeviceMemoryBase*>()
+<<<<<<< HEAD
 #if GOOGLE_CUDA
         .UserData<CapturingCudaGraph*>()
 #endif
+=======
+>>>>>>> upstream/master
         .State<std::unique_ptr<se::KernelBase>>("uid")
         .Arg<int32_t>()   // shared_memory_bytes
         .Arg<int32_t>()   // grid_size_x

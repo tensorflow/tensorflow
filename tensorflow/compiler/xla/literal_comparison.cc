@@ -86,6 +86,13 @@ bool CompareEqual<tsl::float8_e4m3fn>(tsl::float8_e4m3fn lhs,
                                                                 multi_index);
 }
 template <>
+bool CompareEqual<tsl::float8_e4m3b11>(tsl::float8_e4m3b11 lhs,
+                                       tsl::float8_e4m3b11 rhs,
+                                       absl::Span<const int64_t> multi_index) {
+  return CompareFloatsBitwiseEqual<tsl::float8_e4m3b11, uint8_t>(lhs, rhs,
+                                                                 multi_index);
+}
+template <>
 bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
                             absl::Span<const int64_t> multi_index) {
   return CompareFloatsBitwiseEqual<bfloat16, uint16_t>(lhs, rhs, multi_index);
@@ -172,6 +179,12 @@ Status MakeErrorStatus(tsl::float8_e4m3fn lhs, tsl::float8_e4m3fn rhs,
                        absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<tsl::float8_e4m3fn, uint8_t>(lhs, rhs,
                                                              multi_index);
+}
+template <>
+Status MakeErrorStatus(tsl::float8_e4m3b11 lhs, tsl::float8_e4m3b11 rhs,
+                       absl::Span<const int64_t> multi_index) {
+  return MakeBitwiseErrorStatus<tsl::float8_e4m3b11, uint8_t>(lhs, rhs,
+                                                              multi_index);
 }
 template <>
 Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
@@ -293,6 +306,10 @@ std::string FpValueToString(tsl::float8_e4m3fn value) {
   return absl::StrFormat("%5.3g", static_cast<double>(value));
 }
 
+std::string FpValueToString(tsl::float8_e4m3b11 value) {
+  return absl::StrFormat("%5.3g", static_cast<double>(value));
+}
+
 std::string FpValueToString(bfloat16 value) {
   return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
@@ -343,6 +360,11 @@ double FpAbsoluteValue(tsl::float8_e5m2 value) {
 
 template <>
 double FpAbsoluteValue(tsl::float8_e4m3fn value) {
+  return FpAbsoluteValue<float>(static_cast<float>(value));
+}
+
+template <>
+double FpAbsoluteValue(tsl::float8_e4m3b11 value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
@@ -838,6 +860,10 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         result = Equal<tsl::float8_e4m3fn>(expected, actual, index, 0,
                                            miscompared_ptr);
         break;
+      case F8E4M3B11FNUZ:
+        result = Equal<tsl::float8_e4m3b11>(expected, actual, index, 0,
+                                            miscompared_ptr);
+        break;
       case BF16:
         result = Equal<bfloat16>(expected, actual, index, 0, miscompared_ptr);
         break;
@@ -932,6 +958,11 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case F8E4M3FN:
         return NearComparator<tsl::float8_e4m3fn>::Compare(
+            expected, actual, shape_index, error, use_detailed_message,
+            miscompare_callback);
+        break;
+      case F8E4M3B11FNUZ:
+        return NearComparator<tsl::float8_e4m3b11>::Compare(
             expected, actual, shape_index, error, use_detailed_message,
             miscompare_callback);
         break;

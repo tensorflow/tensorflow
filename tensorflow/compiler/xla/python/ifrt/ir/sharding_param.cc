@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -29,7 +31,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-void PrintDims(mlir::AsmPrinter& os, llvm::ArrayRef<int64_t> dims) {
+void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<int64_t> dims) {
   os << dims[0];
   for (int i = 1; i < dims.size(); ++i) {
     os << "x" << dims[i];
@@ -147,15 +149,28 @@ mlir::LogicalResult ShardingParam::verify(
   return mlir::success();
 }
 
+std::string ShardingParam::DebugString() const {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  os << *this;
+  return result;
+}
+
 llvm::hash_code hash_value(ShardingParam sharding) {
   return sharding.hash_value();
 }
 
 mlir::AsmPrinter& operator<<(mlir::AsmPrinter& os, ShardingParam sharding) {
+  os.getStream() << sharding;
+  return os;
+}
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
   PrintDims(os, sharding.dim_shards());
-  os << " to ["
-     << llvm::ArrayRef<int64_t>(sharding.minor_to_major().permutation)
-     << "] on ";
+  os << " to [";
+  llvm::interleaveComma(
+      llvm::ArrayRef<int64_t>(sharding.minor_to_major().permutation), os);
+  os << "] on ";
   PrintDims(os, sharding.minor_to_major().axis_sizes);
   return os;
 }

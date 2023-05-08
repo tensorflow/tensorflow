@@ -275,6 +275,7 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -593,6 +594,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/framework:config",
@@ -610,6 +612,7 @@ cuda_py_strict_test(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/training:monitored_session",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:parameterized",
     ] + if_google([

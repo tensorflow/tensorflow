@@ -2437,7 +2437,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
         && (operation_name != std::string("CopyToMesh") &&
             operation_name != std::string("CopyToMeshGrad") &&
             operation_name != std::string("Relayout") &&
-            operation_name != std::string("RelayoutGrad")) &&
+            operation_name != std::string("RelayoutLike")) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       StatusOr<std::vector<int64_t>> shape = GetTensorShapeAsVector(input);
       if (!shape.ok()) {

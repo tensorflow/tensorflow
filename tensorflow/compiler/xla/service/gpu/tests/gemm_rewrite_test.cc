@@ -4233,6 +4233,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // Test with types unsupported by cuBLAS LT when FP8 is used. cuBLAS LT with
   // FP8 requires one of the operands to be F8E4M3FN.
   const char* hlo_text = R"(
@@ -4275,6 +4278,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4319,6 +4325,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4373,6 +4382,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4434,6 +4446,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4468,6 +4483,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4533,6 +4551,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4587,6 +4608,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4645,6 +4669,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4703,6 +4730,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4733,8 +4763,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4791,6 +4821,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4857,6 +4890,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4899,6 +4935,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -4967,8 +5006,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5035,6 +5074,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5109,6 +5151,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5171,6 +5216,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDVectorBiasThenReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5235,8 +5283,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDMatrixBiasThenVectorBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5299,6 +5347,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5376,6 +5427,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABScaledDWithDAmaxF8WithF16Intermediates) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // This is the same as ScaledABScaledDWithDAmaxF8, but uses F16 intermediate
   // values instead of F32 intermediate values.
   const char* hlo_text = R"(
@@ -5458,6 +5512,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABScaledDReluActivationWithDAmaxF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5536,6 +5593,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   std::array<std::array<absl::string_view, 7>, 32> combinations;
   int i = 0;
 
@@ -5603,6 +5663,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDF8ParameterizedBatched) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // TODO(wenscarl): For batched matmaul, not all combinations of A, B and
   // output layouts get pattern matched successfully to FP8 custom call. Only
   // a handful of cases are tested here.
@@ -5668,6 +5731,9 @@ ENTRY f {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 

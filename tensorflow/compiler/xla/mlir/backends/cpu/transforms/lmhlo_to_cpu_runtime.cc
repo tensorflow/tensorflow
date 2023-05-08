@@ -225,6 +225,11 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         {b.getStringAttr("api_version"), api_version},
         {b.getStringAttr("call_target_name"), op.getCallTargetNameAttr()}};
 
+    if (auto backend_config = op.getBackendConfigAttr()) {
+      custom_call_attrs.emplace_back(b.getStringAttr("backend_config"),
+                                     op.getBackendConfigAttr());
+    }
+
     // Call the runtime intrinsic with the original operands.
     auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
         op, callee.getName(), TypeRange(), operands);

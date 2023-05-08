@@ -63,7 +63,7 @@ class EncodePngOp : public OpKernel {
     OP_REQUIRES(context, image.dims() >= 3,
                 errors::InvalidArgument("images must be ast least rank 3",
                                         image.shape().DebugString()));
-    OP_REQUIRES(context, image.NumElements() > 0,
+    OP_REQUIRES(context, image.NumElements() >= 0,
                 errors::Internal("Invalid image provided."));
     OP_REQUIRES(
         context,

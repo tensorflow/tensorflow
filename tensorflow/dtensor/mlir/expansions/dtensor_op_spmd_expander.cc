@@ -163,7 +163,7 @@ StatusOr<Layout> MergeLayouts(
   return Layout::GetLayout(sharding_specs, target_layout.mesh());
 }
 
-// Computes the layout of Relayout's (or RelayoutGrad's) input or output, based
+// Computes the layout of Relayout's (or RelayoutLike's) input or output, based
 // on the layout from the corresponding output or input (as `incoming_layout`).
 // Note that this implies that we compute the same layout for the
 // operand and output.
@@ -232,26 +232,26 @@ RelayoutSPMDExpander::ComputeLayoutBackward(
   return ComputeRelayoutLayout(mask_layout, incoming_layout);
 }
 
-StatusOr<mlir::Operation*> RelayoutGradSPMDExpander::ExpandOp(
+StatusOr<mlir::Operation*> RelayoutLikeSPMDExpander::ExpandOp(
     mlir::Operation* op) {
-  auto relayout_grad = mlir::cast<mlir::TF::RelayoutGradOp>(op);
+  auto relayout_grad = mlir::cast<mlir::TF::RelayoutLikeOp>(op);
   TF_ASSIGN_OR_RETURN(
       const Layout target_layout,
-      ExtractRequiredLayoutFromOperand(relayout_grad.getForwardInput()));
+      ExtractRequiredLayoutFromOperand(relayout_grad.getLayoutInput()));
   TF_ASSIGN_OR_RETURN(const Layout output_layout,
                       ExtractRequiredSingleLayoutFromOp(op));
   TF_ASSIGN_OR_RETURN(
       const Layout input_layout,
       ExtractRequiredLayoutFromOperand(relayout_grad.getInput()));
 
-  return ExpandRelayoutOp<mlir::TF::RelayoutGradOp>(
+  return ExpandRelayoutOp<mlir::TF::RelayoutLikeOp>(
       relayout_grad, target_layout, input_layout, output_layout);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
-RelayoutGradSPMDExpander::ComputeLayoutForward(
+RelayoutLikeSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  // RelayoutGrad's output has the same layout as the corresponding Relayout's
+  // RelayoutLike's output has the same layout as the corresponding Relayout's
   // input operand.
   if (input_layouts.find(1) == input_layouts.end())
     return llvm::DenseMap<int, Layout>();
@@ -259,7 +259,7 @@ RelayoutGradSPMDExpander::ComputeLayoutForward(
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
-RelayoutGradSPMDExpander::ComputeLayoutBackward(
+RelayoutLikeSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   if (output_layouts.find(0) == output_layouts.end())
     return llvm::DenseMap<int, Layout>();
@@ -270,7 +270,7 @@ RelayoutGradSPMDExpander::ComputeLayoutBackward(
       // enforce any particular layout on it.
       {0, Layout::ReplicatedLike(output_layout)},
       // Set layout for the forward pass's input operand to match the output of
-      // the RelayoutGrad op.
+      // the RelayoutLike op.
       {1, output_layout},
   });
 }

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -104,6 +105,12 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
                           std::make_unique<NextPluggableDeviceFactory>(
                               device_type, compilation_device_name),
                           priority, is_pluggable_device);
+  if (init_params.use_pjrt_on_demand_compile) {
+    // PjRtCompileOnDemand op compiles a TensorFlow op to a PjRtExecutable and
+    // runs it.
+    RegisterPjRtCompileOnDemand(device_type.c_str(),
+                                compilation_device_name.c_str());
+  }
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
   return OkStatus();

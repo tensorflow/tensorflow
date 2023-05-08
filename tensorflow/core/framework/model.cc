@@ -2314,11 +2314,6 @@ Model::ModelParameters Model::CollectTunableParameters(
 }
 
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
-  // TODO(wilsin): If this turns out to be the cause of fleetwide degradation in
-  // the experiment, remove the downsize code.
-  if (experiments_.contains("autotune_buffer_optimization")) {
-    return false;
-  }
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
   nodes.push_back(snapshot);

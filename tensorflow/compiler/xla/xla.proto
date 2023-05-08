@@ -501,6 +501,7 @@ message DebugOptions {
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
+  string xla_gpu_pgle_profile_directory = 210;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -517,7 +518,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 210
+  // Next id: 211
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -909,10 +910,15 @@ message ScheduleProto {
 }
 
 message ProfiledInstructionsProto {
-  message Instruction {
+  message InstructionCost {
     string name = 1;
-    double timestamp_us = 2;
-    double duration_us = 3;
+    double cost_us = 2;
   }
-  repeated Instruction instructions = 1;
+  message Latency {
+    string source = 1;
+    string target = 2;
+    double latency_us = 3;
+  }
+  repeated InstructionCost costs = 1;
+  repeated Latency latencies = 2;
 }

@@ -1020,6 +1020,28 @@ class SavingOptionsTest(test.TestCase):
     self.assertEqual(f.name.decode("utf-8"),
                      list(function_aliases.keys())[0])
 
+  def test_concrete_function_list_aliases(self):
+    root = autotrackable.AutoTrackable()
+    f = def_function.function(lambda z: {"out": z * z})
+    f1 = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
+    f2 = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.int32))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": [f1, f2],
+        }
+    )
+    save.save(root, save_dir, f1, options=options)
+    function_aliases = (
+        loader_impl.parse_saved_model(save_dir)
+        .meta_graphs[0]
+        .meta_info_def.function_aliases
+    )
+    self.assertSameElements(
+        [f1.name.decode("utf-8"), f2.name.decode("utf-8")],
+        list(function_aliases.keys()),
+    )
+
   def test_function_aliases_incorrect_type(self):
     root = autotrackable.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")

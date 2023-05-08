@@ -280,7 +280,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     cuda_kernel->gpu_function_ptr())) {
-    return tsl::errors::Internal("Could not find the corresponding function");
+    return tsl::errors::Internal("Could not find function ", *kernelname);
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear

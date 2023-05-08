@@ -894,7 +894,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     Status s = run_.Finish(db_);
     if (!s.ok()) {
       // TODO(jart): Retry on transient errors here.
-      LOG(ERROR) << s.ToString();
+      LOG(ERROR) << s;
     }
     int64_t run_id = meta_.run_id();
     if (run_id == kAbsent) return;
@@ -909,8 +909,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
       s = update.StepAndReset();
     }
     if (!s.ok()) {
-      LOG(ERROR) << "Failed to set Runs[" << run_id
-                 << "].finish_time: " << s.ToString();
+      LOG(ERROR) << "Failed to set Runs[" << run_id << "].finish_time: " << s;
     }
   }
 

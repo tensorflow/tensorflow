@@ -16,7 +16,7 @@
 import argparse
 import sys
 
-import absl
+from absl import app
 import numpy as np
 import tensorflow.compat.v2 as tf
 
@@ -83,4 +83,4 @@ if __name__ == "__main__":
 
   FLAGS, unparsed = parser.parse_known_args()
 
-  absl.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

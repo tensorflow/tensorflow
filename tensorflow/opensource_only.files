@@ -66,6 +66,7 @@ tensorflow/lite/async/c/task.h:
 tensorflow/lite/async/c/types.h:
 tensorflow/lite/async/interop/c/BUILD:
 tensorflow/lite/async/interop/c/attribute_map.h:
+tensorflow/lite/async/interop/c/constants.h:
 tensorflow/lite/async/interop/c/types.h:
 tensorflow/lite/c/builtin_op_data.h:
 tensorflow/lite/c/c_api.h:
@@ -189,6 +190,7 @@ tensorflow/tools/toolchains/win/tf_win_04052023/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04062022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04112022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04192023/BUILD:
+tensorflow/tools/toolchains/win/tf_win_05022023/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06152021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06152022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06212021/BUILD:

@@ -128,10 +128,10 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testIterableV1(self):
-    with self.assertRaisesRegex(TypeError, "not allowed in Graph"):
+    with self.assertRaisesRegex(TypeError, "not allowed.*Graph mode"):
       for _ in variables.Variable(0.0):
         pass
-    with self.assertRaisesRegex(TypeError, "not allowed in Graph"):
+    with self.assertRaisesRegex(TypeError, "not allowed.*Graph mode"):
       for _ in variables.Variable([0.0, 1.0]):
         pass
 

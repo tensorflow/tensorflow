@@ -31,9 +31,7 @@ from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
@@ -957,7 +955,7 @@ class _VariableStore:
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = _DEFAULT_USE_RESOURCE
-    v = variable_v1.VariableV1(
+    v = _variable_v1(
         initial_value=init_val,
         name=name,
         trainable=trainable,
@@ -2686,13 +2684,17 @@ def _make_getter(captured_getter, captured_previous):
   return lambda **kwargs: captured_getter(captured_previous, **kwargs)
 
 
-# TODO(apassos) remove forwarding symbol
-variable = variable_v1.VariableV1
+_variable_v1 = None
 
-# temporary references needed while refactors are in progress
-default_variable_creator = ref_variable.default_variable_creator
-_to_proto_fn = ref_variable._to_proto_fn  # pylint: disable=protected-access
-_from_proto_fn = ref_variable._from_proto_fn  # pylint: disable=protected-access
+
+def set_variable_v1(variable_v1):
+  """Sets a reference to variable_v1.VariableV1."""
+  global _variable_v1
+  _variable_v1 = variable_v1
+
+
+# TODO(apassos) remove forwarding symbol
+variable = _variable_v1
 
 
 @tf_export(v1=["variable_creator_scope"])

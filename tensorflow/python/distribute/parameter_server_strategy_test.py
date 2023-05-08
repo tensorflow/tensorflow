@@ -31,7 +31,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -74,7 +74,7 @@ def create_test_objects(cluster_spec=None,
   if num_gpus is None:
     num_gpus = context.num_gpus()
   if cluster_spec and task_type and task_id is not None:
-    cluster_resolver = SimpleClusterResolver(
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
         cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
         task_type=task_type,
         task_id=task_id,
@@ -186,8 +186,8 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, worker_device + '/device:CPU:1')
 
-        # This ops.colocate_with will be ignored when defining a variable but not
-        # for a normal tensor.
+        # This ops.colocate_with will be ignored when defining a variable
+        # but not for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
           v = variable_scope.get_variable('v', initializer=30.0)
@@ -340,8 +340,8 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, device_util.canonicalize('/device:CPU:1'))
 
-        # This ops.colocate_with will be ignored when defining a variable but not
-        # for a normal tensor.
+        # This ops.colocate_with will be ignored when defining a variable
+        # but not for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
           h = f + 1.0
@@ -738,7 +738,7 @@ class ParameterServerStrategyTest(
   def testEagerCustomTrainingUnimplementedError(self):
     cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=2)
-    cluster_resolver = SimpleClusterResolver(
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
         cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
         task_type='worker',
         task_id=1,

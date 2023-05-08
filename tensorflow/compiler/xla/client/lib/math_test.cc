@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -221,7 +222,7 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     } else {
       continue;
     }
-    if (ty == F8E5M2 || ty == F8E4M3FN) {
+    if (ty == F8E5M2 || ty == F8E4M3FN || ty == F8E4M3B11FNUZ) {
       // TODO(b/259609697): Add FP8 support to math ops
       continue;
     }
@@ -244,7 +245,11 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
       XlaOp p = Parameter(&b, 0, shape, "p0");
       test.first(p);
 
-      EXPECT_EQ(b.first_error().ok(), primitive_util::IsFloatingPointType(ty));
+      if (primitive_util::IsFloatingPointType(ty)) {
+        TF_EXPECT_OK(b.first_error());
+      } else {
+        EXPECT_FALSE(b.first_error().ok());
+      }
     }
   }
 }

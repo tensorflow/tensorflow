@@ -315,6 +315,9 @@ add {
 
   // CHECK: %[[VAL_8:.*]] = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
   %constant.8 = f8e4m3fn[4] constant({1, 2, 3, 4})
+
+  // CHECK: %[[VAL_9:.*]] = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3B11FNUZ>
+  %constant.9 = f8e4m3b11fnuz[4] constant({1, 2, 3, 4})
 }
 
 // TODO(b/129422361) Potentially update when copy, reshape, and conv have actual
@@ -399,11 +402,17 @@ add {
   // CHECK-NEXT:  %1 = mhlo.convert %0 : (tensor<4xf8E5M2>) -> tensor<4xf32>
   %convert.4 = f32[4] convert(f8e5m2[4] %convert.3)
 
-  // CHECK-NEXT:  %2 = mhlo.convert %1 : (tensor<4xf32>) -> tensor<4xf8E4M3FN>
-  %convert.5 = f8e4m3fn[4] convert(f32[4] %convert.4)
+  // CHECK-NEXT:  %2 = mhlo.convert %1 : (tensor<4xf32>) -> tensor<4xf8E4M3B11FNUZ>
+  %convert.5 = f8e4m3b11fnuz[4] convert(f32[4] %convert.4)
 
-  // CHECK-NEXT:  %3 = mhlo.convert %2 : (tensor<4xf8E4M3FN>) -> tensor<4xf32>
-  ROOT %convert.6 = f32[4] convert(f8e4m3fn[4] %convert.5)
+  // CHECK-NEXT:  %3 = mhlo.convert %2 : (tensor<4xf8E4M3B11FNUZ>) -> tensor<4xf32>
+  %convert.6 = f32[4] convert(f8e4m3b11fnuz[4] %convert.5)
+
+  // CHECK-NEXT:  %4 = mhlo.convert %3 : (tensor<4xf32>) -> tensor<4xf8E4M3FN>
+  %convert.7 = f8e4m3fn[4] convert(f32[4] %convert.6)
+
+  // CHECK-NEXT:  %5 = mhlo.convert %4 : (tensor<4xf8E4M3FN>) -> tensor<4xf32>
+  ROOT %convert.8 = f32[4] convert(f8e4m3fn[4] %convert.7)
 }
 
 // CHECK-LABEL:  func private @test_stochastic_convert(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xui32>) -> tensor<4x3xi8>

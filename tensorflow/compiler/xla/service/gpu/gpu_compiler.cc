@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <any>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_reduce_folder.h"
 #include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
-#include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
@@ -125,12 +125,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/topk_specializer.h"
+#include "tensorflow/compiler/xla/service/gpu/topk_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -177,9 +179,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -192,7 +196,9 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -224,23 +230,6 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
   return false;
 }
 
-// Depending on xla_gpu_force_compilation_parallelism setting either return an
-// existing thread pool, or none, or create a new one.
-tsl::thread::ThreadPool* GetThreadPool(
-    tsl::thread::ThreadPool* existing_thread_pool,
-    std::optional<tsl::thread::ThreadPool>& overriding_thread_pool,
-    int xla_gpu_force_compilation_parallelism) {
-  switch (xla_gpu_force_compilation_parallelism) {
-    case 0:
-      return existing_thread_pool;
-    case 1:
-      return nullptr;
-    default:
-      overriding_thread_pool.emplace(tsl::Env::Default(), "",
-                                     xla_gpu_force_compilation_parallelism);
-      return &*overriding_thread_pool;
-  }
-}
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -431,9 +420,9 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("optimization");
     AddHloVerifier(&pipeline);
+    pipeline.AddPass<TopKSplitter>();
     pipeline.AddPass<TopkSpecializer>();
     pipeline.AddPass<TopkDecomposer>();
-    pipeline.AddPass<AllToAllDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
 #if GOOGLE_CUDA
@@ -733,7 +722,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     {
       // Convert all collectives to their async form, and then annotate the ones
-      // thet actually need to run asynchronously with an GPU specific backend
+      // that actually need to run asynchronously with an GPU specific backend
       // config.
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
       config.convert_all_reduce = HloPredicateTrue;
@@ -859,6 +848,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA
     const stream_executor::CudaComputeCapability& compute_capability =
         std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
@@ -868,12 +858,19 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 #endif
 
 #if GOOGLE_CUDA
+=======
+>>>>>>> upstream/master
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
-        compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-      pipeline.AddPass<GemmRewriterTriton>(compute_capability);
+        std::holds_alternative<se::CudaComputeCapability>(
+            gpu_target_config.gpu_version)) {
+      auto cuda_compute_capability =
+          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
+      }
     }
-    pipeline.AddPass<GemmRewriter>(compute_capability);
+    pipeline.AddPass<GemmRewriter>(gpu_target_config.gpu_version);
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -888,7 +885,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ReductionLayoutNormalizer>();
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(compute_capability);
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        gpu_target_config.gpu_version);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -937,11 +935,24 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   }
 #if GOOGLE_CUDA
   pipeline.AddPass<GemmAlgorithmPicker>(autotune_config);
-  const HloModuleConfig& module_config = hlo_module->config();
+
+  // By default use an externally provided thread pool.
+  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  tsl::thread::ThreadPool* thread_pool = GetThreadPool(
-      options.thread_pool, overriding_thread_pool,
-      module_config.debug_options().xla_gpu_force_compilation_parallelism());
+  int num_threads = hlo_module->config()
+                        .debug_options()
+                        .xla_gpu_force_compilation_parallelism();
+  // If an external thread pool is provided or single-threaded operation is
+  // requested do not create a thread pool.
+  if (thread_pool == nullptr && num_threads != 1) {
+    // Zero means "default", treat it as "max parallelism" here.
+    if (num_threads == 0) {
+      num_threads = tsl::port::MaxParallelism();
+    }
+    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
+    thread_pool = &*overriding_thread_pool;
+  }
+
   pipeline.AddPass<TritonAutotuner>(autotune_config, thread_pool);
 #endif  // GOOGLE_CUDA
 
@@ -951,6 +962,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
   GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
   pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
   if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
@@ -1160,10 +1173,24 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     return result;
   };
 
+  tsl::thread::ThreadPool* thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  tsl::thread::ThreadPool* thread_pool = GetThreadPool(
-      options.thread_pool, overriding_thread_pool,
-      module_config.debug_options().xla_gpu_force_compilation_parallelism());
+  switch (
+      module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
+    case 0:
+      thread_pool = options.thread_pool;
+      break;
+    case 1:
+      thread_pool = nullptr;
+      break;
+    default:
+      overriding_thread_pool.emplace(
+          tsl::Env::Default(), "",
+          module_config.debug_options()
+              .xla_gpu_force_compilation_parallelism());
+      thread_pool = &*overriding_thread_pool;
+      break;
+  }
 
   if (!thread_pool) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
@@ -1171,7 +1198,11 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
+<<<<<<< HEAD
 #if GOOGLE_CUDA  
+=======
+#if GOOGLE_CUDA
+>>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
                       CanUseLinkModules(module_config));
   if (!can_use_link_modules) {
@@ -1180,7 +1211,11 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 #elif TENSORFLOW_USE_ROCM
   return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+<<<<<<< HEAD
                               /*shard_number=*/std::nullopt);
+=======
+                               /*shard_number=*/std::nullopt);
+>>>>>>> upstream/master
 #endif
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   int num_functions = 0;

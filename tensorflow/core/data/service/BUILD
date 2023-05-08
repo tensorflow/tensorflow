@@ -12,7 +12,10 @@ load(
     "tf_cc_test",
 )
 
-package_group(name = "data_transfer_visibility")
+package_group(
+    name = "data_transfer_visibility",
+    packages = ["//learning/brain/google/data/service/data_transfer_protocols/..."],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

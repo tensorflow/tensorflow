@@ -271,7 +271,7 @@ mlir::LogicalResult DTensorAllToAllOp::verify() {
 
 LogicalResult DTensorLayout::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   assert(operands.size() == 1);
   inferredReturnTypes.assign({operands[0].getType()});

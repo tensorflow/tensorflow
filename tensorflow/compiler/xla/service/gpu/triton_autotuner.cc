@@ -527,6 +527,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     // Avoid dumping compilation steps of every autotuning variant.
     options.set_xla_dump_to("");
     options.set_xla_gpu_dump_llvmir(false);
+    // Avoid using another thread pool for PTX compilation - there are maximum
+    // two functions to compile here.
+    options.set_xla_gpu_force_compilation_parallelism(1);
     new_hlo_module->config().set_debug_options(options);
     HloComputation* entry_computation = new_hlo_module->entry_computation();
     HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();

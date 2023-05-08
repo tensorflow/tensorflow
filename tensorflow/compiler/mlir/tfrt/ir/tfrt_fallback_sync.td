@@ -60,6 +60,26 @@ def SetResourceOp : FallbackSync_Op<"set_resource", [CoreRT_TypedAttributeTrait]
   let assemblyFormat = "operands attr-dict";
 }
 
+def SetResourceDhtOp : FallbackSync_Op<"set_resource_dht", [CoreRT_TypedAttributeTrait]> {
+  let summary = "Set a DHT in resource array";
+
+  let description = [{
+    Set a DHT in resource array.
+
+    arg: the tensor to be set in the resource array.
+    index: the index in the resource array
+  }];
+
+  let arguments = (ins
+    TensorType:$arg,
+    I64Attr:$index
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = "operands attr-dict";
+}
+
 def GetResourceOp : FallbackSync_Op<"get_resource",
     [CoreRT_TypedAttributeTrait]> {
   let summary = "get a tensor in resource array";
@@ -77,6 +97,28 @@ def GetResourceOp : FallbackSync_Op<"get_resource",
 
   let results = (outs
     Variadic<TFTensorType>:$results
+  );
+
+  let assemblyFormat = "attr-dict `:` type($results)";
+}
+
+def GetResourceDhtOp : FallbackSync_Op<"get_resource_dht",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "get a DHT in resource array";
+
+  let description = [{
+    Get a tensor in resource array.
+
+    indices: the indices in the resource array.
+    results: the tensor values for the corresponding indices.
+  }];
+
+  let arguments = (ins
+    I64ArrayAttr:$indices
+  );
+
+  let results = (outs
+    Variadic<TensorType>:$results
   );
 
   let assemblyFormat = "attr-dict `:` type($results)";

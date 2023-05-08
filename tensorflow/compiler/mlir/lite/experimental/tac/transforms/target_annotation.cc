@@ -69,6 +69,16 @@ class TargetAnnotationPass : public TacFunctionPass<TargetAnnotationPass> {
       llvm::cl::desc(
           "comma separated list of device specs, like CPU, GPU, Hexagon."),
       llvm::cl::ZeroOrMore};
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const override {
+    if (!module_) {
+      for (const auto& device : device_specs_flag_) {
+        auto* hardware = this->GetTargetHardware(device);
+        if (hardware == nullptr) continue;
+        hardware->GetDependentDialects(registry);
+      }
+    }
+  }
 };
 
 void SetAnnotation(Operation* op, std::string attribute, std::string annotation,

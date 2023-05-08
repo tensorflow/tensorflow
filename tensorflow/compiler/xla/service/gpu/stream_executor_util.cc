@@ -462,6 +462,8 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       // semantics and cannot be used as a buffer.
     case xla::S8:
       return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
+    case xla::S16:
+      return InitializeTypedBuffer<int16_t>(stream, buffer, rng_state);
     case xla::S32:
       return InitializeTypedBuffer<int32_t>(stream, buffer, rng_state);
     default:

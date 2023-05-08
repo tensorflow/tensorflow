@@ -170,9 +170,30 @@ class Loader(object):
 
     # Metagraph has a mapping from FunctionDef name to aliases
     self._concrete_function_aliases = meta_graph.meta_info_def.function_aliases
-    # Create a mapping from alias to Function, which can be used with
-    # SaveOptions
     self.function_aliases = {}
+    if self._save_options.experimental_load_function_aliases:
+      # Create a mapping from aliases to polymorphic restored functions or lists
+      # of concrete functions. This mapping can later be used with SaveOptions
+      # when re-saving the loaded object to a SavedModel. We start with a
+      # mapping from aliases to lists of concrete functions. Later in
+      # _recreate_function, on a entry by entry basis, we replace lists with
+      # polymorphic restored functions if the concrete function associated with
+      # a restored function is identical to a list of concrete functions in an
+      # entry.
+      concrete_func_list_by_alias = collections.defaultdict(list)
+      for concrete_func_name, alias in self._concrete_function_aliases.items():
+        if concrete_func_name not in self._concrete_functions:
+          logging.warn(
+              (
+                  "ConcreteFunction `%s` is listed in function alias but it"
+                  " is not found."
+              ),
+              concrete_func_name,
+          )
+          continue
+        concrete_function = self._concrete_functions[concrete_func_name]
+        concrete_func_list_by_alias[alias].append(concrete_function)
+      self.function_aliases = dict(concrete_func_list_by_alias)
 
     self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
@@ -688,16 +709,37 @@ class Loader(object):
     for name in proto.concrete_functions:
       self._setup_function_captures(name, dependencies)
 
+    # If the list of concrete functions associated with this polymorphic
+    # restored function is identical to a list of concrete functions found in
+    # the function alias mapping, we replace the latter with this restored
+    # function. Also see comments in the __init__ method.
     if self._save_options.experimental_load_function_aliases:
-      for name in proto.concrete_functions:
-        if name in self._concrete_function_aliases:
-          alias = self._concrete_function_aliases[name]
+      if proto.concrete_functions and all(
+          name in self._concrete_function_aliases
+          for name in proto.concrete_functions
+      ):
+        alias = self._concrete_function_aliases[
+            next(iter(proto.concrete_functions))
+        ]
+        aliased = self.function_aliases.get(alias)
+        assert isinstance(aliased, list)
+        # Note that we cannot compare f.name below with proto.concrete_functions
+        # because the former is new name for the restored ConcreteFunction
+        # object while the latter is the old name in the original proto.
+        if set(f.name for f in aliased) == set(
+            f.name for f in fn._list_all_concrete_functions()  # pylint: disable=protected-access
+        ):
           self.function_aliases[alias] = fn
-          # We only need to save the mapping from alias to a tf.Function
-          # once even though it can appear multiple times in
-          # self._concrete_function_aliases due to one-to-many mapping from
-          # tf.Function to concrete functions.
-          break
+        else:
+          logging.warn(
+              (
+                  "Not aliasing '%s' to polymorphic restored function because"
+                  " of mismatched concrete functions: %s vs %s"
+              ),
+              alias,
+              set(f.name for f in aliased),
+              set(f.name for f in fn._list_all_concrete_functions()),  # pylint: disable=protected-access
+          )
 
     return fn, setattr
 

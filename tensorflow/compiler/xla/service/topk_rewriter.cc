@@ -352,7 +352,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     if (call->user_count() == 1 && call->users().front()->tuple_index() == 0) {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
           {input->shape()}, sort_dimension, {input}, call->to_apply(),
-          /*is_stable=*/false));
+          /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),
           comp->AddInstruction(HloInstruction::CreateSlice(
@@ -365,7 +365,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
           ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
           sort_dimension, {input, iota}, call->to_apply(),
-          /*is_stable=*/false));
+          /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call, comp->AddInstruction(HloInstruction::CreateTuple(
                     {slice_tuple(sort, 0), slice_tuple(sort, 1)}))));

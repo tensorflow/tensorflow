@@ -260,8 +260,16 @@ class GpuExecutable : public Executable {
   // compute_capability_.
   //
   // May be empty, in which case we leave compilation up to the GPU driver.
+<<<<<<< HEAD
   std::vector<uint8_t> binary_;
 
+=======
+#ifdef TENSORFLOW_USE_ROCM
+  std::vector<uint8_t> binary_;
+#else
+  const std::vector<uint8_t> binary_;
+#endif
+>>>>>>> upstream/master
   // The GPU version for compute compatibility check.
   GpuVersion gpu_version_;
 

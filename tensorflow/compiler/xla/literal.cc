@@ -84,7 +84,8 @@ bool LiteralProtoHasValues(const LiteralProto& proto) {
          proto.c128s_size() || proto.tuple_literals_size() ||
          !proto.f16s().empty() || !proto.bf16s().empty() ||
          !proto.u16s().empty() || !proto.s16s().empty() ||
-         !proto.f8e5m2s().empty() || !proto.f8e4m3fns().empty();
+         !proto.f8e5m2s().empty() || !proto.f8e4m3fns().empty() ||
+         !proto.f8e4m3b11fnuzs().empty();
 }
 
 // Lazy getter for the interned scalar shape in static storage. We reuse this
@@ -129,6 +130,8 @@ const Shape& ScalarShape(PrimitiveType type) {
       return ScalarShapeImpl<F8E5M2>();
     case F8E4M3FN:
       return ScalarShapeImpl<F8E4M3FN>();
+    case F8E4M3B11FNUZ:
+      return ScalarShapeImpl<F8E4M3B11FNUZ>();
     case F16:
       return ScalarShapeImpl<F16>();
     case BF16:
@@ -692,6 +695,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
       COPY_ELEMENTS(S64, int64_t);
       COPY_ELEMENTS(F8E5M2, tsl::float8_e5m2);
       COPY_ELEMENTS(F8E4M3FN, tsl::float8_e4m3fn);
+      COPY_ELEMENTS(F8E4M3B11FNUZ, tsl::float8_e4m3b11);
       COPY_ELEMENTS(F16, half);
       COPY_ELEMENTS(BF16, bfloat16);
       COPY_ELEMENTS(F32, float);
@@ -867,6 +871,9 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
     case F8E4M3FN:
       return CopySliceFromInternal<tsl::float8_e4m3fn>(src_literal, src_base,
                                                        dest_base, copy_size);
+    case F8E4M3B11FNUZ:
+      return CopySliceFromInternal<tsl::float8_e4m3b11>(src_literal, src_base,
+                                                        dest_base, copy_size);
     case F16:
       return CopySliceFromInternal<half>(src_literal, src_base, dest_base,
                                          copy_size);
@@ -1311,6 +1318,9 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
     case F8E4M3FN:
       SliceInternal<tsl::float8_e4m3fn>(*this, start_indices, result_literal);
       break;
+    case F8E4M3B11FNUZ:
+      SliceInternal<tsl::float8_e4m3b11>(*this, start_indices, result_literal);
+      break;
     case F16:
       SliceInternal<half>(*this, start_indices, result_literal);
       break;
@@ -1395,6 +1405,9 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
     case F8E4M3FN:
       return RoundTripFpToString(
           Get<tsl::float8_e4m3fn>(multi_index, shape_index));
+    case F8E4M3B11FNUZ:
+      return RoundTripFpToString(
+          Get<tsl::float8_e4m3b11>(multi_index, shape_index));
     case F64:
       return RoundTripFpToString(Get<double>(multi_index, shape_index));
     case C64: {
@@ -1452,6 +1465,8 @@ std::optional<double> LiteralBase::GetAsDouble(
       return static_cast<double>(Get<tsl::float8_e5m2>(multi_index));
     case F8E4M3FN:
       return static_cast<double>(Get<tsl::float8_e4m3fn>(multi_index));
+    case F8E4M3B11FNUZ:
+      return static_cast<double>(Get<tsl::float8_e4m3b11>(multi_index));
     case F16:
       return static_cast<double>(Get<half>(multi_index));
     case F32:
@@ -1486,6 +1501,9 @@ std::optional<double> LiteralBase::GetSumAsDouble(
     case F8E4M3FN:
       SUMLOOP(tsl::float8_e4m3fn);
       break;
+    case F8E4M3B11FNUZ:
+      SUMLOOP(tsl::float8_e4m3b11);
+      break;
     case F16:
       SUMLOOP(half);
       break;
@@ -1513,6 +1531,8 @@ std::optional<complex128> LiteralBase::GetAsComplex128(
       return {{static_cast<double>(Get<tsl::float8_e5m2>(multi_index)), 0}};
     case F8E4M3FN:
       return {{static_cast<double>(Get<tsl::float8_e4m3fn>(multi_index)), 0}};
+    case F8E4M3B11FNUZ:
+      return {{static_cast<double>(Get<tsl::float8_e4m3b11>(multi_index)), 0}};
     case BF16:
       return {{static_cast<double>(Get<bfloat16>(multi_index)), 0}};
     case F16:
@@ -1585,6 +1605,10 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
     case F8E4M3FN:
       Set<tsl::float8_e4m3fn>(multi_index,
                               static_cast<tsl::float8_e4m3fn>(value));
+      break;
+    case F8E4M3B11FNUZ:
+      Set<tsl::float8_e4m3b11>(multi_index,
+                               static_cast<tsl::float8_e4m3b11>(value));
       break;
     default:
       return FailedPrecondition("Array element type is not floating: %s",
@@ -1907,6 +1931,7 @@ void ConvertIfDestTypeMatches(const LiteralBase& src_literal,
     CONVERT_BETWEEN_NATIVE_TYPES(BF16)
     CONVERT_BETWEEN_NATIVE_TYPES(F8E5M2)
     CONVERT_BETWEEN_NATIVE_TYPES(F8E4M3FN)
+    CONVERT_BETWEEN_NATIVE_TYPES(F8E4M3B11FNUZ)
     CONVERT_BETWEEN_NATIVE_TYPES(C64)
     CONVERT_BETWEEN_NATIVE_TYPES(C128)
 #undef CONVERT_BETWEEN_NATIVE_TYPES
@@ -1957,6 +1982,7 @@ StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
     CONVERT_IF_DEST_TYPE_MATCHES(BF16)
     CONVERT_IF_DEST_TYPE_MATCHES(F8E5M2)
     CONVERT_IF_DEST_TYPE_MATCHES(F8E4M3FN)
+    CONVERT_IF_DEST_TYPE_MATCHES(F8E4M3B11FNUZ)
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Unsupported conversions are checked before this switch, this path is
       // not possible to hit.
@@ -2153,6 +2179,8 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
       return EqualElementsInternal<tsl::float8_e5m2>(other, &multi_index);
     case F8E4M3FN:
       return EqualElementsInternal<tsl::float8_e4m3fn>(other, &multi_index);
+    case F8E4M3B11FNUZ:
+      return EqualElementsInternal<tsl::float8_e4m3b11>(other, &multi_index);
     case C64:
       return EqualElementsInternal<complex64>(other, &multi_index);
     case C128:
@@ -2272,6 +2300,10 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
       return AllElementsEqualValue(
           data<tsl::float8_e4m3fn>(),
           scalar.GetFirstElement<tsl::float8_e4m3fn>());
+    case F8E4M3B11FNUZ:
+      return AllElementsEqualValue(
+          data<tsl::float8_e4m3b11>(),
+          scalar.GetFirstElement<tsl::float8_e4m3b11>());
     case F16:
       return AllElementsEqualValue(data<half>(),
                                    scalar.GetFirstElement<half>());
@@ -2374,6 +2406,10 @@ bool LiteralBase::IsAllFloatImpl(float value, bool round_value) const {
     case F8E4M3FN:
       scalar.Set<tsl::float8_e4m3fn>({},
                                      static_cast<tsl::float8_e4m3fn>(value));
+      break;
+    case F8E4M3B11FNUZ:
+      scalar.Set<tsl::float8_e4m3b11>({},
+                                      static_cast<tsl::float8_e4m3b11>(value));
       break;
     case F16:
       scalar.Set<half>({}, static_cast<half>(value));
@@ -2479,6 +2515,9 @@ bool LiteralBase::IsR1Iota() const {
       case F8E4M3FN:
         return Get<tsl::float8_e4m3fn>({idx}) ==
                static_cast<tsl::float8_e4m3fn>(idx);
+      case F8E4M3B11FNUZ:
+        return Get<tsl::float8_e4m3b11>({idx}) ==
+               static_cast<tsl::float8_e4m3b11>(idx);
       case C64:
         return Get<complex64>({idx}) == complex64(idx, 0.0f);
       case C128:
@@ -2602,6 +2641,9 @@ bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
     case F8E4M3FN:
       return Get<tsl::float8_e4m3fn>(indices) ==
              static_cast<tsl::float8_e4m3fn>(0.0f);
+    case F8E4M3B11FNUZ:
+      return Get<tsl::float8_e4m3b11>(indices) ==
+             static_cast<tsl::float8_e4m3b11>(0.0f);
     case PRED:
       return Get<bool>(indices) == false;
     default:
@@ -2707,6 +2749,11 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case F8E4M3FN:
       *proto->mutable_f8e4m3fns() = std::string(
           reinterpret_cast<const char*>(data<tsl::float8_e4m3fn>().data()),
+          size_bytes_dense());
+      break;
+    case F8E4M3B11FNUZ:
+      *proto->mutable_f8e4m3b11fnuzs() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11>().data()),
           size_bytes_dense());
       break;
     case F32:
@@ -2842,6 +2889,13 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       const std::string& s(proto.f8e4m3fns());
       TF_RET_CHECK(data<tsl::float8_e4m3fn>().size() *
                        sizeof(tsl::float8_e4m3fn) ==
+                   s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+    } break;
+    case F8E4M3B11FNUZ: {
+      const std::string& s(proto.f8e4m3b11fnuzs());
+      TF_RET_CHECK(data<tsl::float8_e4m3b11>().size() *
+                       sizeof(tsl::float8_e4m3b11) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
     } break;

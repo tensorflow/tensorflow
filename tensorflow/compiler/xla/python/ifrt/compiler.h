@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_COMPILER_H_
 
 #include <memory>
+#include <optional>
 
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -45,7 +46,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // implementation specific.
   virtual StatusOr<std::unique_ptr<LoadedExecutable>>
   DeserializeLoadedExecutable(absl::string_view serialized,
-                              CompileOptions options) = 0;
+                              std::optional<CompileOptions> options) = 0;
 
   static char ID;  // NOLINT
 };

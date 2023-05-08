@@ -1,7 +1,6 @@
 path: "tensorflow.Tensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
-  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyTensor\'>"
   is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
   is_instance: "<class \'tensorflow.python.types.core.Symbol\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
@@ -11,15 +10,7 @@ tf_class {
     mtype: "<type \'set\'>"
   }
   member {
-    name: "device"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {
@@ -31,22 +22,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "op"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "shape"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "value_index"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-  }
-  member_method {
-    name: "consumers"
   }
   member_method {
     name: "eval"
