@@ -150,9 +150,13 @@ py_library(
         ":clustering_ops",
         ":collective_ops",
         ":composite_tensor_ops",
+        ":cond",
         ":cond_v2",
         ":confusion_matrix",
+        ":control_flow_assert",
+        ":control_flow_case",
         ":control_flow_ops",
+        ":control_flow_switch_case",
         ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
         ":dtensor",
@@ -194,6 +198,7 @@ py_library(
         ":uniform_quant_ops_gen",
         ":variable_v1",
         ":weights_broadcast_ops",
+        ":while_loop",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/autograph",
@@ -1400,7 +1405,7 @@ cuda_py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "control_flow_assert",
     srcs = ["ops/control_flow_assert.py"],
     srcs_version = "PY3",
@@ -1437,27 +1442,19 @@ py_library(
     ],
 )
 
-# Note: targets depending on this should also depend on ":cond_v2" and ":while_v2".
-# See b/118513001.
-py_library(
+py_strict_library(
     name = "control_flow_ops",
     srcs = ["ops/control_flow_ops.py"],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
         ":array_ops_gen",
-        ":cond",
-        ":control_flow_assert",
-        ":control_flow_case",
         ":control_flow_ops_gen",
         ":control_flow_util",
-        ":functional_ops_gen",
         ":math_ops",
         ":tensor_array_ops",
-        ":while_loop",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager/polymorphic_function:eager_function_run",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -1468,16 +1465,14 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:variable_utils",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "control_flow_case",
     srcs = ["ops/control_flow_case.py"],
     srcs_version = "PY3",
@@ -1496,26 +1491,28 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "control_flow_switch_case",
     srcs = ["ops/control_flow_switch_case.py"],
     deps = [
         ":array_ops",
+        ":cond_v2",
         ":control_flow_util",
         ":functional_ops_gen",
         ":math_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "cond",
     srcs = ["ops/cond.py"],
     deps = [
         ":array_ops",
+        ":cond_v2",
+        ":control_flow_ops",
         ":control_flow_util",
         ":math_ops",
         "//tensorflow/python/eager:context",
@@ -1528,27 +1525,27 @@ py_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "while_loop",
     srcs = ["ops/while_loop.py"],
     srcs_version = "PY3",
     deps = [
+        ":control_flow_ops",
         ":control_flow_util",
         ":math_ops",
         ":tensor_array_ops",
+        ":while_v2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:variable_utils",
@@ -1574,7 +1571,6 @@ py_strict_library(
         ":control_flow_v2_func_graphs",
         ":gradients_util",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
@@ -1674,9 +1670,7 @@ py_library(
         "//tensorflow/python/compat",
         "//tensorflow/python/framework:auto_control_deps_utils",
         "//tensorflow/python/framework:c_api_util",
-        "//tensorflow/python/framework:function",
-        "//tensorflow/python/framework:function_def_to_graph",
-        "//tensorflow/python/framework:graph_to_function_def",
+        "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:nest",
     ],
@@ -1698,7 +1692,7 @@ py_library(
         ":gradients_util",
         ":handle_data_util",
         ":list_ops",
-        ":map_ops",
+        ":math_ops",
         ":tensor_array_ops",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/framework:auto_control_deps_utils",
@@ -1977,7 +1971,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
-        ":cond",
         ":control_flow_ops",
         ":control_flow_util",
         ":data_flow_ops_gen",

@@ -367,6 +367,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":slot_creator",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -506,6 +507,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
@@ -1048,6 +1050,7 @@ py_library(
     srcs = ["training_util.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:cond",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -1136,6 +1139,7 @@ TRAINING_TEST_DEPS = [
     "//tensorflow/python:array_ops",
     "//tensorflow/python:client",
     "//tensorflow/python:client_testlib",
+    "//tensorflow/python:cond",
     "//tensorflow/python:control_flow_ops",
     "//tensorflow/python:data_flow_ops",
     "//tensorflow/python:data_flow_ops_gen",
