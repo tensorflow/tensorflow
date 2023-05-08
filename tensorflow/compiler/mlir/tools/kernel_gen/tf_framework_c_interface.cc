@@ -176,8 +176,8 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Create the kernel.
-  mlir::OwningOpRef<mlir::ModuleOp> module;
   mlir::MLIRContext context;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
 
   if (item.result_module().empty()) {
     // Otherwise, compile the module now.
