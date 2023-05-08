@@ -74,8 +74,14 @@ struct EventFactory {
   std::vector<std::unique_ptr<TraceEvent>> events;
 };
 
+struct DefaultStdHash {
+  size_t operator()(absl::string_view input) {
+    return std::hash<absl::string_view>()(input);
+  }
+};
+
 template <typename EventFactory, typename RawData,
-          typename Hash = std::hash<absl::string_view>()>
+          typename Hash = DefaultStdHash>
 class TraceEventsContainer {
  public:
   TraceEventsContainer() { arenas_.insert(std::make_shared<EventFactory>()); }
