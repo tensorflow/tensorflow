@@ -113,13 +113,6 @@ int OverflowExponent(PrimitiveType type) {
   }
 }
 
-bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64 || type == BF16 ||
-         type == F8E5M2 || type == F8E4M3FN || type == F8E4M3B11FNUZ;
-}
-
-bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }
-
 bool IsSignedIntegralType(PrimitiveType type) {
   return type == S4 || type == S8 || type == S16 || type == S32 || type == S64;
 }
