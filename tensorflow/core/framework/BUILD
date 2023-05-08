@@ -30,7 +30,7 @@ package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
-# TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
+        # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
         "//tensorflow/tsl/lib:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
         # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
@@ -1390,7 +1390,7 @@ cc_library(
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.
 
-#Generate the C++ sources for some of the protos.
+# Generate the C++ sources for some of the protos.
 tf_generate_proto_text_sources(
     name = "attr_value_proto_text",
     srcs = [
@@ -1770,7 +1770,7 @@ tf_proto_library(
 #         ":function_proto",
 #     ],
 # )
-#copybara : uncomment_end
+# copybara:uncomment_end
 
 tf_proto_library(
     name = "summary_proto",
