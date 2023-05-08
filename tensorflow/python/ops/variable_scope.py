@@ -2693,10 +2693,6 @@ def set_variable_v1(variable_v1):
   _variable_v1 = variable_v1
 
 
-# TODO(apassos) remove forwarding symbol
-variable = _variable_v1
-
-
 @tf_export(v1=["variable_creator_scope"])
 @tf_contextlib.contextmanager
 def variable_creator_scope_v1(variable_creator):
