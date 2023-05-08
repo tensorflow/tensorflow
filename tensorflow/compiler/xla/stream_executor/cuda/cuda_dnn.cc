@@ -59,11 +59,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 // clang-format on
 
+#ifdef __clang__
 #pragma clang diagnostic push
 
 // Make sure that Eigen::half forward declaration in dnn.h matches the
 // declaration in Eigen.
 #pragma clang diagnostic warning "-Wmismatched-tags"
+#endif
 
 namespace stream_executor {
 namespace gpu {
@@ -7676,7 +7678,9 @@ void initialize_cudnn() {
 
 }  // namespace stream_executor
 
+#ifdef __clang__
 #pragma clang diagnostic pop
+#endif
 
 REGISTER_MODULE_INITIALIZER(register_cudnn,
                             { stream_executor::initialize_cudnn(); });
