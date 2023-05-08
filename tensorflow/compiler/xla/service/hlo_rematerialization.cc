@@ -1149,6 +1149,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
         RematerializeBuffer(old_buffer, remat_item, std::move(unplaced_users));
 
     remat_item->buffers_defined.push_back(new_buffer.id);
+    remat_item->buffers_output.push_back(new_buffer.id);
     auto update_buffers = [old_buffer_id, new_buffer_id = new_buffer.id](
                               BufferIdList& to_update) {
       std::replace(to_update.begin(), to_update.end(), old_buffer_id,
