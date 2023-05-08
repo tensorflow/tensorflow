@@ -541,6 +541,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "tensor_float_32_test",
+    size = "medium",
+    srcs = ["tensor_float_32_test.py"],
+    python_version = "PY3",
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv3d_test",
     size = "medium",
     srcs = ["conv3d_test.py"],

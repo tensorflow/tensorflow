@@ -11,6 +11,7 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -236,6 +237,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -250,7 +252,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ),
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_cuda_library(
@@ -341,8 +343,9 @@ cc_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 cc_library(

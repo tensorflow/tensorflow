@@ -37,6 +37,12 @@ def tensor_float_32_execution_enabled():
   return _pywrap_tensor_float_32_execution.is_enabled()
 
 
+# TODO(b/280688352): Rename or rework this function to make it appear less
+# specific to GPUs. TPUs use bfloat16 instead of TensorFloat-32 by default for
+# matmuls, yet on TPUs this function also can used to increase the precision of
+# matmuls to FP32 by passing enabled=False. It is misleading how the words
+# "tensor_float_32" appear in the API name, yet this API affects TPUs which do
+# not use TensorFloat-32.
 @tf_export('config.experimental.enable_tensor_float_32_execution')
 def enable_tensor_float_32_execution(enabled):
   """Enable or disable the use of TensorFloat-32 on supported hardware.
@@ -49,11 +55,10 @@ def enable_tensor_float_32_execution(enabled):
   deep learning models in practice.
 
   TensorFloat-32 is enabled by default. TensorFloat-32 is only supported on
-  NVIDIA GPUs starting with the Ampere generation, so older NVIDIA GPUs and
-  other hardware will use the full float32 precision regardless of whether
-  TensorFloat-32 is enabled or not. If you want to use the full float32
-  precision on all GPUs, you can disable TensorFloat-32 execution with this
-  function. For example:
+  NVIDIA GPUs starting with the Ampere generation, so older NVIDIA GPUs will use
+  the full float32 precision regardless of whether TensorFloat-32 is enabled or
+  not. If you want to use the full float32 precision on all GPUs, you can
+  disable TensorFloat-32 execution with this function. For example:
 
   ```python
   x = tf.fill((1024, 1024), 1.0001)
@@ -83,6 +88,12 @@ def enable_tensor_float_32_execution(enabled):
 
   TensorFloat-32 is also used for some complex64 ops. Currently, TensorFloat-32
   is used in fewer cases for complex64 as it is for float32.
+
+  Simiarly to GPUs, TPUs also run certain float32 ops, like matrix
+  multiplications and convolutions, with lower precision by default. Unlike
+  GPUs, TPUs use bfloat16 precision instead of TensorFloat-32 precision for such
+  ops. Disabling TensorFloat-32 with this function also causes TPUs to run
+  float32 ops with the full float32 precision but with lower performance.
 
   Args:
     enabled: Bool indicating whether to enable TensorFloat-32 execution.
