@@ -69,7 +69,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 
 /// Pass to gradually lower vector ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
-    bool enableAVX2 = true);
+    bool enableAVX2 = true, bool flatten = false);
 
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();

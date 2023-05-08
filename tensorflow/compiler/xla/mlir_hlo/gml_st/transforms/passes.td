@@ -89,10 +89,13 @@ def LowerVectorsPass : Pass<"lower-vectors", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "::mlir::LLVM::LLVMDialect",
     "::mlir::vector::VectorDialect",
+    "::mlir::affine::AffineDialect",
   ];
   let options = [
     Option<"enableAVX2", "enable-avx2", "bool", /*default=*/"true",
            "Enable specialized lowerings for AVX2.">,
+    Option<"flatten", "flatten", "bool", /*default=*/"false",
+           "Flatten multiple small n-D vector transfers into a large 1-D transfer.">,
   ];
 }
 
