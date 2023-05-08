@@ -99,21 +99,3 @@ diff -ruN --strip-trailing-cr a/clang/test/SemaObjC/nullable-result.m b/clang/te
  }
  
  @interface NoContextSensitive
-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/ValueTracking.cpp b/llvm/lib/Analysis/ValueTracking.cpp
---- a/llvm/lib/Analysis/ValueTracking.cpp
-+++ b/llvm/lib/Analysis/ValueTracking.cpp
-@@ -924,12 +924,14 @@
- 
-     if (Arg == V && isValidAssumeForContext(I, Q.CxtI, Q.DT)) {
-       assert(BitWidth == 1 && "assume operand is not i1?");
-+      (void)BitWidth;
-       Known.setAllOnes();
-       return;
-     }
-     if (match(Arg, m_Not(m_Specific(V))) &&
-         isValidAssumeForContext(I, Q.CxtI, Q.DT)) {
-       assert(BitWidth == 1 && "assume operand is not i1?");
-+      (void)BitWidth;
-       Known.setAllZero();
-       return;
-     }
