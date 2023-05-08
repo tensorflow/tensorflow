@@ -82,15 +82,17 @@ struct DefaultStdHash {
 
 template <typename EventFactory, typename RawData,
           typename Hash = DefaultStdHash>
-class TraceEventsContainer {
+class TraceEventsContainerBase {
  public:
-  TraceEventsContainer() { arenas_.insert(std::make_shared<EventFactory>()); }
+  TraceEventsContainerBase() {
+    arenas_.insert(std::make_shared<EventFactory>());
+  }
 
   // Movable but non-copyable.
-  TraceEventsContainer(TraceEventsContainer&&) = default;
-  TraceEventsContainer& operator=(TraceEventsContainer&&) = default;
-  TraceEventsContainer(const TraceEventsContainer&) = delete;
-  TraceEventsContainer& operator=(const TraceEventsContainer&) = delete;
+  TraceEventsContainerBase(TraceEventsContainerBase&&) = default;
+  TraceEventsContainerBase& operator=(TraceEventsContainerBase&&) = default;
+  TraceEventsContainerBase(const TraceEventsContainerBase&) = delete;
+  TraceEventsContainerBase& operator=(const TraceEventsContainerBase&) = delete;
 
   // Creates a TraceEvent prefilled with the given values.
   void AddCompleteEvent(absl::string_view name, uint32_t resource_id,
@@ -253,8 +255,8 @@ class TraceEventsContainer {
     return DoLoadFromLevelDbTable(
         filename, std::move(filter), std::move(visibility),
         filter_by_visibility_threshold, trace_, filter_by_visibility_,
-        absl::bind_front(&TraceEventsContainer::CopyEventToArena, this),
-        absl::bind_front(&TraceEventsContainer::AddArenaEvent, this));
+        absl::bind_front(&TraceEventsContainerBase::CopyEventToArena, this),
+        absl::bind_front(&TraceEventsContainerBase::AddArenaEvent, this));
   }
 
   // Calls 'callback' with all events stored in this container.
