@@ -123,7 +123,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
   )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, NoPadding) {
@@ -146,7 +146,7 @@ ENTRY e {
 ; CHECK-NOT: slice(
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, SplitLhsNoncontractingTransposeRhs) {
@@ -167,7 +167,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTest, SplitLhsNoncontracting) {
@@ -191,7 +191,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
@@ -214,7 +214,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DoNotFuseSplitLhsContractingTranspose) {
@@ -237,7 +237,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, BatchF32F16) {
@@ -259,7 +259,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTest, NonMajorMostInputBatchWorksCorrectly) {
@@ -281,7 +281,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, BatchTransposeF32F16) {
@@ -304,7 +304,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTest, DoNotFuseArbitraryReshape) {
@@ -328,7 +328,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
 }
 
 TEST_F(TritonGemmTest, SkipMultipleBatch) {
@@ -408,7 +408,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, SameInput) {
@@ -427,7 +427,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-6, 1e-6}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
 TEST_F(TritonGemmTest, Naming) {
@@ -490,7 +490,7 @@ ENTRY e {
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{1e-6, 1e-6},
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -526,7 +526,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{1e-6, 1e-6},
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -562,7 +562,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{1e-3, 1e-3},
+                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -603,7 +603,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{1e-2, 1e-2},
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -681,7 +681,7 @@ ENTRY e {
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextLowShmem, kHloTextOptinShmem,
-                                      ErrorSpec{1e-6, 1e-6},
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -717,7 +717,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{1e-2, 1e-2},
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -753,7 +753,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{1e-3, 1e-3},
+                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -799,7 +799,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{1e-6, 1e-6},
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -870,7 +870,7 @@ ENTRY e {
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_splitk,
-                                      ErrorSpec{1e-6, 1e-6},
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -930,7 +930,7 @@ ENTRY e {
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_splitk,
-                                      ErrorSpec{1e-3, 1e-3},
+                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -1003,7 +1003,7 @@ ENTRY entry {
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
-                                      ErrorSpec{1e-2, 1},
+                                      ErrorSpec{/*aabs=*/2, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -1056,7 +1056,7 @@ ENTRY e {
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
-                                      ErrorSpec{1e-6, 1e-6},
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
