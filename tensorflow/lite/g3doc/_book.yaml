@@ -112,14 +112,15 @@ upper_tabs:
       - title: "Smart reply"
         path: https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android
         status: external
-      - title: "Auto complete"
-        path: /lite/examples/auto_complete/overview
 
       - heading: "Audio"
       - title: "Sound and word recognition"
         path: /lite/android/tutorials/audio_classification
 
       - heading: "Hardware acceleration"
+      - title: "Acceleration service"
+        path: /lite/android/acceleration_service
+        status: experimental
       - title: "GPU delegate"
         path: /lite/android/delegates/gpu
       - title: "NNAPI delegate"
