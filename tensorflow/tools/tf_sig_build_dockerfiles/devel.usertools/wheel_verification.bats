@@ -58,6 +58,8 @@ teardown_file() {
     python3 -m venv /tf/venv
     source /tf/venv/bin/activate
     python3 -m pip install "$TF_WHEEL"
+    # needed to avoid a dependency conflcit with `requests`
+    python3 -m pip install "urllib3<2"
 }
 
 @test "TensorFlow is importable" {
