@@ -56,6 +56,7 @@ py_library(
         "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/tpu:tpu_py",
         "//third_party/py/numpy",
     ],
 )
@@ -2325,7 +2326,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
-        "//tensorflow/python/tpu",
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 
@@ -2357,7 +2358,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
-        "//tensorflow/python/tpu",
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 
