@@ -822,8 +822,10 @@ def real(input, name=None):
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
-    else:
+    elif tf.debugging.is_numeric_tensor(input):
       return input
+    else:
+      raise TypeError("input must be a numeric tensor, but got tensor with dtype {}".format(input.dtype))
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
