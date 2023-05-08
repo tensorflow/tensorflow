@@ -67,7 +67,7 @@ typename Distribution::ResultType VectorizedFormat(
   typedef Eigen::TensorMap<
       Eigen::Tensor<typename Distribution::ResultElementType, 1,
                     Eigen::RowMajor, Eigen::DenseIndex>,
-      Eigen::Aligned>
+      Eigen::Unaligned>
       Tensor;
   auto tensor_result = Tensor(&result[0], kResultElementCount);
   tensor_result = tensor_result - typename Distribution::ResultElementType(1.0);
