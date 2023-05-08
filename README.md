@@ -142,7 +142,173 @@ Build Type                    | Status                                          
 **Libtensorflow Windows CPU** | Status Temporarily Unavailable                                                                                                                                                   | [Nightly Binary](https://storage.googleapis.com/libtensorflow-nightly/prod/tensorflow/release/windows/latest/cpu/windows_cpu_libtensorflow_binaries.tar.gz) [Official GCS](https://storage.googleapis.com/tensorflow/)
 **Libtensorflow Windows GPU** | Status Temporarily Unavailable                                                                                                                                                   | [Nightly Binary](https://storage.googleapis.com/libtensorflow-nightly/prod/tensorflow/release/windows/latest/gpu/windows_gpu_libtensorflow_binaries.tar.gz) [Official GCS](https://storage.googleapis.com/tensorflow/)
 
-## Resources
+
+## Recommended Beginner Tutorial
+This short introduction uses Keras to:
+  1. Load a prebuilt dataset.
+  2. Build a neural network machine learning model that classifies images.
+  3. Train this neural network.
+  4. Evaluate the accuracy of the model.
+ 
+This tutorial is a Google Colaboratory notebook. Python programs are run directly in the browser—a great way to learn and use TensorFlow. To follow this tutorial, run the notebook in Google Colab
+  1. In Colab, connect to a Python runtime: At the top-right of the menu bar, select CONNECT.
+  2. To run all the code in the notebook, select Runtime > Run all. To run the code cells one at a time, hover over each cell and select the Run cell icon.
+
+#### *Set up TensorFlow*
+
+Import TensorFlow into your program to get started:
+
+```python
+>>> import tensorflow as tf
+    print("TensorFlow version:", tf.__version__)
+```
+
+#### *Load a dataset*
+
+Load and prepare the MNIST dataset. The pixel values of the images range from 0 through 255. Scale these values to a range of 0 to 1 by dividing the values by 255.0. This also converts the sample data from integers to floating-point numbers:
+
+```python
+>>> mnist = tf.keras.datasets.mnist
+
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+x_train, x_test = x_train / 255.0, x_test / 255.0
+```
+
+#### *Build a machine learning model*
+Build a tf.keras.Sequential model:
+
+```python
+>>> model = tf.keras.models.Sequential([
+  tf.keras.layers.Flatten(input_shape=(28, 28)),
+  tf.keras.layers.Dense(128, activation='relu'),
+  tf.keras.layers.Dropout(0.2),
+  tf.keras.layers.Dense(10)
+])
+```
+
+Sequential is useful for stacking layers where each layer has one input tensor and one output tensor. Layers are functions with a known mathematical structure that can be reused and have trainable variables. Most TensorFlow models are composed of layers. This model uses the Flatten, Dense, and Dropout layers.
+
+For each example, the model returns a vector of logits or log-odds scores, one for each class.
+
+```python
+>>> predictions = model(x_train[:1]).numpy()
+predictions
+])
+```
+
+```python
+>>> array([[-0.07360977, -0.29190028,  0.6083694 , -0.18077262,  0.19444077,
+         0.27551615,  1.0136158 , -0.18320227, -0.3634336 ,  0.09294549]],
+      dtype=float32)
+])
+```
+
+The tf.nn.softmax function converts these logits to probabilities for each class:
+
+```python
+>>> tf.nn.softmax(predictions).numpy()
+```
+
+```python
+>>> array([[0.07577389, 0.06091401, 0.14986472, 0.0680737 , 0.09906778,
+        0.10743432, 0.22474791, 0.0679085 , 0.05670884, 0.0895063 ]],
+      dtype=float32)
+```
+
+Define a loss function for training using losses.SparseCategoricalCrossentropy:
+
+```python
+>>> loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+```
+
+The loss function takes a vector of ground truth values and a vector of logits and returns a scalar loss for each example. This loss is equal to the negative log probability of the true class: The loss is zero if the model is sure of the correct class.
+
+This untrained model gives probabilities close to random (1/10 for each class), so the initial loss should be close to -tf.math.log(1/10) ~= 2.3.
+
+```python
+>>> loss_fn(y_train[:1], predictions).numpy()
+
+2.2308755
+```
+
+Before you start training, configure and compile the model using Keras Model.compile. Set the optimizer class to adam, set the loss to the loss_fn function you defined earlier, and specify a metric to be evaluated for the model by setting the metrics parameter to accuracy.
+
+```python
+>>> model.compile(optimizer='adam',
+              loss=loss_fn,
+              metrics=['accuracy'])
+```
+
+#### *Train and evaluate your model*
+
+Use the Model.fit method to adjust your model parameters and minimize the loss:
+
+```python
+>>> model.fit(x_train, y_train, epochs=5)
+
+Epoch 1/5
+1875/1875 [==============================] - 6s 3ms/step - loss: 0.2930 - accuracy: 0.9156
+Epoch 2/5
+1875/1875 [==============================] - 5s 2ms/step - loss: 0.1423 - accuracy: 0.9579
+Epoch 3/5
+1875/1875 [==============================] - 5s 2ms/step - loss: 0.1055 - accuracy: 0.9682
+Epoch 4/5
+1875/1875 [==============================] - 5s 2ms/step - loss: 0.0864 - accuracy: 0.9729
+Epoch 5/5
+1875/1875 [==============================] - 5s 2ms/step - loss: 0.0737 - accuracy: 0.9765
+<keras.callbacks.History at 0x7f2330b2eb50>
+```
+
+The Model.evaluate method checks the model's performance, usually on a validation set or test set.
+
+```python
+>>> model.evaluate(x_test,  y_test, verbose=2)
+
+313/313 - 1s - loss: 0.0737 - accuracy: 0.9767 - 730ms/epoch - 2ms/step
+[0.07370643317699432, 0.9767000079154968]
+```
+
+The image classifier is now trained to ~98% accuracy on this dataset. To learn more, read the TensorFlow tutorials.
+
+If you want your model to return a probability, you can wrap the trained model, and attach the softmax to it:
+
+```python
+>>> probability_model = tf.keras.Sequential([
+      model,
+      tf.keras.layers.Softmax()
+])
+```
+
+```python
+>>> probability_model(x_test[:5])
+
+<tf.Tensor: shape=(5, 10), dtype=float32, numpy=
+array([[7.8583760e-08, 2.0315771e-07, 1.9298657e-05, 2.3320188e-04,
+        9.5139407e-10, 4.2845312e-07, 8.9628999e-11, 9.9970192e-01,
+        1.2923241e-06, 4.3568154e-05],
+       [3.7064692e-06, 1.0523147e-04, 9.9985254e-01, 3.8119510e-05,
+        8.8884385e-14, 3.9520441e-07, 9.4119859e-09, 2.8896094e-13,
+        4.9883461e-08, 4.3276201e-13],
+       [3.8692704e-07, 9.9827552e-01, 3.2572538e-04, 6.6360576e-06,
+        1.7578177e-05, 3.5310466e-05, 1.7701784e-04, 4.1463875e-04,
+        7.4556196e-04, 1.6867848e-06],
+       [9.9951339e-01, 1.4372141e-08, 3.8163405e-04, 3.5188049e-07,
+        1.9279923e-06, 1.9152633e-06, 3.0800169e-05, 4.2913445e-07,
+        1.4327527e-08, 6.9521411e-05],
+       [4.3396111e-07, 6.1635697e-12, 9.5976225e-07, 2.0294257e-09,
+        9.9976498e-01, 1.1044161e-08, 1.3728661e-06, 1.5635873e-06,
+        1.8131770e-08, 2.3059935e-04]], dtype=float32)>
+```
+
+#### *Conclusion*
+
+Congratulations! You have trained a machine learning model using a prebuilt dataset using the Keras API.
+
+For more examples of using Keras, check out the tutorials. To learn more about building models with Keras, read the guides. If you want learn more about loading and preparing data, see the tutorials on image data loading or CSV data loading.
+
+
+
+## Additional Resources
 
 *   [TensorFlow.org](https://www.tensorflow.org)
 *   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
