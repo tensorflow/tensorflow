@@ -38,7 +38,7 @@
 *   `tf.data`
 
     *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e. `Dataset.zip(a, b, c)`.
-    *   `tf.data.Dataset.shuffle` now supports full shuffling and handles datasets with unkown cardinality. To specify that data should be fully shuffled, use `dataset = dataset.shuffle(dataset.cardinality())`. This will load the full dataset into memory so that it can be shuffled, so make sure to only use this with datasets of filenames or other small datasets.
+    * `tf.data.Dataset.shuffle` now supports `tf.data.UNKNOWN_CARDINALITY` When doing a "full shuffle" using  `dataset = dataset.shuffle(dataset.cardinality())`. But remember, a "full shuffle" will load the full dataset into memory so that it can be shuffled, so make sure to only use this with small datasets or datasets of small objects (like filenames).
 
 *   `tf.math`
 
