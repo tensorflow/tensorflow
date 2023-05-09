@@ -13,29 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_LINALG_UTILS_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_LINALG_UTILS_H
+#ifndef MLIR_HLO_GML_ST_UTILS_LINALG_UTILS_H
+#define MLIR_HLO_GML_ST_UTILS_LINALG_UTILS_H
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 
-// Helper functions to match `linalg.generic` ops that implement simple
-// reductions, bcasts, and cwise ops.
-
-bool isSimpleReduction(Operation *op, int64_t *dimension = nullptr,
-                       Value *operand = nullptr);
-
-// Returns whether 'op' is element-wise linalg.generic with single result.
-bool isCwiseGenericOp(Operation *op, int64_t *arity = nullptr);
-
-bool isUnaryCwiseGenericOp(Operation *op);
-
-bool isBcast(Operation *op);
-
-bool isSimpleBcast(Operation *op, int64_t *dimension = nullptr,
-                   Value *operand = nullptr);
+// Helper functions to match Linalg ops that implement simple reductions,
+// bcasts, and cwise ops.
 
 struct SimpleBcastReduction {
   Operation *bcast;
@@ -46,7 +32,46 @@ struct SimpleBcastReduction {
 bool isSimpleBcastReduction(Operation *op, int64_t *dimension = nullptr,
                             SimpleBcastReduction *chain = nullptr);
 
-}  // namespace gml_st
-}  // namespace mlir
+// The Conv2D is transformable into a matmul, if it has the following shape
+//
+// linalg.conv_2d_nhwc_hwcf
+//   {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
+//   ins(%input, %kernel : tensor<1x(N+L-1)xKx1xf32>, tensor<LxKx1xMxf32>)
+//   outs(%fill : tensor<1xNx1xM>) -> tensor<1xNx1xMxf32>
+//
+// in that case we can tile w.r.t. L to bring it to the following form
+//
+// linalg.conv_2d_nhwc_hwcf
+//   {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
+//   ins(%input, %kernel : tensor<1xNxKx1xf32>, tensor<1xKx1xMxf32>)
+//   outs(%fill : tensor<1xNx1xM>) -> tensor<1xNx1xMxf32>
+bool isTransformableIntoMatmul(linalg::Conv2DNhwcHwcfOp convOp);
 
-#endif
+// linalg.conv_2d_nhwc_hwcf
+//   {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
+//   ins(%input, %kernel : tensor<1xNxKx1xf32>, tensor<1xKx1xMxf32>)
+//   outs(%fill : tensor<1xNx1xM>) -> tensor<1xNx1xMxf32>
+//
+//  into
+//
+// linalg.matmul
+//   ins(%lhs, %rhs : tensor<NxKxf32>, tensor<KxMxf32>)
+//   outs(%fill : tensor<NxM>) -> tensor<1xNx1xMxf32>
+FailureOr<linalg::MatmulOp> convertConvToMatmul(linalg::Conv2DNhwcHwcfOp convOp,
+                                                PatternRewriter &rewriter);
+
+// Converts linalg.batch_matmul into linalg.matmul.
+FailureOr<linalg::MatmulOp> convertBatchMatmulToMatmul(
+    linalg::BatchMatmulOp batchMatmulOp, PatternRewriter &rewriter);
+
+// Converts linalg.matvec into linalg.dot.
+FailureOr<linalg::DotOp> convertMatvecToDotOp(PatternRewriter &rewriter,
+                                              linalg::MatvecOp matvecOp);
+
+// Converts linalg.dot into linalg.reduce(linalg.map).
+FailureOr<linalg::ReduceOp> convertDotOpToReduce(linalg::DotOp dotOp,
+                                                 PatternRewriter &rewriter);
+
+}  // namespace mlir::gml_st
+
+#endif  // MLIR_HLO_GML_ST_UTILS_LINALG_UTILS_H

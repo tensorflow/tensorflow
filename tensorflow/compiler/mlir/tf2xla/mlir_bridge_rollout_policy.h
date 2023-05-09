@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_MLIR_BRIDGE_ROLLOUT_POLICY_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_MLIR_BRIDGE_ROLLOUT_POLICY_H_
 
+#include <optional>
+
 #include "mlir/IR/BuiltinOps.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -52,7 +53,7 @@ enum class MlirBridgeRolloutPolicy {
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
     const FunctionLibraryDefinition* function_library,
-    std::optional<tensorflow::ConfigProto> config_proto,
+    std::optional<tensorflow::ConfigProto> config_proto, bool run_tpu_bridge,
     bool uses_uninitialized_resource_args, bool is_v1_compat,
     bool record_stats);
 

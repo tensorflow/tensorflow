@@ -22,17 +22,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 
+char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
 
 StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
@@ -47,6 +49,9 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     case DType::kU16:
     case DType::kU32:
     case DType::kU64:
+    case DType::kF8E4M3FN:
+    case DType::kF8E4M3B11FNUZ:
+    case DType::kF8E5M2:
     case DType::kF16:
     case DType::kF32:
     case DType::kBF16:
@@ -74,12 +79,16 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::U16:
     case xla::PrimitiveType::U32:
     case xla::PrimitiveType::U64:
+    case xla::PrimitiveType::F8E4M3FN:
+    case xla::PrimitiveType::F8E4M3B11FNUZ:
+    case xla::PrimitiveType::F8E5M2:
     case xla::PrimitiveType::F16:
     case xla::PrimitiveType::F32:
     case xla::PrimitiveType::BF16:
     case xla::PrimitiveType::F64:
     case xla::PrimitiveType::C64:
     case xla::PrimitiveType::C128:
+    case xla::PrimitiveType::TOKEN:
       return DType(static_cast<DType::Kind>(static_cast<int>(primitive_type)));
     default:
       return InvalidArgument("Invalid XLA PrimitiveType: %d",
@@ -87,12 +96,9 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   }
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
-    Client* client, DType dtype, Shape shape,
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+    PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
-  if (!llvm::isa_and_nonnull<PjRtClient>(client)) {
-    return InvalidArgument("PjRtClient expected");
-  }
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
   }
@@ -100,31 +106,45 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
                            sharding->devices().size(), pjrt_buffers.size());
   }
-  return std::unique_ptr<Array>(
-      new PjRtArray(static_cast<PjRtClient*>(client), dtype, std::move(shape),
-                    std::move(sharding), std::move(pjrt_buffers)));
+  return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
+                                 std::move(sharding), std::move(pjrt_buffers));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
-    Client* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
-  if (!llvm::isa_and_nonnull<PjRtClient>(client)) {
-    return InvalidArgument("PjRtClient expected");
-  }
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+    PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype,
                       ToDType(pjrt_buffer->on_device_shape().element_type()));
   Shape shape(pjrt_buffer->on_device_shape().dimensions());
   auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
-  return std::unique_ptr<Array>(new PjRtArray(
-      static_cast<PjRtClient*>(client), dtype, std::move(shape),
-      std::move(sharding), PjRtBuffers({std::move(pjrt_buffer)})));
-}
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
-    Client* client, std::unique_ptr<PjRtBuffer> pjrt_buffer) {
-  return PjRtArray::Create(client,
-                           std::shared_ptr<PjRtBuffer>(pjrt_buffer.release()));
+  return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
+                                 std::move(sharding),
+                                 PjRtBuffers({std::move(pjrt_buffer)}));
 }
 
-PjRtArray::PjRtArray(PjRtClient* client, DType dtype, Shape shape,
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+    PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
+  TF_ASSIGN_OR_RETURN(
+      auto dtype, xla::ifrt::ToDType(
+                      pjrt_buffers.front()->on_device_shape().element_type()));
+  DeviceList::Devices devices;
+  devices.reserve(pjrt_buffers.size());
+  std::vector<Shape> shapes;
+  shapes.reserve(pjrt_buffers.size());
+
+  for (const auto& pjrt_buffer : pjrt_buffers) {
+    devices.push_back(pjrt_buffer->device());
+    shapes.push_back(Shape(pjrt_buffer->on_device_shape().dimensions()));
+  }
+  return PjRtArray::Create(
+      client, dtype, std::move(shape),
+      ifrt::OpaqueSharding::Create(
+          xla::ifrt::DeviceList(std::move(devices)),
+          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+              std::move(shapes))),
+      std::move(pjrt_buffers));
+}
+
+PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
                      std::shared_ptr<const Sharding> sharding,
                      PjRtBuffers pjrt_buffers)
     : client_(client),
@@ -133,12 +153,12 @@ PjRtArray::PjRtArray(PjRtClient* client, DType dtype, Shape shape,
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)) {}
 
-StatusOr<std::vector<std::unique_ptr<Array>>> PjRtArray::Explode(
-    ArrayCopySemantics semantics) {
+StatusOr<std::vector<tsl::RCReference<Array>>>
+PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
-  std::vector<std::unique_ptr<Array>> result;
+  std::vector<tsl::RCReference<Array>> result;
   result.reserve(sharding_->devices().size());
-  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Explode(shape_));
+  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
   for (int i = 0; i < sharding_->devices().size(); ++i) {
     PjRtBuffers buffers;
     buffers.reserve(1);
@@ -176,27 +196,47 @@ Future<Status> PjRtArray::CopyToHostBuffer(
         InvalidArgument("Only single-shard is implemented, but got %d",
                         sharding_->devices().size()));
   }
-  if (byte_strides.has_value()) {
-    return Future<Status>(
-        InvalidArgument("Non-default byte_strides is not yet supported"));
-  }
 
   auto dtype = ToPrimitiveType(dtype_);
   if (!dtype.ok()) {
     return Future<Status>(std::move(dtype).status());
   }
 
-  xla::Shape xla_shape(*dtype, shape_.dims(), /*dynamic_dimensions=*/
-                       absl::InlinedVector<bool, Shape::kInlineDimensionSize>(
-                           /*n=*/shape_.dims().size(), /*v=*/false),
-                       /*tuple_shapes=*/{});
-  xla::LayoutUtil::SetToDefaultLayout(&xla_shape);
-  auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
-      static_cast<char*>(data), xla_shape);
+  PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
+  absl::Span<const int64_t> dims;
+  StatusOr<xla::Shape> dynamic_shape;
+  if (pjrt_buffer->on_device_shape().is_static()) {
+    dims = shape_.dims();
+  } else {
+    // TODO(b/182461453): This is a blocking call. If we further implemented
+    // populating dynamic shape metadata while fetching the literal, we wouldn't
+    // need this static approach.
+    // TODO(hyeontaek): Clean up this dynamic shape access once we formalize
+    // dynamic shape support in IFRT.
+    dynamic_shape = pjrt_buffer->logical_on_device_shape();
+    if (!dynamic_shape.ok()) {
+      return Future<Status>(std::move(dynamic_shape).status());
+    }
+    dims = dynamic_shape->dimensions();
+  }
+
+  std::unique_ptr<xla::MutableBorrowingLiteral> literal;
+  if (byte_strides.has_value()) {
+    auto xla_shape =
+        MakeShapeWithTrivialByteStrides(*dtype, dims, *byte_strides);
+    if (!xla_shape.ok()) {
+      return Future<Status>(std::move(xla_shape).status());
+    }
+    literal = std::make_unique<xla::MutableBorrowingLiteral>(
+        static_cast<char*>(data), *xla_shape);
+  } else {
+    auto xla_shape = ShapeUtil::MakeShapeWithDescendingLayout(*dtype, dims);
+    literal = std::make_unique<xla::MutableBorrowingLiteral>(
+        static_cast<char*>(data), xla_shape);
+  }
   auto* literal_ptr = literal.get();
   auto promise = Future<Status>::CreatePromise();
   Future<Status> future(promise);
-  PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
@@ -207,7 +247,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
   return future;
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Reshard(
+StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
     std::shared_ptr<const Sharding> new_sharding,
     ArrayCopySemantics semantics) {
   DCHECK(this);
@@ -238,6 +278,13 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Reshard(
           break;
       }
     } else {
+      if (new_sharding->devices()[i]->client() == nullptr) {
+        return InvalidArgument(
+            "The destination device is owned by a non-PjRt-compatible client. "
+            "To use this Array on the destination device, the Array must be "
+            "first fetched to the host and then sent to the destination "
+            "device.");
+      }
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<xla::PjRtBuffer> copied_buffer,
           pjrt_buffers_[i]->CopyToDevice(new_sharding->devices()[i]));

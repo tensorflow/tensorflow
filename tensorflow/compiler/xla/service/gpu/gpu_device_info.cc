@@ -17,25 +17,40 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-GpuDeviceInfo GetGpuDeviceInfo(stream_executor::StreamExecutor* stream_exec) {
+namespace {
+GpuDeviceInfo GetGpuDeviceInfo(
+    const stream_executor::DeviceDescription& device) {
   GpuDeviceInfo device_info;
-  const stream_executor::DeviceDescription& d =
-      stream_exec->GetDeviceDescription();
-  device_info.threads_per_block_limit = d.threads_per_block_limit();
-  device_info.threads_per_warp = d.threads_per_warp();
-  device_info.shared_memory_per_block = d.shared_memory_per_block();
-  device_info.shared_memory_per_core = d.shared_memory_per_core();
-  device_info.threads_per_core_limit = d.threads_per_core_limit();
-  device_info.core_count = d.core_count();
-  device_info.fpus_per_core = d.fpus_per_core();
-  device_info.block_dim_limit_x = d.block_dim_limit().x;
-  device_info.block_dim_limit_y = d.block_dim_limit().y;
-  device_info.block_dim_limit_z = d.block_dim_limit().z;
-  device_info.memory_bandwidth = d.memory_bandwidth();
-  device_info.l2_cache_size = d.l2_cache_size();
-  device_info.clock_rate_ghz = d.clock_rate_ghz();
+  device_info.name = device.name();
+  device_info.threads_per_block_limit = device.threads_per_block_limit();
+  device_info.threads_per_warp = device.threads_per_warp();
+  device_info.shared_memory_per_block = device.shared_memory_per_block();
+  device_info.shared_memory_per_block_optin =
+      device.shared_memory_per_block_optin();
+  device_info.shared_memory_per_core = device.shared_memory_per_core();
+  device_info.threads_per_core_limit = device.threads_per_core_limit();
+  device_info.core_count = device.core_count();
+  device_info.fpus_per_core = device.fpus_per_core();
+  device_info.block_dim_limit_x = device.block_dim_limit().x;
+  device_info.block_dim_limit_y = device.block_dim_limit().y;
+  device_info.block_dim_limit_z = device.block_dim_limit().z;
+  device_info.memory_bandwidth = device.memory_bandwidth();
+  device_info.l2_cache_size = device.l2_cache_size();
+  device_info.clock_rate_ghz = device.clock_rate_ghz();
+  device_info.device_memory_size = device.device_memory_size();
   return device_info;
+}
+
+}  // namespace
+
+GpuDeviceInfo GetGpuDeviceInfo(
+    const stream_executor::StreamExecutor* stream_exec) {
+  return GetGpuDeviceInfo(stream_exec->GetDeviceDescription());
+}
+
+GpuDeviceInfo GetGpuDeviceInfo(const stream_executor::Platform* platform) {
+  auto device = platform->DescriptionForDevice(0);
+  return GetGpuDeviceInfo(**device);
 }
 
 }  // namespace gpu

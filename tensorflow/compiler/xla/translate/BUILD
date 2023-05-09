@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,7 +7,14 @@ package(
     licenses = ["notice"],
 )
 
-tf_cc_binary(
+build_test(
+    name = "xla-translate_build_test",
+    targets = [
+        ":xla-translate",
+    ],
+)
+
+xla_cc_binary(
     name = "xla-translate",
     testonly = True,
     srcs = ["xla_translate_main.cc"],

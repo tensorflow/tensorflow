@@ -20,7 +20,6 @@ import abc
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -33,7 +32,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import slot_creator
@@ -553,7 +552,7 @@ class Optimizer(
         loss_value = loss()
 
         # Scale loss if using a "mean" loss reduction and multiple replicas.
-        # Have to be careful to call distribute_lib.get_loss_reduction()
+        # Have to be careful to call distribute_utils.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
         loss_value = self._scale_loss(loss_value)
@@ -612,14 +611,20 @@ class Optimizer(
   @staticmethod
   def _scale_loss(loss_value):
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
-    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
+    if distribute_utils.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+      num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(
+      self,
+      grads_and_vars,
+      global_step=None,
+      name=None,
+      skip_gradients_aggregation=False,
+  ):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -637,10 +642,13 @@ class Optimizer(
     Args:
       grads_and_vars: List of (gradient, variable) pairs as returned by
         `compute_gradients()`.
-      global_step: Optional `Variable` to increment by one after the
-        variables have been updated.
-      name: Optional name for the returned operation.  Default to the
-        name passed to the `Optimizer` constructor.
+      global_step: Optional `Variable` to increment by one after the variables
+        have been updated.
+      name: Optional name for the returned operation.  Default to the name
+        passed to the `Optimizer` constructor.
+      skip_gradients_aggregation: If true, gradients aggregation will not be
+        performed inside optimizer. Usually this arg is set to True when you
+        write custom code aggregating gradients outside the optimizer.
 
     Returns:
       An `Operation` that applies the specified gradients. If `global_step`
@@ -658,14 +666,14 @@ class Optimizer(
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribute_ctx.has_strategy():
+    if distribute_lib.has_strategy() and not skip_gradients_aggregation:
       # Handle DistributionStrategy case.
-      if distribute_ctx.in_cross_replica_context():
+      if distribute_lib.in_cross_replica_context():
         raise RuntimeError("Use `_distributed_apply()` instead of "
                            "`apply_gradients()` in a cross-replica context.")
 
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
-      return distribute_ctx.get_replica_context().merge_call(
+      return distribute_lib.get_replica_context().merge_call(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
@@ -677,7 +685,7 @@ class Optimizer(
       if g is not None:
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
-          g = ops.convert_to_tensor_or_indexed_slices(g)
+          g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -779,7 +787,7 @@ class Optimizer(
 
       try:
         # Convert the grad to Tensor or IndexedSlices if necessary.
-        g = ops.convert_to_tensor_or_indexed_slices(g)
+        g = indexed_slices.convert_to_tensor_or_indexed_slices(g)
       except TypeError:
         raise TypeError("Gradient must be convertible to a Tensor"
                         " or IndexedSlices, or None: %s" % g)
@@ -910,14 +918,14 @@ class Optimizer(
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_trackable()
-      distribution_strategy = distribute_ctx.get_strategy()
+      distribution_strategy = distribute_lib.get_strategy()
       with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
               name=name)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             initial_value, name=name, trainable=False,
             use_resource=resource_variable_ops.is_resource_variable(
                 colocate_with))
@@ -941,15 +949,21 @@ class Optimizer(
     for (name, _), variable_object in sorted(self._non_slot_dict.items(),
                                              # Avoid comparing graphs
                                              key=lambda item: item[0][0]):
-      if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
+      # Skip checking for graph key for eager mode since there's only one graph.
+      # This is necessary because there are cases where _trackable_children() is
+      # called in a differenr thread from the main thread (e.g., async
+      # checkpoint) and hence the default graph key would be different.
+      if (context.executing_eagerly()
+          or variable_object._graph_key == current_graph_key):  # pylint: disable=protected-access
         current_graph_non_slot_variables[name] = variable_object
     current_graph_non_slot_variables.update(
-        super(Optimizer, self)._trackable_children(save_type, **kwargs))
+        super()._trackable_children(save_type, **kwargs)
+    )
     return current_graph_non_slot_variables
 
   def _lookup_dependency(self, name):
     """From Trackable. Find a non-slot variable in the current graph."""
-    unconditional = super(Optimizer, self)._lookup_dependency(name)
+    unconditional = super()._lookup_dependency(name)
     if unconditional is not None:
       return unconditional
     graph = None if context.executing_eagerly() else ops.get_default_graph()

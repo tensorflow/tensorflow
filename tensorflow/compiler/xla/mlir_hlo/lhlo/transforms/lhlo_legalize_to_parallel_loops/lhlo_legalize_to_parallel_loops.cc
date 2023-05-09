@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -56,7 +58,7 @@ Value applySingleResultLhloCode(Location loc, ValueRange operands,
     b->create<memref::StoreOp>(loc, operand.value(), argBufs[operand.index()]);
   }
   // Clone the ops from `lhlo_block`.
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   mapping.map(lhloBlock->getArguments(), argBufs);
   for (auto& nested : lhloBlock->without_terminator()) {
     auto* clone = b->clone(nested, mapping);
@@ -84,7 +86,7 @@ void convertToReductionOperator(Location loc, scf::ReduceOp reduceOp,
 // to extract dimension at runtime.
 Value getStaticOrDynamicDim(mlir::Location loc, Value shapedValue,
                             size_t dimIndex, int64_t dim, OpBuilder* b) {
-  return dim == ShapedType::kDynamicSize
+  return dim == ShapedType::kDynamic
              ? (Value)b->create<memref::DimOp>(loc, shapedValue, dimIndex)
              : (Value)b->create<arith::ConstantIndexOp>(loc, dim);
 }
@@ -208,7 +210,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
         createReduceOpInNestedParallelLoops(reduceOp, &rewriter);
     convertToReductionOperator(reduceOp.getLoc(), scfReduceOp,
                                &reduceOp.getBody().front(), &rewriter);
-    rewriter.replaceOp(reduceOp, llvm::None);
+    rewriter.replaceOp(reduceOp, std::nullopt);
     return success();
   }
 
@@ -384,7 +386,7 @@ class ReduceWindowOpConverter
 
     convertToReductionOperator(reduceWindowOp.getLoc(), reduceOp,
                                &reduceWindowOp.getBody().front(), &rewriter);
-    rewriter.replaceOp(reduceWindowOp, llvm::None);
+    rewriter.replaceOp(reduceWindowOp, std::nullopt);
     return success();
   }
 
@@ -447,14 +449,12 @@ class ReduceWindowOpConverter
         loc, inputType.getElementType(), mappedIvs.inBounds,
         /*withElseRegion=*/true);
 
-    OpBuilder thenBuilder =
-        elemOrInit.getThenBodyBuilder(rewriter->getListener());
+    OpBuilder thenBuilder = elemOrInit.getThenBodyBuilder(rewriter);
     Value elem =
         thenBuilder.create<mlir::memref::LoadOp>(loc, input, mappedIvs.ivs);
     thenBuilder.create<scf::YieldOp>(loc, elem);
 
-    OpBuilder elseBuilder =
-        elemOrInit.getElseBodyBuilder(rewriter->getListener());
+    OpBuilder elseBuilder = elemOrInit.getElseBodyBuilder(rewriter);
     elseBuilder.create<scf::YieldOp>(loc, *windowLoop.getInitVals().begin());
 
     return rewriter->create<scf::ReduceOp>(loc,
@@ -519,7 +519,7 @@ class SelectAndScatterOpConverter
                                   &sAndSOp.getScatter().front(), &rmwBuilder);
     rmwBuilder.create<memref::AtomicYieldOp>(loc, accResult);
 
-    rewriter.replaceOp(sAndSOp, llvm::None);
+    rewriter.replaceOp(sAndSOp, std::nullopt);
     return success();
   }
 

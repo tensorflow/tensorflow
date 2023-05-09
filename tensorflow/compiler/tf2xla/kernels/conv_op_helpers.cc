@@ -39,9 +39,23 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace {
+
+xla::PrecisionConfig GetPrecisionConfig() {
+  xla::PrecisionConfig::Precision precision =
+      tsl::tensor_float_32_execution_enabled() ? xla::PrecisionConfig::DEFAULT
+                                               : xla::PrecisionConfig::HIGHEST;
+  xla::PrecisionConfig config;
+  const int num_inputs = 2;
+  config.mutable_operand_precision()->Reserve(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    config.add_operand_precision(precision);
+  }
+  return config;
+}
 
 // Returns the expanded size of a filter used for depthwise convolution.
 // If `shape` is [H, W, ..., M, N] returns [H, W, ..., 1, M*N].
@@ -153,7 +167,11 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
 
 }  // anonymous namespace
 
-std::vector<DataType> GetXlaConvTypes() {
+std::vector<DataType> GetXlaConvTypesForNonGpu() {
+  return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE, DT_INT32};
+}
+
+std::vector<DataType> GetXlaConvTypesForGpu() {
   return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
 }
 
@@ -183,9 +201,10 @@ StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims, bool depthwise,
   return attrs;
 }
 
-StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
-    StringPiece /*type_string*/, xla::XlaOp conv_input, xla::XlaOp filter,
-    const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {
+StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece /*type_string*/,
+                                          xla::XlaOp conv_input,
+                                          xla::XlaOp filter,
+                                          const ConvOpAttrs& attrs) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   auto* builder = conv_input.builder();
@@ -273,6 +292,7 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
         rhs_dilation[i], window_strides[i], attrs.padding, &unused_output_size,
         &padding[i].first, &padding[i].second));
   }
+  xla::PrecisionConfig precision_config = GetPrecisionConfig();
 
   if (padding_type != xla::PaddingType::PADDING_INVALID) {
     return xla::DynamicConvForward(
@@ -280,20 +300,22 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
         dims,
         /*feature_group_count=*/attrs.depthwise ? in_depth
                                                 : feature_group_count,
-        /*batch_group_count=*/1, precision_config, padding_type);
+        /*batch_group_count=*/1, &precision_config, padding_type);
   }
 
   return xla::ConvGeneralDilated(
       conv_input, filter, window_strides, padding, lhs_dilation, rhs_dilation,
       dims,
       /*feature_group_count=*/attrs.depthwise ? in_depth : feature_group_count,
-      /*batch_group_count=*/1, precision_config);
+      /*batch_group_count=*/1, &precision_config);
 }
 
-StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
-    StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
-    xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config, xla::XlaOp* input_sizes) {
+StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(StringPiece type_string,
+                                                const xla::Shape& input_shape,
+                                                xla::XlaOp filter,
+                                                xla::XlaOp out_backprop,
+                                                const ConvOpAttrs& attrs,
+                                                xla::XlaOp* input_sizes) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   int num_dims = attrs.num_spatial_dims + 2;
@@ -363,6 +385,7 @@ StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     lhs_dilation[i] = dims.spatial_dims[i].stride;
     rhs_dilation[i] = attrs.dilations[dim];
   }
+  xla::PrecisionConfig precision_config = GetPrecisionConfig();
 
   if (feature_group_count != 1 && !attrs.depthwise) {
     filter = TransposeFilterForGroupConvolutionBackpropInput(
@@ -377,7 +400,7 @@ StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
         lhs_dilation, rhs_dilation, dnums,
         /*feature_group_count=*/
         feature_group_count,
-        /*batch_group_count=*/1, precision_config, padding_type);
+        /*batch_group_count=*/1, &precision_config, padding_type);
   }
   // activation gradients
   //   = gradients (with padding and dilation) <conv> mirrored_weights
@@ -385,13 +408,14 @@ StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
                                  padding, lhs_dilation, rhs_dilation, dnums,
                                  /*feature_group_count=*/
                                  feature_group_count,
-                                 /*batch_group_count=*/1, precision_config);
+                                 /*batch_group_count=*/1, &precision_config);
 }
 
-StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
-    StringPiece type_string, xla::XlaOp activations,
-    const xla::Shape& filter_shape, xla::XlaOp gradients,
-    const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {
+StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(StringPiece type_string,
+                                                 xla::XlaOp activations,
+                                                 const xla::Shape& filter_shape,
+                                                 xla::XlaOp gradients,
+                                                 const ConvOpAttrs& attrs) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   auto* builder = activations.builder();
@@ -515,6 +539,7 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
                                            : 0;
     padding[i] = {pad_before, pad_total - pad_before};
   }
+  xla::PrecisionConfig precision_config = GetPrecisionConfig();
 
   // Besides padding the input, we will also expand output_rows to
   //    expanded_out_rows = (output_rows - 1) * stride + 1
@@ -529,14 +554,14 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
         activations, gradients, window_strides, padding, /*lhs_dilation=*/ones,
         rhs_dilation, dnums,
         /*feature_group_count=*/1,
-        /*batch_group_count=*/batch_group_count, precision_config,
+        /*batch_group_count=*/batch_group_count, &precision_config,
         padding_type);
   } else {
     filter_backprop = xla::ConvGeneralDilated(
         activations, gradients, window_strides, padding, /*lhs_dilation=*/ones,
         rhs_dilation, dnums,
         /*feature_group_count=*/1,
-        /*batch_group_count=*/batch_group_count, precision_config);
+        /*batch_group_count=*/batch_group_count, &precision_config);
   }
 
   if (attrs.depthwise) {

@@ -31,15 +31,16 @@ namespace gpu {
 class AMDGPUCompiler : public GpuCompiler {
  public:
   AMDGPUCompiler();
-  ~AMDGPUCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, GpuVersion gpu_version,
+      se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults* autotune_results) override;
 
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 

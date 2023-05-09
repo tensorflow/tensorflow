@@ -62,8 +62,8 @@ KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
 class TestCoordinationClient : public CoordinationClient {
  public:
   TestCoordinationClient() = default;
-  // MOCK_METHOD does not work on Windows build, using deprecated MOCK_METHOD3
-  // instead.
+  // NOLINTBEGIN (MOCK_METHOD macro fails in Windows build, so use deprecated
+  // macro instead)
   MOCK_METHOD4(GetKeyValueAsync,
                void(CallOptions* call_opts, const GetKeyValueRequest*,
                     GetKeyValueResponse*, StatusCallback));
@@ -86,6 +86,9 @@ class TestCoordinationClient : public CoordinationClient {
                void(const BarrierRequest*, BarrierResponse*, StatusCallback));
   MOCK_METHOD3(GetTaskStateAsync, void(const GetTaskStateRequest*,
                                        GetTaskStateResponse*, StatusCallback));
+  MOCK_METHOD4(HeartbeatAsync, void(CallOptions*, const HeartbeatRequest*,
+                                    HeartbeatResponse*, StatusCallback));
+  // NOLINTEND
 
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
@@ -99,11 +102,6 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
-  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
-                      HeartbeatResponse* response,
-                      StatusCallback done) override {
-    done(errors::Unimplemented("HeartbeatAsync"));
-  }
   void ReportErrorToTaskAsync(CallOptions* call_opts,
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
@@ -116,6 +114,8 @@ class CoordinationServiceAgentTest : public ::testing::Test {
  public:
   void SetUp() override {
     ON_CALL(*client_, RegisterTaskAsync(_, _, _, _))
+        .WillByDefault(InvokeArgument<3>(OkStatus()));
+    ON_CALL(*client_, HeartbeatAsync(_, _, _, _))
         .WillByDefault(InvokeArgument<3>(OkStatus()));
     ON_CALL(*client_, ShutdownTaskAsync(_, _, _, _))
         .WillByDefault(InvokeArgument<3>(OkStatus()));

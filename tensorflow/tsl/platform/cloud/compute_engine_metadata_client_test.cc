@@ -16,11 +16,21 @@ limitations under the License.
 #include "tensorflow/tsl/platform/cloud/compute_engine_metadata_client.h"
 
 #include "tensorflow/tsl/platform/cloud/http_request_fake.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace tsl {
 
-TEST(ComputeEngineMetadataClientTest, GetMetadata) {
+class ComputeEngineMetadataClientTest : public ::testing::Test {
+ protected:
+  void SetUp() override { ClearEnvVars(); }
+
+  void TearDown() override { ClearEnvVars(); }
+
+  void ClearEnvVars() { unsetenv("GCE_METADATA_HOST"); }
+};
+
+TEST_F(ComputeEngineMetadataClientTest, GetMetadata) {
   const string example_response = "example response";
 
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
@@ -41,7 +51,29 @@ TEST(ComputeEngineMetadataClientTest, GetMetadata) {
   EXPECT_EQ(expected, result);
 }
 
-TEST(ComputeEngineMetadataClientTest, RetryOnFailure) {
+TEST_F(ComputeEngineMetadataClientTest, GetCustomMetadataEndpoint) {
+  const string example_response = "example response";
+  setenv("GCE_METADATA_HOST", "foo.bar", 1);
+
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest("Uri: http://foo.bar/computeMetadata/v1/instance"
+                           "/service-accounts/default/token\n"
+                           "Header Metadata-Flavor: Google\n",
+                           example_response)});
+
+  std::shared_ptr<HttpRequest::Factory> http_factory =
+      std::make_shared<FakeHttpRequestFactory>(&requests);
+  ComputeEngineMetadataClient client(http_factory,
+                                     RetryConfig(0 /* init_delay_time_us */));
+
+  std::vector<char> result;
+  TF_EXPECT_OK(
+      client.GetMetadata("instance/service-accounts/default/token", &result));
+  std::vector<char> expected(example_response.begin(), example_response.end());
+  EXPECT_EQ(expected, result);
+}
+
+TEST_F(ComputeEngineMetadataClientTest, RetryOnFailure) {
   const string example_response = "example response";
 
   std::vector<HttpRequest*> requests(

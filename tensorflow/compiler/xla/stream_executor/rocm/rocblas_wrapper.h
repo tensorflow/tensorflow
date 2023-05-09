@@ -20,11 +20,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_
 
-#include "rocm/include/rocblas.h"
+#include "rocm/include/rocblas/rocblas.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace wrap {
@@ -44,31 +44,31 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
 
 #else
 
-#define ROCBLAS_API_WRAPPER(__name)                                       \
-  struct DynLoadShim__##__name {                                          \
-    static const char* kName;                                             \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                         \
-      auto s = GetRocblasDsoHandle();                                     \
-      return s.value();                                              \
-    }                                                                     \
-    static FuncPtrT LoadOrDie() {                                         \
-      void* f;                                                            \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),  \
-                                                         kName, &f);      \
-      CHECK(s.ok()) << "could not find " << kName                         \
-                    << " in rocblas DSO; dlerror: " << s.error_message(); \
-      return reinterpret_cast<FuncPtrT>(f);                               \
-    }                                                                     \
-    static FuncPtrT DynLoad() {                                           \
-      static FuncPtrT f = LoadOrDie();                                    \
-      return f;                                                           \
-    }                                                                     \
-    template <typename... Args>                                           \
-    rocblas_status operator()(Args... args) {                             \
-      return DynLoad()(args...);                                          \
-    }                                                                     \
-  } __name;                                                               \
+#define ROCBLAS_API_WRAPPER(__name)                                 \
+  struct DynLoadShim__##__name {                                    \
+    static const char* kName;                                       \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;    \
+    static void* GetDsoHandle() {                                   \
+      auto s = GetRocblasDsoHandle();                               \
+      return s.value();                                             \
+    }                                                               \
+    static FuncPtrT LoadOrDie() {                                   \
+      void* f;                                                      \
+      auto s = tsl::Env::Default()                                  \
+          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);       \
+      CHECK(s.ok()) << "could not find " << kName                   \
+                    << " in rocblas DSO; dlerror: " << s.message(); \
+      return reinterpret_cast<FuncPtrT>(f);                         \
+    }                                                               \
+    static FuncPtrT DynLoad() {                                     \
+      static FuncPtrT f = LoadOrDie();                              \
+      return f;                                                     \
+    }                                                               \
+    template <typename... Args>                                     \
+    rocblas_status operator()(Args... args) {                       \
+      return DynLoad()(args...);                                    \
+    }                                                               \
+  } __name;                                                         \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -263,7 +263,8 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_ztrsm_batched)                \
   __macro(rocblas_create_handle)                \
   __macro(rocblas_destroy_handle)               \
-  __macro(rocblas_set_stream)
+  __macro(rocblas_set_stream)                   \
+  __macro(rocblas_set_atomics_mode)
 
 // clang-format on
 

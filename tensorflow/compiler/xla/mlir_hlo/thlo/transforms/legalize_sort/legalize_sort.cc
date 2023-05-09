@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "thlo/IR/thlo_ops.h"
@@ -50,7 +52,7 @@ Value emitComparison(ImplicitLocOpBuilder& b, SmallVector<Value>& lhs,
   assert(block.getTerminator()->getOperands().size() == 1 &&
          "Comparator must return a single value");
 
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (auto [idx, arg] : llvm::enumerate(comparator.getArguments())) {
     Value value = idx % 2 == 0 ? lhs[idx / 2] : rhs[idx / 2];
     mapping.map(arg, value);
@@ -281,7 +283,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       b.create<scf::YieldOp>(ValueRange{});
     };
     b.create<scf::ForOp>(/*lowerBound=*/zero, /*upperBound=*/size,
-                         /*step=*/insertionSortSize, /*iterArgs=*/llvm::None,
+                         /*step=*/insertionSortSize, /*iterArgs=*/std::nullopt,
                          forBody);
   }
 
@@ -364,27 +366,27 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
 }
 
 struct Slicer {
-  Slicer(OpBuilder& b, uint64_t sortDim, Value sortDimSize,
+  Slicer(OpBuilder& b, int64_t sortDim, Value sortDimSize,
          ValueRange inductionVariables)
       : sizes(inductionVariables.size() + 1, b.getI64IntegerAttr(1)),
         strides(inductionVariables.size() + 1, b.getI64IntegerAttr(1)) {
     sizes[sortDim] = sortDimSize;
     for (size_t i = 0; i < inductionVariables.size() + 1; ++i) {
-      if (i == sortDim) {
+      if ((int64_t)i == sortDim) {
         offsets.push_back(b.getI64IntegerAttr(0));
       } else {
         offsets.push_back(
-            inductionVariables[i - static_cast<int>(i > sortDim)]);
+            inductionVariables[i - static_cast<int>((int64_t)i > sortDim)]);
       }
     }
   }
 
   Value slice(ImplicitLocOpBuilder& b, Value input) {
     auto ty = input.getType().cast<MemRefType>();
-    auto slicedType = memref::SubViewOp::inferRankReducedResultType(
-                          {ShapedType::kDynamicSize} /*1D output*/, ty, offsets,
-                          sizes, strides)
-                          .cast<MemRefType>();
+    auto slicedType =
+        memref::SubViewOp::inferRankReducedResultType(
+            {ShapedType::kDynamic} /*1D output*/, ty, offsets, sizes, strides)
+            .cast<MemRefType>();
     return b
         .create<memref::SubViewOp>(slicedType, input, offsets, sizes, strides)
         .getResult();
@@ -402,11 +404,10 @@ SmallVector<Value> sliceMemrefs(ImplicitLocOpBuilder& b,
   if (inductionVariables.empty()) return memrefs;
 
   SmallVector<Value> slices;
-  Slicer slicer(b, op.getDimension(), sortDimSize, inductionVariables);
+  Slicer slicer(b, op.getDimension().getSExtValue(), sortDimSize,
+                inductionVariables);
 
-  for (Value out : memrefs) {
-    slices.push_back(slicer.slice(b, out));
-  }
+  for (Value out : memrefs) slices.push_back(slicer.slice(b, out));
 
   return slices;
 }
@@ -432,7 +433,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     auto firstInputType = firstInput.getType().cast<ShapedType>();
     int64_t inputRank = firstInputType.getRank();
 
-    int64_t sortDim = op.getDimension();
+    int64_t sortDim = op.getDimension().getSExtValue();
     Value sortDimSize = b.createOrFold<memref::DimOp>(
         firstInput, b.create<arith::ConstantIndexOp>(sortDim));
     int64_t staticSortDimSize = firstInputType.getDimSize(sortDim);

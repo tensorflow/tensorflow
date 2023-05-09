@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
@@ -62,7 +63,8 @@ struct CanonicalDebugOptions {
         dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
         dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
-        dump_as_long_text(opts.xla_dump_hlo_as_long_text()) {
+        dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -178,6 +180,7 @@ struct CanonicalDebugOptions {
   bool dump_compress_protos;
   bool dump_hlo_metadata;
   bool dump_as_long_text;
+  bool dump_mlir_pretty_form;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -242,7 +245,7 @@ static std::optional<std::string> GetDumpFilePath(
     string_view filename, const CanonicalDebugOptions& opts) {
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write " << filename
-               << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
+               << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
     return std::nullopt;
   }
 
@@ -386,7 +389,7 @@ static std::vector<std::string> DumpHloModuleImpl(
 
   if (opts.dump_as_text) {
     auto print_options = opts.dump_as_long_text
-                             ? HloPrintOptions()
+                             ? HloPrintOptions::Default()
                              : HloPrintOptions::ShortParsable();
     print_options.set_print_large_constants(false);
     print_options.set_print_control_dependencies(true);
@@ -611,26 +614,17 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.dumping_to_stdout()) return op->dump();
 
-  auto file_path =
-      GetDumpFilePath(FilenameFor(module, file_prefix, "mlir"), opts);
-  if (!file_path) return;
-
-  std::string error;
-  std::unique_ptr<llvm::ToolOutputFile> outputFile =
-      mlir::openOutputFile(llvm::SmallString<32>(*file_path), &error);
-  if (!outputFile) {
-    LOG(ERROR) << "Error: " << error << std::endl
-               << "Failed to open file: " << *file_path;
-    return;
-  }
-
   mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
   // Enable debug info so that it is easier to see the corresponding HLO node.
   if (file_prefix == "lmhlo") {
-    print_flags.enableDebugInfo(/*prettyForm=*/true);
+    print_flags.enableDebugInfo(/*enable=*/true,
+                                /*prettyForm=*/opts.dump_mlir_pretty_form);
   }
-  op->print(outputFile->os(), print_flags);
-  outputFile->keep();
+  std::string content;
+  llvm::raw_string_ostream string_stream(content);
+  op->print(string_stream, print_flags);
+  DumpToFileInDirOrStdoutImpl(FilenameFor(module, file_prefix, "mlir"), content,
+                              opts);
 }
 
 void DumpProtobufToFile(const tsl::protobuf::Message& proto,
@@ -764,7 +758,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
              ".hlo_snapshot.pb");
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write HLO snapshot proto for " << filename
-               << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
+               << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
     return;
   }
   std::string pb;
@@ -796,7 +790,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
                                    name, execution_count);
   if (canonical_opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write HLO snapshot proto for " << filename
-               << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
+               << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
     return;
   }
   std::string pb;

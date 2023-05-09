@@ -31,7 +31,7 @@ cc_library(
     hdrs = ["evaluation_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
     ],
 )
@@ -63,25 +63,19 @@ cc_library_with_stable_tflite_abi(
         "//conditions:default": [],
     }),
     tflite_deps = [
-        "//tensorflow/lite/core/shims:c_api",
-        "//tensorflow/lite/core/shims:delegate_plugin",
-        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/delegates:delegate_provider_lib",
     ],
     tflite_deps_selects = [{
-        # XNNPACK does not support s390x
-        # (see <https://github.com/tensorflow/tensorflow/pull/51655>).
-        "//tensorflow:linux_s390x": [],
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
-            "//tensorflow/lite/core/shims:xnnpack_plugin",
+            "//tensorflow/lite/experimental/acceleration/configuration/c:xnnpack_plugin",
         ],
     }],
     deps = select({
-        # XNNPACK does not support s390x
-        # (see <https://github.com/tensorflow/tensorflow/pull/51655>).
-        "//tensorflow:linux_s390x": [],
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",

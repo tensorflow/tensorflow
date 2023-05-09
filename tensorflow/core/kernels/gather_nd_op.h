@@ -25,12 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
-namespace tsl {
-class Status;
-}
 namespace tensorflow {
-using tsl::Status;
-
 class OpKernelContext;
 class Tensor;
 
@@ -99,7 +94,7 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
   int64_t slice_size_big = 1;
   for (Index i = indices_nd; i < total_nd; ++i) {
     slice_size_big *= params_shape.dim_size(i);
-    result_shape.AddDim(params_shape.dim_size(i));
+    TF_RETURN_IF_ERROR(result_shape.AddDimWithStatus(params_shape.dim_size(i)));
   }
 
   if (slice_size_big > std::numeric_limits<Index>::max()) {

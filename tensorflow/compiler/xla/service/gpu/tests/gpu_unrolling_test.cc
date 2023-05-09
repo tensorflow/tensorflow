@@ -133,7 +133,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -156,7 +157,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -176,11 +178,13 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+  // There is only 1 load, because we pass the `p0` parameter to the kernel only
+  // once.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
-}
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -200,11 +204,13 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+  // There is only 1 load, because we pass the `p0` parameter to the kernel only
+  // once.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
-}
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/monitoring/counter.h"
 #include "tensorflow/tsl/lib/monitoring/gauge.h"
 #include "tensorflow/tsl/lib/monitoring/sampler.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -173,6 +174,32 @@ auto* tf_data_service_cross_trainer_cache_size_bytes =
         "/tensorflow/data/service/cross_trainer_cache_size_bytes",
         "tf.data service cross-trainer cache memory usage in bytes.");
 
+auto* tf_data_service_snapshot_bytes_committed =
+    tsl::monitoring::Counter<0>::New(
+        "/tensorflow/data/service/snapshot_bytes_committed",
+        "tf.data service distributed snapshot committed bytes.");
+
+auto* tf_data_service_data_transfer_protocol_used =
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol.",
+        "data_transfer_protocol");
+
+auto* tf_data_service_data_transfer_protocol_fallback =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/data_transfer_protocol_fallback",
+        "The number of tf.data service worker clients created that fell back "
+        "from using this data transfer protocol for this reason.",
+        "data_transfer_protocol", "error_type", "error_message");
+
+auto* tf_data_service_data_transfer_protocol_error =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/data_transfer_protocol_error",
+        "The number of times a tf.data service worker client got this type "
+        "of non-retriable error with this message when using this protocol.",
+        "data_transfer_protocol", "error_type", "error_message");
+
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -240,6 +267,32 @@ auto* function_graph_optimization_time_usecs = tsl::monitoring::Counter<0>::New(
     "The amount of time TensorFlow has spent optimizing function graphs, in "
     "microseconds. ");
 
+auto* graph_optimization_saving_time_usecs = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_saving_time_usec",
+    "The amount of time TensorFlow has saved by caching the optimized "
+    "function graph, in microseconds",  // metric description
+    "source"                            // graph optimization source
+);
+
+auto* graph_optimization_cache_hit_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_hit_count",
+    "The number of times the cache for the graph optimization is hit.",
+    "source"  // graph optimization source
+);
+
+auto* graph_optimization_cache_failure_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_failure_count",
+    "The number of times restoring from the graph optimization cache "
+    "fails.",
+    "source"  // graph optimization source
+);
+
+auto* graph_optimization_cache_miss_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_miss_count",
+    "The number of times the cache for the graph optimization is missed.",
+    "source"  // graph optimization source
+);
+
 auto* xla_compilations = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilations",
     "The number of XLA compilations used to collect "
@@ -274,6 +327,16 @@ auto* eager_client_error_counter = tsl::monitoring::Counter<2>::New(
     "Count the errors in eager client as a central place.", "error_source",
     "error_type");
 
+auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
+    "/tensorflow/core/tf_mlir_bridge_first_phase_count",
+    "Tracks processing state in first phase of mlir bridge", "device",
+    "version", "fallback", "result");
+
+auto* tf1_features_by_graph_count = tsl::monitoring::Counter<5>::New(
+    "/tensorflow/core/tf1_features_by_graph_count",
+    "Marks which tf1 feature (if any) a graph contains.", "device", "context",
+    "control_flow", "ref_variable", "manual_control_deps");
+
 tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter = tsl::monitoring::Counter<2>::New(
       "/tensorflow/core/graph_optimization_usecs",
@@ -281,6 +344,21 @@ tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
       "optimization pass in microseconds.",
       "kind", "name");
   return graph_optimization_counter;
+}
+
+std::string GraphOptimizationSourceMapping(GraphOptimizationSource source) {
+  switch (source) {
+    case GraphOptimizationSource::kJit:
+      return "jit";
+    case GraphOptimizationSource::kAot:
+      return "aot";
+    case GraphOptimizationSource::kUnknown:
+      return "unknown";
+    default:
+      return "";
+      LOG(ERROR) << "Unexpected value for GraphOptimizationSource: "
+                 << absl::StrCat(source);
+  }
 }
 
 void RecordTFDataFetchOp(const string& name) {
@@ -400,6 +478,28 @@ void RecordTFDataServiceClientIterators(
       ->IncrementBy(1);
 }
 
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol) {
+  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolFallback(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message) {
+  tf_data_service_data_transfer_protocol_fallback
+      ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message) {
+  tf_data_service_data_transfer_protocol_error
+      ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
+      ->IncrementBy(1);
+}
+
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
   std::string cache_hit_str = cache_hit ? "true" : "false";
   tf_data_service_cross_trainer_cache_queries_counter->GetCell(cache_hit_str)
@@ -409,6 +509,10 @@ void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
   tf_data_service_cross_trainer_cache_size_bytes->GetCell()->Set(
       static_cast<int64_t>(bytes));
+}
+
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
+  tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
 }
 
 void RecordTFDataFilename(const string& name, const string& filename) {
@@ -510,6 +614,63 @@ void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs) {
   }
 }
 
+void UpdateFunctionGraphOptimizationSavingTime(const uint64 saving_time_usecs,
+                                               GraphOptimizationSource source) {
+  if (saving_time_usecs > 0) {
+    std::string mapped_source = GraphOptimizationSourceMapping(source);
+    static auto* function_graph_optimization_saving_time_usecs_cell =
+        graph_optimization_saving_time_usecs->GetCell(mapped_source);
+    function_graph_optimization_saving_time_usecs_cell->IncrementBy(
+        saving_time_usecs);
+  }
+}
+
+uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
+    GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  return graph_optimization_saving_time_usecs->GetCell(mapped_source)->value();
+}
+
+void IncrementFunctionGraphOptimizationCacheHitCount(
+    const int count, GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  graph_optimization_cache_hit_count->GetCell(mapped_source)
+      ->IncrementBy(count);
+}
+
+int64_t GetFunctionGraphOptimizationCacheHitCount(
+    GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  return graph_optimization_cache_hit_count->GetCell(mapped_source)->value();
+}
+
+void IncrementFunctionGraphOptimizationCacheFailureCount(
+    const int count, GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  graph_optimization_cache_failure_count->GetCell(mapped_source)
+      ->IncrementBy(count);
+}
+
+int64_t GetFunctionGraphOptimizationCacheFailureCount(
+    GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  return graph_optimization_cache_failure_count->GetCell(mapped_source)
+      ->value();
+}
+
+void IncrementFunctionGraphOptimizationCacheMissCount(
+    const int count, GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  graph_optimization_cache_miss_count->GetCell(mapped_source)
+      ->IncrementBy(count);
+}
+
+int64_t GetFunctionGraphOptimizationCacheMissCount(
+    GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  return graph_optimization_cache_miss_count->GetCell(mapped_source)->value();
+}
+
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {
   if (distribution_time_usecs > 0) {
     tpu_variable_distribution_time_usecs->GetCell()->IncrementBy(
@@ -553,13 +714,10 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result) {
-  static auto* metric = tsl::monitoring::Counter<4>::New(
-      "/tensorflow/core/tf_mlir_bridge_first_phase_count",
-      "Tracks processing state in first phase of mlir bridge", "device",
-      "version", "fallback", "result");
   std::string fallback_status =
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
-  metric->GetCell(device_type, bridge_version, fallback_status, result)
+  mlir_bridge_first_phase_counter
+      ->GetCell(device_type, bridge_version, fallback_status, result)
       ->IncrementBy(1);
 }
 
@@ -593,6 +751,18 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
                 num_cores_per_replica, use_tpu, allow_soft_placement,
                 use_spmd_for_xla_partitioning, unsupported_reason,
                 has_unsupported_features ? "Yes" : "No")
+      ->IncrementBy(1);
+}
+
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps) {
+  tf1_features_by_graph_count
+      ->GetCell(device, context, hasControlFlowV1 ? "true" : "false",
+                hasReferenceVariables ? "true" : "false",
+                hasManualControlDeps ? "true" : "false")
       ->IncrementBy(1);
 }
 

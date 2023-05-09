@@ -15,22 +15,22 @@
 # pylint: disable=protected-access
 """Utils related to keras metrics."""
 
+from enum import Enum
 import functools
 import weakref
-
-from enum import Enum
-
 import numpy as np
 
 from tensorflow.python.compat import compat
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -73,12 +73,12 @@ def update_state_wrapper(update_state_fn):
 
   def decorated(metric_obj, *args, **kwargs):
     """Decorated function with `add_update()`."""
-    strategy = distribution_strategy_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
 
     for weight in metric_obj.weights:
       if (backend.is_tpu_strategy(strategy) and
           not strategy.extended.variable_created_in_scope(weight)
-          and not distribution_strategy_context.in_cross_replica_context()):
+          and not distribute_lib.in_cross_replica_context()):
         raise ValueError(
             'Trying to run metric.update_state in replica context when '
             'the metric was not created in TPUStrategy scope. '
@@ -114,8 +114,8 @@ def result_wrapper(result_fn):
 
   def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
-    has_strategy = distribution_strategy_context.has_strategy()
-    replica_context = distribution_strategy_context.get_replica_context()
+    has_strategy = distribute_lib.has_strategy()
+    replica_context = distribute_lib.get_replica_context()
 
     # The purpose of using `merge_call` to call `result()` is to trigger cross
     # replica aggregation of metric state variables (SyncOnReadVariable). After
@@ -141,9 +141,9 @@ def result_wrapper(result_fn):
     # compiled functions are not inlined (hence #2 is okay).
 
     if (not has_strategy or replica_context is None or
-        not distribution_strategy_context.get_strategy(
+        not distribute_lib.get_strategy(
         ).extended._use_merge_call()):
-      with distribution_strategy_context.variable_sync_on_read_context():
+      with distribute_lib.variable_sync_on_read_context():
         raw_result = result_fn(*args)
         # Results need to be wrapped in a `tf.identity` op to ensure
         # correct execution order.
@@ -594,8 +594,9 @@ def update_confusion_matrix_variables(variables_to_update,
     # details.
     thresholds_with_epsilon = thresholds[0] < 0.0 or thresholds[-1] > 1.0
 
-  thresholds = ops.convert_to_tensor_v2_with_dispatch(
-      thresholds, dtype=variable_dtype)
+  thresholds = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      thresholds, dtype=variable_dtype
+  )
   num_thresholds = thresholds.shape.as_list()[0]
 
   if multi_label:
@@ -684,7 +685,7 @@ def update_confusion_matrix_variables(variables_to_update,
 
   thresh_tiled = array_ops.tile(
       array_ops.reshape(thresholds, thresh_pretile_shape),
-      array_ops.stack(thresh_tiles))
+      array_ops_stack.stack(thresh_tiles))
 
   # Tile the predictions for every threshold.
   preds_tiled = array_ops.tile(predictions_extra_dim, data_tiles)

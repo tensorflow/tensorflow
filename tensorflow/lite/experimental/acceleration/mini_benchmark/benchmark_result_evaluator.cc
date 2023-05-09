@@ -14,20 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include <memory>
+
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 
 namespace tflite {
 namespace acceleration {
 
-bool EmbeddedResultEvaluator::IsValidationSuccessEvent(
-    const BenchmarkEvent& event) {
-  return event.event_type() == BenchmarkEventType_END && event.result() &&
-         event.result()->ok();
+EmbeddedResultEvaluator* EmbeddedResultEvaluator::GetInstance() {
+  static EmbeddedResultEvaluator* const instance =
+      new EmbeddedResultEvaluator();
+  return instance;
 }
 
-bool CustomResultEvaluator::IsValidationSuccessEvent(
-    const BenchmarkEvent& event) {
-  return event.event_type() == BenchmarkEventType_END;
+bool EmbeddedResultEvaluator::HasPassedAccuracyCheck(
+    const BenchmarkResult& result) {
+  return result.ok();
 }
 
 }  // namespace acceleration

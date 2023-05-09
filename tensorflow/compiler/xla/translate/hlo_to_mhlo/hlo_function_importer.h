@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -197,7 +198,7 @@ class HloFunctionImporter {
 
   // Takes a list of HloInstructions and generates the list of types used for
   // input, bypassing tuples to subsets.
-  Status GetMlirTypes(const std::vector<xla::HloInstruction*>& instructions,
+  Status GetMlirTypes(absl::Span<const HloInstruction* const> instructions,
                       llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.
@@ -209,6 +210,10 @@ class HloFunctionImporter {
 
   // Converts an XLA Comparison::Type to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonType(Comparison::Type type);
+
+  // Converts an XLA CustomCallSchedule to the corresponding MLIR attribute.
+  mlir::NamedAttribute ConvertCustomCallSchedule(
+      xla::CustomCallSchedule schedule);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(

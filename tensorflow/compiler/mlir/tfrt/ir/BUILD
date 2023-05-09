@@ -182,3 +182,63 @@ gentbl_cc_library(
     ],
     deps = [":tfrt_fallback_td_files"],
 )
+
+td_library(
+    name = "gpu_ops_td_file",
+    srcs = [
+        "gpu_ops.td",
+    ],
+    includes = ["."],
+    visibility = [
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+    ],
+    deps = [
+        ":tfrt_fallback_td_files",
+        "@tf_runtime//:OpBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tfrt_gpu_opdefs_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "gpu_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "gpu_ops.cpp.inc",
+        ),
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=gpurt",
+            ],
+            "gpurt_dialect.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "gpu_ops.td",
+    test = True,
+    visibility = [
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+    ],
+    deps = [":gpu_ops_td_file"],
+)
+
+cc_library(
+    name = "tfrt_gpu_opdefs",
+    srcs = [
+        "gpu_ops.cc",
+    ],
+    hdrs = ["gpu_ops.h"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+    ],
+    deps = [
+        ":tfrt_fallback_opdefs",
+        ":tfrt_gpu_opdefs_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)

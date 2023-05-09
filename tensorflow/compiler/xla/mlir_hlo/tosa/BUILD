@@ -1,7 +1,6 @@
-# MHLO -> TOSA bridge.
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
+# MHLO -> TOSA bridge.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -16,63 +15,10 @@ package_group(
     packages = [],
 )
 
-gentbl_cc_library(
-    name = "MHLOTOSAPDLLPatternsIncGen",
-    tbl_outs = [
-        (
-            ["-x=cpp"],
-            "include/mhlo_tosa/Transforms/legalize_mhlo.pdll.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-pdll",
-    td_file = "lib/Transforms/legalize_mhlo.pdll",
-    deps = [
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:TosaDialectTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "MHLOTOSATransformsPassIncGen",
-    compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=MHLOTOSATransforms",
-            ],
-            "include/mhlo_tosa/Transforms/passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mhlo_tosa/Transforms/passes.td",
-    deps = [
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-cc_library(
-    name = "MHLOTOSATransforms",
-    srcs = [
-        "lib/Transforms/legalize_mhlo.cc",
-    ],
-    hdrs = [
-        "include/mhlo_tosa/Transforms/passes.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":MHLOTOSAPDLLPatternsIncGen",
-        ":MHLOTOSATransformsPassIncGen",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:TosaDialect",
-        "@llvm-project//mlir:Transforms",
+build_test(
+    name = "mhlo-tosa-opt_build_test",
+    targets = [
+        "mhlo-tosa-opt",
     ],
 )
 
@@ -80,8 +26,8 @@ cc_binary(
     name = "mhlo-tosa-opt",
     srcs = ["mhlo_tosa_opt.cc"],
     deps = [
-        ":MHLOTOSATransforms",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/mlir_hlo/tosa/transforms:MHLOTOSATransforms",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

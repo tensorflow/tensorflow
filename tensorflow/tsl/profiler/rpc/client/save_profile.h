@@ -32,10 +32,6 @@ std::string GetCurrentTimeStampAsString();
 // Returns the profile plugin directory given a logdir to TensorBoard.
 std::string GetTensorBoardProfilePluginDir(const std::string& logdir);
 
-// Creates an empty event file if not already exists, which indicates that we
-// have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const std::string& logdir);
-
 // Saves all profiling tool data in a profile to <repository_root>/<run>/.
 // This writes user-facing log messages to `os`.
 // Note: this function creates a directory even when all fields in

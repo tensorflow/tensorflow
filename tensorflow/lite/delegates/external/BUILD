@@ -37,7 +37,7 @@ cc_library(
         ":external_delegate_interface",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:shared_library",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 

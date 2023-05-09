@@ -16,6 +16,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "pthreadpool.h"  // from @pthreadpool
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/tool_params.h"
 
@@ -23,17 +25,33 @@ namespace tflite {
 namespace tools {
 namespace {
 
-TEST(StableAbiDelegateProviderTest, CreateDelegate) {
+static constexpr char kTestSettingsSrcDir[] =
+    "tensorflow/lite/tools/delegates/experimental/stable_delegate/";
+static constexpr char kGoodStableDelegateSettings[] =
+    "test_sample_stable_delegate_settings.json";
+static constexpr char kGoodXNNPackDelegateSettings[] =
+    "test_stable_xnnpack_settings.json";
+static constexpr char kBadMissingFile[] = "missing.json";
+static constexpr char kBadInvalidSettings[] = "test_invalid_settings.json";
+static constexpr char kBadMissingStableDelegateSettings[] =
+    "test_missing_stable_delegate_settings.json";
+static constexpr char kBadMissingDelegatePathSettings[] =
+    "test_missing_delegate_path_settings.json";
+
+std::vector<ProvidedDelegateList::ProvidedDelegate> CreateDelegates(
+    const std::string& settings_file_path) {
   ToolParams params;
   ProvidedDelegateList providers(&params);
   providers.AddAllDelegateParams();
-  params.Set<std::string>(
-      "stable_delegate_path",
-      "third_party/tensorflow/lite/delegates/utils/experimental/"
-      "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so",
-      /*position=*/1);
+  params.Set<std::string>("stable_delegate_settings_file", settings_file_path,
+                          /*position=*/1);
 
-  auto delegates = providers.CreateAllRankedDelegates();
+  return providers.CreateAllRankedDelegates();
+}
+
+TEST(StableAbiDelegateProviderTest, CreateDelegate) {
+  auto delegates = CreateDelegates(std::string(kTestSettingsSrcDir) +
+                                   kGoodStableDelegateSettings);
 
   // Only the stable ABI delegate is registered.
   EXPECT_EQ(1, delegates.size());
@@ -42,35 +60,35 @@ TEST(StableAbiDelegateProviderTest, CreateDelegate) {
   EXPECT_EQ(1, delegates.front().rank);
 }
 
-TEST(StableAbiDelegateProviderTest, CreateDelegateFailedWithInvalidLibPath) {
-  ToolParams params;
-  ProvidedDelegateList providers(&params);
-  providers.AddAllDelegateParams();
-  params.Set<std::string>("stable_delegate_path", "invalid.so",
-                          /*position=*/1);
+TEST(StableAbiDelegateProviderTest, CreateDelegateWithStableXNNPack) {
+  auto delegates = CreateDelegates(std::string(kTestSettingsSrcDir) +
+                                   kGoodXNNPackDelegateSettings);
 
-  auto delegates = providers.CreateAllRankedDelegates();
-
-  EXPECT_EQ(0, delegates.size());
+  EXPECT_EQ(1, delegates.size());
+  EXPECT_EQ("STABLE_DELEGATE", delegates.front().provider->GetName());
+  EXPECT_NE(nullptr, delegates.front().delegate.get());
+  EXPECT_EQ(1, delegates.front().rank);
+  pthreadpool_t threadpool = static_cast<pthreadpool_t>(
+      TfLiteXNNPackDelegateGetThreadPool(delegates.front().delegate.get()));
+  EXPECT_EQ(5, pthreadpool_get_threads_count(threadpool));
 }
 
-TEST(StableAbiDelegateProviderTest, CreateDelegateFailedWithInvalidSymbolName) {
-  ToolParams params;
-  ProvidedDelegateList providers(&params);
-  providers.AddAllDelegateParams();
-  params.Set<std::string>(
-      "stable_delegate_path",
-      "third_party/tensorflow/lite/delegates/utils/experimental/"
-      "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so",
-      /*position=*/1);
-  std::vector<std::string> invalid_symbol_names = {"", "invalid_symbol"};
-  for (const auto& symbol_name : invalid_symbol_names) {
-    params.Set<std::string>("stable_delegate_plugin_symbol", symbol_name);
+TEST(StableAbiDelegateProviderTest, CreateDelegateFailedWithInvalidSettings) {
+  std::vector<std::string> invalid_settings_names = {
+      kBadMissingFile, kBadInvalidSettings, kBadMissingStableDelegateSettings,
+      kBadMissingDelegatePathSettings};
 
-    auto delegates = providers.CreateAllRankedDelegates();
+  for (const std::string& name : invalid_settings_names) {
+    auto delegates = CreateDelegates(std::string(kTestSettingsSrcDir) + name);
 
     EXPECT_EQ(0, delegates.size());
   }
+}
+
+TEST(StableAbiDelegateProviderTest, CreateDelegateFailedWithBlankSettingsPath) {
+  auto delegates = CreateDelegates("");
+
+  EXPECT_EQ(0, delegates.size());
 }
 
 }  // namespace

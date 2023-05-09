@@ -62,7 +62,8 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [Pure]> {
   }];
 }
 
-def TF_CaseOp : TF_Op<"Case", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def TF_CaseOp : TF_Op<"Case",
+      [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 An n-way switch statement which calls a single branch function.
   }];
@@ -320,7 +321,7 @@ def TF_YieldOp : TF_Op<"Yield",
     region.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
@@ -377,7 +378,8 @@ else_branch: A region that computes the outputs of the op if cond = false.
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
-                            [CallOpInterface, SymbolUserOpInterface, Pure]> {
+      [CallOpInterface,
+       DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
   let summary =
     "returns `f(inputs)`, where `f` is a function.";
 
@@ -407,6 +409,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -418,9 +422,6 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-
-    // SymbolUserOpInterface verifier.
-    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 
@@ -539,7 +540,7 @@ def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [Pure]> {
 }
 
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
-                                         [CallOpInterface, SymbolUserOpInterface]> {
+      [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary =
     "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
 
@@ -571,6 +572,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -582,13 +585,11 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-
-    // SymbolUserOpInterface verifier.
-    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 
-def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def TF_WhileOp : TF_Op<"While",
+      [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 output = input; While (Cond(output)) { output = Body(output) }
   }];
@@ -987,7 +988,8 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   }];
 }
 
-def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, SymbolUserOpInterface]> {
+def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
+      [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Calls a function placed on a specified TPU device.";
 
   let arguments = (ins
@@ -1011,6 +1013,8 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, Symb
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -1022,9 +1026,6 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, Symb
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-
-    // SymbolUserOpInterface verifier.
-    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 
@@ -1440,6 +1441,9 @@ operations inside a TPU host.
   );
 }
 
+// We must manually define TPUPartitionedInput, TPUPartitionedInputV2,
+// TPUPartitionedOutput, and TPUPartitionedOutputV2 since they have an
+// optional attribute, _XlaSharding, unlike the TensorFlow definition.
 def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [Pure]> {
   let summary = [{
 An op that groups a list of partitioned inputs together. This op
@@ -1460,6 +1464,28 @@ An op that groups a list of partitioned inputs together. This op
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
+def TF_TPUPartitionedInputV2Op : TF_Op<"TPUPartitionedInputV2", [Pure]> {
+  let summary = [{
+An op that groups a list of partitioned inputs together. Supports ND sharding.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+    I64ArrayAttr:$partition_dims,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_packed,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [Pure]> {
   let summary = [{
 An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
@@ -1473,6 +1499,30 @@ outputs outside the XLA computation.
     TF_Tensor:$inputs,
 
     DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_splits = TF_DerivedResultSizeAttr<0>;
+}
+
+def TF_TPUPartitionedOutputV2Op : TF_Op<"TPUPartitionedOutputV2", [Pure]> {
+  let summary = [{
+An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+  }];
+
+  let description = [{
+outputs outside the XLA computation. Supports ND sharding.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$inputs,
+
+    I64ArrayAttr:$partition_dims,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -1822,6 +1872,103 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [Pure, ResultsBroadcastableShape]> {
   let builders = [
     OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
+}
+
+def TF_TPUCopyWithDynamicShapeOp : TF_Op<"TPUCopyWithDynamicShape", [Pure, AttrSizedOperandSegments]> {
+  let summary = [{
+Op that copies host tensors to device with bounded dynamic shape support.
+  }];
+
+  let description = [{
+This op copies the padded tensor on cpu to TPU without the padded data. `tensors` 
+is a list of cpu tensors with padded data. `unpadded_sizes` is a list of shape
+tensors which describes unpadded size of each dimension for each cpu tensor. 
+The size of the `unpadded_sizes` should be the same as `tensors`. They are both
+on host. `tpu_tensors` are list of tpu device tensors without the padded data.
+`tpu_tensors` also has the same size of the `tensors` and the shapes of 
+`tpu_tensors` are determined by the `unpadded_sizes`.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$tensors,
+    Variadic<TF_Int32Tensor>:$unpadded_sizes
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$tpu_tensors
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
+def TF_TPUAnnotateTensorsWithDynamicShapeOp : TF_Op<"TPUAnnotateTensorsWithDynamicShape", [Pure]> {
+  let summary = [{
+Placeholder op which takes the output of TPUCopyWithDynamicShapeOp and pass
+them to the following tpu ops.
+  }];
+
+  let description = [{
+This op serves as an annotation for the dynamic shaped tensor and will be
+removed during the bridge rewrite.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$tensors
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$tpu_tensors
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
+def TF_ConvertToCooTensorOp : TF_Op<"ConvertToCooTensor", [Pure]> {
+  let summary = [{
+Op that converts tensors into coo format.
+  }];
+
+  let description = [{
+This op coverts the dense, sparse and ragged tensor into standard coo tensor
+format which contains three 1D tensors.
+  }];
+
+  let arguments = (ins
+    TF_Int32Tensor:$indices_or_row_splits,
+    TF_Int32Tensor:$values,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    StrAttr:$combiner
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$row_ids,
+    TF_Int32Tensor:$col_ids,
+    TF_Float32Tensor:$gains
+  );
+}
+
+def TF_ResourceGatherNdOp : TF_Op<"ResourceGatherNd", []> {
+  let summary = "GatherNd on a resource.";
+
+  let description = [{
+This op reads the variable referenced by the first argument, and
+then performs a GatherNd operation on it.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$resource,
+    TF_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 #endif // TF_OPS

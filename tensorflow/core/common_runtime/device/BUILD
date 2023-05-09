@@ -3,12 +3,10 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_cuda_cc_test",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -87,7 +85,6 @@ filegroup(
         "device_host_allocator.h",
         "device_id.h",
         "device_id_manager.h",
-        "device_id_utils.h",
         "device_mem_allocator.h",
         "//tensorflow/tsl/framework:device_runtime_headers",
     ],
@@ -140,7 +137,6 @@ tf_cuda_cc_test(
     srcs = [
         "device_id_manager_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":device_id",
@@ -163,7 +159,6 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "device_event_mgr_test",
     srcs = ["device_event_mgr_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":device_event_mgr",
@@ -176,5 +171,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/tsl/framework:device_id",
     ],
 )

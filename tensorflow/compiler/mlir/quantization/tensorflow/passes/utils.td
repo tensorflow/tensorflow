@@ -57,6 +57,24 @@ def IsInt32ElementType : Constraint<
 def IsF32ElementType : Constraint<
   CPred<"getElementTypeOrSelf($0).isF32()">>;
 
+// Checks if the value has the type of bfloat16.
+def IsBF16ElementType : Constraint<
+  CPred<"getElementTypeOrSelf($0).isBF16()">>;
+
+// Checks if the given two values have the same type.
+def AreTheSameElementType : Constraint<
+  CPred<"$0.getType() == $1.getType()">>;
+
+// Checks if the value has rank.
+def HasRank : Constraint<
+  CPred<"$0.getType().cast<ShapedType>().hasRank()">>;
+
+// Checks if the value has rank of `n`.
+class HasRankOf<int n> : Constraint<
+  CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+        "$0.getType().cast<ShapedType>().getRank() == " # n>,
+  "Checks if the value has rank of 'n'.">;
+
 // Checks if the value has static shape.
 def HasStaticShapeConstraint : Constraint<CPred<"HasStaticShape($0)">>;
 
@@ -96,7 +114,7 @@ class CreateI64ArrayAttr<string values> : NativeCodeCall<
 
 // Creates a string attribute with given values.
 class CreateStringAttr<string values> : NativeCodeCall<
-  "$_builder.getStringAttr("# values #")">;
+  "$_builder.getStringAttr(\""# values #"\")">;
 
 // Creates a new F32 type with the same shape as the given value.
 def CloneTypeWithF32ElementType : NativeCodeCall<
@@ -105,11 +123,6 @@ def CloneTypeWithF32ElementType : NativeCodeCall<
 // Creates a new I32 type with the same shape as the given value.
 def CloneTypeWithI32ElementType : NativeCodeCall<
   "CloneTypeWithNewElementType($0.getType(), $_builder.getI32Type())">;
-
-// By default, the generated code uses  the `create` method without the output
-// type field. However, for many ops, the output type field is always required.
-class CreateOpWithOutputType<string op_name> : NativeCodeCall<
-  "$_builder.create<"# op_name #">($_loc, $0...)">;
 
 // Checks if the value is a float constant and its splat value is equal to `x`.
 class IsSplatValueEqual<string x> : Constraint<CPred<
@@ -126,3 +139,19 @@ class IsIntSplatValueEqual<string type, string x> : Constraint<CPred<
 // Checks if two values are integer constants and their values are equal.
 class AreIntSplatValuesEqual<string type> : Constraint<CPred<
   "AreSplatValuesEqual<"# type #">($0, $1)">>;
+
+// Returns defining op of this value.
+def GetDefiningOp :  NativeCodeCall<"$0.getDefiningOp()">;
+
+// Checks if an Operation is foldable.
+def IsOperationFoldable : Constraint<
+  CPred<"succeeded(IsOperationFoldable($0.getDefiningOp()))">>;
+
+// Applies constant-folding to the given op if possible.
+def ConstantFoldOpIfPossible :
+  NativeCodeCall<"ConstantFoldOpIfPossible($0).front()">;
+
+// Clones an operation with new operands while keeping attributes.
+def CloneOpWithReplacedOperands : NativeCodeCall<
+  "CloneOpWithReplacedOperands("
+    "$_builder, $0, llvm::SmallVector<Value>{$1...}).front()">;

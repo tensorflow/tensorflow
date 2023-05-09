@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
@@ -125,7 +126,7 @@ mlir::NamedAttrList GetAllAttributesFromOperation(mlir::Operation* op) {
 // operation is `DTensorLayout` op, then we use input of DTensorLayout op
 // instead for correct constant matching.
 mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
-    llvm::Optional<mlir::Location> location, mlir::Operation* op,
+    std::optional<mlir::Location> location, mlir::Operation* op,
     int64_t graph_version,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferred_return_shapes) {
   if (auto type_op = llvm::dyn_cast<mlir::InferTypeOpInterface>(op)) {
@@ -134,7 +135,7 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
     auto result = type_op.inferReturnTypes(
         op->getContext(), location, op->getOperands(),
         mlir::DictionaryAttr::get(op->getContext(), attributes),
-        op->getRegions(), inferred_return_types);
+        op->getPropertiesStorage(), op->getRegions(), inferred_return_types);
     if (failed(result)) return mlir::failure();
 
     inferred_return_shapes.resize(inferred_return_types.size());
@@ -162,7 +163,7 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
     return shape_type_op.inferReturnTypeComponents(
         op->getContext(), location, op->getOperands(),
         mlir::DictionaryAttr::get(op->getContext(), attributes),
-        op->getRegions(), inferred_return_shapes);
+        op->getPropertiesStorage(), op->getRegions(), inferred_return_shapes);
   }
 
   // If `operand` is from DTensorLayout op, use input value of DTensorLayout op
@@ -206,6 +207,38 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
 
 }  // namespace
 
+Status InferSPMDExpandedLocalShapeForResourceOutput(
+    mlir::OpResult* op_result, const Layout& output_layout,
+    mlir::MLIRContext* context) {
+  if (llvm::isa<mlir::TF::ResourceType>(
+          mlir::getElementTypeOrSelf(*op_result))) {
+    TF_ASSIGN_OR_RETURN(llvm::ArrayRef<int64_t> global_shape,
+                        GetGlobalShapeOfValueFromDTensorLayout(*op_result));
+    const std::vector<int64_t>& local_shape =
+        output_layout.LocalShapeFromGlobalShape(global_shape);
+    auto resource_type = op_result->getType()
+                             .cast<mlir::TensorType>()
+                             .getElementType()
+                             .dyn_cast<mlir::TF::ResourceType>();
+
+    auto sub_types = resource_type.getSubtypes();
+    auto resource_arg_sub_type = sub_types.front();
+
+    // The local shape that is to be assigned to this resource output.
+    llvm::SmallVector<int64_t, 4> local_arg_shape(local_shape.begin(),
+                                                  local_shape.end());
+
+    auto local_variable_subtype = mlir::RankedTensorType::get(
+        local_arg_shape, resource_arg_sub_type.getElementType());
+    auto new_var_type = mlir::RankedTensorType::get(
+        {},
+        mlir::TF::ResourceType::get(
+            mlir::ArrayRef<mlir::TensorType>{local_variable_subtype}, context));
+    op_result->setType(new_var_type);
+  }
+  return OkStatus();
+}
+
 mlir::Operation* InferSPMDExpandedLocalShape(mlir::Operation* op) {
   llvm::SmallVector<mlir::ShapedTypeComponents, 4> inferred_return_types;
   (void)InferShapeOfTFOpWithCustomOperandConstantFn(
@@ -248,14 +281,12 @@ StatusOr<llvm::ArrayRef<int64_t>> GetGlobalShapeOfValueFromDTensorLayout(
   if (value.isa<mlir::OpResult>() &&
       mlir::isa<mlir::TF::DTensorLayout>(value.getDefiningOp())) {
     auto layout_op = mlir::cast<mlir::TF::DTensorLayout>(value.getDefiningOp());
-    if (layout_op.getGlobalShape())
-      return layout_op.getGlobalShape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   } else if (value.hasOneUse() &&
              mlir::isa<mlir::TF::DTensorLayout>(*value.getUsers().begin())) {
     auto layout_op =
         mlir::cast<mlir::TF::DTensorLayout>(*value.getUsers().begin());
-    if (layout_op.getGlobalShape())
-      return layout_op.getGlobalShape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   }
   return errors::InvalidArgument(
       "consumer or producer of value is not a DTensorLayout");

@@ -91,7 +91,7 @@ static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
     llvm::Module& module) {
   VLOG(2) << "IR before optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
+  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
   if (pre_optimization_hook_) {
     pre_optimization_hook_(module);
@@ -119,7 +119,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   llvm::PipelineTuningOptions pto;
   pto.LoopVectorization = !optimize_for_size_;
-  pto.SLPVectorization = !optimize_for_size_;
+  pto.SLPVectorization = !optimize_for_size_ && !disable_slp_vectorizer_;
   pto.LoopUnrolling = false;
 
   llvm::LoopAnalysisManager lam;
@@ -128,8 +128,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   llvm::ModuleAnalysisManager mam;
 
   llvm::PassInstrumentationCallbacks pic;
-  llvm::StandardInstrumentations si(false);
-  si.registerCallbacks(pic, &fam);
+  llvm::StandardInstrumentations si(module.getContext(), false);
+  si.registerCallbacks(pic, &mam);
 
   llvm::PassBuilder pb(target_machine_, pto, {}, &pic);
 

@@ -1,0 +1,72 @@
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package mlir.interpreter;
+
+message TracedValue {
+  // The shape - includes vector dimensions.
+  // TODO(jreiffers): Model vector dimensions separately.
+  repeated int64 shape = 1;
+  optional bool is_scalar = 2;
+
+  enum ElementType {
+    UNKNOWN = 0;
+    INTEGRAL = 1;
+    UNSIGNED = 2;
+    FLOAT = 3;
+    COMPLEX = 4;
+    TUPLE = 5;
+  }
+
+  optional int32 bit_width = 3;
+  optional ElementType element_type = 4;
+
+  repeated float floats = 5 [packed = true];
+  repeated double doubles = 6 [packed = true];
+  repeated int64 ints = 7 [packed = true];
+  repeated uint64 uints = 8 [packed = true];
+  repeated TracedValue tuple_elements = 9;
+}
+
+message InstructionTrace {
+  optional string name = 1;
+  repeated TracedValue args = 2;
+  repeated TracedValue results = 3;
+  // TODO(jreiffers): Model side effects (e.g. memref.store).
+
+  repeated RegionTrace regions = 4;
+}
+
+message RegionTrace {
+  // The number of the region that is being executed (within the parent op).
+  // For example: '1' for an scf.while's `after` region.
+  optional int32 region_number = 1;
+  // The arguments that were passed to the region.
+  repeated TracedValue bbargs = 2;
+  // One instruction per instruction in the region.
+  repeated InstructionTrace instructions = 3;
+  repeated TracedValue results = 4;
+}
+
+message ExecutionTrace {
+  // The IR that was executed. Note: this should always be filled in the generic
+  // format.
+  optional string ir = 1;
+
+  // The trace of the entry function execution.
+  optional RegionTrace trace = 2;
+}

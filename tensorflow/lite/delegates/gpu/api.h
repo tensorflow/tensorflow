@@ -327,6 +327,11 @@ enum class InferenceUsage {
   // Prefer maximizing the throughput. Same inference runner will be used
   // repeatedly on different inputs.
   SUSTAINED_SPEED,
+
+  // Balance init latency and throughput. This option will result in slightly
+  // higher init latency than FAST_SINGLE_ANSWER but should have inference
+  // latency closer to SUSTAINED_SPEED.
+  BALANCED,
 };
 
 // Defines aspects to control while instantiating a runner.

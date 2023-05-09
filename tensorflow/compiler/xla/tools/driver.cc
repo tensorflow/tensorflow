@@ -113,13 +113,19 @@ enum PrimitiveType {
   F32,
   F64,
   C64,
-  C128
+  C128,
+  F8E5M2,
+  F8E4M3FN,
+  S4,
+  U4,
+  F8E4M3B11FNUZ,
 };
 
 const std::vector<std::string>& primitive_strings() {
   static auto vec = new std::vector<std::string>(
       {"s16", "s32", "s64", "u8", "u16", "u32", "u64", "f16", "bf16", "f32",
-       "f64", "c64", "c128"});
+       "f64", "c64", "c128", "f8e5m2", "f8e4m3fn", "s4", "u4",
+       "f8e4m3b11fnuz"});
   return *vec;
 }
 
@@ -394,10 +400,15 @@ void Fill(void* buffer, const ArrayShape& shape) {
     case F64:
       return FillFloatT<double>(buffer, num_elements);
 
+    case F8E5M2:
+    case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case F16:
     case BF16:
     case C64:
     case C128:
+    case S4:
+    case U4:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));
   }
 }
@@ -439,10 +450,15 @@ void Display(const void* buffer, const ArrayShape& shape) {
     case F64:
       return DisplayT<double>(buffer, num_elements);
 
+    case F8E5M2:
+    case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case F16:
     case BF16:
     case C64:
     case C128:
+    case S4:
+    case U4:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));
   }
 }

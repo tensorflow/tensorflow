@@ -247,7 +247,11 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     st = sparse_tensor.SparseTensorValue(
         indices=[[0, 0]], values=([42]), dense_shape=[1, 1])
 
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegex(
+        TypeError, r'`padded_batch` is only supported for '
+        r'datasets that produce tensor elements but type spec of elements in '
+        r'the input dataset is not a subclass of TensorSpec: '
+        r'`SparseTensorSpec.*`\.$'):
       _ = dataset_ops.Dataset.from_tensors(st).repeat(10).padded_batch(10)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -256,8 +260,22 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     rt = ragged_tensor_value.RaggedTensorValue(
         np.array([0, 42]), np.array([0, 2], dtype=np.int64))
 
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegex(
+        TypeError, r'`padded_batch` is only supported for '
+        r'datasets that produce tensor elements but type spec of elements in '
+        r'the input dataset is not a subclass of TensorSpec: '
+        r'`RaggedTensorSpec.*`\.$'):
       _ = dataset_ops.Dataset.from_tensors(rt).repeat(10).padded_batch(10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchDatasetsError(self):
+
+    ds = dataset_ops.Dataset.range(10).map(
+        lambda x: dataset_ops.Dataset.range(1))
+
+    with self.assertRaisesRegex(
+        TypeError, r'`padded_batch` is not supported for datasets of datasets'):
+      _ = ds.padded_batch(3)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchShapeErrorWrongRank(self):

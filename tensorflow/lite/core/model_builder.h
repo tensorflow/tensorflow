@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Deserialization infrastructure for tflite. Provides functionality
 /// to go from a serialized tflite model in flatbuffer format to an
 /// in-memory representation of the model.
@@ -31,10 +32,10 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/verifier.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -69,6 +70,8 @@ namespace tflite {
 /// OpResolver must be defined to provide your kernel implementations to the
 /// interpreter. This is environment specific and may consist of just the
 /// builtin ops, or some custom operators you defined to extend tflite.
+namespace impl {
+
 class FlatBufferModel {
  public:
   /// Builds a model based on a file.
@@ -152,6 +155,33 @@ class FlatBufferModel {
       const tflite::Model* caller_owned_model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  /// Byte swap a constant buffer in place.
+  static void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
+                             uint8_t* buffer);
+
+  /// Byte swap the buffers field of a TFLite Model instance in place.
+  static void ByteSwapTFLiteModel(const tflite::Model* tfl_model);
+
+  /// Byte swap the buffers field of a TFLite ModelT instance in place.
+  static void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt);
+
+  /// Convert the TFLite buffers field between LE and BE format in a
+  /// FlatBufferModel which is not empty and return the converted instance.
+  static std::unique_ptr<FlatBufferModel> ByteConvertModel(
+      std::unique_ptr<FlatBufferModel> model,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  /// Byte Swap the TFLite buffers field in a FlatBufferModel and return the
+  /// swapped instance.
+  static std::unique_ptr<FlatBufferModel> ByteSwapFlatBufferModel(
+      std::unique_ptr<FlatBufferModel> model,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  /// Byte Swap the serialized String of a TFLite model in place.
+  static void ByteSwapSerializedModel(std::string* serialized_model);
+#endif
+
   // Releases memory or unmaps mmaped memory.
   ~FlatBufferModel();
 
@@ -178,6 +208,19 @@ class FlatBufferModel {
   // Return model metadata as a mapping of name & buffer strings.
   // See Metadata table in TFLite schema.
   std::map<std::string, std::string> ReadAllMetadata() const;
+
+  // Return model metadata as a mapping of name & buffer strings.
+  // See Metadata table in TFLite schema.
+  static std::map<std::string, std::string> ReadAllMetadata(
+      const ::tflite::Model* model);
+
+  // Validates if the FlatBufferModel's buffer is well-formed. Specifically, it
+  // checks if the 0th entry of the model buffers is an empty buffer (sentinel).
+  // This is a convention so that tensors without a buffer can provide 0
+  // as their buffer.
+  // NOTE: The function doesn't explicitly fail for backward compatibility
+  // reasons; it just provides a warning in case of failures.
+  void ValidateModelBuffers(ErrorReporter* error_reporter);
 
   /// Returns true if the model identifier is correct (otherwise false and
   /// reports an error).
@@ -207,6 +250,10 @@ class FlatBufferModel {
   /// be null if the client provides a tflite::Model directly.
   std::unique_ptr<Allocation> allocation_;
 };
+
+}  // namespace impl
+
+using FlatBufferModel = impl::FlatBufferModel;
 
 }  // namespace tflite
 

@@ -21,6 +21,7 @@ limitations under the License.
 /// "third_party/tensorflow/lite/c/c_api_types.h".
 /// Only the TensorFlow Lite implementation itself should include this
 /// file directly.
+// IWYU pragma: private, include "third_party/tensorflow/lite/c/c_api_types.h"
 
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_
@@ -138,14 +139,29 @@ typedef struct TfLiteOpaqueNode TfLiteOpaqueNode;
 // TfLiteOpaqueTensor is an opaque version of TfLiteTensor;
 typedef struct TfLiteOpaqueTensor TfLiteOpaqueTensor;
 
-// TfLiteOpaqueDelegateStruct: opaque version of TfLiteDelegate; allows
-// delegation of nodes to alternative backends.
+// TfLiteDelegate: allows delegation of nodes to alternative backends.
+// Forward declaration of concrete type declared in common.h.
+typedef struct TfLiteDelegate TfLiteDelegate;
+
+// TfLiteOpaqueDelegateStruct: unconditionally opaque version of
+// TfLiteDelegate; allows delegation of nodes to alternative backends.
 //
 // This is an abstract type that is intended to have the same
-// role as TfLiteDelegate from common.h, but without exposing the implementation
+// role as TfLiteDelegate, but without exposing the implementation
 // details of how delegates are implemented.
 // WARNING: This is an experimental type and subject to change.
 typedef struct TfLiteOpaqueDelegateStruct TfLiteOpaqueDelegateStruct;
+
+// TfLiteOpaqueDelegate: conditionally opaque version of
+// TfLiteDelegate; allows delegation of nodes to alternative backends.
+// For TF Lite in Play Services, this is an opaque type,
+// but for regular TF Lite, this is just a typedef for TfLiteDelegate.
+// WARNING: This is an experimental type and subject to change.
+#if TFLITE_WITH_STABLE_ABI || TFLITE_USE_OPAQUE_DELEGATE
+typedef TfLiteOpaqueDelegateStruct TfLiteOpaqueDelegate;
+#else
+typedef TfLiteDelegate TfLiteOpaqueDelegate;
+#endif
 
 #ifdef __cplusplus
 }  // extern C

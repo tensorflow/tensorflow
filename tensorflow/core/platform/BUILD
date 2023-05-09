@@ -17,7 +17,6 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_google_mobile_srcs_only_runtime",
-    "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_windows_aware_platform_deps",
@@ -209,12 +208,18 @@ cc_library(
     ],
 )
 
+# Required to avoid ODR issues in the pybind wrapper.
+cc_library(
+    name = "cpu_feature_guard_hdr",
+    hdrs = ["cpu_feature_guard.h"],
+)
+
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
     deps = [
-        "//tensorflow/tsl/platform:casts",
         ":platform",
+        "//tensorflow/tsl/platform:casts",
     ] + tf_platform_deps("casts"),
 )
 
@@ -439,13 +444,13 @@ filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = tf_platform_deps("xla_cpu_runtime_srcs") + [
         "cord.h",
-        ":ctstring",
         "dynamic_annotations.h",
         "env_time.h",
         "macros.h",
         "platform.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ] + if_windows([
         "//tensorflow/tsl/platform/windows:xla_cpu_runtime_srcs",
     ]),
@@ -836,8 +841,8 @@ cc_library(
         ":platform",
         ":protobuf",
         ":refcount",
-        ":stringpiece",
         ":strcat",
+        ":stringpiece",
         ":types",
     ] + tf_additional_tensor_coding_deps(),
 )
@@ -988,9 +993,9 @@ cc_binary(
         ":byte_order",
         ":cord",
         ":cpu_feature_guard",
+        ":crash_analysis",
         ":denormal",
         ":dynamic_annotations",
-        ":crash_analysis",
         ":env_time",
         ":file_statistics",
         ":fingerprint",
@@ -1006,8 +1011,8 @@ cc_binary(
         ":png",
         ":prefetch",
         ":protobuf",
-        ":retrying_utils",
         ":retrying_file_system",
+        ":retrying_utils",
         ":scanner",
         ":setround",
         ":stacktrace",
@@ -1307,7 +1312,6 @@ tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
     srcs = ["rocm_rocdl_path_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_gpu_tests_tags(),
     deps = [
         ":rocm_rocdl_path",
@@ -1597,7 +1601,6 @@ filegroup(
         "context.h",
         "cord.h",
         "cpu_info.h",
-        ":ctstring",
         "demangle.h",
         "denormal.h",
         "dynamic_annotations.h",
@@ -1626,13 +1629,13 @@ filegroup(
         "ram_file_system.h",
         "raw_coding.h",
         "refcount.h",
-        "resource.h",
         "regexp.h",
+        "resource.h",
         "scanner.h",
         "setround.h",
         "snappy.h",
-        "stacktrace.h",
         "stack_frame.h",
+        "stacktrace.h",
         "status.h",
         "statusor.h",
         "str_util.h",
@@ -1647,6 +1650,7 @@ filegroup(
         "tracing.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
     ] + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -1703,9 +1707,9 @@ filegroup(
         ],
     ) + [
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
-        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/tsl/platform:legacy_lib_internal_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

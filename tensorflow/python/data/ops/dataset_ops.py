@@ -15,7 +15,6 @@
 """Python wrappers for Datasets."""
 import abc
 import functools
-import multiprocessing
 import queue
 import threading
 import warnings
@@ -25,13 +24,14 @@ import numpy as np
 from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat as tf_compat
+from tensorflow.python.data.ops import dataset_autograph
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
@@ -50,19 +50,21 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
-from tensorflow.python.ops import gen_stateless_random_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base as tracking_base
 from tensorflow.python.trackable import resource as resource_lib
+from tensorflow.python.types import data as data_types
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -86,12 +88,17 @@ wrap_function = lazy_loader.LazyLoader(
 def_function = lazy_loader.LazyLoader(
     "def_function", globals(),
     "tensorflow.python.eager.def_function")
-# Loaded lazily due to a circular dependency
-# dataset_ops->parsing_ops->dataset_ops
-# TODO(varshaan): Use a regular import.
-parsing_ops = lazy_loader.LazyLoader(
-    "parsing_ops", globals(),
-    "tensorflow.python.ops.parsing_ops")
+# TODO(b/240947712): Clean up the circular dependencies.
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# prefetch_op -> dataset_ops).
+prefetch_op = lazy_loader.LazyLoader(
+    "prefetch_op", globals(),
+    "tensorflow.python.data.ops.prefetch_op")
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# shuffle_op -> dataset_ops).
+shuffle_op = lazy_loader.LazyLoader(
+    "shuffle_op", globals(),
+    "tensorflow.python.data.ops.shuffle_op")
 
 
 ops.NotDifferentiable("ReduceDataset")
@@ -136,6 +143,7 @@ class DatasetV2(
     collections_abc.Iterable,
     tracking_base.Trackable,
     composite_tensor.CompositeTensor,
+    data_types.DatasetV2,
     metaclass=abc.ABCMeta):
   """Represents a potentially large set of elements.
 
@@ -238,18 +246,18 @@ class DatasetV2(
     self._options_attr = options_lib.Options()
     for input_dataset in self._inputs():
       input_options = None
-      if isinstance(input_dataset, DatasetV1):
+      if isinstance(input_dataset, data_types.DatasetV1):
         # If the V1 dataset does not have the `_dataset` attribute, we assume it
         # is a dataset source and hence does not have options. Otherwise, we
         # grab the options of `_dataset` object
         if hasattr(input_dataset, "_dataset"):
-          if not isinstance(input_dataset._dataset, DatasetV2):
+          if not isinstance(input_dataset._dataset, data_types.DatasetV2):
             raise TypeError(
                 f"Each input of dataset {type(self)} should be a subclass of "
                 f"`tf.data.Dataset` but encountered "
                 f"{type(input_dataset._dataset)}.")
           input_options = input_dataset._dataset._options_attr
-      elif isinstance(input_dataset, DatasetV2):
+      elif isinstance(input_dataset, data_types.DatasetV2):
         input_options = input_dataset._options_attr
       else:
         raise TypeError(
@@ -325,7 +333,7 @@ class DatasetV2(
       if node.name in asset_tracker:
         tensor_proto = node.attr["value"].tensor
         with context.eager_mode(), ops.device("CPU"):
-          node_value = parsing_ops.parse_tensor(
+          node_value = gen_parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
             self._track_trackable(asset.Asset(n),
@@ -468,7 +476,7 @@ class DatasetV2(
     return self._options_attr
 
   def _apply_debug_options(self):
-    if DEBUG_MODE:
+    if debug_mode.DEBUG_MODE:
       # Disable autotuning and static optimizations that could introduce
       # parallelism or asynchrony.
       options = options_lib.Options()
@@ -622,7 +630,7 @@ class DatasetV2(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
 
-    return _NumpyIterator(self)
+    return NumpyIterator(self)
 
   @property
   def _flat_shapes(self):
@@ -818,8 +826,10 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # from_tensor_slices_op -> dataset_ops).
-    from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
-    return from_tensor_slices_op.from_tensor_slices(tensors, name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import from_tensor_slices_op
+    return from_tensor_slices_op._from_tensor_slices(tensors, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   class _GeneratorState:
     """Stores outstanding iterators created from a Python generator.
@@ -1007,7 +1017,7 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def zip(datasets, name=None):
+  def zip(*args, datasets=None, name=None):
     """Creates a `Dataset` by zipping together the given datasets.
 
     This method has similar semantics to the built-in `zip()` function
@@ -1016,14 +1026,14 @@ class DatasetV2(
     nesting mechanisms are documented
     [here] (https://www.tensorflow.org/guide/data#dataset_structure).
 
-    >>> # The nested structure of the `datasets` argument determines the
-    >>> # structure of elements in the resulting dataset.
+    >>> # The datasets or nested structure of datasets `*args` argument
+    >>> # determines the structure of elements in the resulting dataset.
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
-    >>> ds = tf.data.Dataset.zip((a, b))
+    >>> ds = tf.data.Dataset.zip(a, b)
     >>> list(ds.as_numpy_iterator())
     [(1, 4), (2, 5), (3, 6)]
-    >>> ds = tf.data.Dataset.zip((b, a))
+    >>> ds = tf.data.Dataset.zip(b, a)
     >>> list(ds.as_numpy_iterator())
     [(4, 1), (5, 2), (6, 3)]
     >>>
@@ -1031,7 +1041,7 @@ class DatasetV2(
     >>> c = tf.data.Dataset.range(7, 13).batch(2)  # ==> [ [7, 8],
     ...                                            #       [9, 10],
     ...                                            #       [11, 12] ]
-    >>> ds = tf.data.Dataset.zip((a, b, c))
+    >>> ds = tf.data.Dataset.zip(a, b, c)
     >>> for element in ds.as_numpy_iterator():
     ...   print(element)
     (1, 4, array([7, 8]))
@@ -1041,12 +1051,16 @@ class DatasetV2(
     >>> # The number of elements in the resulting dataset is the same as
     >>> # the size of the smallest dataset in `datasets`.
     >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
-    >>> ds = tf.data.Dataset.zip((a, d))
+    >>> ds = tf.data.Dataset.zip(a, d)
     >>> list(ds.as_numpy_iterator())
     [(1, 13), (2, 14)]
 
     Args:
-      datasets: A (nested) structure of datasets.
+      *args: Datasets or nested structures of datasets to zip together. This
+        can't be set if `datasets` is set.
+      datasets: A (nested) structure of datasets. This can't be set if `*args`
+        is set. Note that this exists only for backwards compatibility and it is
+        preferred to use *args.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
@@ -1054,8 +1068,19 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> zip_op ->
     # dataset_ops).
-    from tensorflow.python.data.ops import zip_op  # pylint: disable=g-import-not-at-top
-    return zip_op.zip(datasets, name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import zip_op
+
+    if not args and datasets is None:
+      raise TypeError("Must pass at least one dataset to `zip`.")
+    if args and datasets is not None:
+      raise TypeError("Both `*args` and `datasets` cannot be set.")
+    if len(args) == 1:
+      datasets = args[0]
+    elif len(args) > 1:
+      datasets = args
+    return zip_op._zip(datasets, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def concatenate(self, dataset, name=None):
     """Creates a `Dataset` by concatenating the given dataset with this dataset.
@@ -1129,8 +1154,10 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> counter_op
     # -> dataset_ops).
-    from tensorflow.python.data.ops import counter_op  # pylint: disable=g-import-not-at-top
-    return counter_op.counter(start, step, dtype, name=name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import counter_op
+    return counter_op._counter(start, step, dtype, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def rebatch(self, batch_size, drop_remainder=False, name=None):
     """Creates a `Dataset` that rebatches the elements from this dataset.
@@ -1179,10 +1206,12 @@ class DatasetV2(
     Returns:
       A `Dataset` of scalar `dtype` elements.
     """
-    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # Loaded lazily due to a circular dependency (dataset_ops -> rebatch_op ->
     # rebatch_op -> dataset_ops).
-    from tensorflow.python.data.ops import rebatch_op  # pylint: disable=g-import-not-at-top
-    return rebatch_op.rebatch(self, batch_size, drop_remainder, name=name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import rebatch_op
+    return rebatch_op._rebatch(self, batch_size, drop_remainder, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def prefetch(self, buffer_size, name=None):
     """Creates a `Dataset` that prefetches elements from this dataset.
@@ -1212,9 +1241,8 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if DEBUG_MODE:
-      return self
-    return PrefetchDataset(self, buffer_size, name=name)
+    return prefetch_op._prefetch(  # pylint: disable=protected-access
+        self, buffer_size, name=name)
 
   @staticmethod
   def list_files(file_pattern, shuffle=None, seed=None, name=None):
@@ -1272,7 +1300,7 @@ class DatasetV2(
           "No files matched pattern: ",
           string_ops.reduce_join(file_pattern, separator=", "), name="message")
 
-      assert_not_empty = control_flow_ops.Assert(
+      assert_not_empty = control_flow_assert.Assert(
           condition, [message], summarize=1, name="assert_not_empty")
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
@@ -1280,9 +1308,11 @@ class DatasetV2(
       # TODO(b/240947712): Remove lazy import after this method is factored out.
       # Loaded lazily due to a circular dependency (dataset_ops ->
       # from_tensor_slices_op -> dataset_ops).
-      from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
-      dataset = from_tensor_slices_op.TensorSliceDataset(
+      # pylint: disable=g-import-not-at-top,protected-access
+      from tensorflow.python.data.ops import from_tensor_slices_op
+      dataset = from_tensor_slices_op._TensorSliceDataset(
           matching_files, is_files=True, name=name)
+      # pylint: enable=g-import-not-at-top,protected-access
       if issubclass(Dataset, DatasetV1):
         dataset = DatasetV1Adapter(dataset)
       if shuffle:
@@ -1415,9 +1445,29 @@ class DatasetV2(
     # [1, 0, 2]
     ```
 
+    ### Fully shuffling all the data
+
+    To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
+    is equivalent to setting the `buffer_size` equal to the number of elements
+    in the dataset, resulting in uniform shuffle.
+
+    Note: `shuffle(dataset.cardinality())` loads the full dataset into memory so
+    that it can be shuffled. This will cause a memory overflow (OOM) error if
+    the dataset is too large, so full-shuffle should only be used for datasets
+    that are known to fit in the memory, such as datasets of filenames or other
+    small datasets.
+
+    ```python
+    dataset = tf.data.Dataset.range(20)
+    dataset = dataset.shuffle(dataset.cardinality())
+    # [18, 4, 9, 2, 17, 8, 5, 10, 0, 6, 16, 3, 19, 7, 14, 11, 15, 13, 12, 1]
+    ```
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        elements from this dataset from which the new dataset will sample.
+        elements from this dataset from which the new dataset will sample. To
+        uniformly shuffle the entire dataset, use
+        `buffer_size=dataset.cardinality()`.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
@@ -1429,13 +1479,8 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    # Loaded lazily due to a circular dependency (dataset_ops ->
-    # shuffle_op -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import shuffle_op
-    return shuffle_op._shuffle(
+    return shuffle_op._shuffle(  # pylint: disable=protected-access
         self, buffer_size, seed, reshuffle_each_iteration, name=name)
-    # pylint: enable=g-import-not-at-top,protected-access
 
   def cache(self, filename="", name=None):
     """Caches the elements in this dataset.
@@ -1687,13 +1732,19 @@ class DatasetV2(
           implementation creates a `tf.train.Checkpoint` object internally, so
           users should not set the `checkpoint` argument in `checkpoint_args`.
 
+    Returns:
+      An operation which when executed performs the save. When writing
+      checkpoints, returns None. The return value is useful in unit tests.
+
     Raises:
       ValueError if `checkpoint` is passed into `checkpoint_args`.
     """
-    # Loaded lazily due to a circular dependency
-    # dataset_ops->save_ops->dataset_ops
-    from tensorflow.python.data.ops import save_op  # pylint: disable=g-import-not-at-top
-    save_op.save(self, path, compression, shard_func, checkpoint_args)
+    # Loaded lazily due to a circular dependency (dataset_ops -> save_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import save_op
+    return save_op._save(self, path, compression, shard_func, checkpoint_args)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
   def load(path, element_spec=None, compression=None, reader_func=None):
@@ -1753,14 +1804,16 @@ class DatasetV2(
       ValueError: If `element_spec` is not specified and the method is executed
         in graph mode.
     """
-    # Loaded lazily due to a circular dependency
-    # dataset_ops->load_ops->dataset_ops
-    from tensorflow.python.data.ops import load_op  # pylint: disable=g-import-not-at-top
-    return load_op.load(
+    # Loaded lazily due to a circular dependency (dataset_ops -> load_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import load_op
+    return load_op._load(
         path=path,
         element_spec=element_spec,
         compression=compression,
         reader_func=reader_func)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def batch(self,
             batch_size,
@@ -1819,9 +1872,11 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> batch_op ->
     # dataset_ops).
-    from tensorflow.python.data.ops import batch_op  # pylint: disable=g-import-not-at-top,redefined-outer-name
-    return batch_op.batch(self, batch_size, drop_remainder, num_parallel_calls,
-                          deterministic, name)
+    # pylint: disable=g-import-not-at-top,protected-access,redefined-outer-name
+    from tensorflow.python.data.ops import batch_op
+    return batch_op._batch(self, batch_size, drop_remainder, num_parallel_calls,
+                           deterministic, name)
+    # pylint: enable=g-import-not-at-top,protected-access,redefined-outer-name
 
   def padded_batch(self,
                    batch_size,
@@ -1945,9 +2000,11 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # padded_batch_op -> dataset_ops).
-    from tensorflow.python.data.ops import padded_batch_op  # pylint: disable=g-import-not-at-top
-    return padded_batch_op.padded_batch(self, batch_size, padded_shapes,
-                                        padding_values, drop_remainder, name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import padded_batch_op
+    return padded_batch_op._padded_batch(self, batch_size, padded_shapes,
+                                         padding_values, drop_remainder, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def ragged_batch(self,
                    batch_size,
@@ -2006,9 +2063,11 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # ragged_batch_op -> dataset_ops).
-    from tensorflow.python.data.ops import ragged_batch_op  # pylint: disable=g-import-not-at-top
-    return ragged_batch_op.ragged_batch(self, batch_size, drop_remainder,
-                                        row_splits_dtype, name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import ragged_batch_op
+    return ragged_batch_op._ragged_batch(self, batch_size, drop_remainder,
+                                         row_splits_dtype, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def sparse_batch(self, batch_size, row_shape, name=None):
     """Combines consecutive elements into `tf.sparse.SparseTensor`s.
@@ -2054,8 +2113,10 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # sparse_batch_op -> dataset_ops).
-    from tensorflow.python.data.ops import sparse_batch_op  # pylint: disable=g-import-not-at-top
-    return sparse_batch_op.sparse_batch(self, batch_size, row_shape, name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import sparse_batch_op
+    return sparse_batch_op._sparse_batch(self, batch_size, row_shape, name)
+    # pylint: disable=g-import-not-at-top,protected-access
 
   def map(self,
           map_func,
@@ -2285,8 +2346,10 @@ name=None))
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # ignore_errors_op -> dataset_ops).
-    from tensorflow.python.data.ops import ignore_errors_op  # pylint: disable=g-import-not-at-top
-    return ignore_errors_op.ignore_errors(self, log_warning, name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import ignore_errors_op
+    return ignore_errors_op._ignore_errors(self, log_warning, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def interleave(self,
                  map_func,
@@ -2396,27 +2459,13 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if block_length is None:
-      block_length = 1
-
-    if cycle_length is None:
-      cycle_length = AUTOTUNE
-
-    if num_parallel_calls is None or DEBUG_MODE:
-      if deterministic is not None and not DEBUG_MODE:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return InterleaveDataset(
-          self, map_func, cycle_length, block_length, name=name)
-    else:
-      return ParallelInterleaveDataset(
-          self,
-          map_func,
-          cycle_length,
-          block_length,
-          num_parallel_calls,
-          deterministic=deterministic,
-          name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> interleave_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import interleave_op
+    return interleave_op._interleave(self, map_func, cycle_length, block_length,
+                                     num_parallel_calls, deterministic, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def filter(self, predicate, name=None):
     """Filters this dataset according to `predicate`.
@@ -2441,8 +2490,10 @@ name=None))
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
     # dataset_ops).
-    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
-    return filter_op.filter(self, predicate, name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import filter_op
+    return filter_op._filter(self, predicate, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def apply(self, transformation_func):
     """Applies a transformation function to this dataset.
@@ -2466,7 +2517,7 @@ name=None))
       A new `Dataset` with the transformation applied as described above.
     """
     dataset = transformation_func(self)
-    if not isinstance(dataset, DatasetV2):
+    if not isinstance(dataset, data_types.DatasetV2):
       raise TypeError(
           f"`transformation_func` must return a `tf.data.Dataset` object. "
           f"Got {type(dataset)}.")
@@ -2893,8 +2944,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    normalized_dataset = normalize_to_dense(self)
-    return _UnbatchDataset(normalized_dataset, name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> unbatch_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import unbatch_op
+    return unbatch_op._unbatch(self, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def with_options(self, options, name=None):
     """Returns a new `tf.data.Dataset` with the given options set.
@@ -3005,22 +3060,13 @@ name=None))
       ValueError: if neither or both of {`window_size`, `window_size_func`} are
         passed.
     """
-    if (window_size is not None and window_size_func or
-        not (window_size is not None or window_size_func)):
-      raise ValueError("Either the `window_size` argument or the "
-                       "`window_size_func` argument must be specified.")
-
-    if window_size is not None:
-
-      def constant_window_func(unused_key):
-        return ops.convert_to_tensor(window_size, dtype=dtypes.int64)
-
-      window_size_func = constant_window_func
-
-    assert window_size_func is not None
-
-    return _GroupByWindowDataset(
-        self, key_func, reduce_func, window_size_func, name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> group_by_window_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import group_by_window_op
+    return group_by_window_op._group_by_window(
+        self, key_func, reduce_func, window_size, window_size_func, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def bucket_by_sequence_length(self,
                                 element_length_func,
@@ -3204,15 +3250,21 @@ name=None))
       rerandomize_each_iteration: (Optional) If set to False, the dataset
       generates the same sequence of random numbers for each epoch. If set to
       True, it generates a different deterministic sequence of random numbers
-      for each epoch. It is defaulted to True if left unspecified.
+      for each epoch. It is defaulted to False if left unspecified.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return RandomDataset(seed=seed,
-                         rerandomize_each_iteration=rerandomize_each_iteration,
-                         name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> random_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import random_op
+    return random_op._random(
+        seed=seed,
+        rerandomize_each_iteration=rerandomize_each_iteration,
+        name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def snapshot(self,
                path,
@@ -3295,31 +3347,13 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-
-    project_func = None
-    input_dataset = self
-    if shard_func is None:
-      input_dataset = input_dataset.enumerate(name=name)
-      # This sets the amount of parallelism based on the number of CPU cores on
-      # the machine where this Python code is executed, which may differ from
-      # the number of CPU cores where the input pipeline graph is actually
-      # executed (e.g. remote Cloud TPU workers).
-      local_shard_func = lambda index, _: index % multiprocessing.cpu_count()
-      project_func = lambda _, elem: elem
-    else:
-      local_shard_func = shard_func
-    dataset = _SnapshotDataset(
-        input_dataset=input_dataset,
-        path=path,
-        compression=compression,
-        reader_func=reader_func,
-        # This will not do the right thing where the graph is built on a
-        # different machine than the executor (e.g. Cloud TPUs).
-        shard_func=local_shard_func,
-        name=name)
-    if project_func is not None:
-      dataset = dataset.map(project_func, name=name)
-    return dataset
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> snapshot_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import snapshot_op
+    return snapshot_op._snapshot(
+        self, path, compression, reader_func, shard_func, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def scan(self, initial_state, scan_func, name=None):
     """A transformation that scans a function across an input dataset.
@@ -3349,8 +3383,12 @@ name=None))
       A new `Dataset` with the transformation applied as described above.
     """
 
-    return _ScanDataset(
-        self, initial_state=initial_state, scan_func=scan_func, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # scan_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import scan_op
+    return scan_op._scan(self, initial_state, scan_func, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def take_while(self, predicate, name=None):
     """A transformation that stops dataset iteration based on a `predicate`.
@@ -3369,8 +3407,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-
-    return _TakeWhileDataset(self, predicate, name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> take_while_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import take_while_op
+    return take_while_op._take_while(self, predicate, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def unique(self, name=None):
     """A transformation that discards duplicate elements of a `Dataset`.
@@ -3501,7 +3543,8 @@ name=None))
   def sample_from_datasets(datasets,
                            weights=None,
                            seed=None,
-                           stop_on_empty_dataset=False):
+                           stop_on_empty_dataset=False,
+                           rerandomize_each_iteration=None):
     """Samples elements at random from the datasets in `datasets`.
 
     Creates a dataset by interleaving elements of `datasets` with `weight[i]`
@@ -3543,6 +3586,11 @@ name=None))
         samples starts off as the user intends, but may change as input datasets
         become empty. This can be difficult to detect since the dataset starts
         off looking correct. Default to `False` for backward compatibility.
+      rerandomize_each_iteration: An optional `bool`. The boolean argument
+      controls whether the sequence of random numbers used to determine which
+      dataset to sample from will be rerandomized each epoch. That is, it
+      determinies whether datasets will be sampled in the same order across
+      different epochs (the default behavior) or not.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
@@ -3554,93 +3602,18 @@ name=None))
         - If `datasets` is empty, or
         - If `weights` is specified and does not match the length of `datasets`.
     """
-    # Loaded lazily due to a circular dependency (dataset_ops -> map_op ->
-    # dataset_ops).
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.data.ops import map_op
-    # pylint: enable=g-import-not-at-top
-
-    def _skip_datasets_with_zero_weight(datasets, weights):
-      datasets_and_weights = [(dataset, weight)
-                              for (dataset, weight) in zip(datasets, weights)
-                              if weight > 0]
-      return (zip(*datasets_and_weights) if datasets_and_weights else
-              ([datasets[0].take(0)], [1.]))
-
-    if not datasets:
-      raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
-
-    if not isinstance(weights, DatasetV2):
-      if weights is None:
-        # Select inputs with uniform probability.
-        logits = [[1.0] * len(datasets)]
-
-      else:
-        if isinstance(weights, ops.Tensor):
-          if not weights.shape.is_compatible_with([len(datasets)]):
-            raise ValueError(f"Invalid `weights`. The shape of `weights` "
-                             f"should be compatible with `[len(datasets)]` "
-                             f"but is {weights.shape}.")
-        else:
-          if len(datasets) != len(weights):
-            raise ValueError(f"Invalid `weights`. `weights` should have the "
-                             f"same length as `datasets` but got "
-                             f"`len(weights)={len(weights)}` vs. "
-                             f"`len(datasets)={len(datasets)}`.")
-
-        # Use the given `weights` as the probability of choosing the respective
-        # input.
-        if not isinstance(weights, ops.Tensor):
-          datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
-        weights = ops.convert_to_tensor(weights, name="weights")
-        if weights.dtype not in (dtypes.float32, dtypes.float64):
-          raise TypeError(f"Invalid `weights`. `weights` type must be either "
-                          f"`tf.float32` or `tf.float64` but is "
-                          f"{weights.dtype}.")
-
-        # The `stateless_multinomial()` op expects log-probabilities, as opposed
-        # to weights.
-        logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
-
-      # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When
-      # it is a `Dataset`, it is possible that evaluating it has a side effect
-      # the user depends on.
-      if len(datasets) == 1:
-        return datasets[0]
-
-      def select_dataset_constant_logits(seed):
-        return array_ops.squeeze(
-            gen_stateless_random_ops.stateless_multinomial(
-                logits, 1, seed=seed),
-            axis=[0, 1])
-
-      selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          RandomDataset(seed).batch(2),
-          select_dataset_constant_logits,
-          use_inter_op_parallelism=False)
-
-    else:
-      # Use each element of the given `weights` dataset as the probability of
-      # choosing the respective input.
-      #
-      # The `stateless_multinomial()` op expects log-probabilities, as opposed
-      # to weights.
-      logits_ds = weights.map(lambda *p: math_ops.log(p, name="logits"))
-
-      def select_dataset_varying_logits(logits, seed):
-        return array_ops.squeeze(
-            gen_stateless_random_ops.stateless_multinomial(
-                logits, 1, seed=seed),
-            axis=[0, 1])
-
-      logits_and_seeds = Dataset.zip((logits_ds, RandomDataset(seed).batch(2)))
-      selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          logits_and_seeds,
-          select_dataset_varying_logits,
-          use_inter_op_parallelism=False)
-
-    return _DirectedInterleaveDataset(selector_input, datasets,
-                                      stop_on_empty_dataset)
+    # Loaded lazily due to a circular dependency
+    # (dataset_ops -> sample_from_datasets_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import sample_from_datasets_op
+    return sample_from_datasets_op._sample_from_datasets(  # pylint: disable=protected-access
+        datasets,
+        weights,
+        seed,
+        stop_on_empty_dataset,
+        rerandomize_each_iteration,
+    )
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
   def choose_from_datasets(datasets,
@@ -3686,27 +3659,17 @@ name=None))
       TypeError: If `datasets` or `choice_dataset` has the wrong type.
       ValueError: If `datasets` is empty.
     """
-    if not datasets:
-      raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
-    if not isinstance(choice_dataset, DatasetV2):
-      raise TypeError(f"Invalid `choice_dataset`. `choice_dataset` should be a "
-                      f"`tf.data.Dataset` but is {type(choice_dataset)}.")
-    if not structure.are_compatible(choice_dataset.element_spec,
-                                    tensor_spec.TensorSpec([], dtypes.int64)):
-      raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
-                      f"must be scalar `tf.int64` tensors but are "
-                      f"{choice_dataset.element_spec}.")
-    # Replicate the `choice_dataset` component so that each split makes choices
-    # independently. This avoids the need for prohibitively expensive
-    # cross-split coordination.
-    choice_dataset = _apply_rewrite(choice_dataset, "replicate_on_split")
-    # pylint: disable=protected-access
-    return _DirectedInterleaveDataset(choice_dataset, datasets,
-                                      stop_on_empty_dataset)
+    # Loaded lazily due to a circular dependency
+    # (dataset_ops -> choose_from_datasets_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import choose_from_datasets_op
+    return choose_from_datasets_op._choose_from_datasets(
+        datasets, choice_dataset, stop_on_empty_dataset)
+    # pylint: enable=g-import-not-at-top,protected-access
 
 
 @tf_export(v1=["data.Dataset"])
-class DatasetV1(DatasetV2):
+class DatasetV1(DatasetV2, data_types.DatasetV1):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -4011,8 +3974,8 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
-  def zip(datasets, name=None):
-    return DatasetV1Adapter(DatasetV2.zip(datasets, name=name))
+  def zip(*args, datasets=None, name=None):
+    return DatasetV1Adapter(DatasetV2.zip(*args, datasets=datasets, name=name))
 
   @functools.wraps(DatasetV2.concatenate)
   def concatenate(self, dataset, name=None):
@@ -4194,8 +4157,10 @@ class DatasetV1(DatasetV2):
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
     # dataset_ops).
-    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
-    return filter_op.FilterDataset(self, predicate, use_legacy_function=True)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import filter_op
+    return filter_op._FilterDataset(self, predicate, use_legacy_function=True)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @functools.wraps(DatasetV2.apply)
   def apply(self, transformation_func):
@@ -4704,7 +4669,15 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
             self._dataset_shape == other._dataset_shape)
 
 
-class _NumpyIterator:
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        DatasetSpec, struct_pb2.TypeSpecProto.DATA_DATASET_SPEC
+    )
+)
+
+
+@tf_export("data.NumpyIterator")
+class NumpyIterator(tracking_base.Trackable):
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -4729,6 +4702,24 @@ class _NumpyIterator:
 
   def next(self):
     return self.__next__()
+
+  # override
+  def _serialize_to_tensors(self):
+    # pylint: disable=protected-access
+    return self._iterator._serialize_to_tensors()
+
+  # override
+  def _restore_from_tensors(self, restored_tensors):
+    # pylint: disable=protected-access
+    return self._iterator._restore_from_tensors(restored_tensors)
+
+  def save(self):
+    # pylint: disable=protected-access
+    return self._iterator._save()
+
+  def restore(self, state):
+    # pylint: disable=protected-access
+    return self._iterator._restore(state)
 
 
 class _VariantTracker(resource_lib.CapturableResource):
@@ -4779,7 +4770,9 @@ class _VariantTracker(resource_lib.CapturableResource):
 batch_op = lazy_loader.LazyLoader(
     "batch_op", globals(),
     "tensorflow.python.data.ops.batch_op")
-BatchDataset = batch_op.BatchDataset
+BatchDataset = batch_op._BatchDataset  # pylint: disable=protected-access
+PrefetchDataset = prefetch_op._PrefetchDataset  # pylint: disable=protected-access
+ShuffleDataset = shuffle_op._ShuffleDataset  # pylint: disable=protected-access
 
 
 # TODO(b/254291122): Remove.
@@ -4789,143 +4782,6 @@ repeat_op = lazy_loader.LazyLoader(
     "repeat_op", globals(),
     "tensorflow.python.data.ops.repeat_op")
 RepeatDataset = repeat_op._RepeatDataset  # pylint: disable=protected-access
-
-
-class InterleaveDataset(UnaryDataset):
-  """A `Dataset` that interleaves the result of transformed inputs."""
-
-  def __init__(self,
-               input_dataset,
-               map_func,
-               cycle_length,
-               block_length,
-               name=None):
-    """See `Dataset.interleave()` for details."""
-
-    self._input_dataset = input_dataset
-    self._map_func = structured_function.StructuredFunctionWrapper(
-        map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(self._map_func.output_structure, DatasetSpec):
-      raise TypeError(
-          "The `map_func` argument must return a `Dataset` object. Got "
-          f"{get_type(self._map_func.output_structure)!r}.")
-    self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
-    self._cycle_length = ops.convert_to_tensor(
-        cycle_length, dtype=dtypes.int64, name="cycle_length")
-    self._block_length = ops.convert_to_tensor(
-        block_length, dtype=dtypes.int64, name="block_length")
-    self._name = name
-    variant_tensor = gen_dataset_ops.interleave_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-        self._cycle_length,
-        self._block_length,
-        f=self._map_func.function,
-        **self._common_args)
-    super(InterleaveDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._map_func]
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-  def _transformation_name(self):
-    return "Dataset.interleave()"
-
-
-class ParallelInterleaveDataset(UnaryDataset):
-  """A `Dataset` that maps a function over its input and interleaves the result."""
-
-  def __init__(self,
-               input_dataset,
-               map_func,
-               cycle_length,
-               block_length,
-               num_parallel_calls,
-               buffer_output_elements=AUTOTUNE,
-               prefetch_input_elements=AUTOTUNE,
-               deterministic=None,
-               name=None):
-    """See `Dataset.interleave()` for details."""
-    self._input_dataset = input_dataset
-    self._map_func = structured_function.StructuredFunctionWrapper(
-        map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(self._map_func.output_structure, DatasetSpec):
-      raise TypeError(
-          "The `map_func` argument must return a `Dataset` object. Got "
-          f"{get_type(self._map_func.output_structure)!r}.")
-    self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
-    self._cycle_length = ops.convert_to_tensor(
-        cycle_length, dtype=dtypes.int64, name="cycle_length")
-    self._block_length = ops.convert_to_tensor(
-        block_length, dtype=dtypes.int64, name="block_length")
-    self._buffer_output_elements = ops.convert_to_tensor(
-        buffer_output_elements,
-        dtype=dtypes.int64,
-        name="buffer_output_elements")
-    self._prefetch_input_elements = ops.convert_to_tensor(
-        prefetch_input_elements,
-        dtype=dtypes.int64,
-        name="prefetch_input_elements")
-
-    self._num_parallel_calls = ops.convert_to_tensor(
-        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    if deterministic is None:
-      deterministic_string = "default"
-    elif deterministic:
-      deterministic_string = "true"
-    else:
-      deterministic_string = "false"
-
-    self._name = name
-    variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v4(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-        self._cycle_length,
-        self._block_length,
-        self._buffer_output_elements,
-        self._prefetch_input_elements,
-        self._num_parallel_calls,
-        f=self._map_func.function,
-        deterministic=deterministic_string,
-        **self._common_args)
-    super(ParallelInterleaveDataset, self).__init__(input_dataset,
-                                                    variant_tensor)
-
-  def _functions(self):
-    return [self._map_func]
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-  def _transformation_name(self):
-    return "Dataset.interleave()"
-
-
-class PrefetchDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that asynchronously prefetches its input."""
-
-  def __init__(self, input_dataset, buffer_size, slack_period=None, name=None):
-    """See `Dataset.prefetch()` for details."""
-    self._input_dataset = input_dataset
-    if buffer_size is None:
-      buffer_size = AUTOTUNE
-    self._buffer_size = ops.convert_to_tensor(
-        buffer_size, dtype=dtypes.int64, name="buffer_size")
-    self._name = name
-    # pylint: disable=protected-access
-    # We colocate the prefetch dataset with its input as this collocation only
-    # happens automatically in graph mode.
-    with ops.colocate_with(input_dataset._variant_tensor):
-      variant_tensor = gen_dataset_ops.prefetch_dataset(
-          input_dataset._variant_tensor,
-          buffer_size=self._buffer_size,
-          slack_period=slack_period,
-          **self._common_args)
-    super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):
@@ -4999,162 +4855,6 @@ class _RestructuredDataset(UnaryDataset):
     return self._element_spec
 
 
-class _UnbatchDataset(UnaryDataset):
-  """A dataset that splits the elements of its input into multiple elements."""
-
-  def __init__(self, input_dataset, name=None):
-    """See `unbatch()` for more details."""
-    flat_shapes = input_dataset._flat_shapes  # pylint: disable=protected-access
-    if any(s.ndims == 0 for s in flat_shapes):
-      raise ValueError("Cannot unbatch an input with scalar components.")
-    known_batch_dim = tensor_shape.Dimension(None)
-    for s in flat_shapes:
-      try:
-        known_batch_dim = known_batch_dim.merge_with(s[0])
-      except ValueError:
-        raise ValueError(f"`unbatch()` is only supported for datasets of "
-                         f"elements whose components have a matching leading "
-                         f"dimension. Encountered both {known_batch_dim} and "
-                         f"{s[0]}.")
-    self._input_dataset = input_dataset
-    self._structure = nest.map_structure(
-        lambda component_spec: component_spec._unbatch(),  # pylint: disable=protected-access
-        get_structure(input_dataset))
-    self._name = name
-    variant_tensor = ged_ops.unbatch_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        **self._common_args)
-    super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-class _GroupByWindowDataset(UnaryDataset):
-  """A `Dataset` that groups its input and performs a windowed reduction."""
-
-  def __init__(self,
-               input_dataset,
-               key_func,
-               reduce_func,
-               window_size_func,
-               name=None):
-    """See `group_by_window()` for details."""
-    self._input_dataset = input_dataset
-    self._make_key_func(key_func, input_dataset)
-    self._make_reduce_func(reduce_func, input_dataset)
-    self._make_window_size_func(window_size_func)
-    self._name = name
-    variant_tensor = ged_ops.group_by_window_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._key_func.function.captured_inputs,
-        self._reduce_func.function.captured_inputs,
-        self._window_size_func.function.captured_inputs,
-        key_func=self._key_func.function,
-        reduce_func=self._reduce_func.function,
-        window_size_func=self._window_size_func.function,
-        **self._common_args)
-    super(_GroupByWindowDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _make_window_size_func(self, window_size_func):
-    """Make wrapping defun for window_size_func."""
-
-    def window_size_func_wrapper(key):
-      return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
-
-    self._window_size_func = structured_function.StructuredFunctionWrapper(
-        window_size_func_wrapper,
-        self._transformation_name(),
-        input_structure=tensor_spec.TensorSpec([], dtypes.int64))
-    if not self._window_size_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.int64)):
-      raise ValueError(f"Invalid `window_size_func`. `window_size_func` must "
-                       f"return a single `tf.int64` scalar tensor but its "
-                       f"return type is "
-                       f"{self._window_size_func.output_structure}.")
-
-  def _make_key_func(self, key_func, input_dataset):
-    """Make wrapping defun for key_func."""
-
-    def key_func_wrapper(*args):
-      return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
-
-    self._key_func = structured_function.StructuredFunctionWrapper(
-        key_func_wrapper, self._transformation_name(), dataset=input_dataset)
-    if not self._key_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.int64)):
-      raise ValueError(f"Invalid `key_func`. `key_func` must return a single "
-                       f"`tf.int64` scalar tensor but its return type is "
-                       f"{self._key_func.output_structure}.")
-
-  def _make_reduce_func(self, reduce_func, input_dataset):
-    """Make wrapping defun for reduce_func."""
-    nested_dataset = DatasetSpec(input_dataset.element_spec)
-    input_structure = (tensor_spec.TensorSpec([], dtypes.int64), nested_dataset)
-    self._reduce_func = structured_function.StructuredFunctionWrapper(
-        reduce_func,
-        self._transformation_name(),
-        input_structure=input_structure)
-    if not isinstance(self._reduce_func.output_structure, DatasetSpec):
-      raise TypeError(f"Invalid `reduce_func`. `reduce_func` must return a "
-                      f"single `tf.data.Dataset` object but its return type "
-                      f"is {self._reduce_func.output_structure}.")
-    # pylint: disable=protected-access
-    self._element_spec = (self._reduce_func.output_structure._element_spec)
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-  def _functions(self):
-    return [self._key_func, self._reduce_func, self._window_size_func]
-
-  def _transformation_name(self):
-    return "Dataset.group_by_window()"
-
-
-class RandomDataset(DatasetSource):
-  """A `Dataset` of pseudorandom values."""
-
-  def __init__(self, seed=None, rerandomize_each_iteration=None, name=None):
-    """A `Dataset` of pseudorandom values."""
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-    self._rerandomize = rerandomize_each_iteration
-    self._name = name
-    if (tf2.enabled() and
-        (context.executing_eagerly() or ops.inside_function())):
-      if (rerandomize_each_iteration is not None or
-          tf_compat.forward_compatible(2022, 12, 17)):
-        variant_tensor = ged_ops.random_dataset_v2(
-            seed=self._seed,
-            seed2=self._seed2,
-            seed_generator=gen_dataset_ops.dummy_seed_generator(),
-            rerandomize_each_iteration=self._rerandomize,
-            **self._common_args)
-      else:
-        variant_tensor = ged_ops.random_dataset(
-            seed=self._seed,
-            seed2=self._seed2,
-            **self._common_args)
-    else:
-      if rerandomize_each_iteration is not None:
-        warnings.warn("The `rerandomize_each_iteration` argument is ignored "
-                      "because it is only available when running in TF2 eager "
-                      "mode or inside a `tf.function`. The mode is "
-                      f"{'TF2' if tf2.enabled() else 'TF1'} "
-                      f"{'eager' if context.executing_eagerly() else 'graph'}.")
-      variant_tensor = ged_ops.random_dataset(
-          seed=self._seed,
-          seed2=self._seed2,
-          **self._common_args)
-    super(RandomDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return tensor_spec.TensorSpec([], dtypes.int64)
-
-
 def _get_prob_original_static(initial_dist_t, target_dist_t):
   """Returns the static probability of sampling from the original.
 
@@ -5202,7 +4902,7 @@ def _filter_ds(dataset,
 
   def maybe_warn_on_large_rejection(accept_dist, initial_dist):
     proportion_rejected = math_ops.reduce_sum((1 - accept_dist) * initial_dist)
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.less(proportion_rejected, .5),
         lambda: accept_dist,
         lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
@@ -5369,274 +5069,6 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
   return a_i, m
 
 
-class _TakeWhileDataset(UnaryUnchangedStructureDataset):
-  """A dataset that stops iteration when `predicate` returns false."""
-
-  def __init__(self, input_dataset, predicate, name=None):
-    """See `take_while()` for details."""
-
-    self._input_dataset = input_dataset
-    wrapped_func = structured_function.StructuredFunctionWrapper(
-        predicate, self._transformation_name(), dataset=self._input_dataset)
-
-    if not wrapped_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.bool)):
-      raise ValueError(f"Invalid `predicate`. `predicate` must return a "
-                       f"`tf.bool` scalar tensor but its return type is"
-                       f"{wrapped_func.output_structure}.")
-
-    self._predicate = wrapped_func
-    self._name = name
-    variant_tensor = ged_ops.take_while_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        other_arguments=self._predicate.function.captured_inputs,
-        predicate=self._predicate.function,
-        **self._common_args)
-    super(_TakeWhileDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._predicate]
-
-  def _transformation_name(self):
-    return "Dataset.take_while()"
-
-
-class _SnapshotDataset(UnaryUnchangedStructureDataset):
-  """A dataset that allows saving and re-use of already processed data."""
-
-  def __init__(self,
-               input_dataset,
-               path,
-               shard_func,
-               compression=None,
-               reader_func=None,
-               pending_snapshot_expiry_seconds=None,
-               use_legacy_function=False,
-               name=None):
-
-    if reader_func is None:
-      reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
-          lambda x: x,
-          cycle_length=multiprocessing.cpu_count(),
-          num_parallel_calls=AUTOTUNE)
-
-    self._input_dataset = input_dataset
-    self._path = path
-    self._compression = compression
-
-    self._reader_func = structured_function.StructuredFunctionWrapper(
-        reader_func,
-        self._transformation_name() + ".reader_func",
-        # Dataset of datasets of input elements
-        input_structure=DatasetSpec(DatasetSpec(input_dataset.element_spec)),
-        use_legacy_function=use_legacy_function)
-    self._shard_func = structured_function.StructuredFunctionWrapper(
-        shard_func,
-        self._transformation_name() + ".shard_func",
-        dataset=input_dataset,
-        use_legacy_function=use_legacy_function)
-
-    if ((not self._shard_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.int32))) and
-        (not self._shard_func.output_structure.is_compatible_with(
-            tensor_spec.TensorSpec([], dtypes.int64)))):
-      raise TypeError(f"Invalid `shard_func`. `shard_func` must return "
-                      f"`tf.int64` scalar tensor but its return type is "
-                      f"{self._shard_func.output_structure}.")
-
-    self._name = name
-    variant_tensor = ged_ops.snapshot_dataset_v2(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        path,
-        self._reader_func.function.captured_inputs,
-        self._shard_func.function.captured_inputs,
-        compression=compression,
-        reader_func=self._reader_func.function,
-        shard_func=self._shard_func.function,
-        **self._common_args)
-    super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._reader_func, self._shard_func]
-
-  def _transformation_name(self):
-    return "Dataset.snapshot()"
-
-
-class _ScanDataset(UnaryDataset):
-  """A dataset that scans a function across its input."""
-
-  def __init__(self,
-               input_dataset,
-               initial_state,
-               scan_func,
-               use_default_device=None,
-               name=None):
-    """See `scan()` for details."""
-    self._input_dataset = input_dataset
-    self._initial_state = structure.normalize_element(initial_state)
-
-    # Compute initial values for the state classes, shapes and types based on
-    # the initial state. The shapes may be refined by running `tf_scan_func` one
-    # or more times below.
-    self._state_structure = structure.type_spec_from_value(self._initial_state)
-
-    # Iteratively rerun the scan function until reaching a fixed point on
-    # `self._state_shapes`.
-    need_to_rerun = True
-    while need_to_rerun:
-
-      wrapped_func = structured_function.StructuredFunctionWrapper(
-          scan_func,
-          self._transformation_name(),
-          input_structure=(self._state_structure, input_dataset.element_spec),
-          add_to_graph=False)
-      if not (isinstance(wrapped_func.output_types, collections_abc.Sequence)
-              and len(wrapped_func.output_types) == 2):
-        raise TypeError(f"Invalid `scan_func`. `scan_func` should return a "
-                        f"pair consisting of new state and the output value "
-                        f"but its return type is "
-                        f"{wrapped_func.output_structure}.")
-
-      new_state_classes, self._output_classes = wrapped_func.output_classes
-
-      # Extract and validate class information from the returned values.
-      new_state_classes, output_classes = wrapped_func.output_classes
-      old_state_classes = nest.map_structure(
-          lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
-          self._state_structure)
-      for new_state_class, old_state_class in zip(
-          nest.flatten(new_state_classes), nest.flatten(old_state_classes)):
-        if not issubclass(new_state_class, old_state_class):
-          raise TypeError(f"Invalid `scan_func`. The element classes for the "
-                          f"new state must match the initial state. Expected "
-                          f"{old_state_classes}, got {new_state_classes}.")
-
-      # Extract and validate type information from the returned values.
-      new_state_types, output_types = wrapped_func.output_types
-      old_state_types = nest.map_structure(
-          lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
-          self._state_structure)
-      for new_state_type, old_state_type in zip(
-          nest.flatten(new_state_types), nest.flatten(old_state_types)):
-        if new_state_type != old_state_type:
-          raise TypeError(f"Invalid `scan_func`. The element types for the "
-                          f"new state must match the initial state. Expected "
-                          f"{old_state_types}, got {new_state_types}.")
-
-      # Extract shape information from the returned values.
-      new_state_shapes, output_shapes = wrapped_func.output_shapes
-      old_state_shapes = nest.map_structure(
-          lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
-          self._state_structure)
-      self._element_spec = structure.convert_legacy_structure(
-          output_types, output_shapes, output_classes)
-
-      flat_state_shapes = nest.flatten(old_state_shapes)
-      flat_new_state_shapes = nest.flatten(new_state_shapes)
-      weakened_state_shapes = [
-          original.most_specific_compatible_shape(new)
-          for original, new in zip(flat_state_shapes, flat_new_state_shapes)
-      ]
-
-      need_to_rerun = False
-      for original_shape, weakened_shape in zip(flat_state_shapes,
-                                                weakened_state_shapes):
-        if original_shape.ndims is not None and (
-            weakened_shape.ndims is None or
-            original_shape.as_list() != weakened_shape.as_list()):
-          need_to_rerun = True
-          break
-
-      if need_to_rerun:
-        # TODO(b/110122868): Support a "most specific compatible structure"
-        # method for combining structures, to avoid using legacy structures
-        # in this method.
-        self._state_structure = structure.convert_legacy_structure(
-            old_state_types,
-            nest.pack_sequence_as(old_state_shapes, weakened_state_shapes),
-            old_state_classes)
-
-    self._scan_func = wrapped_func
-    self._scan_func.function.add_to_graph(ops.get_default_graph())
-
-    self._name = name
-    # pylint: disable=protected-access
-    if use_default_device is not None:
-      variant_tensor = ged_ops.scan_dataset(
-          self._input_dataset._variant_tensor,
-          structure.to_tensor_list(self._state_structure, self._initial_state),
-          self._scan_func.function.captured_inputs,
-          f=self._scan_func.function,
-          preserve_cardinality=True,
-          use_default_device=use_default_device,
-          **self._common_args)
-    else:
-      variant_tensor = ged_ops.scan_dataset(
-          self._input_dataset._variant_tensor,
-          structure.to_tensor_list(self._state_structure, self._initial_state),
-          self._scan_func.function.captured_inputs,
-          f=self._scan_func.function,
-          preserve_cardinality=True,
-          **self._common_args)
-    super(_ScanDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._scan_func]
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-  def _transformation_name(self):
-    return "Dataset.scan()"
-
-
-class _DirectedInterleaveDataset(DatasetV2):
-  """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
-
-  def __init__(self, selector_input, data_inputs, stop_on_empty_dataset=False):
-    self._selector_input = selector_input
-    self._data_inputs = list(data_inputs)
-    self._stop_on_empty_dataset = stop_on_empty_dataset
-
-    spec = self._data_inputs[0].element_spec
-    for i, data_input in enumerate(self._data_inputs[1:]):
-      def common_supertype(a, b):
-        result = a.most_specific_common_supertype([b])
-        if result is None:
-          raise TypeError(f"No common supertype of {a} and {b}.")
-        return result
-
-      try:
-        spec = nest.map_structure(common_supertype, spec,
-                                  data_input.element_spec)
-      except (TypeError, ValueError) as e:
-        raise TypeError(f"Invalid `datasets`. `datasets` must have compatible "
-                        f"element specs.\n Dataset 0 "
-                        f"element_spec={data_inputs[0].element_spec}.\n"
-                        f"Dataset {i+1} "
-                        f"element_spec={data_input.element_spec}.") from e
-    self._element_spec = spec
-
-    # pylint: disable=protected-access
-    variant_tensor = (
-        ged_ops.directed_interleave_dataset(
-            self._selector_input._variant_tensor,
-            [data_input._variant_tensor for data_input in self._data_inputs],
-            stop_on_empty_dataset=self._stop_on_empty_dataset,
-            **self._flat_structure))
-
-    super(_DirectedInterleaveDataset, self).__init__(variant_tensor)
-
-  def _inputs(self):
-    return [self._selector_input] + self._data_inputs
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-
 def _apply_rewrite(dataset, rewrite):
   # pylint: disable=protected-access
   return _VariantDataset(
@@ -5727,60 +5159,4 @@ def _resource_resolver(op, resource_reads, resource_writes):
   return updated
 
 
-DEBUG_MODE = False
-
-
-@tf_export("data.experimental.enable_debug_mode")
-def enable_debug_mode():
-  """Enables debug mode for tf.data.
-
-  Example usage with pdb module:
-  ```
-  import tensorflow as tf
-  import pdb
-
-  tf.data.experimental.enable_debug_mode()
-
-  def func(x):
-    # Python 3.7 and older requires `pdb.Pdb(nosigint=True).set_trace()`
-    pdb.set_trace()
-    x = x + 1
-    return x
-
-  dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-  dataset = dataset.map(func)
-
-  for item in dataset:
-    print(item)
-  ```
-
-  The effect of debug mode is two-fold:
-
-  1) Any transformations that would introduce asynchrony, parallelism, or
-  non-determinism to the input pipeline execution will be forced to execute
-  synchronously, sequentially, and deterministically.
-
-  2) Any user-defined functions passed into tf.data transformations such as
-  `map` will be wrapped in `tf.py_function` so that their body is executed
-  "eagerly" as a Python function as opposed to a traced TensorFlow graph, which
-  is the default behavior. Note that even when debug mode is enabled, the
-  user-defined function is still traced  to infer the shape and type of its
-  outputs; as a consequence, any `print` statements or breakpoints will be
-  triggered once during the tracing before the actual execution of the input
-  pipeline.
-
-  NOTE: As the debug mode setting affects the construction of the tf.data input
-  pipeline, it should be enabled before any tf.data definitions.
-
-  Raises:
-    ValueError: When invoked from graph mode.
-  """
-  if context.executing_eagerly():
-    toggle_debug_mode(True)
-  else:
-    raise ValueError("`enable_debug_mode() is only supported in eager mode.")
-
-
-def toggle_debug_mode(debug_mode):
-  global DEBUG_MODE
-  DEBUG_MODE = debug_mode
+dataset_autograph.register_overrides()

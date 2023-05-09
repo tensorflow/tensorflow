@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -70,13 +70,13 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Returns if its legal to inline 'src' region into the 'dest' region
   // attached to a TF Device operation.
   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
-                       BlockAndValueMapping& valueMapping) const final {
+                       IRMapping& valueMapping) const final {
     return true;
   }
 
   // Defines the legality of inlining TF Device operations.
   bool isLegalToInline(Operation*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     // For now, enable inlining all operations.
     return true;
   }
@@ -147,7 +147,7 @@ LogicalResult ParallelExecuteOp::verify() {
   }
 
   int output_index = 0;
-  for (auto& region_and_index : llvm::enumerate(regions)) {
+  for (const auto& region_and_index : llvm::enumerate(regions)) {
     auto& region = region_and_index.value();
     auto* region_terminator = region.front().getTerminator();
 
@@ -236,7 +236,7 @@ ParseResult ParseReplicateOpOperands(
   llvm::SmallVector<Type, 8> packed_region_arg_types;
   do {
     OpAsmParser::UnresolvedOperand operand_type;
-    if (parser->parseOptionalOperand(operand_type).hasValue()) {
+    if (parser->parseOptionalOperand(operand_type).has_value()) {
       packed_inputs->emplace_back(operand_type);
       if (parser->parseKeyword("as",
                                " between packed input and block argument") ||
@@ -289,7 +289,8 @@ ParseResult SetReplicateOpOperands(
 
   if (replicated_inputs.empty() && packed_inputs.empty()) return success();
 
-  for (auto replicated_input_and_idx : llvm::enumerate(replicated_inputs)) {
+  for (const auto& replicated_input_and_idx :
+       llvm::enumerate(replicated_inputs)) {
     const int32_t idx = replicated_input_and_idx.index();
     const auto& replicated_input = replicated_input_and_idx.value();
     // Check if replicated input matches `n`.
@@ -305,7 +306,7 @@ ParseResult SetReplicateOpOperands(
   }
 
   const int32_t num_replicated_block_args = replicated_inputs.size();
-  for (auto packed_input_and_idx : llvm::enumerate(packed_inputs)) {
+  for (const auto& packed_input_and_idx : llvm::enumerate(packed_inputs)) {
     const int32_t idx = packed_input_and_idx.index();
     const auto& packed_input = packed_input_and_idx.value();
 
@@ -433,13 +434,13 @@ LogicalResult VerifyCompatibleTypes(Type a, Type b) {
 
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    llvm::Optional<DictionaryAttr> devices,
+    std::optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  if (devices.has_value()) state->addAttribute("devices", devices.getValue());
+  if (devices.has_value()) state->addAttribute("devices", devices.value());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -479,7 +480,7 @@ LogicalResult ReplicateOp::verify() {
 
   // Check number of devices, if set, matches `n`.
   if (op.getDevices().has_value()) {
-    for (auto device_attr : op.getDevices().getValue().getValue()) {
+    for (auto device_attr : op.getDevices().value().getValue()) {
       auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
         return op.emitError()
@@ -551,7 +552,7 @@ LogicalResult ReplicateOp::verify() {
            << " * " << terminator.getNumOperands() << ")";
 
   // Check replicated output types match return operand types.
-  for (auto operand_type_and_idx :
+  for (const auto& operand_type_and_idx :
        llvm::enumerate(terminator.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int32_t operand_idx = operand_type_and_idx.index();
@@ -570,7 +571,7 @@ void ReplicateOp::build(
         devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
-  llvm::Optional<DictionaryAttr> devices_attr;
+  std::optional<DictionaryAttr> devices_attr;
   if (!devices.empty()) {
     llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
     device_list.reserve(devices.size());
@@ -589,7 +590,7 @@ void ReplicateOp::build(
 
 void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
-    llvm::Optional<DictionaryAttr> devices,
+    std::optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,

@@ -133,7 +133,12 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCellGrad",
         "MatMul",
         "Mha",
+        "MhaV2",
         "Tmlp",
+        "TmlpV2",
+        "TmlpV3",
+        "Pmlp",
+        "FastUnsortedSegmentMax",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {
@@ -376,10 +381,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "MatMul",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
-#ifndef DNNL_AARCH64_USE_ACL
-                                     "Einsum"
-#endif  // DNNL_AARCH64_USE_ACL
-    };
+                                     "Einsum"};
 
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
@@ -399,13 +401,13 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "BiasAdd",
                                      "BiasAddGrad",
                                      "BiasAddV1",
+                                     "Erf",
                                      "FusedBatchNormV2",
                                      "FusedBatchNormGradV2",
                                      "FusedBatchNormV3",
                                      "FusedBatchNormGradV3",
                                      "LeakyRelu",
                                      "LeakyReluGrad",
-                                     "Mean",
                                      "Mul",
                                      "Sub",
                                      "Elu",
@@ -429,7 +431,9 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Softsign",
                                      "SoftsignGrad",
                                      "Sqrt",
+                                     "Square",
                                      "SquaredDifference",
+                                     "Sum"
                                      "Tanh",
                                      "TanhGrad"};
     UpdateList("INFERLIST", &list);
@@ -444,11 +448,11 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "Exp",
         "Expm1",
         "L2Loss",
+        "Mean",
         "Pow",
         "SaveV2",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
-        "Sum",
     };
     UpdateList("DENYLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
@@ -527,6 +531,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "ReverseSequence",
         "ReverseV2",
         "Round",
+        "ScatterNd",
         "Select",
         "SelectV2",
         "Shape",

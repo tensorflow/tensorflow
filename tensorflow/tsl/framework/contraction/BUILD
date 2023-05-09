@@ -55,7 +55,7 @@ cc_library(
     # specialization there causing build breakages.  This must be added here
     # as "defines" so that the header is excluded in all dependent targets.
     # TODO(b/238649163): remove this once no longer necessary.
-    defines = ["GEMM_KERNEL_H"],
+    defines = ["EIGEN_USE_AVX512_GEMM_KERNELS=0"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -68,7 +68,9 @@ cc_library(
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
         "//tensorflow/tsl:android_x86": [],
-        "//tensorflow/tsl:arm_any": [],
+        "//tensorflow/tsl:arm_any": [
+            "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
+        ],
         "//tensorflow/tsl:fuchsia_x86_64": [],
         "//tensorflow/tsl:ios": [],
         "//tensorflow/tsl:linux_ppc64le": [],
@@ -80,10 +82,10 @@ cc_library(
         ],
     }),
     deps = [
-        "@com_google_absl//absl/base",
-        "//third_party/eigen3",
-        "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/framework/fixedpoint",
+        "//tensorflow/tsl/platform:dynamic_annotations",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
     ] + select({
         "//tensorflow/tsl:android_x86": [],
         "//tensorflow/tsl:arm_any": [],

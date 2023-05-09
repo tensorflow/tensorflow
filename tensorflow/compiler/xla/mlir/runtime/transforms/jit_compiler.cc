@@ -25,18 +25,26 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/PassTimingInfo.h"
 #include "llvm/Pass.h"
+#include "llvm/Passes/OptimizationLevel.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
-#include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
 namespace runtime {
@@ -51,7 +59,7 @@ static bool DebugJitCompiler() {
 #if defined(DEBUG_XLA_RUNTIME_COMPILER)
   return true;
 #endif
-  return false;
+  return VLOG_IS_ON(5);
 }
 
 static bool EnablePassTiming() {
@@ -82,24 +90,35 @@ static void SetupPassDebugging(MLIRContext* context, mlir::PassManager& pm) {
   // Print IR after all passes.
   if (DebugJitCompiler()) {
     context->disableMultithreading();
+    // Do not print large constants.
+    mlir::OpPrintingFlags printing_flags;
+    printing_flags.elideLargeElementsAttrs(32);
     pm.enableIRPrinting([](Pass*, Operation*) { return false; },
                         [](Pass*, Operation*) { return true; },
                         /*printModuleScope=*/true,
                         /*printAfterOnlyOnChange=*/false,
-                        /*printAfterOnlyOnFailure=*/false, llvm::errs());
+                        /*printAfterOnlyOnFailure=*/false, llvm::errs(),
+                        printing_flags);
   }
+}
+
+static void PrintPassPipeline(const mlir::PassManager& pm) {
+  llvm::errs() << "MLIR Pass Pipeline:\n";
+  pm.printAsTextualPipeline(llvm::errs());
+  llvm::errs() << "\n";
 }
 
 static LogicalResult RunPipeline(
     ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
   if (!create_pipeline) return success();
 
-  mlir::PassManager pm(module.getContext());
-  SetupPassDebugging(module.getContext(), pm);
-
   // Instrument the pass manager to capture timing information.
   DefaultTimingManager tm;
   TimingScope timing;
+
+  mlir::PassManager pm(module.getContext());
+  SetupPassDebugging(module.getContext(), pm);
+
   if (EnablePassTiming()) {
     tm.setEnabled(true);
     timing = tm.getRootScope();
@@ -107,6 +126,10 @@ static LogicalResult RunPipeline(
   }
   PassManager passes(&pm);
   create_pipeline(passes);
+
+  if (DebugJitCompiler()) {
+    PrintPassPipeline(pm);
+  }
 
   return pm.run(module);
 }
@@ -125,19 +148,17 @@ static LogicalResult RunSpecializationPipeline(
 
 //===----------------------------------------------------------------------===//
 
-// Creates a new MLIR Context and registers all the dialects that are expected
+// Configures MLIR Context and registers all the dialects that are expected
 // in the compiled module.
-static std::unique_ptr<MLIRContext> CreateMlirContext(
-    const JitCompiler::Options& opts) {
-  DialectRegistry dialects;
-
-  // Call user-provided callback to register all required dialects.
-  if (opts.register_dialects) opts.register_dialects(dialects);
-
-  auto threading = MLIRContext::Threading::DISABLED;
-  auto ctx = std::make_unique<MLIRContext>(*dialects, threading);
-  ctx->loadAllAvailableDialects();
-  return ctx;
+static void ConfigureMlirContext(MLIRContext* context,
+                                 const JitCompiler::Options& opts) {
+  if (opts.register_dialects) {
+    // Call user-provided callback to register all required dialects.
+    DialectRegistry dialects;
+    opts.register_dialects(dialects);
+    context->appendDialectRegistry(*dialects);
+    context->loadAllAvailableDialects();
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -147,14 +168,57 @@ static std::unique_ptr<MLIRContext> CreateMlirContext(
 JitCompiler::JitCompiler(JitCompiler::Options opts,
                          std::string_view mlir_module)
     : opts_(std::move(opts)),
-      context_(CreateMlirContext(opts_)),
+      owned_context_(
+          std::make_unique<MLIRContext>(MLIRContext::Threading::DISABLED)),
+      context_(owned_context_.get()),
       diagnostic_os_(diagnostic_),
-      handler_(source_mgr_, context_.get(), diagnostic_os_),
+      handler_(source_mgr_, context_, diagnostic_os_),
       specialized_(false) {
+  ConfigureMlirContext(context_, opts_);
   source_mgr_.AddNewSourceBuffer(
       llvm::MemoryBuffer::getMemBuffer(mlir_module, "xla.program"),
       llvm::SMLoc());
-  module_ = parseSourceFile<ModuleOp>(source_mgr_, context_.get());
+  module_ = parseSourceFile<ModuleOp>(source_mgr_, context_);
+}
+
+JitCompiler::JitCompiler(JitCompiler::Options opts, mlir::ModuleOp mlir_module)
+    : opts_(std::move(opts)),
+      context_(mlir_module.getContext()),
+      diagnostic_os_(diagnostic_),
+      handler_(source_mgr_, context_, diagnostic_os_),
+      module_(mlir_module),
+      specialized_(false) {
+  ConfigureMlirContext(context_, opts_);
+}
+
+absl::Status JitCompiler::ComputeOrdinalsForExportedFunctions(
+    absl::Span<const std::string_view> exported) {
+  SymbolTable sym_table(*module_);
+
+  // Add `rt.export` operations for all explicitly exported functions.
+  for (const auto& indexed : llvm::enumerate(exported)) {
+    if (auto func = sym_table.lookup<FunctionOpInterface>(indexed.value())) {
+      OpBuilder(func).create<ExportOp>(func.getLoc(), func, indexed.index());
+      continue;
+    }
+    return InvalidArgument("exported function %s not found", indexed.value());
+  }
+
+  // Assign unique ordinals to all exported functions, including functions that
+  // were already exported with `rt.export` operations in the input IR.
+  mlir::PassManager pm(module_->getContext());
+  pm.addPass(CreateOrdinalAssignmentPass());
+  if (failed(pm.run(*module_)))
+    return Error("failed to run ordinal assignment pass");
+
+  // Resolve all functions exported from the module indexed by ordinal.
+  for (ExportOp op : module_->getOps<ExportOp>()) {
+    unsigned ordinal = *op.ordinal();
+    if (ordinal >= exported_.size()) exported_.resize(ordinal + 1);
+    exported_[ordinal] = op.exported(sym_table);
+  }
+
+  return absl::OkStatus();
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
@@ -168,37 +232,54 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   if (!compiler->module_)
     return compiler->Error("failed to parse the mlir source");
 
-  ModuleOp module = *compiler->module_;
-  SymbolTable sym_table(module);
-
-  // Add `rt.export` operations for all explicitly exported functions.
-  for (auto& indexed : llvm::enumerate(exported)) {
-    if (auto func = sym_table.lookup<func::FuncOp>(indexed.value())) {
-      OpBuilder(func).create<ExportOp>(func.getLoc(), func, indexed.index());
-      continue;
-    }
-    return InvalidArgument("exported function %s not found", indexed.value());
-  }
-
-  // Assign unique ordinals to all exported functions, including functions that
-  // were already exported with `rt.export` operations in the input IR.
-  mlir::PassManager pm(module.getContext());
-  pm.addPass(CreateOrdinalAssignmentPass());
-  if (failed(pm.run(module)))
-    return compiler->Error("failed to run ordinal assignment pass");
-
-  // Resolve all functions exported from the module indexed by ordinal.
-  for (ExportOp op : module.getOps<ExportOp>()) {
-    unsigned ordinal = *op.ordinal();
-    if (ordinal >= compiler->exported_.size())
-      compiler->exported_.resize(ordinal + 1);
-    compiler->exported_[ordinal] = op.exported(sym_table);
-  }
+  auto status = compiler->ComputeOrdinalsForExportedFunctions(exported);
+  if (!status.ok()) return status;
 
   // Initialize LLVM compiler internals.
   InitializeLlvmCompiler();
 
   return {std::move(compiler)};
+}
+
+/*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
+JitCompiler::Instantiate(JitCompiler::Options opts, ModuleOp mlir_module,
+                         absl::Span<const std::string_view> exported) {
+  std::unique_ptr<JitCompiler> compiler(
+      new JitCompiler(std::move(opts), mlir_module));
+
+  auto status = compiler->ComputeOrdinalsForExportedFunctions(exported);
+  if (!status.ok()) return status;
+
+  // Initialize LLVM compiler internals.
+  InitializeLlvmCompiler();
+
+  return {std::move(compiler)};
+}
+
+static std::function<llvm::Error(llvm::Module*)>
+MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
+  return [targetMachine](llvm::Module* m) -> llvm::Error {
+    llvm::LoopAnalysisManager lam;
+    llvm::FunctionAnalysisManager fam;
+    llvm::CGSCCAnalysisManager cgam;
+    llvm::ModuleAnalysisManager mam;
+
+    llvm::PipelineTuningOptions tuningOptions;
+    // Vectorization happens at the MLIR level.
+    tuningOptions.LoopVectorization = false;
+    llvm::PassBuilder pb(targetMachine, tuningOptions);
+
+    pb.registerModuleAnalyses(mam);
+    pb.registerCGSCCAnalyses(cgam);
+    pb.registerFunctionAnalyses(fam);
+    pb.registerLoopAnalyses(lam);
+    pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+    llvm::ModulePassManager mpm;
+    mpm.addPass(pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2));
+    mpm.run(*m, mam);
+    return llvm::Error::success();
+  };
 }
 
 /*static*/ absl::StatusOr<Executable> JitCompiler::Compile(
@@ -217,16 +298,18 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   std::vector<Executable::Function> functions;
   std::vector<std::string_view> exported;  // names of exported functions
 
-  for (auto& indexed : llvm::enumerate(compiler->exported())) {
-    func::FuncOp func = indexed.value();
+  for (const auto& indexed : llvm::enumerate(compiler->exported())) {
+    auto func = indexed.value();
     std::string_view name = exported.emplace_back(func.getName());
 
     // Get the signature of the exported function.
-    auto signature = opts.type_converter.Convert(func.getFunctionType());
+    auto signature = opts.type_converter.Convert(
+        llvm::cast<mlir::FunctionType>(func.getFunctionType()));
     if (!signature.ok()) return signature.status();
 
     // Calling convention conversion can fail if some types are not supported.
-    auto runtime_type = opts.calling_convention(func.getFunctionType());
+    auto runtime_type = opts.calling_convention(
+        llvm::cast<mlir::FunctionType>(func.getFunctionType()));
     if (!runtime_type)
       return compiler->Error(StrFormat(
           "calling convention failed to convert function type for %s", name));
@@ -245,13 +328,18 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
         Executable::GetResultsMemoryLayout(*runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
+    bool requires_blas = false;
+    if (Attribute requires_blas_attr = func->getAttr("xla.requires_blas")) {
+      requires_blas = cast<BoolAttr>(requires_blas_attr).getValue();
+    }
+
     // Add function with an unresolved function pointer; it will be updated once
     // we compile the input module to the native executable.
     functions.push_back(Executable::Function(
         name,
         /*fptr=*/nullptr, std::move(*signature), std::move(*runtime_signature),
-        std::move(*arguments_memory_layout),
-        std::move(*results_memory_layout)));
+        std::move(*arguments_memory_layout), std::move(*results_memory_layout),
+        requires_blas));
   }
 
   // Run the compilation pipeline to lower the module to LLVM dialect.
@@ -289,7 +377,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   ExecutionEngine::JitOptions engine_options;
   engine_options.opt_level = compiler->options().jit_code_opt_level;
   engine_options.target_machine = target_machine->get();
-  engine_options.make_optimizing_transformer = makeOptimizingTransformer;
+  engine_options.make_optimizing_transformer = MakeOptimizingTransformerForJit;
   engine_options.section_memory_mapper = memory_mapper.get();
   engine_options.symbols_binding = std::move(symbols);
 
@@ -332,7 +420,7 @@ absl::Status JitCompiler::Specialize(unsigned ordinal, ArgumentsRef arguments,
   assert(!specialized_ && "can specialize executable only once");
   specialized_ = true;
 
-  func::FuncOp func = exported(ordinal);
+  auto func = exported(ordinal);
 
   // Update function signature and sink constant arguments into the body.
   if (auto specialized = SpecializeFunction(func, arguments, symbolic_shapes,

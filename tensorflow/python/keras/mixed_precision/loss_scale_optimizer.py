@@ -15,7 +15,7 @@
 """Contains the loss scaling optimizer class."""
 
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
@@ -25,14 +25,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision import loss_scale as keras_loss_scale_module
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.trackable import base as trackable
@@ -63,8 +65,13 @@ class _UnwrapPreventer(object):
 
 def _is_all_finite(grads):
   """Returns a scalar boolean tensor indicating if all gradients are finite."""
+  def raw_values(g):
+    return g.values if isinstance(g, indexed_slices.IndexedSlices) else g
+
   is_finite_per_grad = [
-      math_ops.reduce_all(math_ops.is_finite(g)) for g in grads if g is not None
+      math_ops.reduce_all(math_ops.is_finite(raw_values(g)))
+      for g in grads
+      if g is not None
   ]
   return math_ops.reduce_all(is_finite_per_grad)
 
@@ -88,7 +95,7 @@ def _op_in_graph_mode(tensor):
 
 def _assign_if_finite(var, value):
   """Assigns a value to a variable if the value is finite."""
-  return control_flow_ops.cond(
+  return cond.cond(
       math_ops.is_finite(value), lambda: _op_in_graph_mode(var.assign(value)),
       control_flow_ops.no_op)
 
@@ -131,7 +138,7 @@ class _DynamicLossScaleState(trackable.Trackable):
     Raises:
       RuntimeError: If a weight with `name` has already been added.
     """
-    variable = variable_scope.variable(
+    variable = variable_v1.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=dtype,
@@ -207,7 +214,9 @@ class _DynamicLossScaleState(trackable.Trackable):
 
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    return ops.convert_to_tensor_v2_with_dispatch(self._current_loss_scale)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self._current_loss_scale
+    )
 
   def update(self, grads):
     """Updates the value of the loss scale.
@@ -224,9 +233,9 @@ class _DynamicLossScaleState(trackable.Trackable):
         step.
     """
     grads = nest.flatten(grads)
-    if distribution_strategy_context.has_strategy(
-    ) and distribution_strategy_context.in_cross_replica_context():
-      distribution = distribution_strategy_context.get_strategy()
+    if distribute_lib.has_strategy(
+    ) and distribute_lib.in_cross_replica_context():
+      distribution = distribute_lib.get_strategy()
       is_finite_per_replica = distribution.extended.call_for_each_replica(
           _is_all_finite, args=(grads,))
       # Each replica computed the same `is_finite` value, since `grads` is
@@ -246,7 +255,7 @@ class _DynamicLossScaleState(trackable.Trackable):
             _assign_if_finite(self.current_loss_scale, new_loss_scale),
             self.counter.assign(0))
 
-      return control_flow_ops.cond(
+      return cond.cond(
           self.counter + 1 >= self.growth_steps,
           incr_loss_scale,
           lambda: _op_in_graph_mode(self.counter.assign_add(1)))
@@ -260,8 +269,8 @@ class _DynamicLossScaleState(trackable.Trackable):
           self.counter.assign(0),
           self.current_loss_scale.assign(new_loss_scale))
 
-    update_op = control_flow_ops.cond(is_finite, update_if_finite_grads,
-                                      update_if_not_finite_grads)
+    update_op = cond.cond(is_finite, update_if_finite_grads,
+                          update_if_not_finite_grads)
     should_apply_gradients = is_finite
     return update_op, should_apply_gradients
 
@@ -458,10 +467,13 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
   def loss_scale(self):
     """The current loss scale as a float32 scalar tensor."""
     if isinstance(self._loss_scale, _DynamicLossScaleState):
-      return ops.convert_to_tensor_v2_with_dispatch(
-          self._loss_scale.current_loss_scale)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale.current_loss_scale
+      )
     else:
-      return ops.convert_to_tensor_v2_with_dispatch(self._loss_scale)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale
+      )
 
   @property
   def dynamic_counter(self):
@@ -592,7 +604,7 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
                       grads_and_vars,
                       name=None,
                       experimental_aggregate_gradients=True):
-    if distribution_strategy_context.in_cross_replica_context():
+    if distribute_lib.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
     # We check for the strategy here despite already checking in the constructor
     # as frequently the optimizer is created outside the strategy's scope.
@@ -658,7 +670,7 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
         maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
                                                do_not_apply_fn)
         return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
-      return distribution_strategy_context.get_replica_context().merge_call(
+      return distribute_lib.get_replica_context().merge_call(
           _apply_gradients_cross_replica,
           args=(grads, wrapped_vars, name))
 
@@ -713,7 +725,7 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
 
   def _raise_if_strategy_unsupported(self):
     if not strategy_supports_loss_scaling():
-      strategy = distribution_strategy_context.get_strategy()
+      strategy = distribute_lib.get_strategy()
       if isinstance(strategy,
                     (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
                      tpu_strategy.TPUStrategyV2)):
@@ -1107,9 +1119,9 @@ def _multiply_gradient(gradient, scale):
 
 def strategy_supports_loss_scaling():
   """Returns True if the current Strategy supports loss scaling."""
-  if not distribution_strategy_context.has_strategy():
+  if not distribute_lib.has_strategy():
     return True
-  strategy = distribution_strategy_context.get_strategy()
+  strategy = distribute_lib.get_strategy()
   # Strategies are supported if either there is only one replica or if variables
   # are replicated per device. Otherwise, the current model.fit() implementation
   # and most custom training loops incorrectly unscale the gradients. Currently,

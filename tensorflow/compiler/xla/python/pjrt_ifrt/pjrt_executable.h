@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
@@ -31,15 +32,44 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+// PjRt-compatible `Executable` interface.
+class PjRtCompatibleExecutable
+    : public llvm::RTTIExtends<PjRtCompatibleExecutable, Executable> {
+ public:
+  // APIs that allow direct access to `xla::PjRtExecutable` for PjRt-only
+  // operations.
+  virtual xla::PjRtExecutable* pjrt_executable() = 0;
+
+  static char ID;  // NOLINT
+};
+
+// PjRt-compatible `LoadedExecutable` interface.
+class PjRtCompatibleLoadedExecutable
+    : public llvm::RTTIExtends<PjRtCompatibleLoadedExecutable,
+                               LoadedExecutable> {
+ public:
+  // APIs that allow direct access to `xla::PjRtLoadedExecutable` for PjRt-only
+  // operations.
+  virtual xla::PjRtLoadedExecutable* pjrt_loaded_executable() = 0;
+  virtual std::shared_ptr<xla::PjRtLoadedExecutable>
+  shared_ptr_pjrt_loaded_executable() = 0;
+
+  static char ID;  // NOLINT
+};
+
 // `Executable` implementation that wraps a `xla::PjRtExecutable`.
 class PjRtExecutable final
-    : public llvm::RTTIExtends<PjRtExecutable, Executable> {
+    : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
   // Creates PjRtExecutable from xla::PjRtExecutable.
   static StatusOr<std::unique_ptr<Executable>> Create(
       std::unique_ptr<xla::PjRtExecutable> pjrt_executable);
+  static StatusOr<std::unique_ptr<Executable>> Create(
+      std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
 
-  xla::PjRtExecutable* pjrt_executable() const {
+  // PjRtCompatibleExecutable implementation.
+
+  xla::PjRtExecutable* pjrt_executable() override {
     DCHECK(this);
     return pjrt_executable_.get();
   }
@@ -91,15 +121,16 @@ class PjRtExecutable final
   static char ID;  // NOLINT
 
  protected:
-  explicit PjRtExecutable(std::unique_ptr<xla::PjRtExecutable> pjrt_executable)
+  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable)
       : pjrt_executable_(std::move(pjrt_executable)) {}
 
-  std::unique_ptr<xla::PjRtExecutable> pjrt_executable_;
+  std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
 };
 
 // `LoadedExecutable` implementation that wraps a `xla::PjRtLoadedExecutable`.
 class PjRtLoadedExecutable final
-    : public llvm::RTTIExtends<PjRtLoadedExecutable, LoadedExecutable> {
+    : public llvm::RTTIExtends<PjRtLoadedExecutable,
+                               PjRtCompatibleLoadedExecutable> {
  public:
   using LoadedExecutable::ExecuteOptions;
   using LoadedExecutable::ExecuteResult;
@@ -108,21 +139,35 @@ class PjRtLoadedExecutable final
   // xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings.
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
-      PjRtClient* client,
+      PjRtCompatibleClient* client,
       std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
+  static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
+      PjRtCompatibleClient* client,
+      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
 
-  // Creates PjRtExecutable from xla::XlaComputation. We expect that
-  // xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings. If
+  // Creates PjRtExecutable from an MHLO or StableHLO MLIR module. We expect
+  // that xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings. If
   // options.executable_build_options has use_auto_spmd_partitioning or
   // allow_spmd_sharding_propagation_to_output enabled,
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
-      PjRtClient* client, const XlaComputation& computation,
+      PjRtCompatibleClient* client, mlir::ModuleOp module,
+      CompileOptions options);
+  // TODO(phawkins): remove the XlaComputation overload.
+  static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
+      PjRtCompatibleClient* client, const XlaComputation& computation,
       CompileOptions options);
 
-  xla::PjRtLoadedExecutable* pjrt_loaded_executable() const {
+  // PjRtCompatibleLoadedExecutable implementation.
+
+  xla::PjRtLoadedExecutable* pjrt_loaded_executable() override {
     DCHECK(this);
     return pjrt_loaded_executable_.get();
+  }
+  std::shared_ptr<xla::PjRtLoadedExecutable> shared_ptr_pjrt_loaded_executable()
+      override {
+    DCHECK(this);
+    return pjrt_loaded_executable_;
   }
 
   // LoadedExecutable implementation.
@@ -169,46 +214,42 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetHloModules();
   }
 
-  Client* client() const override {
+  PjRtCompatibleClient* client() const override {
     DCHECK(this);
-    return const_cast<PjRtClient*>(client_);
+    return client_;
   }
-  StatusOr<ExecuteResult> Execute(absl::Span<Array* const> args,
+  StatusOr<ExecuteResult> Execute(absl::Span<tsl::RCReference<Array>> args,
                                   const ExecuteOptions& options,
                                   std::optional<DeviceList> devices) override;
 
   Future<Status> Delete() override;
   bool IsDeleted() const override {
     DCHECK(this);
-    return pjrt_loaded_executable()->IsDeleted();
+    return pjrt_loaded_executable_->IsDeleted();
   }
 
-  const DeviceAssignment& device_assignment() const override {
-    DCHECK(this);
-    return pjrt_loaded_executable()->device_assignment();
-  }
   absl::Span<const LoadedExecutable::LogicalDeviceIds>
   addressable_device_logical_ids() const override {
     DCHECK(this);
-    return pjrt_loaded_executable()->addressable_device_logical_ids();
+    return pjrt_loaded_executable_->addressable_device_logical_ids();
   }
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
-    return pjrt_loaded_executable()->addressable_devices();
+    return pjrt_loaded_executable_->addressable_devices();
   }
 
   static char ID;  // NOLINT
 
  private:
   static StatusOr<std::unique_ptr<LoadedExecutable>> CreateInternal(
-      PjRtClient* client,
-      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+      PjRtCompatibleClient* client,
+      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       const xla::Shape& result_shape,
       const xla::HloSharding* result_hlo_sharding);
 
   PjRtLoadedExecutable(
-      PjRtClient* client,
-      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+      PjRtCompatibleClient* client,
+      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       DeviceList devices, std::vector<DType> output_dtypes,
       std::vector<Shape> output_shapes,
       std::vector<std::shared_ptr<const Sharding>> output_shardings)
@@ -219,8 +260,8 @@ class PjRtLoadedExecutable final
         output_shapes_(std::move(output_shapes)),
         output_shardings_(std::move(output_shardings)) {}
 
-  PjRtClient* client_;
-  std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
+  PjRtCompatibleClient* client_;
+  std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
   DeviceList devices_;
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;

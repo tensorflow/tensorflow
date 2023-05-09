@@ -421,10 +421,6 @@ tf_module {
     argspec: "args=[\'data\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "segment_sum_v2"
-    argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "sigmoid"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -482,7 +478,7 @@ tf_module {
   }
   member_method {
     name: "top_k"
-    argspec: "args=[\'input\', \'k\', \'sorted\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'True\', \'None\'], "
+    argspec: "args=[\'input\', \'k\', \'sorted\', \'index_type\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'True\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "truediv"

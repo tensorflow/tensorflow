@@ -41,7 +41,7 @@ static RuntimeFallbackTensor ConvertKernelFallbackToRuntimeFallbackTensor(
               tensorflow::tfd::kEagerContextResourceName);
   assert(optional_eager_resource.has_value());
   auto expected_eager_context =
-      optional_eager_resource.getValue()->GetTFEagerContext();
+      optional_eager_resource.value()->GetTFEagerContext();
   assert(expected_eager_context);
   Device *d;
   Status s =
@@ -66,7 +66,7 @@ ConvertRuntimeFallbackToKernelFallbackTensor(
   const tensorflow::Tensor *tf_tensor;
   Status s = tensor.GetTensorHandle()->Tensor(&tf_tensor);
   if (!s.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(s.error_message());
+    return tfrt::MakeErrorAsyncValueRef(s.message());
   }
   auto src_knfb_tensor =
       KernelFallbackTensor(tensor.shape(), tensor.dtype(), *tf_tensor);

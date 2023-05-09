@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 
+#include <optional>
+
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace mlir {
 namespace tfg {
@@ -80,19 +83,19 @@ tensorflow::StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
                                                      ShapedType type) {
   auto arr = input_tensor.flat<T>();
   return ElementsAttr(
-      DenseElementsAttr::get(type, llvm::makeArrayRef(arr.data(), arr.size())));
+      DenseElementsAttr::get(type, llvm::ArrayRef(arr.data(), arr.size())));
 }
 
 ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
-                                   input_tensor.TotalBytes());
+  auto buffer = llvm::ArrayRef(static_cast<char*>(input_tensor.data()),
+                               input_tensor.TotalBytes());
   return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
-                                   tensor.TotalBytes());
+  auto buffer =
+      llvm::ArrayRef(static_cast<char*>(tensor.data()), tensor.TotalBytes());
   return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
@@ -222,9 +225,9 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
 
     std::vector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
-    return ElementsAttr(
-        SplatElementsAttr::get(single_attr.getType().clone(original_dimensions),
-                               single_attr.getValues<Attribute>()[0]));
+    return ElementsAttr(SplatElementsAttr::get(
+        single_attr.getShapedType().clone(original_dimensions),
+        single_attr.getValues<Attribute>()[0]));
   }
 
   Tensor t;
@@ -262,13 +265,13 @@ PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
 
 ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
   if (type.isa<UnrankedTensorType>()) {
-    return ShapeAttr::get(type.getContext(), llvm::None);
+    return ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
   if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
     return ShapeAttr::get(
         type.getContext(),
-        llvm::makeArrayRef(ConvertMlirShapeToTF(tensor_type.getShape())));
+        llvm::ArrayRef(ConvertMlirShapeToTF(tensor_type.getShape())));
   }
 
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
@@ -279,14 +282,14 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
 // Converts the tensor shape proto into an MLIR shape attribute.
 tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
-  if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
+  if (shape.unknown_rank()) return ShapeAttr::get(context, std::nullopt);
 
   SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim_size());
   for (const auto& dim : shape.dim()) {
     dims.push_back(dim.size());
   }
-  return ShapeAttr::get(context, llvm::makeArrayRef(dims));
+  return ShapeAttr::get(context, llvm::ArrayRef(dims));
 }
 
 // Converts an MLIR dense string elements attribute to a TensorFlow tensor
@@ -344,14 +347,19 @@ void ConvertFloatElementsAttr(const DenseElementsAttr attr,
 // specified repeated field.
 void ConvertHalfElementsAttr(const DenseElementsAttr attr,
                              RepeatedField<int>* output) {
+  // Half values are stored as bit representations in int, requiring a bit_cast.
   if (attr.isSplat()) {
-    auto value = attr.getSplatValue<Eigen::half>().x;
-    if (value != Eigen::half(0) || std::signbit(static_cast<float>(value)))
-      output->Add(value);
+    uint16_t bits =
+        Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<Eigen::half>());
+    // Only +0 has a 0 bit representation.
+    if (bits != 0) {
+      output->Add(bits);
+    }
   } else {
     output->Reserve(attr.getNumElements());
-    for (const Eigen::half value : attr.getValues<Eigen::half>())
-      output->AddAlreadyReserved(value.x);
+    for (const Eigen::half value : attr.getValues<Eigen::half>()) {
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
+    }
   }
 }
 
@@ -383,18 +391,44 @@ void ConvertUIntElementsAttr(const DenseElementsAttr attr,
 
 void ConvertBfloat16ElementsAttr(const DenseElementsAttr attr,
                                  RepeatedField<int>* output) {
+  // Bfloat16 values are stored as bit representations in int, requiring a
+  // bit_cast.
   if (attr.isSplat()) {
-    if (attr.getSplatValue<bfloat16>().value != bfloat16(0))
-      output->Add(attr.getSplatValue<bfloat16>().value);
+    uint16_t bits =
+        Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<bfloat16>());
+    // Only +0 has a 0 bit representation.
+    if (bits != 0) {
+      output->Add(bits);
+    }
   } else {
     output->Reserve(attr.getNumElements());
-    for (const bfloat16 value : attr.getValues<bfloat16>())
-      output->AddAlreadyReserved(value.value);
+    for (const bfloat16 value : attr.getValues<bfloat16>()) {
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
+    }
+  }
+}
+
+template <typename T>
+void ConvertFloat8ElementsAttr(const DenseElementsAttr attr,
+                               std::string* output) {
+  // Float8 values are stored as bit representations in int, requiring a
+  // bit_cast.
+  if (attr.isSplat()) {
+    uint8_t bits = Eigen::numext::bit_cast<uint8_t>(attr.getSplatValue<T>());
+    // Only +0 has a 0 bit representation.
+    if (bits != 0) {
+      output->push_back(bits);
+    }
+  } else {
+    output->reserve(attr.getNumElements());
+    for (const T value : attr.getValues<T>()) {
+      output->push_back(Eigen::numext::bit_cast<uint8_t>(value));
+    }
   }
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
-  auto type = attr.getType();
+  auto type = attr.getShapedType();
   auto shape = type.getShape();
   tensorflow::DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));
@@ -430,6 +464,14 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     case tensorflow::DT_FLOAT:
       ConvertFloatElementsAttr(dense_attr, output->mutable_float_val(),
                                output->mutable_tensor_content());
+      break;
+    case tensorflow::DT_FLOAT8_E5M2:
+      ConvertFloat8ElementsAttr<tsl::float8_e5m2>(dense_attr,
+                                                  output->mutable_float8_val());
+      break;
+    case tensorflow::DT_FLOAT8_E4M3FN:
+      ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
+          dense_attr, output->mutable_float8_val());
       break;
     case tensorflow::DT_QUINT8:
     case tensorflow::DT_INT8:
@@ -497,7 +539,7 @@ llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape) {
 
 llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shape) {
   return llvm::to_vector(llvm::map_range(shape, [](int64_t dim) {
-    return dim == -1 ? mlir::ShapedType::kDynamicSize : dim;
+    return dim == -1 ? mlir::ShapedType::kDynamic : dim;
   }));
 }
 

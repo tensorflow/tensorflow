@@ -15,130 +15,64 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/matmul_op_benchmark.h"
 
+#include <array>
+#include <string>
+
 namespace tensorflow {
 
 // Use type aliases compatible with MLIR type names.
 using f32 = float;
 
-static const char* mlir_input_static = R"(
-func.func @matmul(%arg0: tensor<64x64xf32>,
-             %arg1: tensor<64x64xf32>) -> tensor<64x64xf32> {
-    %0 = "tf.MatMul"(%arg0, %arg1) {
+static const char* matmul_ir_skeleton = R"(
+func.func @matmul(%arg0: {0}, %arg1: {1}) -> {2} {
+    %0 = "tf.MatMul"(%arg0, %arg1) {{
            transpose_a = false,
            transpose_b = false
-         } : (tensor<64x64xf32>, tensor<64x64xf32>) -> tensor<64x64xf32>
-    func.return %0 : tensor<64x64xf32>
+         } : ({0}, {1}) -> {2}
+    func.return %0 : {2}
   }
 )";
 
-BM_TFMlir(MatMul_static, mlir_input_static, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({64, 64, 64, 8, 8, 8});
-BM_Eigen(MatMul_static, f32)->ArgNames({"m", "k", "n"})->Args({64, 64, 64});
+std::string GetMatmulIR(std::array<int64_t, 2> lhs_shape,
+                        std::array<int64_t, 2> rhs_shape,
+                        std::array<int64_t, 2> out_shape,
+                        llvm::StringRef element_type) {
+  return llvm::formatv(
+      matmul_ir_skeleton,
+      PrintTensorType(lhs_shape, element_type),  // LHS type {0}
+      PrintTensorType(rhs_shape, element_type),  // RHS type {1}
+      PrintTensorType(out_shape, element_type)   // Out type {2}
+  );
+}
 
-static const char* mlir_input = R"(
-func.func @matmul(%arg0: tensor<?x?xf32>,
-             %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-    %0 = "tf.MatMul"(%arg0, %arg1) {
-           transpose_a = false,
-           transpose_b = false
-         } : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-    func.return %0 : tensor<?x?xf32>
+static void Shapes(benchmark::internal::Benchmark* b) {
+  for (int64_t i = 16; i <= 2048; i *= 2) {
+    b->Args({i, i, i, i >= 256});
   }
-)";
 
-BM_TFMlir(MatMul_64_64_64, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({64, 64, 64, 16, 16, 8})
-    ->Args({64, 64, 64, 32, 32, 8})
-    ->Args({64, 64, 64, 8, 8, 8})
-    ->Args({64, 64, 64, 16, 16, 16})
-    ->Args({64, 64, 64, 32, 32, 16})
-    ->Args({64, 64, 64, 8, 8, 16})
-    ->Args({64, 64, 64, 8, 8, 32});
-BM_Eigen(MatMul_64_64_64, f32)->ArgNames({"m", "k", "n"})->Args({64, 64, 64});
+  b->Args({10, 10, 10, false});
+  b->Args({100, 100, 100, false});
 
-BM_TFMlir(MatMul_128_128_128, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({128, 128, 128, 16, 16, 8})
-    ->Args({128, 128, 128, 32, 32, 8})
-    ->Args({128, 128, 128, 8, 8, 8})
-    ->Args({128, 128, 128, 16, 16, 16})
-    ->Args({128, 128, 128, 32, 32, 16})
-    ->Args({128, 128, 128, 8, 8, 16})
-    ->Args({128, 128, 128, 8, 8, 32});
-BM_Eigen(MatMul_128_128_128, f32)
-    ->ArgNames({"m", "k", "n"})
-    ->Args({128, 128, 128});
+  b->Args({1, 300, 18, false});
+  b->Args({1, 18, 300, false});
+  b->Args({18, 1, 300, false});
+  b->Args({18, 300, 1, false});
+  b->Args({300, 1, 18, false});
+  b->Args({300, 18, 1, false});
 
-BM_TFMlir(MatMul_256_256_256, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({256, 256, 256, 16, 16, 8})
-    ->Args({256, 256, 256, 32, 32, 8})
-    ->Args({256, 256, 256, 8, 8, 8})
-    ->Args({256, 256, 256, 16, 16, 16})
-    ->Args({256, 256, 256, 32, 32, 16})
-    ->Args({256, 256, 256, 8, 8, 16})
-    ->Args({256, 256, 256, 8, 8, 32});
-BM_Eigen(MatMul_256_256_256, f32)
-    ->ArgNames({"m", "k", "n"})
-    ->Args({256, 256, 256});
+  for (int64_t i : {300, 256}) {
+    b->Args({1, 1, i, false});
+    b->Args({1, i, 1, false});
+    b->Args({i, 1, 1, false});
 
-BM_TFMlir(MatMul_100_100_100, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({100, 100, 100, 16, 16, 8})
-    ->Args({100, 100, 100, 32, 32, 8})
-    ->Args({100, 100, 100, 8, 8, 8})
-    ->Args({100, 100, 100, 16, 16, 16})
-    ->Args({100, 100, 100, 32, 32, 16})
-    ->Args({100, 100, 100, 8, 8, 16})
-    ->Args({100, 100, 100, 8, 8, 32});
-BM_Eigen(MatMul_100_100_100, f32)
-    ->ArgNames({"m", "k", "n"})
-    ->Args({100, 100, 100});
+    b->Args({1, i, i, false});
+    b->Args({i, 1, i, false});
+    b->Args({i, i, 1, false});
+  }
+}
 
-BM_TFMlir(MatMul_1024_1024_1024, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({1024, 1024, 1024, 128, 128, 16})
-    ->Args({1024, 1024, 1024, 256, 256, 8})
-    ->Args({1024, 1024, 1024, 128, 128, 8})
-    ->Args({1024, 1024, 1024, 64, 64, 8})
-    ->Args({1024, 1024, 1024, 32, 32, 8})
-    ->Args({1024, 1024, 1024, 16, 16, 8})
-    ->Args({1024, 1024, 1024, 8, 8, 8})
-    ->Args({1024, 1024, 1024, 16, 16, 16})
-    ->Args({1024, 1024, 1024, 32, 32, 16})
-    ->Args({1024, 1024, 1024, 8, 8, 16})
-    ->Args({1024, 1024, 1024, 8, 8, 32});
-BM_Eigen(MatMul_1024_1024_1024, f32)
-    ->ArgNames({"m", "k", "n"})
-    ->Args({1024, 1024, 1024});
-
-BM_TFMlir(MatMul_1_18_300, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({1, 18, 300, 32, 32, 8})
-    ->Args({1, 18, 300, 16, 16, 8})
-    ->Args({1, 18, 300, 8, 8, 8});
-BM_Eigen(MatMul_1_18_300, f32)->ArgNames({"m", "k", "n"})->Args({1, 18, 300});
-
-BM_TFMlir(MatMul_1_300_300, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({1, 300, 300, 32, 32, 8})
-    ->Args({1, 300, 300, 16, 16, 8})
-    ->Args({1, 300, 300, 8, 8, 8});
-BM_Eigen(MatMul_1_300_300, f32)->ArgNames({"m", "k", "n"})->Args({1, 300, 300});
-
-BM_TFMlir(MatMul_1_300_1, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({1, 300, 1, 32, 32, 8})
-    ->Args({1, 300, 1, 16, 16, 8})
-    ->Args({1, 300, 1, 8, 8, 8});
-BM_Eigen(MatMul_1_300_1, f32)->ArgNames({"m", "k", "n"})->Args({1, 300, 1});
-
-BM_TFMlir(MatMul_10_10_10, mlir_input, "matmul", f32)
-    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
-    ->Args({10, 10, 10, 8, 8, 8})
-    ->Args({10, 10, 10, 4, 4, 4});
-BM_Eigen(MatMul_10_10_10, f32)->ArgNames({"m", "k", "n"})->Args({10, 10, 10});
+BM_TFMlir(MatmulMlirStatic, false, "matmul", f32)->Apply(Shapes);
+BM_TFMlir(MatmulMlirDynamic, true, "matmul", f32)->Apply(Shapes);
+BM_Eigen(MatmulEigen, f32)->Apply(Shapes);
 
 }  // namespace tensorflow

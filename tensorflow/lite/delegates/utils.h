@@ -26,7 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -40,6 +40,45 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
                                               TfLiteType new_type,
                                               TfLiteTensor** new_tensor,
                                               int* new_tensor_index);
+
+// Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
+// index. If an invalid subgraph index is given, then returns nullptr.
+// NOTE: Entry point for C node plugin API.
+TfLiteContext* GetSubgraphContext(const TfLiteContext* context,
+                                  int subgraph_index);
+
+// Marks the subgraph with the given index as delegation-skippable. Returns
+// kTfLiteOk if the given subgraph index is valid and is successfully marked
+// as delegation-skippable, and an error status if the subgraph index is
+// invalid.
+// If a subgraph is delegation-skippable, then the subgraph will be handled by
+// a TfLiteDelegate (and that the delegate is supposed to be already aware of
+// this state), and therefore, TfLiteInterpreter can skip invoking
+// `ModifyGraphWithDelegate` on this subgraph.
+// NOTE: This function is expected to be called only when the subgraph that
+// `subgraph_index` is pointing to should be skipped by
+// interpreter::ModifyGraphWithDelegate (e.g. the subgraph is part of the list
+// of callee subgraphs of the same control flow node, and all of those callees
+// are supported by the same delegate at once).
+//
+// For example, this function can be used when the delegate is handling
+// control flow ops like while op. E.g. A while op has condition subgraph
+// indexed at `i` and body subgraph indexed at `j`. The op can be delegated
+// when the following condition satisfied:
+//   1. The delegate supports while op
+//   2. Both condition subgraph `i` and body subgraph `j` can be fully
+//   delegated by the delegate.
+// Then if the delegate decides to support the while node along with both body
+// and condition subgraphs, it should mark subgraphs `i` and `j` skippable so
+// those two subgraphs won't be delegated separately again after being
+// absorbed by the parent subgraph.
+// WARNING: It is the delegate's responsibility to define when to skip
+// subgraph->ModifyGraphWithDelegate, to check any edge cases (i.e. multiple
+// references to the subgraph that `subgraph_index` is pointing to), and to mark
+// that subgraph as skippable using this function.
+// NOTE: Entry point for C node plugin API.
+TfLiteStatus MarkSubgraphAsDelegationSkippable(const TfLiteContext* context,
+                                               int subgraph_index);
 
 using IsNodeSupportedFn =
     std::function<bool(TfLiteContext*, TfLiteNode*, TfLiteRegistration*,
@@ -69,7 +108,25 @@ class GraphPartitionHelper {
   // replaced with one delegate kernel (i.e. a kTfLiteBuiltinDelegate op).
   // If 'unsupported_nodes_info' is provided, it will be populated with
   // information about all different unsupported nodes.
-  virtual TfLiteStatus Partition(std::set<std::string>* unsupported_nodes_info);
+  virtual TfLiteStatus Partition(
+      std::set<std::string>* unsupported_nodes_info) {
+    return PartitionImpl(unsupported_nodes_info, 0,
+                         std::numeric_limits<int>::max());
+  }
+
+#ifdef TFLITE_DEBUG_DELEGATE
+  // Partition the graph into node subsets such that each subset could be
+  // replaced with one delegate kernel (i.e. a kTfLiteBuiltinDelegate op).
+  // If 'unsupported_nodes_info' is provided, it will be populated with
+  // information about all different unsupported nodes.
+  // The 'start_node_index' and 'end_node_index' define the range of nodes
+  // that could be delegated.
+  virtual TfLiteStatus Partition(std::set<std::string>* unsupported_nodes_info,
+                                 int start_node_index, int end_node_index) {
+    return PartitionImpl(unsupported_nodes_info, start_node_index,
+                         end_node_index);
+  }
+#endif  // TFLITE_DEBUG_DELEGATE
 
   // Returns the first n largest partitions or all if #partitions is less than
   // 'n' and each parition has at least (>=) 'min_nodes_per_partition' nodes.
@@ -104,6 +161,9 @@ class GraphPartitionHelper {
   }
   virtual std::vector<int> GetNodesOfFirstNLargestPartitionsImpl(
       int n, int min_nodes_per_partition);
+  virtual TfLiteStatus PartitionImpl(
+      std::set<std::string>* unsupported_nodes_info, int start_node_index,
+      int end_node_index);
 
   TfLiteContext* const context_ = nullptr;
 
@@ -122,8 +182,12 @@ class GraphPartitionHelper {
   // associated w/ 'context_').
   // If 'unsupported_nodes_info' is provided, it will be populated with
   // information about all different unsupported nodes.
+  // The 'start_node_index' and 'end_node_index' define the range of nodes that
+  // could be delegated.
   TfLiteStatus PrepareSupportedNodes(
-      std::set<std::string>* unsupported_nodes_info = nullptr);
+      std::set<std::string>* unsupported_nodes_info = nullptr,
+      int start_node_index = 0,
+      int end_node_index = std::numeric_limits<int>::max());
 
   // The number of total nodes passed in for partitioning (i.e. the
   // execution_plan size associated w/ 'context_')

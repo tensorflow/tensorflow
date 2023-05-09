@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/resource_variable_util.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
+#include "tensorflow/core/kernels/scatter_nd_util.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -144,7 +145,7 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   "This could mean that the variable has been deleted. ",
                   "In TF1, it can also mean the variable is uninitialized. ",
                   "Debug info: container=", handle.container(),
-                  ", status error message=", status.error_message()));
+                  ", status error message=", status.message()));
 
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
@@ -288,7 +289,6 @@ REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
   }
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
@@ -303,7 +303,6 @@ TF_CALL_variant(REGISTER_GPU_KERNELS);
                           VarHandleOp)
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_DEFAULT_KERNELS);
-TF_CALL_bfloat16(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
@@ -368,7 +367,7 @@ void DisableCopyOnReadOp::Compute(OpKernelContext* ctx) {
                   "This could mean that the variable has been deleted. ",
                   "In TF1, it can also mean the variable is uninitialized. ",
                   "Debug info: container=", handle.container(),
-                  ", status error message=", status.error_message()));
+                  ", status error message=", status.message()));
   // If the variable is currently in copy-on-read mode, its refcount is 1
   if (variable->copy_on_read_mode.load()) {
     // Obtain an exclusive lock on the variable and change the access mode
@@ -564,7 +563,6 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
-TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -709,13 +707,13 @@ class ResourceGatherOp : public OpKernel {
     // indices.shape[batch_dims:] + params.shape[batch_dims+1:].
     TensorShape result_shape;
     for (int i = 0; i < batch_dims_; ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
     }
     for (int i = batch_dims_; i < indices.dims(); ++i) {
-      result_shape.AddDim(indices.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(indices.dim_size(i)));
     }
     for (int i = batch_dims_ + 1; i < params.dims(); ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
     }
 
     Tensor* out = nullptr;
@@ -824,6 +822,9 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GATHER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
 
+#undef REGISTER_GATHER_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 // Variant objects themselves sit on CPU, even if they contain data
 // pointing to a device.
 REGISTER_KERNEL_BUILDER(Name("ResourceGather")
@@ -840,9 +841,6 @@ REGISTER_KERNEL_BUILDER(Name("ResourceGather")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
                         ResourceGatherOp<CPUDevice, Variant, int64>)
-
-#undef REGISTER_GATHER_GPU
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_GATHER_CPU
 #undef REGISTER_GATHER_ALL_INDICES
@@ -1008,7 +1006,7 @@ Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
                  const Tensor& updates, Index num_indices) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
-      tensorflow::OpDeterminismRequired()) {
+      tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
     return DoScatterOnCpu<T, Index, op>(c, params, indices, updates,
                                         num_indices);
   }
@@ -1200,19 +1198,24 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_UPDATE_GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .TypeConstraint<bool>("dtype")
+                            .TypeConstraint<int32>("Tindices"),
+                        ResourceScatterUpdateOp<GPUDevice, bool, int32,
+                                                scatter_op::UpdateOp::ASSIGN>)
+#undef REGISTER_SCATTER_ARITHMETIC_GPU
+#undef REGISTER_SCATTER_MINMAX_GPU
+#undef REGISTER_SCATTER_UPDATE_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int32>("Tindices"),
                         ResourceScatterUpdateOp<CPUDevice, Variant, int32,
-                                                scatter_op::UpdateOp::ASSIGN>)
-REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("resource")
-                            .TypeConstraint<bool>("dtype")
-                            .TypeConstraint<int32>("Tindices"),
-                        ResourceScatterUpdateOp<GPUDevice, bool, int32,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_DEFAULT)
@@ -1222,10 +1225,6 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .TypeConstraint<int64_t>("Tindices"),
                         ResourceScatterUpdateOp<CPUDevice, Variant, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
-#undef REGISTER_SCATTER_ARITHMETIC_GPU
-#undef REGISTER_SCATTER_MINMAX_GPU
-#undef REGISTER_SCATTER_UPDATE_GPU
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_SCATTER_ARITHMETIC
 #undef REGISTER_SCATTER_ARITHMETIC_CPU

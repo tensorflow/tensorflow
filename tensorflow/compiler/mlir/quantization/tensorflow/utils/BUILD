@@ -42,11 +42,29 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_to_uniform_attribute_utils",
+    srcs = ["tf_to_uniform_attribute_utils.cc"],
+    hdrs = ["tf_to_uniform_attribute_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:uniform_op_quant_spec",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -22,6 +22,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import remote_utils
@@ -179,29 +180,51 @@ def connect_to_cluster(cluster_spec_or_resolver,
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
   if context.context().coordination_service is None:
+    service_type = remote_utils.coordination_service_type(protocol)
+    service_leader = ""
     # Maybe enable coordination service for the communication protocol
     # TODO(b/243839559): Fix UPTC + Coordination service crashing
-    if isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver):
+    if isinstance(cluster_spec_or_resolver,
+                  tpu_cluster_resolver.TPUClusterResolver):
       is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
-      coordination_service = remote_utils.coordination_service_type(
+      service_type = remote_utils.coordination_service_type(
           protocol, is_uptc_sess)
-    else:
-      coordination_service = remote_utils.coordination_service_type(protocol)
-    if coordination_service:
+      service_leader = cluster_spec_or_resolver.get_coordination_service_leader(
+      )
+    if service_type:
       # If `enable_health_check` is true, coordination service agent would
       # do connecting (and tasks would send heartbeat if connection is set up)
       # while creating eager contexts. Enabling health check does not mutate
       # coordination service.
       context.context().configure_coordination_service(
-          coordination_service, enable_health_check=False)
+          service_type=service_type,
+          service_leader=service_leader,
+          enable_health_check=False)
+
+  default_session_config = copy.deepcopy(context.context().config)
+
+  for name in cluster_spec.jobs:
+    # assuming any of the non-local job is the worker jobs.
+    # should we use cluster_spec_or_resolver.get_job_name() instead when
+    # it is available?
+    # maybe consolicate this with the 'master' logic below
+    if name == job_name:
+      continue
+
+    default_session_config.experimental.collective_group_leader = (
+        f"/job:{name}/replica:0/task:0"
+    )
+
+  logging.info("default session config: %s", default_session_config)
 
   server_def = ServerDef(
       cluster=cluster_def,
       job_name=job_name,
       task_index=task_index,
       protocol=protocol,
-      default_session_config=context.context().config,
-      cluster_device_filters=cluster_device_filters)
+      default_session_config=default_session_config,
+      cluster_device_filters=cluster_device_filters,
+  )
 
   if is_server_def_changed:
     context.set_server_def(server_def)

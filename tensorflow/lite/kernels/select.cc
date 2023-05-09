@@ -15,7 +15,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -161,6 +161,9 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
       break;                                                                 \
     case kTfLiteInt8:                                                        \
       TF_LITE_SELECT(int8_t, op);                                            \
+      break;                                                                 \
+    case kTfLiteUInt32:                                                      \
+      TF_LITE_SELECT(uint32_t, op);                                          \
       break;                                                                 \
     case kTfLiteInt16:                                                       \
       TF_LITE_SELECT(int16_t, op);                                           \

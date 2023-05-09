@@ -39,10 +39,10 @@ cc_library(
         ":filesystem_interface",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:errors",
     ],
 )
 

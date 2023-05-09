@@ -51,11 +51,10 @@ TEST(ConvertTensorShapeToType, Simple) {
         auto type,
         ConvertTensorShapeToType<mlir::RankedTensorType>(shape, builder));
 
-    int64_t bounds[] = {8, mlir::ShapedType::kDynamicSize};
+    int64_t bounds[] = {8, mlir::ShapedType::kDynamic};
     auto extensions = mlir::mhlo::TypeExtensionsAttr::get(&context, bounds);
-    auto expected =
-        mlir::RankedTensorType::get({mlir::ShapedType::kDynamicSize, 128},
-                                    builder.getI32Type(), extensions);
+    auto expected = mlir::RankedTensorType::get(
+        {mlir::ShapedType::kDynamic, 128}, builder.getI32Type(), extensions);
     EXPECT_TRUE(type == expected)
         << " Expected: " << mlir::debugString(expected)
         << " Computed: " << mlir::debugString(type);

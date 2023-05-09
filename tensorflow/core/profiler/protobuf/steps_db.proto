@@ -22,7 +22,7 @@ message DeviceMemoryTransfer {
   uint64 bytes_transferred = 3;
 }
 
-// Next ID: 6
+// Next ID: 7
 // Result proto for StepInfo.
 message StepInfoResult {
   // The step number.
@@ -35,6 +35,8 @@ message StepInfoResult {
   uint64 begin_ps = 3;
   // Breakdown of the step-time. Can be unpacked into a GenericStepBreakdown.
   google.protobuf.Any step_breakdown = 4;
+  // Total time/bytes/occurences for collectives. (All-Reduce, All-to-All etc)
+  DeviceMemoryTransfer collectives = 6;
 }
 
 // Result proto for all -educe ops.
@@ -78,6 +80,7 @@ message PerCoreStepInfo {
   // 1. HostToDevice
   // 2. DeviceToHost
   // 3. DeviceToDevice
+  // Cores are normally sharing host interfaces (i.e. PCIe).
   repeated DeviceMemoryTransfer device_memory_transfers = 7;
 
   reserved 4;

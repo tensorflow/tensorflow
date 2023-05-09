@@ -114,7 +114,7 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
   let arguments = (ins
     StrAttr:$device,
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands);
+    Variadic<AnyType>);
 
   let results = (outs
     Variadic<AnyType>:$results
@@ -292,7 +292,7 @@ For example:
       "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
-    OpBuilder<(ins "int":$n, "llvm::Optional<DictionaryAttr>":$devices,
+    OpBuilder<(ins "int":$n, "std::optional<DictionaryAttr>":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
@@ -348,7 +348,7 @@ This op is used for outlining a cluster.
 
   let arguments = (ins
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands
+    Variadic<AnyType>
   );
 
   let results = (outs

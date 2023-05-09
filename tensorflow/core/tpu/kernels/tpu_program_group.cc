@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 namespace se_tpu = ::stream_executor::tpu;
-using stream_executor::port::Status;
+using tsl::Status;
 }  // namespace
 
 TPUExecutableInfoProto TpuProgramGroup::ConstructExecutableInfo(

@@ -15,21 +15,23 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 
 #include <cstddef>
+#include <cstdlib>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 namespace {
 
 using tflite::TFLiteSettings;
 using tflite::TFLiteSettingsBuilder;
 using tflite::delegates::utils::LoadDelegateFromSharedLibrary;
+using tflite::delegates::utils::LoadSymbolFromSharedLibrary;
 
 TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
   const TfLiteStableDelegate* stable_delegate_handle =
       LoadDelegateFromSharedLibrary(
-          "third_party/tensorflow/lite/delegates/utils/experimental/"
+          "tensorflow/lite/delegates/utils/experimental/"
           "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so");
 
   EXPECT_NE(stable_delegate_handle, nullptr);
@@ -40,6 +42,10 @@ TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
   EXPECT_STREQ(stable_delegate_handle->delegate_version,
                tflite::example::kSampleStableDelegateVersion);
   EXPECT_NE(stable_delegate_handle->delegate_plugin, nullptr);
+  EXPECT_STREQ(
+      getenv(tflite::delegates::utils::kTfLiteLibraryPathEnvironmentVariable),
+      "tensorflow/lite/delegates/utils/experimental/"
+      "sample_stable_delegate");
 
   // Builds TFLiteSettings flatbuffer and passes into delegate plugin create
   // method.
@@ -59,12 +65,11 @@ TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
 }
 
 TEST(TfLiteDelegateLoaderUtilsTest, WrongSymbolReturnsNullptr) {
-  const TfLiteStableDelegate* stable_delegate_handle =
-      LoadDelegateFromSharedLibrary(
-          "third_party/tensorflow/lite/delegates/utils/experimental/"
-          "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so",
-          "NOT_REAL_SYMBOL");
-  EXPECT_EQ(stable_delegate_handle, nullptr);
+  void* symbol_pointer = LoadSymbolFromSharedLibrary(
+      "tensorflow/lite/delegates/utils/experimental/"
+      "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so",
+      "NOT_REAL_SYMBOL");
+  EXPECT_EQ(symbol_pointer, nullptr);
 }
 
 TEST(TfLiteDelegateLoaderUtilsTest, MissingLibReturnsNullptr) {

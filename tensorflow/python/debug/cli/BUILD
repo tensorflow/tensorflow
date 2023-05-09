@@ -100,9 +100,9 @@ py_library(
         ":debugger_cli_common",
         ":tensor_format",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/lib:common",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -139,7 +139,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":debugger_cli_common",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -148,8 +148,8 @@ py_library(
     srcs = ["debugger_cli_common.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tf_session",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -169,7 +169,6 @@ py_library(
     deps = [
         ":analyzer_cli",
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:platform",
         "//tensorflow/python/debug/lib:debug_data",
     ],
 )
@@ -190,8 +189,8 @@ py_test(
         ":debugger_cli_common",
         ":tensor_format",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -209,8 +208,8 @@ py_test(
         ":readline_ui",
         ":ui_factory",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -223,9 +222,9 @@ py_test(
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:pywrap_tf_session",
+        "//tensorflow/python/platform:gfile",
         "//third_party/py/numpy",
     ],
 )
@@ -239,9 +238,9 @@ py_test(
     deps = [
         ":cli_config",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:gfile",
     ],
 )
 
@@ -341,13 +340,14 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/debug/lib:debug_data",
         "//tensorflow/python/debug/lib:debug_utils",
         "//tensorflow/python/debug/lib:source_utils",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )
@@ -363,13 +363,13 @@ py_test(
         ":profile_analyzer_cli",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )

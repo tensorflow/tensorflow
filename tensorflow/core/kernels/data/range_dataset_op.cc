@@ -80,7 +80,7 @@ class RangeCounter {
       return -1;
     }
     *end_of_counter = false;
-    int result = next_;
+    int64_t result = next_;
     next_ += step_;
     return result;
   }
@@ -184,7 +184,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     // If the signs of `stop_ - start_` and `step_` are different or either of
     // the values is zero, the range will be empty.
     if (sgn(stop_ - start_) * sgn(step_) <= 0) {
@@ -196,10 +196,6 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       // Invariant: start_ - stop_ > 0 && step_ < 0
       return (start_ - stop_ - 1) / -step_ + 1;
     }
-  }
-
-  int64_t CardinalityInternal(CardinalityOptions options) const override {
-    return CardinalityInternal();
   }
 
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*

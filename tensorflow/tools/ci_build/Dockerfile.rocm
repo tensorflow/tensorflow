@@ -52,6 +52,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   libboost-filesystem-dev \
   rpm \
   libnuma-dev \
+  patchelf \
   pciutils \
   virtualenv \
   python3-pip \
@@ -78,6 +79,7 @@ ENV OPENCL_ROOT=$ROCM_PATH/opencl
 ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
 ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
+ENV PATH="/usr/local/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx900\ngfx906\ngfx908" >> ${ROCM_PATH}/bin/target.lst'

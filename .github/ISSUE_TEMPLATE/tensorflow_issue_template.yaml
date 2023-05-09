@@ -1,5 +1,5 @@
 name: Tensorflow Issue Template
-description: Use this template to report any issue
+description: Please report security related issue using [Google Bug Hunters reporting form](https://bughunters.google.com/). To report any other TensorFlow related issue please use this template.
 body:
   - type: dropdown
     id: issue-type
@@ -23,6 +23,17 @@ body:
       value: |
         Please make sure that this is a bug. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md),we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub.
 
+  - type: dropdown
+    id: tf-nightly
+    attributes:
+      label: Have you reproduced the bug with TF nightly?
+      description: It is strongly suggested that you have reproduced the bug with [TF nightly](https://www.tensorflow.org/install/pip#nightly)
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+          
   - type: markdown
     attributes:
       value: | 
@@ -38,6 +49,7 @@ body:
         - binary
     validations:
       required: true
+      
   - type: input
     id: tfversion
     attributes:
@@ -119,7 +131,6 @@ body:
       description: Also tell us, what did you expect to happen?
       placeholder: Tell us what you see!
       value: "A bug happened!"
-      render: shell
     validations:
       required: true
   - type: textarea

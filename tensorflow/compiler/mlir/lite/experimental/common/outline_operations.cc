@@ -35,6 +35,8 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
 namespace mlir {
 namespace TFL {
@@ -43,7 +45,7 @@ namespace common {
 bool IsConstantOrNone(Operation* op) {
   return (op->getNumResults() == 1 &&
           op->getResult(0).getType().isa<NoneType>()) ||
-         matchPattern(op, m_Constant());
+         matchPattern(op, m_Constant()) || isa<QConstOp>(op);
 }
 
 // Pre-order traverse, adding results and BlockArgs to `been_defined` and
@@ -142,11 +144,11 @@ func::FuncOp BuildFuncOp(const Subgraph& subgraph, OpBuilder& builder,
   // it. Cloning Operation(s) will create cloned Value(s) for the results of a
   // cloned op, but it needs a reference to the new operand Value(s) which are
   // the result of the cloned ops. The approach is to traverse the subgraph in
-  // order, accumulating clones of defined Values into a `BlockAndValueMapping`
+  // order, accumulating clones of defined Values into a `IRMapping`
   // and pass that map to calls to clone ops.
   OpBuilder function_builder(new_func.getBody());
   // Prefered data structure for mapping MLIR values.
-  BlockAndValueMapping values_in_scope;
+  IRMapping values_in_scope;
   // Function arguments can appear as operands, so they clone should
   // be aware of them.
   assert(subgraph.FuncArguments().size() == new_func.getNumArguments());
@@ -203,6 +205,9 @@ void ExtractSubgraphToFunc(const Subgraph& subgraph, OpBuilder& builder,
     op->dropAllReferences();
     op->erase();
   }
+  // Ensure that users of the call op's results appear after the launch op in
+  // order to preserve the dominance property.
+  TF::ReorderOpResultUses(call_op);
 }
 
 }  // namespace common

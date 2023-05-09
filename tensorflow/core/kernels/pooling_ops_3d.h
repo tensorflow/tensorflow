@@ -45,7 +45,7 @@ struct Pool3dParameters {
                    const TensorShape& tensor_in_shape);
 
   // Returns the shape of the output for "forward" pooling operations.
-  TensorShape forward_output_shape();
+  Status forward_output_shape(TensorShape* shape);
 
   int depth;
 

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -64,7 +64,7 @@ TfLiteStatus PrepareOutput(TfLiteContext* context,
 
   // Exit early if cond is a non-const tensor. Set output tensor to dynamic so
   // output size can be determined in Eval.
-  if (!IsConstantTensor(cond_tensor)) {
+  if (!IsConstantOrPersistentTensor(cond_tensor)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

@@ -18,18 +18,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
-namespace tflite {
+namespace tflite::telemetry {
 namespace {
 
 constexpr char kEventName[] = "event_name";
 constexpr char kSettingName[] = "setting_name";
 
-class MockTelemtryProfiler : public TelemetryProfiler {
+class MockTelemetryProfiler : public TelemetryProfiler {
  public:
   MOCK_METHOD(void, ReportTelemetryEvent,
               (const char* event_name, TelemetryStatusCode status), (override));
@@ -38,7 +39,8 @@ class MockTelemtryProfiler : public TelemetryProfiler {
                TelemetryStatusCode status),
               (override));
   MOCK_METHOD(void, ReportSettings,
-              (const char* setting_name, const TelemetrySettings& settings),
+              (const char* setting_name,
+               const TfLiteTelemetrySettings* settings),
               (override));
   MOCK_METHOD(uint32_t, ReportBeginOpInvokeEvent,
               (const char* op_name, int64_t op_idx, int64_t subgraph_idx),
@@ -55,7 +57,7 @@ class TelemetryTest : public ::testing::Test {
  protected:
   TelemetryTest() { context_.profiler = &profiler_; }
 
-  MockTelemtryProfiler profiler_;
+  MockTelemetryProfiler profiler_;
   TfLiteContext context_;
 };
 
@@ -94,9 +96,9 @@ TEST_F(TelemetryTest, TelemetryReportDelegateOpEvent) {
 
 TEST_F(TelemetryTest, TelemetryReportSettings) {
   EXPECT_CALL(profiler_, ReportSettings(kSettingName, testing::_));
+  TfLiteTelemetryInterpreterSettings settings{};
 
-  TelemetryReportSettings(&context_, kSettingName,
-                          TelemetryInterpreterSettings());
+  TelemetryReportSettings(&context_, kSettingName, &settings);
 }
 
 TEST_F(TelemetryTest, TelemetryReportDelegateSettings) {
@@ -108,4 +110,4 @@ TEST_F(TelemetryTest, TelemetryReportDelegateSettings) {
 }
 
 }  // namespace
-}  // namespace tflite
+}  // namespace tflite::telemetry

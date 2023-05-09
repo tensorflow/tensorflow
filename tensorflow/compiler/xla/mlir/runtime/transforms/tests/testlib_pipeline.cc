@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
@@ -44,14 +45,17 @@ void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects) {
                    mlir::memref::MemRefDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
+  registerBuiltinDialectTranslation(*dialects);
   registerLLVMDialectTranslation(*dialects);
 }
 
 void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertSCFToCFPass());
+  passes->addPass(mlir::createAsyncFuncToAsyncRuntimePass());
 
   // Export functions to the XLA runtime.
   passes->addPass(CreateExportRuntimeFunctionsPass());
+  passes->addPass(CreateConvertCustomCallsPass());
   passes->addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.
@@ -68,7 +72,7 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
-  passes->addPass(mlir::createMemRefToLLVMConversionPass());
+  passes->addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   passes->addPass(mlir::createConvertFuncToLLVMPass());
   passes->addPass(mlir::createReconcileUnrealizedCastsPass());
 

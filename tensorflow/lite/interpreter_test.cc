@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include <new>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
@@ -31,28 +30,23 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_test_util.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 
-namespace tflite {
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#endif
 
-namespace ops {
-namespace builtin {
-TfLiteRegistration* Register_PADV2();
-TfLiteRegistration* Register_NEG();
-}  // namespace builtin
-}  // namespace ops
+namespace tflite {
 
 namespace {
 
@@ -65,13 +59,14 @@ TEST(BasicInterpreter, ZeroInterpreter) {
 
   Interpreter interpreter;
 
-#ifndef NDEBUG
+#if (!defined(NDEBUG)) || defined(__ANDROID__) || \
+    (defined(__APPLE__) && (TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE))
   const char* kExpectedLog = "INFO: Initialized TensorFlow Lite runtime";
-#else
-  const char* kExpectedLog = "";
-#endif
   EXPECT_THAT(testing::internal::GetCapturedStderr(),
               testing::HasSubstr(kExpectedLog));
+#else
+  EXPECT_THAT(testing::internal::GetCapturedStderr(), testing::IsEmpty());
+#endif
 
   interpreter.SetInputs({});
   interpreter.SetOutputs({});
@@ -575,7 +570,7 @@ TEST(BasicInterpreter, ResizingTensorsStrictInvalid) {
   EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
-  // Invalid becuase `dims_signature` is not specified.
+  // Invalid because `dims_signature` is not specified.
   ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 3}), kTfLiteError);
   EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
@@ -612,6 +607,17 @@ TEST(BasicInterpreter, ResizingTensorsStrict) {
 
   // Assert that ResizeInputTensor works for this value.
   ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Resizing to a smaller rank isn't permitted.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {8}), kTfLiteError);
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1}), kTfLiteError);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Resizing to a larger rank isn't permitted either.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 4, 1}), kTfLiteError);
   EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 }

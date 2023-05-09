@@ -43,7 +43,7 @@ class PostQuantizePass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit PostQuantizePass() {}
+  explicit PostQuantizePass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -104,6 +104,28 @@ struct RemoveVolatileOps
   }
 };
 
+// The StorageCastOp is used to cast from a quantized type to its storage type
+// or the opposite. If none of its input and output is quantized, the op has
+// no effect and should be removed.
+class RemoveRedundantScast
+    : public mlir::OpRewritePattern<quantfork::StorageCastOp> {
+ public:
+  explicit RemoveRedundantScast(MLIRContext* context)
+      : OpRewritePattern<quantfork::StorageCastOp>(context) {}
+
+ private:
+  LogicalResult matchAndRewrite(quantfork::StorageCastOp scast_op,
+                                PatternRewriter& rewriter) const override {
+    if (QuantizedType::getQuantizedElementType(scast_op.getArg().getType()) ||
+        QuantizedType::getQuantizedElementType(scast_op.getType())) {
+      return failure();
+    }
+
+    scast_op.replaceAllUsesWith(scast_op.getArg());
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/post_quantize.inc"
 
 void PostQuantizePass::runOnOperation() {
@@ -111,9 +133,11 @@ void PostQuantizePass::runOnOperation() {
   auto func = getOperation();
   auto* ctx = func.getContext();
   patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
-               RemoveVolatileOps<kPreserveNone>>(ctx);
+               RemoveVolatileOps<kPreserveNone>, RemoveRedundantScast>(ctx);
   populateWithGenerated(patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 
 }  // namespace

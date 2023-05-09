@@ -40,11 +40,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -69,7 +69,7 @@ class HloInstructionWrapper {
   xla::HloOpcode HloOpcode() const { return instr_->opcode(); }
 
   std::string HloOpcodeString() const {
-    return xla::HloOpcodeString(instr_->opcode());
+    return std::string(xla::HloOpcodeString(instr_->opcode()));
   }
 
   const xla::OpMetadata& Metadata() const { return instr_->metadata(); }

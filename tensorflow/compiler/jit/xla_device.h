@@ -27,7 +27,6 @@ limitations under the License.
 #include <set>
 
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
 namespace tensorflow {
 
@@ -166,7 +166,7 @@ class XlaDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override TF_LOCKS_EXCLUDED(mu_);
 
-  Status MakeTensorFromProto(XlaDeviceContext* device_context,
+  Status MakeTensorFromProto(DeviceContext* device_context,
                              const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor);
@@ -184,9 +184,9 @@ class XlaDevice : public LocalDevice {
   // Two convenient methods to get the underlying device context.
   // Get the default device context, created by the first
   // shape_representation_fn.
-  StatusOr<XlaDeviceContext*> GetDeviceContextDefault();
+  StatusOr<DeviceContext*> GetDeviceContextDefault();
   // Get the device context given the index.
-  StatusOr<XlaDeviceContext*> GetDeviceContextWithIndex(int index);
+  StatusOr<DeviceContext*> GetDeviceContextWithIndex(int index);
 
   // Instructs this XlaDevice to set a AcceleratorDeviceInfo, which holds extra
   // information for GPU and TPU devices.
@@ -214,7 +214,7 @@ class XlaDevice : public LocalDevice {
 
   // Return a vector of device context, ordered by the sequence in the given
   // shape_representation_fns.
-  StatusOr<std::vector<XlaDeviceContext*>> GetDeviceContextLocked()
+  StatusOr<std::vector<DeviceContext*>> GetDeviceContextLocked()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Handles error when RefreshStatus sees !status.ok().
@@ -225,6 +225,8 @@ class XlaDevice : public LocalDevice {
   const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
+  // The name/type of this XlaDevice. eg. "XLA_GPU".
+  const DeviceType device_name_;
   // The name of the device that is used to compile Ops for this XlaDevice.
   const DeviceType jit_device_name_;
   // The platform for this device.
@@ -233,6 +235,7 @@ class XlaDevice : public LocalDevice {
   const int intra_op_parallelism_threads_;
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ TF_GUARDED_BY(mu_) = nullptr;  // Not owned.
+  std::unique_ptr<AsyncValueAllocator> pjrt_allocator_ TF_GUARDED_BY(mu_);
 
   // Stream associated with this device. Operations enqueued on this
   // stream are executed on the device. Operations include data
@@ -260,8 +263,8 @@ class XlaDevice : public LocalDevice {
   // calls to EnsureDeviceContextOk. The number of device conetexts is based on
   // the number of shape representation functions in XlaDevice::Options. If
   // accelerator_device_info_ is non-null, this pointer is also filled in to
-  // that struct. XlaDeviceContext is a ref-counted object.
-  std::vector<XlaDeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
+  // that struct. DeviceContext is a ref-counted object.
+  std::vector<DeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
 
   // Holds extra information for GPU and TPU devices, e.g. the device context.
   bool use_accelerator_device_info_ TF_GUARDED_BY(mu_) = false;

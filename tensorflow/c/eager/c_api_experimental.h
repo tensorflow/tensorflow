@@ -294,10 +294,6 @@ TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
 
-// Sets whether to use TFRT distributed runtime
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
-    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
-
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The
 // context_id is initialized with a dummy value and is later set when the worker
@@ -333,8 +329,16 @@ typedef struct TFE_Executor TFE_Executor;
 // Creates a new eager Executor. Nodes in one executor are guaranteed to be
 // executed in sequence. Assigning nodes to different executors allows executing
 // nodes in parallel.
+// in_flight_nodes_limit: when is_async is true, this value controls the
+// maximum number of in flight async nodes. Enqueuing of additional async ops
+// after the limit is reached blocks until some inflight nodes finishes.
+// The effect is bounding the memory held by inflight TensorHandles that are
+// referenced by the inflight nodes.
+// A recommended value has not been established.
+// A value of 0 removes the limit, which is the behavior of TensorFlow 2.11.
+// When is_async is false, the value is ignored.
 TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(
-    bool is_async, bool enable_streaming_enqueue);
+    bool is_async, bool enable_streaming_enqueue, int in_flight_nodes_limit);
 
 // Deletes the eager Executor without waiting for enqueued nodes. Please call
 // TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to
@@ -608,6 +612,17 @@ TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      TF_Buffer* buf,
                                                      TF_Status* status);
 
+// Get GraphDebugInfo containing stack traces mapping to node names
+TF_CAPI_EXPORT extern void TFE_ContextGetGraphDebugInfo(
+    TFE_Context* ctx, const char* function_name, TF_Buffer* buf,
+    TF_Status* status);
+
+// Extracts a TF_Function from the context.
+// Must call TF_DeleteFunction on the returned value.
+TF_CAPI_EXPORT extern TF_Function* TFE_ContextGetFunction(TFE_Context* ctx,
+                                                          const char* name,
+                                                          TF_Status* status);
+
 // Allocate and return a new Tensor on the host.
 //
 // The caller must set the Tensor values by writing them to the pointer returned
@@ -701,8 +716,11 @@ TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
 // Get configuration key and value using coordination service.
 // The config key must be set before getting its value. Getting value of
 // non-existing config keys will result in errors.
+// If `timeout_in_ms=0`, this call will block until the key-value is set or the
+// worker shuts down.
 TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
                                                  const char* key,
+                                                 int64_t timeout_in_ms,
                                                  TF_Buffer* value_buf,
                                                  TF_Status* status);
 
@@ -723,6 +741,11 @@ TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_GetTaskStates(TFE_Context* ctx,
                                              const TF_Buffer& tasks,
                                              void* states, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_WaitAtBarrier(TFE_Context* ctx,
+                                             const char* barrier_id,
+                                             int64_t barrier_timeout_in_ms,
+                                             TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

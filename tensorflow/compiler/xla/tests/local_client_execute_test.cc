@@ -565,7 +565,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
   auto execute_status = ExecuteLocally(builder.Build().value(), {&x_array});
 
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().error_message(),
+  EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("Invalid number of arguments"));
 }
 
@@ -580,7 +580,7 @@ XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
   auto execute_status = ExecuteLocally(builder.Build().value(), {&x_array});
 
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().error_message(),
+  EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("Invalid argument shape"))
       << execute_status.status();
 }
@@ -602,7 +602,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
       DefaultExecutableRunOptions());
 
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().error_message(),
+  EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("not compatible with result shape"))
       << execute_status.status();
 }
@@ -620,7 +620,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
                          DefaultExecutableBuildOptions().set_device_ordinal(d),
                          DefaultExecutableRunOptions().set_device_ordinal(d));
       EXPECT_FALSE(execute_status.ok());
-      EXPECT_THAT(execute_status.status().error_message(),
+      EXPECT_THAT(execute_status.status().message(),
                   ContainsRegex("device .* not supported"));
     } else {
       auto result = ExecuteLocallyOrDie(
@@ -648,7 +648,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
                      DefaultExecutableRunOptions().set_device_ordinal(
                          local_client_->device_count()));
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().error_message(),
+  EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("Invalid device ordinal value"));
 }
 
@@ -695,7 +695,7 @@ XLA_TEST_F(LocalClientExecuteTest,
       builder.Build().value(), {}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_stream(&wrong_stream));
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().error_message(),
+  EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("stream is for platform .*, but service targets"));
 }
 
@@ -713,7 +713,7 @@ XLA_TEST_F(LocalClientExecuteTest,
       builder.Build().value(), {}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_allocator(&allocator));
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().error_message(),
+  EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("allocator platform .* does not match service"));
 }
 
@@ -734,7 +734,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
       builder.Build().value(), {}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_stream(&stream));
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().error_message(),
+  EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("stream is uninitialized or in an error state"));
 }
 
@@ -793,6 +793,11 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
 
 XLA_TEST_F(LocalClientExecuteTest,
            DISABLED_ON_INTERPRETER(SizeOfGeneratedCodeInBytes)) {
+  if (IsMlirLoweringEnabled()) {
+    // SizeOfGeneratedCodeInBytes is not supported by the MLIR pipeline.
+    GTEST_SKIP();
+  }
+
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;

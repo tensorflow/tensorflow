@@ -57,7 +57,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -571,7 +570,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     }
   }
 
-  auto output_tensor = MakeUnique<Tensor>();
+  auto output_tensor = std::make_unique<Tensor>();
   CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
   return output_tensor;
 }
@@ -808,7 +807,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   profiler::ScopedMemoryDebugAnnotation op_annotation(
       op_kernel().name_view().data(), step_id(), "output", type,
       [&shape]() { return shape.DebugString(); });
-  auto output_tensor = MakeUnique<Tensor>();
+  auto output_tensor = std::make_unique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
     outputs_[index] = TensorValue(output_tensor.release());
@@ -944,7 +943,7 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
     profiler::ScopedMemoryDebugAnnotation op_annotation(
         op_kernel().name_view().data(), step_id(), "output", tensor.dtype(),
         [&tensor]() { return tensor.shape().DebugString(); });
-    auto new_tensor = MakeUnique<Tensor>();
+    auto new_tensor = std::make_unique<Tensor>();
     Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
     TF_CHECK_OK(s);
@@ -1170,10 +1169,10 @@ static Status IsProbablySafeToLoad(const string& path) {
   std::vector<std::string> platform_strings;
   int result = GetPlatformStrings(path, &platform_strings);
   if (result) {
-    return Status(error::Code::UNKNOWN, strerror(result));
+    return Status(absl::StatusCode::kUnknown, strerror(result));
   }
   if (platform_strings.empty()) {
-    return Status(error::Code::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "Didn't find any platform strings");
   }
   std::vector<std::string> missing_features;
@@ -1215,8 +1214,7 @@ void LoadDynamicKernelsInternal() {
         Status s = IsProbablySafeToLoad(fullpath);
         if (!s.ok() && override_abi_check) {
           LOG(WARNING) << "Loading UNSAFE library " << fullpath
-                       << " because ABI check override is set: "
-                       << s.error_message();
+                       << " because ABI check override is set: " << s.message();
         }
         if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
@@ -1225,7 +1223,7 @@ void LoadDynamicKernelsInternal() {
               env->LoadDynamicLibrary(fullpath.c_str(), &unused_filehandle));
         } else {
           LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
-                       << s.error_message();
+                       << s.message();
         }
       }
     }

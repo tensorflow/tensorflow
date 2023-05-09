@@ -59,11 +59,13 @@ class InferenceProfilerStage : public EvaluationStage {
   // One Stat for each model output.
   std::vector<tsl::Stat<float>> error_stats_;
 
-  // One of the following 3 will be populated based on model_input_type_, and
-  // used as the input for the underlying model.
+  // One of the following vectors will be populated based on model_input_type_,
+  // and used as the input for the underlying model.
   std::vector<std::vector<float>> float_tensors_;
   std::vector<std::vector<int8_t>> int8_tensors_;
   std::vector<std::vector<uint8_t>> uint8_tensors_;
+  std::vector<std::vector<uint16_t>> float16_tensors_;
+  std::vector<std::vector<int64_t>> int64_tensors_;
 };
 
 }  // namespace evaluation

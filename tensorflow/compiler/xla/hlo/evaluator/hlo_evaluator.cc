@@ -19,6 +19,7 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -33,31 +35,36 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/bitmap.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -67,6 +74,10 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+template <PrimitiveType kType>
+using NativeTypeOf =
+    typename primitive_util::PrimitiveTypeToNative<kType>::type;
 
 template <typename OperandT>
 StatusOr<Literal> Compare(const Shape& shape, ComparisonDirection direction,
@@ -179,22 +190,218 @@ StatusOr<Literal> Compare<complex128>(const Shape& shape,
   return std::move(result);
 }
 
+std::optional<bool> GetInstructionStaticValueAsBool(
+    HloInstruction* instruction) {
+  HloEvaluator evaluator;
+  StatusOr<Literal> static_value = evaluator.Evaluate(
+      instruction, /*recursively_evaluate_nonconstant_operands=*/true);
+  if (static_value.ok()) {
+    return static_value->GetFirstElement<bool>();
+  }
+  return std::nullopt;
+}
+
+template <PrimitiveType kType>
+struct PopulateParallelImpl {
+  using NativeT = NativeTypeOf<kType>;
+  static Status Run(Literal& literal,
+                    absl::FunctionRef<Literal(absl::Span<const int64_t>, int)>
+                        literal_generator) {
+    return literal.PopulateParallel<NativeT>(
+        [&literal_generator](absl::Span<const int64_t> output_index,
+                             int thread_id) {
+          return literal_generator(output_index, thread_id)
+              .template Get<NativeT>({});
+        });
+  }
+};
+
+template <PrimitiveType kType>
+struct PopulateImpl {
+  using NativeT = NativeTypeOf<kType>;
+  static Status Run(
+      Literal& literal,
+      absl::FunctionRef<Literal(absl::Span<const int64_t>)> literal_generator) {
+    return literal.Populate<NativeT>(
+        [&literal_generator](absl::Span<const int64_t> output_index) {
+          return literal_generator(output_index).template Get<NativeT>({});
+        });
+  }
+};
+
+// Helper function for when it has a Literal generator (typically from an
+// embedded evaluator to evaluate subcomputations) but needs to extract the
+// scalar value of a specific type from it to populate a Literal. Putting such
+// evaluation implementations in typed visitors gives no performance benefits
+// but leads to unnecessarily large code size therefore providing a delegation
+// to small templated helpers just for the parts that require manipulating the
+// native types to avoid templating the whole implementations.
+template <template <PrimitiveType> typename Trait, typename F>
+Status Apply(Literal& literal, F&& literal_generator) {
+  switch (literal.shape().element_type()) {
+    case U8:
+      return Trait<U8>::Run(literal, std::forward<F>(literal_generator));
+    case U16:
+      return Trait<U16>::Run(literal, std::forward<F>(literal_generator));
+    case U32:
+      return Trait<U32>::Run(literal, std::forward<F>(literal_generator));
+    case U64:
+      return Trait<U64>::Run(literal, std::forward<F>(literal_generator));
+    case S8:
+      return Trait<S8>::Run(literal, std::forward<F>(literal_generator));
+    case S16:
+      return Trait<S16>::Run(literal, std::forward<F>(literal_generator));
+    case S32:
+      return Trait<S32>::Run(literal, std::forward<F>(literal_generator));
+    case S64:
+      return Trait<S64>::Run(literal, std::forward<F>(literal_generator));
+    case F8E5M2:
+      return Trait<F8E5M2>::Run(literal, std::forward<F>(literal_generator));
+    case F8E4M3FN:
+      return Trait<F8E4M3FN>::Run(literal, std::forward<F>(literal_generator));
+    case F8E4M3B11FNUZ:
+      return Trait<F8E4M3B11FNUZ>::Run(literal,
+                                       std::forward<F>(literal_generator));
+    case F16:
+      return Trait<F16>::Run(literal, std::forward<F>(literal_generator));
+    case BF16:
+      return Trait<BF16>::Run(literal, std::forward<F>(literal_generator));
+    case F32:
+      return Trait<F32>::Run(literal, std::forward<F>(literal_generator));
+    case F64:
+      return Trait<F64>::Run(literal, std::forward<F>(literal_generator));
+    case C64:
+      return Trait<C64>::Run(literal, std::forward<F>(literal_generator));
+    case C128:
+      return Trait<C128>::Run(literal, std::forward<F>(literal_generator));
+    case PRED:
+      return Trait<PRED>::Run(literal, std::forward<F>(literal_generator));
+    default:
+      LOG(FATAL) << "Unhandled primitive type "
+                 << literal.shape().element_type();
+  }
+}
+
+constexpr absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
+
+// Use this class to represent the precise details of the error to enable
+// special treatment.
+enum class EvalErrorDetail : uint32_t {
+  // The evaluation result depends on dynamic values such as parameters and
+  // infeed. Therefore, the HLO's value cannot be statically evaluated.
+  kDynamicValueDependence = 0,
+};
+
+std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
+  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
+  if (!error_detail.has_value() && error_detail->empty()) {
+    return std::nullopt;
+  }
+  return static_cast<EvalErrorDetail>(
+      absl::little_endian::Load32(error_detail->Flatten().data()));
+}
+
+Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
+  Status error = tsl::errors::FailedPrecondition(
+      "Failed to evaluate instruction (", eval_instruction.name(),
+      ") since it depends on infeed or parameters to its parent computation (",
+      eval_instruction.parent()->name(), ").");
+  std::string error_payload;
+  error_payload.resize(sizeof(EvalErrorDetail));
+  absl::little_endian::Store32(
+      const_cast<char*>(error_payload.data()),
+      static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
+  error.SetPayload(kEvalErrorDetailUrl, absl::Cord(error_payload));
+  return error;
+}
+
+// Repesents a value that might or might not be determined statically.
+struct DynamicOrStaticInteger {
+  std::optional<int64_t> static_value;
+  bool is_dynamic() const { return !static_value.has_value(); }
+
+  std::string ToString() const {
+    return is_dynamic() ? std::string("DYNAMIC") : absl::StrCat(*static_value);
+  }
+};
+
+std::optional<DynamicOrStaticInteger> GetInstructionValueAsInteger(
+    HloInstruction* instruction) {
+  HloEvaluator evaluator;
+  StatusOr<Literal> static_value = evaluator.Evaluate(
+      instruction, /*recursively_evaluate_nonconstant_operands=*/true);
+  if (static_value.ok()) {
+    if (instruction->shape().element_type() == PrimitiveType::PRED) {
+      return DynamicOrStaticInteger{
+          static_cast<int64_t>(static_value->GetFirstElement<bool>())};
+    } else {
+      return DynamicOrStaticInteger{static_value->GetFirstInteger()};
+    }
+  }
+
+  std::optional<EvalErrorDetail> eval_error_detail =
+      ParseEvalErrorDetail(static_value.status());
+  if (eval_error_detail.has_value() &&
+      *eval_error_detail == EvalErrorDetail::kDynamicValueDependence) {
+    return DynamicOrStaticInteger{std::nullopt};
+  }
+  return std::nullopt;
+}
+
 // Represents an index into the while argument tuple and / or a value.
 // At least one of param_index and value has a value; both of them could have
 // a value.
 struct ParamIndexAndValue {
   std::optional<int64_t> param_index;
-  std::optional<int64_t> value;
+  std::optional<DynamicOrStaticInteger> value;
 
   bool IsValid() const { return param_index.has_value() || value.has_value(); }
+  std::string ToString() const {
+    return absl::StrCat(
+        "param_index:",
+        !param_index.has_value() ? std::string("UNKNOWN")
+                                 : absl::StrCat(*param_index),
+        ",", "value:",
+        !value.has_value() ? std::string("UNKONWN") : value->ToString());
+  }
 };
+
+std::optional<ParamIndexAndValue> TryParsingInstructionAsParameterAndInteger(
+    HloInstruction* instruction) {
+  // Skip copies.
+  if (instruction->opcode() == HloOpcode::kCopy) {
+    return TryParsingInstructionAsParameterAndInteger(
+        instruction->mutable_operand(0));
+  }
+  if (instruction->opcode() == HloOpcode::kCopyDone) {
+    return TryParsingInstructionAsParameterAndInteger(
+        instruction->mutable_operand(0)->mutable_operand(1));
+  }
+  ParamIndexAndValue result;
+  if (Match(instruction, match::GetTupleElement().WithOperand(
+                             0, match::Parameter().WithParameterNum(0)))) {
+    result.param_index = instruction->tuple_index();
+  }
+  std::optional<DynamicOrStaticInteger> integer_value =
+      GetInstructionValueAsInteger(instruction);
+  result.value = std::move(integer_value);
+  if (!result.IsValid()) {
+    return std::nullopt;
+  }
+  return std::optional<ParamIndexAndValue>(std::move(result));
+}
 
 // Represents the while loop condition comparison.
 // We assume comparison is of the form: lhs comp rhs.
 struct WhileCondComparison {
-  ComparisonDirection comparson_direction;
+  ComparisonDirection comparison_direction;
   ParamIndexAndValue lhs;
   ParamIndexAndValue rhs;
+
+  std::string ToString() const {
+    return absl::StrCat("WhileCondComparison{", "LHS:{", lhs.ToString(),
+                        "},RHS:{", rhs.ToString(), "}}");
+  }
 };
 
 // Represents the parsed while loop condition. The loop induction variable may
@@ -204,57 +411,55 @@ struct WhileCondComparison {
 using WhileCondComparisonOrNoOp =
     std::variant<WhileCondComparison, ParamIndexAndValue>;
 
+std::optional<ParamIndexAndValue> ParseComparisonOperand(
+    HloInstruction* operand) {
+  if (operand->opcode() == HloOpcode::kCopy ||
+      operand->opcode() == HloOpcode::kCopyStart ||
+      operand->opcode() == HloOpcode::kCopyDone) {
+    return ParseComparisonOperand(operand->mutable_operand(0));
+  }
+  std::optional<int64_t> param_index;
+  if (Match(operand, match::GetTupleElement().WithOperand(
+                         0, match::Parameter().WithParameterNum(0)))) {
+    param_index = operand->tuple_index();
+  }
+  std::optional<DynamicOrStaticInteger> operand_value =
+      GetInstructionValueAsInteger(operand);
+  if (!param_index.has_value() && !operand_value.has_value()) {
+    return std::nullopt;
+  }
+  return ParamIndexAndValue{param_index, operand_value};
+}
+
+std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
+    HloInstruction* comparison) {
+  CHECK_EQ(comparison->opcode(), HloOpcode::kCompare);
+  std::optional<ParamIndexAndValue> lhs =
+      ParseComparisonOperand(comparison->mutable_operand(0));
+  std::optional<ParamIndexAndValue> rhs =
+      ParseComparisonOperand(comparison->mutable_operand(1));
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  return WhileCondComparison{comparison->comparison_direction(),
+                             *std::move(lhs), *std::move(rhs)};
+}
 // Finds the while loop condition comparison by matching the loop condition root
 // with known patterns.
-std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
+std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondRoot(
     HloInstruction* loop_cond_root) {
-  // Base pattern #1: gte-0 comp gte-1
-  if (Match(loop_cond_root,
-            match::Compare()
-                .WithOperand(0, match::GetTupleElement().WithOperand(
-                                    0, match::Parameter().WithParameterNum(0)))
-                .WithOperand(1,
-                             match::GetTupleElement().WithOperand(
-                                 0, match::Parameter().WithParameterNum(0))))) {
-    return WhileCondComparison{
-        loop_cond_root->comparison_direction(),
-        {/*param_index=*/loop_cond_root->operand(0)->tuple_index()},
-        {/*param_index=*/loop_cond_root->operand(1)->tuple_index()}};
+  if (loop_cond_root->opcode() == HloOpcode::kCopy) {
+    return PatternMatchLoopCondRoot(loop_cond_root->mutable_operand(0));
   }
-  // Base pattern #2: constant comp gte
-  if (Match(loop_cond_root,
-            match::Compare()
-                .WithOperand(0, match::Constant())
-                .WithOperand(1,
-                             match::GetTupleElement().WithOperand(
-                                 0, match::Parameter().WithParameterNum(0))))) {
-    std::optional<int64_t> lhs_value =
-        loop_cond_root->operand(0)->literal().GetFirstInteger();
-    if (!lhs_value.has_value()) {
-      return std::nullopt;
-    }
-    return WhileCondComparison{
-        loop_cond_root->comparison_direction(),
-        {/*param_index=*/std::nullopt, /*value=*/*lhs_value},
-        {/*param_index=*/loop_cond_root->operand(1)->tuple_index()}};
+  if (loop_cond_root->opcode() == HloOpcode::kCopyDone) {
+    return PatternMatchLoopCondRoot(
+        loop_cond_root->mutable_operand(0)->mutable_operand(1));
   }
-  // Base pattern #3: gte comp constant
-  if (Match(loop_cond_root,
-            match::Compare()
-                .WithOperand(0, match::GetTupleElement().WithOperand(
-                                    0, match::Parameter().WithParameterNum(0)))
-                .WithOperand(1, match::Constant()))) {
-    std::optional<int64_t> rhs_value =
-        loop_cond_root->operand(1)->literal().GetFirstInteger();
-    if (!rhs_value.has_value()) {
-      return std::nullopt;
-    }
-    return WhileCondComparison{
-        loop_cond_root->comparison_direction(),
-        {/*param_index=*/loop_cond_root->operand(0)->tuple_index(),
-         /*value=*/std::nullopt},
-        {/*param_index=*/std::nullopt, /*value=*/*rhs_value},
-    };
+  if (loop_cond_root->opcode() == HloOpcode::kCompare) {
+    // Base pattern #1: gte-0 comp gte-1
+    // Base pattern #2: constant comp gte
+    // Base pattern #3: gte comp constant
+    return PatternMatchLoopCondComparison(loop_cond_root);
   }
   // Base pattern #4: gte is a boolean scalar and it was return immediately.
   if (Match(loop_cond_root, match::GetTupleElement().WithOperand(
@@ -279,7 +484,7 @@ std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
     HloComputation* to_apply = call_instruction->to_apply();
     HloInstruction* to_apply_root = to_apply->root_instruction();
     if (Match(to_apply_root, match::Tuple())) {
-      return PatternMatchLoopCondComparison(
+      return PatternMatchLoopCondRoot(
           to_apply_root->mutable_operand(loop_cond_root->tuple_index()));
     }
   }
@@ -291,241 +496,246 @@ std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
     HloInstruction* new_cond_root =
         loop_cond_root->mutable_operand(0)->mutable_operand(
             loop_cond_root->tuple_index());
-    return PatternMatchLoopCondComparison(new_cond_root);
+    return PatternMatchLoopCondRoot(new_cond_root);
   }
+  return std::nullopt;
+}
+
+std::optional<DynamicOrStaticInteger> PatternMatchInductionVarUpdate(
+    HloInstruction* induction_var_update, int64_t tuple_index) {
+  if (induction_var_update->opcode() == HloOpcode::kCopy) {
+    return PatternMatchInductionVarUpdate(
+        induction_var_update->mutable_operand(0), tuple_index);
+  }
+  if (induction_var_update->opcode() == HloOpcode::kCopyDone) {
+    return PatternMatchInductionVarUpdate(
+        induction_var_update->mutable_operand(0)->mutable_operand(1),
+        tuple_index);
+  }
+  std::optional<ParamIndexAndValue> update_param_index_and_value =
+      TryParsingInstructionAsParameterAndInteger(induction_var_update);
+
+  if (update_param_index_and_value.has_value()) {
+    if (update_param_index_and_value->param_index.has_value()) {
+      if (*update_param_index_and_value->param_index == tuple_index) {
+        // Pattern: the induc_var is directly returned from the loop body with
+        // no changes.
+        VLOG(3) << "PatternMatchInductionVarUpdate, pattern: [induc_var].";
+        return DynamicOrStaticInteger{/*static_value=*/0};
+      } else {
+        VLOG(3)
+            << "PatternMatchInductionVarUpdate, induction variable is set to "
+               "another parameter value. Parsed update: "
+            << update_param_index_and_value->ToString();
+        return std::nullopt;
+      }
+    }
+    if (update_param_index_and_value->value.has_value() &&
+        !update_param_index_and_value->value->is_dynamic()) {
+      VLOG(3) << "PatternMatchInductionVarUpdate, induction variable is set to "
+                 "a constant. Parsed update: "
+              << update_param_index_and_value->ToString();
+      return std::nullopt;
+    }
+  }
+
+  if (induction_var_update->opcode() != HloOpcode::kAdd &&
+      induction_var_update->opcode() != HloOpcode::kSubtract) {
+    return std::nullopt;
+  }
+  bool negate_update = induction_var_update->opcode() == HloOpcode::kSubtract;
+  HloInstruction* update_lhs = induction_var_update->mutable_operand(0);
+  VLOG(3) << "PatternMatchInductionVarUpdate, LHS: " << update_lhs->ToString();
+  std::optional<ParamIndexAndValue> update_lhs_param_index_and_value =
+      TryParsingInstructionAsParameterAndInteger(update_lhs);
+
+  HloInstruction* update_rhs = induction_var_update->mutable_operand(1);
+  VLOG(3) << "PatternMatchInductionVarUpdate, RHS: " << update_rhs->ToString();
+  std::optional<ParamIndexAndValue> update_rhs_param_index_and_value =
+      TryParsingInstructionAsParameterAndInteger(update_rhs);
+
+  if (!update_lhs_param_index_and_value.has_value() ||
+      !update_lhs_param_index_and_value->value.has_value() ||
+      !update_rhs_param_index_and_value.has_value() ||
+      !update_rhs_param_index_and_value->value.has_value()) {
+    VLOG(3) << "PatternMatchInductionVarUpdate, failed to parse operands. "
+               "Induction var update instruction: "
+            << induction_var_update->ToString();
+    return std::nullopt;
+  }
+
+  VLOG(3) << "update_lhs: " << update_lhs->ToString();
+  VLOG(3) << "update_rhs: " << update_rhs->ToString();
+
+  if (update_lhs_param_index_and_value->param_index.has_value() &&
+      *update_lhs_param_index_and_value->param_index == tuple_index &&
+      update_lhs_param_index_and_value->value->is_dynamic()) {
+    if (update_rhs_param_index_and_value->value->is_dynamic()) {
+      return update_rhs_param_index_and_value->value;
+    }
+    int64_t update_value =
+        *update_rhs_param_index_and_value->value->static_value;
+    return negate_update
+               ? DynamicOrStaticInteger{/*static_value=*/-update_value}
+               : DynamicOrStaticInteger{/*static_value=*/update_value};
+  }
+
+  if (update_rhs_param_index_and_value->param_index.has_value() &&
+      *update_rhs_param_index_and_value->param_index == tuple_index &&
+      update_rhs_param_index_and_value->value->is_dynamic() && !negate_update) {
+    return update_lhs_param_index_and_value->value;
+  }
+  VLOG(3) << "Failed to pattern match induction variable update.";
   return std::nullopt;
 }
 
 // Tries to parse the loop body to find how the induction variable is updated
 // using pattern matching.
-std::optional<int64_t> PatternMatchInductionVarUpdate(
-    HloInstruction* loop_body_root, int64_t tuple_index) {
-  // Pattern #1: induc_var = induc_var + constant
-  if (Match(loop_body_root,
-            match::Tuple().WithOperand(
-                tuple_index,
-                match::Add()
-                    .WithOperand(0, match::GetTupleElement()
-                                        .WithTupleIndex(tuple_index)
-                                        .WithOperand(0, match::Parameter()))
-                    .WithOperand(1, match::Constant())))) {
-    std::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
-                                           ->operand(1)
-                                           ->literal()
-                                           .GetFirstInteger();
-    if (!step_size.has_value()) {
-      return std::nullopt;
-    }
-    return *step_size;
+std::optional<DynamicOrStaticInteger>
+PatternMatchInductionVarUpdateFromLoopBodyRoot(HloInstruction* loop_body_root,
+                                               int64_t tuple_index) {
+  if (loop_body_root->opcode() != HloOpcode::kTuple ||
+      loop_body_root->operand_count() <= tuple_index) {
+    return std::nullopt;
   }
-  // Pattern #2: induc_var = constant + induc_var
-  if (Match(
-          loop_body_root,
-          match::Tuple().WithOperand(
-              tuple_index,
-              match::Add()
-                  .WithOperand(0, match::Constant())
-                  .WithOperand(1, match::GetTupleElement()
-                                      .WithTupleIndex(tuple_index)
-                                      .WithOperand(0, match::Parameter()))))) {
-    std::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
-                                           ->operand(0)
-                                           ->literal()
-                                           .GetFirstInteger();
-    if (!step_size.has_value()) {
-      return std::nullopt;
-    }
-    return *step_size;
-  }
-
-  // Pattern #3: induc_var = induc_var - constant
-  if (Match(loop_body_root,
-            match::Tuple().WithOperand(
-                tuple_index,
-                match::Subtract()
-                    .WithOperand(0, match::GetTupleElement()
-                                        .WithTupleIndex(tuple_index)
-                                        .WithOperand(0, match::Parameter()))
-                    .WithOperand(1, match::Constant())))) {
-    std::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
-                                           ->operand(1)
-                                           ->literal()
-                                           .GetFirstInteger();
-    if (!step_size.has_value()) {
-      return std::nullopt;
-    }
-    return -*step_size;
-  }
-
-  // Pattern #4: the induc_var is directly returned from the loop body with
-  // no changes.
-  if (Match(loop_body_root,
-            match::Tuple().WithOperand(
-                tuple_index,
-                match::GetTupleElement()
-                    .WithOperand(0, match::Parameter().WithParameterNum(0))
-                    .WithTupleIndex(tuple_index)))) {
-    return 0;
-  }
-  return std::nullopt;
+  HloInstruction* induction_var_update =
+      loop_body_root->mutable_operand(tuple_index);
+  return PatternMatchInductionVarUpdate(induction_var_update, tuple_index);
 }
 
 std::optional<bool> PatternMatchLoopCondVarOverride(
     HloInstruction* loop_body_root, int64_t tuple_index) {
-  if (Match(loop_body_root, match::Tuple()) &&
-      loop_body_root->operand_count() > tuple_index) {
-    HloInstruction* cond_var_override =
-        loop_body_root->mutable_operand(tuple_index);
-    HloEvaluator evaluator;
-    StatusOr<Literal> new_cond_var = evaluator.Evaluate(
-        cond_var_override, /*recursively_evaluate_nonconstant_operands=*/true);
-    if (new_cond_var.ok()) {
-      return new_cond_var->GetFirstElement<bool>();
-    }
-  }
-  return std::nullopt;
-}
-
-// Repesents a value that might or might not be determined statically.
-struct DynamicOrStaticValue {
-  std::optional<int64_t> static_value;
-  bool is_dynamic() const { return !static_value.has_value(); }
-};
-
-constexpr absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
-
-// Use this class to represent the precise details of the error to enable
-// special treatment.
-enum class EvalErrorDetail : uint32_t {
-  // The evaluation result depends on dynamic values such as parameters and
-  // infeed. Therefore, the HLO's value cannot be statically evaluated.
-  kDynamicValueDependence = 0,
-};
-
-Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
-  Status error = tsl::errors::FailedPrecondition(
-      "Failed to evaluate instruction (", eval_instruction.name(),
-      ") since it depends on infeed or parameters to its parent computation (",
-      eval_instruction.parent()->name(), ").");
-  std::string error_payload;
-  error_payload.resize(sizeof(EvalErrorDetail));
-  absl::little_endian::Store32(
-      const_cast<char*>(error_payload.data()),
-      static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
-  error.SetPayload(kEvalErrorDetailUrl, error_payload);
-  return error;
-}
-
-std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
-  if (!error_detail.has_value() && error_detail->empty()) {
+  if (!Match(loop_body_root, match::Tuple()) ||
+      loop_body_root->operand_count() <= tuple_index) {
     return std::nullopt;
   }
-  return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->Flatten().data()));
+  HloInstruction* cond_var_override =
+      loop_body_root->mutable_operand(tuple_index);
+  return GetInstructionStaticValueAsBool(cond_var_override);
 }
 
 // A convenience wrapper to compute the while loop's argument's init value at
 // the given tuple_index. If the init value depends on parameters to the
 // while loop's parent computation or infeed, we consider the init value
 // dynamic.
-std::optional<DynamicOrStaticValue> EvaluateWhileLoopParamInitValue(
+std::optional<DynamicOrStaticInteger> EvaluateWhileLoopParamInitValue(
     HloInstruction* param_instruction, int64_t tuple_index) {
   if (param_instruction->opcode() != HloOpcode::kTuple) {
     return std::nullopt;
   }
   HloInstruction* element_instruction =
       param_instruction->mutable_operand(tuple_index);
-  HloEvaluator evaluator;
-  StatusOr<Literal> value = evaluator.Evaluate(
-      element_instruction, /*recursively_evaluate_nonconstant_operands=*/true);
-  if (value.ok()) {
-    if (element_instruction->shape().element_type() == PrimitiveType::PRED) {
-      return DynamicOrStaticValue{
-          static_cast<int64_t>(value->GetFirstElement<bool>())};
-    } else {
-      return DynamicOrStaticValue{value->GetFirstInteger()};
+  return GetInstructionValueAsInteger(element_instruction);
+}
+
+}  // namespace
+
+std::optional<ParsedWhileLoop> HandleNoopLoopCondition(
+    const ParamIndexAndValue& parameter_index_and_value,
+    HloInstruction* while_operand, HloComputation* while_body) {
+  CHECK(parameter_index_and_value.param_index.has_value());
+  int64_t loop_cond_var_index = *parameter_index_and_value.param_index;
+  std::optional<DynamicOrStaticInteger> noop_value =
+      EvaluateWhileLoopParamInitValue(while_operand, loop_cond_var_index);
+
+  if (noop_value.has_value()) {
+    if (noop_value->is_dynamic()) {
+      return kParsedDynamicWhileLoop;
+    } else if (*noop_value->static_value == 0) {
+      return ParsedWhileLoop{
+          ParsedStaticWhileLoop{/*trip_count=*/0,
+                                /*induction_var_index=*/loop_cond_var_index,
+                                /*induction_var_init_value=*/0,
+                                /*step_size=*/0,
+                                /*loop_bound=*/0}};
     }
-  } else {
-    std::optional<EvalErrorDetail> eval_error_detail =
-        ParseEvalErrorDetail(value.status());
-    if (eval_error_detail.has_value() &&
-        *eval_error_detail == EvalErrorDetail::kDynamicValueDependence) {
-      return DynamicOrStaticValue{std::nullopt};
+    std::optional<bool> updated_loop_cond_var = PatternMatchLoopCondVarOverride(
+        while_body->root_instruction(), loop_cond_var_index);
+    if (updated_loop_cond_var.has_value()) {
+      if (!*updated_loop_cond_var) {
+        return ParsedWhileLoop{
+            ParsedStaticWhileLoop{/*trip_count=*/1,
+                                  /*induction_var_index=*/loop_cond_var_index,
+                                  /*induction_var_init_value=*/0,
+                                  /*step_size=*/1,
+                                  /*loop_bound=*/1}};
+      } else {
+        // This is an infinite loop and we set trip_count to -1.
+        return ParsedWhileLoop{
+            ParsedStaticWhileLoop{/*trip_count=*/-1,
+                                  /*induction_var_index=*/loop_cond_var_index,
+                                  /*induction_var_init_value=*/0,
+                                  /*step_size=*/0,
+                                  /*loop_bound=*/1}};
+      }
     }
   }
   return std::nullopt;
 }
 
-}  // namespace
+int64_t ComputeTripCountFromComparison(int64_t init, int64_t bound,
+                                       int64_t update,
+                                       bool comparison_with_equal) {
+  if (comparison_with_equal && init > bound) {
+    return 0;
+  }
+  if (!comparison_with_equal && init >= bound) {
+    return 0;
+  }
+  int64_t distance = bound - init;
+  int64_t trip_count = (distance + update - 1) / update;
+  CHECK_GE(trip_count, 0);
+  // Additional logic to deal with equal comparison.
+  if (comparison_with_equal && (bound - init) % update == 0) {
+    trip_count += 1;
+  }
+  return trip_count;
+}
+
+std::optional<ParsedWhileLoop> HandleStaticLoopComparison(
+    int64_t lhs, int64_t rhs, Comparison::Direction comparison_direction) {
+  if ((comparison_direction == Comparison::Direction::kLt && lhs < rhs) ||
+      (comparison_direction == Comparison::Direction::kLe && lhs <= rhs) ||
+      (comparison_direction == Comparison::Direction::kGt && lhs > rhs) ||
+      (comparison_direction == Comparison::Direction::kGe && lhs >= rhs) ||
+      (comparison_direction == Comparison::Direction::kEq && lhs == rhs) ||
+      (comparison_direction == Comparison::Direction::kNe && lhs != rhs)) {
+    // This is an infinite loop and we set trip_count to -1.
+    // There is no induction variable.
+    return ParsedWhileLoop{ParsedStaticWhileLoop{/*trip_count=*/-1,
+                                                 /*induction_var_index=*/-1,
+                                                 /*induction_var_init_value=*/0,
+                                                 /*step_size=*/0,
+                                                 /*loop_bound=*/1}};
+  }
+  return ParsedWhileLoop{ParsedStaticWhileLoop{/*trip_count=*/0,
+                                               /*induction_var_index=*/-1,
+                                               /*induction_var_init_value=*/0,
+                                               /*step_size=*/0,
+                                               /*loop_bound=*/0}};
+}
 
 std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     HloInstruction* while_op) {
+  VLOG(3) << "PatternMatchParseWhileLoop, while_op: " << while_op->name();
   HloComputation* while_cond = while_op->while_condition();
   HloComputation* while_body = while_op->while_body();
   HloInstruction* while_operand = while_op->mutable_operand(0);
   // Try to parse the loop condition comparison.
   std::optional<WhileCondComparisonOrNoOp> loop_comparison_or_noop =
-      PatternMatchLoopCondComparison(while_cond->root_instruction());
+      PatternMatchLoopCondRoot(while_cond->root_instruction());
   if (!loop_comparison_or_noop.has_value()) {
     return std::nullopt;
   }
   if (loop_comparison_or_noop->index() == 1) {
-    ParamIndexAndValue& parameter_index_and_value =
-        std::get<ParamIndexAndValue>(*loop_comparison_or_noop);
-    CHECK(parameter_index_and_value.param_index.has_value());
-    int64_t loop_cond_var_index = *parameter_index_and_value.param_index;
-    std::optional<DynamicOrStaticValue> noop_value =
-        EvaluateWhileLoopParamInitValue(while_operand, loop_cond_var_index);
-
-    if (noop_value.has_value()) {
-      if (noop_value->is_dynamic()) {
-        return kParsedDynamicWhileLoop;
-      } else if (*noop_value->static_value == 0) {
-        return ParsedWhileLoop{
-            ParsedStaticWhileLoop{/*trip_count=*/0,
-                                  /*induction_var_index=*/loop_cond_var_index,
-                                  /*induction_var_init_value=*/0,
-                                  /*step_size=*/0,
-                                  /*loop_bound=*/0}};
-      }
-      std::optional<bool> updated_loop_cond_var =
-          PatternMatchLoopCondVarOverride(while_body->root_instruction(),
-                                          loop_cond_var_index);
-      if (updated_loop_cond_var.has_value()) {
-        if (!*updated_loop_cond_var) {
-          return ParsedWhileLoop{
-              ParsedStaticWhileLoop{/*trip_count=*/1,
-                                    /*induction_var_index=*/loop_cond_var_index,
-                                    /*induction_var_init_value=*/0,
-                                    /*step_size=*/1,
-                                    /*loop_bound=*/1}};
-        } else {
-          // This is an infinite loop and we set trip_count to -1.
-          return ParsedWhileLoop{
-              ParsedStaticWhileLoop{/*trip_count=*/-1,
-                                    /*induction_var_index=*/loop_cond_var_index,
-                                    /*induction_var_init_value=*/0,
-                                    /*step_size=*/0,
-                                    /*loop_bound=*/1}};
-        }
-      }
-    }
-    return std::nullopt;
+    return HandleNoopLoopCondition(
+        std::get<ParamIndexAndValue>(*loop_comparison_or_noop), while_operand,
+        while_body);
   }
   CHECK_EQ(loop_comparison_or_noop->index(), 0);
   WhileCondComparison loop_comparison =
       std::get<WhileCondComparison>(*loop_comparison_or_noop);
   CHECK(loop_comparison.lhs.IsValid() && loop_comparison.rhs.IsValid());
-
-  // If the while loop condition comparison's both sides take an init value
-  // from the while loop's parent computation's parameter, the loop is dynamic.
-  if (while_operand->opcode() == HloOpcode::kParameter) {
-    if (loop_comparison.lhs.param_index.has_value() ||
-        loop_comparison.rhs.param_index.has_value()) {
-      return kParsedDynamicWhileLoop;
-    }
-  }
 
   // We can't handle the case when the while loop argument is not a Tuple
   // instruction.
@@ -533,175 +743,137 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     return std::nullopt;
   }
 
-  // If loop cond comparison LHS does not have a value defined inside the loop
-  // cond computation, try to evaluate its init value inside the while loop's
-  // parent computation.
-  if (!loop_comparison.lhs.value.has_value()) {
-    std::optional<DynamicOrStaticValue> lhs_init_value =
-        EvaluateWhileLoopParamInitValue(while_operand,
-                                        *loop_comparison.lhs.param_index);
-    if (lhs_init_value.has_value()) {
-      if (lhs_init_value->is_dynamic()) {
-        return kParsedDynamicWhileLoop;
-      } else {
-        loop_comparison.lhs.value = *(lhs_init_value->static_value);
-      }
-    } else {
-      return std::nullopt;
-    }
+  if (!loop_comparison.lhs.value.has_value() ||
+      !loop_comparison.rhs.value.has_value()) {
+    return std::nullopt;
   }
 
-  // If loop cond comparison RHS does not have a value defined inside the loop
-  // cond computation, try to evaluate its init value inside the while loop's
-  // parent computation.
-  if (!loop_comparison.rhs.value.has_value()) {
-    std::optional<DynamicOrStaticValue> rhs_init_value =
-        EvaluateWhileLoopParamInitValue(while_operand,
-                                        *loop_comparison.rhs.param_index);
-    if (rhs_init_value.has_value()) {
-      if (rhs_init_value->is_dynamic()) {
-        return kParsedDynamicWhileLoop;
-      } else {
-        loop_comparison.rhs.value = *(rhs_init_value->static_value);
-      }
-    } else {
-      return std::nullopt;
-    }
-  }
-
-  // We have either successfully evaluated the init value for both LHS and RHS
-  // or have returned as dynamic loop or failure.
+  // We have either successfully parsed the init value for both LHS and RHS
+  // or have returned as failure.
   CHECK(loop_comparison.lhs.value.has_value());
   CHECK(loop_comparison.rhs.value.has_value());
 
-  if (loop_comparison.lhs.param_index.has_value()) {
-    VLOG(3) << __func__ << " lhs index: " << *loop_comparison.lhs.param_index;
+  VLOG(3) << loop_comparison.ToString();
+
+  // If both operands of the loop condition comparison have dynamic value, the
+  // trip count might be dynamic or static. This is a case that our existing
+  // patterns could not yet handle, so we return std::nullopt.
+  if (loop_comparison.lhs.value->is_dynamic() &&
+      loop_comparison.rhs.value->is_dynamic()) {
+    VLOG(3) << "Both operands of the loop condition comparison are dynamic.";
+    return std::nullopt;
   }
+  // We would have returned if both operands are dynamic. So there is at most
+  // one dynamic operand, which is potentially the loop induction variable.
+  CHECK(!loop_comparison.lhs.value->is_dynamic() ||
+        !loop_comparison.rhs.value->is_dynamic());
 
-  VLOG(3) << __func__ << " lhs bound: " << *loop_comparison.lhs.value;
-
-  if (loop_comparison.rhs.param_index.has_value()) {
-    VLOG(3) << __func__ << " rhs index: " << *loop_comparison.rhs.param_index;
+  if (!loop_comparison.lhs.value->is_dynamic() &&
+      !loop_comparison.rhs.value->is_dynamic()) {
+    int64_t lhs_value = *loop_comparison.lhs.value->static_value;
+    int64_t rhs_value = *loop_comparison.rhs.value->static_value;
+    Comparison::Direction comparison_direction =
+        loop_comparison.comparison_direction;
+    return HandleStaticLoopComparison(lhs_value, rhs_value,
+                                      comparison_direction);
   }
-
-  VLOG(3) << __func__ << " rhs bound: " << *loop_comparison.rhs.value;
-
-  // Check whether LHS is the loop induction var.
-  std::optional<int64_t> lhs_induction_var_update;
-  if (loop_comparison.lhs.param_index.has_value()) {
-    lhs_induction_var_update = PatternMatchInductionVarUpdate(
-        while_body->root_instruction(), *loop_comparison.lhs.param_index);
-  }
-
-  // Check whether LHS is the loop induction var.
-  std::optional<int64_t> rhs_induction_var_update;
-  if (loop_comparison.rhs.param_index.has_value()) {
-    rhs_induction_var_update = PatternMatchInductionVarUpdate(
-        while_body->root_instruction(), *loop_comparison.rhs.param_index);
-  }
-
-  // Lhs is the induction variable.
-  if (lhs_induction_var_update.has_value()) {
-    // We cannot handle the case when both LHS and RHS are updated inside
-    // the loop body.
-    if (rhs_induction_var_update.has_value() &&
-        *rhs_induction_var_update != 0) {
-      return std::nullopt;
+  std::optional<DynamicOrStaticInteger> induction_var_init;
+  std::optional<DynamicOrStaticInteger> induction_var_update;
+  bool lhs_is_induction_var = true;
+  if (loop_comparison.lhs.value->is_dynamic()) {
+    if (loop_comparison.lhs.param_index.has_value()) {
+      VLOG(3) << "Comparison LHS is induction variable.";
+      induction_var_init = EvaluateWhileLoopParamInitValue(
+          while_operand, *loop_comparison.lhs.param_index);
+      induction_var_update = PatternMatchInductionVarUpdateFromLoopBodyRoot(
+          while_body->root_instruction(), *loop_comparison.lhs.param_index);
+      lhs_is_induction_var = true;
     }
-    if (*lhs_induction_var_update > 0 &&
-        (loop_comparison.comparson_direction == Comparison::Direction::kLt ||
-         loop_comparison.comparson_direction == Comparison::Direction::kLe)) {
-      int64_t trip_count =
-          (*loop_comparison.rhs.value - *loop_comparison.lhs.value - 1) /
-              *lhs_induction_var_update +
-          1;
-      // Additional logic to deal with Equal comparison.
-      if (loop_comparison.comparson_direction == Comparison::Direction::kLe &&
-          (*loop_comparison.rhs.value - *loop_comparison.lhs.value) %
-                  *lhs_induction_var_update ==
-              0) {
-        trip_count += 1;
-      }
-      return ParsedWhileLoop{ParsedStaticWhileLoop{
-          /*trip_count=*/trip_count,
-          /*induction_var_index=*/*loop_comparison.lhs.param_index,
-          /*induction_var_init_value=*/*loop_comparison.lhs.value,
-          /*step_size=*/*lhs_induction_var_update,
-          /*loop_bound=*/*loop_comparison.rhs.value}};
-    } else if (*lhs_induction_var_update < 0 &&
-               (loop_comparison.comparson_direction ==
-                    Comparison::Direction::kGt ||
-                loop_comparison.comparson_direction ==
-                    Comparison::Direction::kGe)) {
-      int trip_count =
-          (*loop_comparison.lhs.value - *loop_comparison.rhs.value - 1) /
-              *lhs_induction_var_update +
-          1;
-      if (loop_comparison.comparson_direction == Comparison::Direction::kGe &&
-          (*loop_comparison.lhs.value - *loop_comparison.rhs.value) %
-                  *lhs_induction_var_update ==
-              0) {
-        trip_count += 1;
-      }
-      return ParsedWhileLoop{ParsedStaticWhileLoop{
-          /*trip_count=*/trip_count,
-          /*induction_var_index=*/*(loop_comparison.lhs.param_index),
-          /*induction_var_init_value=*/*(loop_comparison.lhs.value),
-          /*step_size=*/-*lhs_induction_var_update,
-          /*loop_bound=*/*(loop_comparison.rhs.value)}};
+  } else {
+    CHECK(loop_comparison.rhs.value->is_dynamic());
+    if (loop_comparison.rhs.param_index.has_value()) {
+      VLOG(3) << "Comparison RHS is induction variable.";
+      induction_var_init = EvaluateWhileLoopParamInitValue(
+          while_operand, *loop_comparison.rhs.param_index);
+      induction_var_update = PatternMatchInductionVarUpdateFromLoopBodyRoot(
+          while_body->root_instruction(), *loop_comparison.rhs.param_index);
+      lhs_is_induction_var = false;
+    }
+  }
+
+  if (!induction_var_init.has_value() || !induction_var_update.has_value()) {
+    return std::nullopt;
+  }
+  VLOG(3) << "induction_var_init: " << induction_var_init->ToString();
+  VLOG(3) << "induction_var_update: " << induction_var_update->ToString();
+  if (induction_var_init->is_dynamic() || induction_var_update->is_dynamic()) {
+    return kParsedDynamicWhileLoop;
+  }
+
+  int64_t init_value = *induction_var_init->static_value;
+  int64_t update_value = *induction_var_update->static_value;
+  Comparison::Direction comparison_direction =
+      loop_comparison.comparison_direction;
+  ParsedWhileLoop parsed_static_while_loop = ParsedWhileLoop{
+      ParsedStaticWhileLoop{/*trip_count=*/0,
+                            // Unassigned.
+                            /*induction_var_index=*/-1,
+                            /*induction_var_init_value=*/init_value,
+                            /*step_size=*/update_value,
+                            // Unassigned.
+                            /*loop_bound=*/-1}};
+  // Lhs is the induction variable.
+  if (lhs_is_induction_var) {
+    CHECK(loop_comparison.rhs.value.has_value() &&
+          !loop_comparison.rhs.value->is_dynamic());
+    int64_t bound = *loop_comparison.rhs.value->static_value;
+    parsed_static_while_loop.static_while_loop->induction_var_index =
+        *loop_comparison.lhs.param_index;
+    parsed_static_while_loop.static_while_loop->loop_bound = bound;
+    if (update_value > 0 &&
+        (comparison_direction == Comparison::Direction::kLt ||
+         comparison_direction == Comparison::Direction::kLe)) {
+      int64_t trip_count = ComputeTripCountFromComparison(
+          init_value, bound, update_value,
+          comparison_direction == Comparison::Direction::kLe);
+      parsed_static_while_loop.static_while_loop->trip_count = trip_count;
+      return parsed_static_while_loop;
+    }
+    if (update_value < 0 &&
+        (comparison_direction == Comparison::Direction::kGt ||
+         comparison_direction == Comparison::Direction::kGe)) {
+      int64_t trip_count = ComputeTripCountFromComparison(
+          bound, init_value, -update_value,
+          comparison_direction == Comparison::Direction::kGe);
+      parsed_static_while_loop.static_while_loop->trip_count = trip_count;
+      return parsed_static_while_loop;
     }
     return std::nullopt;
   }
   // Rhs is the induction variable.
-  if (rhs_induction_var_update.has_value()) {
-    // We cannot handle the case when both LHS and RHS are updated inside
-    // the loop body.
-    if (lhs_induction_var_update.has_value() &&
-        *lhs_induction_var_update == 0) {
-      return std::nullopt;
-    }
-    if (*rhs_induction_var_update > 0 &&
-        (loop_comparison.comparson_direction == Comparison::Direction::kGt ||
-         loop_comparison.comparson_direction == Comparison::Direction::kGe)) {
-      int trip_count =
-          (*loop_comparison.lhs.value - *loop_comparison.rhs.value - 1) /
-              *rhs_induction_var_update +
-          1;
-      if (loop_comparison.comparson_direction == Comparison::Direction::kGe &&
-          (*loop_comparison.lhs.value - *loop_comparison.rhs.value) %
-                  *rhs_induction_var_update ==
-              0) {
-        trip_count += 1;
-      }
-      return ParsedWhileLoop{ParsedStaticWhileLoop{
-          /*trip_count=*/trip_count,
-          /*induction_var_index=*/*(loop_comparison.rhs.param_index),
-          /*induction_var_init_value=*/*(loop_comparison.rhs.value),
-          /*step_size=*/*rhs_induction_var_update,
-          /*loop_bound=*/*(loop_comparison.lhs.value)}};
-    } else if (*rhs_induction_var_update < 0 &&
-               (loop_comparison.comparson_direction ==
-                    Comparison::Direction::kLt ||
-                loop_comparison.comparson_direction ==
-                    Comparison::Direction::kLe)) {
-      int trip_count =
-          (*loop_comparison.rhs.value - *loop_comparison.lhs.value - 1) /
-              *rhs_induction_var_update +
-          1;
-      if (loop_comparison.comparson_direction == Comparison::Direction::kLe &&
-          (*loop_comparison.rhs.value - *loop_comparison.lhs.value) %
-                  *rhs_induction_var_update ==
-              0) {
-        trip_count += 1;
-      }
-      return ParsedWhileLoop{ParsedStaticWhileLoop{
-          /*trip_count=*/trip_count,
-          /*induction_var_index=*/*(loop_comparison.rhs.param_index),
-          /*induction_var_init_value=*/*(loop_comparison.rhs.value),
-          /*step_size=*/-*rhs_induction_var_update,
-          /*loop_bound=*/*(loop_comparison.lhs.value)}};
-    }
-    return std::nullopt;
+  CHECK(loop_comparison.lhs.value.has_value() &&
+        !loop_comparison.lhs.value->is_dynamic());
+  int64_t bound = *loop_comparison.lhs.value->static_value;
+  parsed_static_while_loop.static_while_loop->induction_var_index =
+      *loop_comparison.rhs.param_index;
+  parsed_static_while_loop.static_while_loop->loop_bound = bound;
+  if (update_value > 0 &&
+      (comparison_direction == Comparison::Direction::kGt ||
+       comparison_direction == Comparison::Direction::kGe)) {
+    int64_t trip_count = ComputeTripCountFromComparison(
+        init_value, bound, update_value,
+        comparison_direction == Comparison::Direction::kGe);
+    parsed_static_while_loop.static_while_loop->trip_count = trip_count;
+    return parsed_static_while_loop;
+  }
+  if (update_value < 0 &&
+      (comparison_direction == Comparison::Direction::kLt ||
+       comparison_direction == Comparison::Direction::kLe)) {
+    int64_t trip_count = ComputeTripCountFromComparison(
+        bound, init_value, -update_value,
+        comparison_direction == Comparison::Direction::kLe);
+    parsed_static_while_loop.static_while_loop->trip_count = trip_count;
+    return parsed_static_while_loop;
   }
   return std::nullopt;
 }
@@ -716,19 +888,19 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[PRED] =
       std::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint8_t, uint64_t>>(this);
   typed_visitors_[U16] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint16_t, uint64_t>>(this);
   typed_visitors_[U32] =
-      std::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint32_t, uint64_t>>(this);
   typed_visitors_[U64] =
       std::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
   typed_visitors_[S8] =
-      std::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int8_t, int64_t>>(this);
   typed_visitors_[S16] =
-      std::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int16_t, int64_t>>(this);
   typed_visitors_[S32] =
-      std::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int32_t, int64_t>>(this);
   typed_visitors_[S64] =
       std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
@@ -742,12 +914,25 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[C128] =
       std::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
-  // Most of the evaluator computations we use don't support BF16 (e.g.,
-  // std::ceil, std::tanh). To make evaluator work with BF16, we set all
-  // elementwise computations to be done in F32 and do BF16<->F32 conversion
-  // around the input and the output of the computations.
+  typed_visitors_[U4] =
+      std::make_unique<HloEvaluatorTypedVisitor<u4, uint64_t>>(this);
+  typed_visitors_[S4] =
+      std::make_unique<HloEvaluatorTypedVisitor<s4, int64_t>>(this);
+
+  // Most of the evaluator computations we use don't support BF16 and F8 (e.g.,
+  // std::ceil, std::tanh). To make evaluator work with these dtypes, we set all
+  // elementwise computations to be done in F32 and do BF16<->F32 or F8<->F32
+  // conversion around the input and the output of the computations.
   typed_visitors_[BF16] =
       std::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
+  typed_visitors_[F8E5M2] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>>(this);
+  typed_visitors_[F8E4M3FN] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>>(
+          this);
+  typed_visitors_[F8E4M3B11FNUZ] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>>(
+          this);
 
   typed_visitors_[TUPLE] =
       std::make_unique<FunctionVisitor>([](HloInstruction*) {
@@ -772,6 +957,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
+  OnEvaluateComputation(computation);
 
   if (arg_literals.size() != computation.num_parameters()) {
     return InvalidArgument(
@@ -794,6 +980,8 @@ StatusOr<Literal> HloEvaluator::Evaluate(
 
   evaluated_.clear();
   arg_literals_.clear();
+  call_graph_cache_.reset();
+  tuple_points_to_analysis_cache_.reset();
   for (const auto& literal_ptr : arg_literals) {
     arg_literals_.push_back(&*literal_ptr);
   }
@@ -829,6 +1017,8 @@ StatusOr<Literal> HloEvaluator::Evaluate(
     bool recursively_evaluate_nonconstant_operands) {
   arg_literals_.clear();
   evaluated_.clear();
+  call_graph_cache_.reset();
+  tuple_points_to_analysis_cache_.reset();
   auto enable_partial_evaluation_cleanup =
       absl::MakeCleanup([this] { enable_partial_evaluation_ = false; });
   enable_partial_evaluation_ = recursively_evaluate_nonconstant_operands;
@@ -967,6 +1157,100 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+Status HloEvaluator::EvaluateParameterFromCallerArgument(
+    HloInstruction* parameter, const ShapeIndex& shape_index) {
+  CHECK(!evaluated_.contains(parameter));
+  const HloComputation* parent_computation = parameter->parent();
+  std::vector<HloInstruction*> computation_callers =
+      call_graph_cache_->GetComputationCallers(parent_computation);
+  // If the parent computation has multiple callers, we cannot determine from
+  // which caller the arguments are passed.
+  if (computation_callers.size() != 1) {
+    return tsl::errors::FailedPrecondition(
+        "The computation ", parent_computation->name(), " is called by ",
+        computation_callers.size(),
+        " callers and thus its argument value "
+        "cannot be determined statically.");
+  }
+  HloInstruction* computation_caller = computation_callers[0];
+  HloInstruction* caller_operand = computation_caller->mutable_operand(0);
+  if (computation_caller->opcode() != HloOpcode::kWhile &&
+      computation_caller->opcode() != HloOpcode::kCall) {
+    return tsl::errors::FailedPrecondition(
+        "The computation ", parent_computation->name(), " is called by ",
+        "instruction ", computation_caller->name(),
+        ", which is not yet supported.");
+  }
+  if (computation_caller->opcode() == HloOpcode::kWhile) {
+    HloComputation* while_body = computation_caller->while_body();
+    TF_ASSIGN_OR_RETURN(
+        const LogicalBuffer* logical_buffer,
+        tuple_points_to_analysis_cache_->GetBufferDefinedAt(
+            while_body->parameter_instruction(parameter->parameter_number()),
+            shape_index));
+    const TuplePointsToAnalysis::BufferAliasVector& buffer_aliases =
+        tuple_points_to_analysis_cache_->GetBufferAliases(*logical_buffer);
+    bool unchanged_in_return = false;
+    for (const BufferAlias& buffer_alias : buffer_aliases) {
+      if (buffer_alias.instruction() == while_body->root_instruction() &&
+          buffer_alias.index() == shape_index) {
+        unchanged_in_return = true;
+      }
+    }
+    if (!unchanged_in_return) {
+      return MakeEvalErrorDueToParamOrInfeed(*parameter);
+    }
+  }
+  TF_RETURN_IF_ERROR(EvaluateInternal(caller_operand, shape_index, true));
+  const Literal& caller_operand_literal =
+      GetEvaluatedLiteralFor(caller_operand);
+  evaluated_[parameter] =
+      Literal::CreateFromShapeWithUnknownLeafArrays(parameter->shape());
+  TF_RETURN_IF_ERROR(evaluated_[parameter].CopyFrom(
+      caller_operand_literal, /*dest_shape_index=*/shape_index,
+      /*src_shape_index=*/shape_index));
+  return OkStatus();
+}
+
+std::vector<int64_t> HloEvaluator::GetS64Indices(
+    absl::Span<HloInstruction* const> start_indices) {
+  auto get_first_s64 = [&](const Literal& index) -> int64_t {
+    switch (index.shape().element_type()) {
+      case S16:
+        return index.GetFirstElement<NativeTypeOf<S16>>();
+      case S32:
+        return index.GetFirstElement<NativeTypeOf<S32>>();
+      case S64:
+        return index.GetFirstElement<NativeTypeOf<S64>>();
+      case U16:
+        return index.GetFirstElement<NativeTypeOf<U16>>();
+      case U32:
+        return index.GetFirstElement<NativeTypeOf<U32>>();
+      case U64:
+        return index.GetFirstElement<NativeTypeOf<U64>>();
+      default:
+        LOG(FATAL) << "GetS64Indices: unhandled primitive type for "
+                   << PrimitiveType_Name(index.shape().element_type());
+    }
+  };
+  std::vector<int64_t> start;
+  start.reserve(start_indices.size());
+  for (HloInstruction* index : start_indices) {
+    start.push_back(get_first_s64(GetEvaluatedLiteralFor(index)));
+  }
+  return start;
+}
+
+DimensionVector HloEvaluator::MakeDimMultipliers(const Shape& shape) {
+  DimensionVector v(shape.rank());
+  int64_t scale = 1;
+  for (auto dim : LayoutUtil::MinorToMajor(shape)) {
+    v[dim] = scale;
+    scale *= shape.dimensions(dim);
+  }
+  return v;
+}
+
 Status HloEvaluator::EvaluateInternal(
     HloInstruction* instruction, const ShapeIndex& shape_index,
     bool recursively_evaluate_nonconstant_operands) {
@@ -995,6 +1279,31 @@ Status HloEvaluator::EvaluateInternal(
       TF_RETURN_IF_ERROR(EvaluateInternal(
           instruction->mutable_operand(tuple_index), new_shape_index,
           /*recursively_evaluate_nonconstant_operands=*/true));
+    } else if (instruction->opcode() == HloOpcode::kParameter) {
+      if (!call_graph_cache_) {
+        HloModule* module = instruction->GetModule();
+        call_graph_cache_ = CallGraph::Build(module);
+      }
+      if (!tuple_points_to_analysis_cache_) {
+        HloModule* module = instruction->GetModule();
+        StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
+            tuple_points_to_analysis = TuplePointsToAnalysis::Run(module);
+        if (tuple_points_to_analysis.ok()) {
+          tuple_points_to_analysis_cache_ =
+              *std::move(tuple_points_to_analysis);
+        }
+      }
+      if (call_graph_cache_ && tuple_points_to_analysis_cache_) {
+        Status argument_eval_status =
+            EvaluateParameterFromCallerArgument(instruction, shape_index);
+        if (!argument_eval_status.ok()) {
+          VLOG(4) << "Failed to evaluate parameter " << instruction->name()
+                  << " from caller. Reason: " << argument_eval_status.message();
+        } else {
+          VLOG(4) << "Successfully evaluated parameter: "
+                  << instruction->name();
+        }
+      }
     } else {
       for (HloInstruction* operand : instruction->operands()) {
         TF_RETURN_IF_ERROR(EvaluateInternal(
@@ -1039,6 +1348,16 @@ Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   return OkStatus();
 }
 
+Status HloEvaluator::HandleBitcastConvert(HloInstruction* convert) {
+  const HloInstruction* operand = convert->operand(0);
+  TF_ASSIGN_OR_RETURN(
+      Literal result,
+      GetEvaluatedLiteralFor(operand).BitcastConvert(convert->shape()));
+
+  evaluated_[convert] = std::move(result);
+  return OkStatus();
+}
+
 Status HloEvaluator::HandleGetDimensionSize(
     HloInstruction* get_dimension_size) {
   HloInstruction* operand = get_dimension_size->mutable_operand(0);
@@ -1080,7 +1399,7 @@ Status HloEvaluator::HandleSetDimensionSize(
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
-  if (arg_literals_.empty()) {
+  if (!IsAlreadyEvaluated(parameter, visitor_shape_index_)) {
     if (!enable_partial_evaluation_) {
       return tsl::errors::FailedPrecondition(
           "Failed to evaluate instruction since its operands are unknown "
@@ -1091,20 +1410,21 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
     return OkStatus();
   }
 
-  // Nothing to do other than sanity checks. Parameters' values are stored in
-  // arg_literals_.
-  CHECK_LT(parameter->parameter_number(), arg_literals_.size());
-
+  if (!arg_literals_.empty()) {
+    // Nothing to do other than sanity checks. Parameters' values are stored in
+    // arg_literals_.
+    CHECK_LT(parameter->parameter_number(), arg_literals_.size());
 #ifndef NDEBUG
-  const Literal* input_literal = arg_literals_[parameter->parameter_number()];
-  VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-  DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
-                                                   input_literal->shape()))
-      << "parameter shape is: "
-      << ShapeUtil::HumanStringWithLayout(parameter->shape())
-      << ", but input literal shape is: "
-      << ShapeUtil::HumanStringWithLayout(input_literal->shape());
+    const Literal* input_literal = arg_literals_[parameter->parameter_number()];
+    VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
+    DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
+                                                     input_literal->shape()))
+        << "parameter shape is: "
+        << ShapeUtil::HumanStringWithLayout(parameter->shape())
+        << ", but input literal shape is: "
+        << ShapeUtil::HumanStringWithLayout(input_literal->shape());
 #endif
+  }
 
   return OkStatus();
 }
@@ -1184,10 +1504,12 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
     case TUPLE:
     case OPAQUE_TYPE:
     case TOKEN:
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -1203,12 +1525,41 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
           "expected element type in shape to be floating point, but "
           "got: %s",
           PrimitiveType_Name(elem_ty));
-
+    case F8E5M2: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, tsl::float8_e5m2>(
+          is_finite,
+          [](tsl::float8_e5m2 elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case F8E4M3FN: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, tsl::float8_e4m3fn>(
+          is_finite,
+          [](tsl::float8_e4m3fn elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case F8E4M3B11FNUZ: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, tsl::float8_e4m3b11>(
+          is_finite,
+          [](tsl::float8_e4m3b11 elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
     case F16: {
       auto result_or = ElementWiseUnaryOpImpl<bool, Eigen::half>(
           is_finite,
           [](Eigen::half elem_operand) {
-            return std::isfinite(static_cast<float>(elem_operand));
+            return Eigen::numext::isfinite(elem_operand);
           },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
@@ -1218,7 +1569,7 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
       auto result_or = ElementWiseUnaryOpImpl<bool, bfloat16>(
           is_finite,
           [](bfloat16 elem_operand) {
-            return std::isfinite(static_cast<float>(elem_operand));
+            return Eigen::numext::isfinite(elem_operand);
           },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
@@ -1227,7 +1578,9 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
     case F32: {
       auto result_or = ElementWiseUnaryOpImpl<bool, float>(
           is_finite,
-          [](float elem_operand) { return std::isfinite(elem_operand); },
+          [](float elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
       break;
@@ -1235,7 +1588,9 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
     case F64: {
       auto result_or = ElementWiseUnaryOpImpl<bool, double>(
           is_finite,
-          [](double elem_operand) { return std::isfinite(elem_operand); },
+          [](double elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
       break;
@@ -1447,6 +1802,21 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
                           Compare<int64_t>(compare->shape(), direction,
                                            lhs_literal, rhs_literal));
+    } break;
+    case F8E5M2: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<tsl::float8_e5m2>(compare->shape(), direction,
+                                                    lhs_literal, rhs_literal));
+    } break;
+    case F8E4M3FN: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3fn>(
+                                                   compare->shape(), direction,
+                                                   lhs_literal, rhs_literal));
+    } break;
+    case F8E4M3B11FNUZ: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3b11>(
+                                                   compare->shape(), direction,
+                                                   lhs_literal, rhs_literal));
     } break;
     case F16: {
       TF_ASSIGN_OR_RETURN(
@@ -2538,8 +2908,7 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       DCHECK_GE(input_index[i], 0);
       DCHECK_LT(input_index[i], operand_shape.dimensions(i));
     }
-    TF_RETURN_IF_ERROR(
-        result.CopyElementFrom(operand, input_index, output_index));
+    result.CopyElementFrom(operand, input_index, output_index);
     return true;
   };
 
@@ -3148,7 +3517,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   HloModuleConfig config;
   // Attach cloned computation to an empty HLO module so the existing ones are
   // not modified.
-  HloModule empty_hlo_module("EmptyModuleForFusion", config);
+  HloModule empty_hlo_module("EmptyModuleForFusion", config,
+                             std::make_unique<CompilationEnvironments>(
+                                 fusion->GetModule()->comp_envs()));
   HloCloneContext context(&empty_hlo_module);
   auto cloned_fused_computation =
       fusion->fused_instructions_computation()->Clone(
@@ -3205,6 +3576,119 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
                           {&branch_computation_arg}));
 
   evaluated_[conditional] = std::move(result);
+  return OkStatus();
+}
+
+Status HloEvaluator::HandleConvert(HloInstruction* convert) {
+  const HloInstruction* operand = convert->operand(0);
+  TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
+  TF_ASSIGN_OR_RETURN(Literal result, GetEvaluatedLiteralFor(operand).Convert(
+                                          convert->shape().element_type()));
+  evaluated_[convert] = std::move(result);
+  return OkStatus();
+}
+
+Status HloEvaluator::HandleDynamicSlice(HloInstruction* dynamic_slice) {
+  auto operand = dynamic_slice->operand(0);
+  auto start_indices = dynamic_slice->operand(1);
+  auto result_shape = dynamic_slice->shape();
+  TF_ASSIGN_OR_RETURN(
+      auto inferred_return_shape,
+      ShapeInference::InferDynamicSliceShape(
+          operand->shape(),
+          Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
+          dynamic_slice->dynamic_slice_sizes()));
+  TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+      << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+  TF_RET_CHECK(
+      primitive_util::IsIntegralType(start_indices->shape().element_type()));
+
+  const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+
+  std::vector<int64_t> start =
+      GetS64Indices(absl::MakeConstSpan(dynamic_slice->operands()).subspan(1));
+
+  // Clamp the start indices so the slice is in-bounds w.r.t the operand.
+  for (int64_t i = 0; i < start.size(); ++i) {
+    start[i] = std::min<int64_t>(
+        std::max(int64_t{0}, start[i]),
+        operand_literal.shape().dimensions(i) - result_shape.dimensions(i));
+  }
+
+  std::vector<int64_t> operand_index(start.size());
+  Literal result(result_shape);
+  const size_t element_byte_size =
+      primitive_util::ByteWidth(result_shape.element_type());
+  auto* operand_base = static_cast<const char*>(operand_literal.untyped_data());
+  auto func = [&](void* dest, absl::Span<const int64_t> result_index) {
+    for (int64_t i = 0; i < operand_index.size(); ++i) {
+      CHECK_GE(result_index[i] + start[i], 0);
+      operand_index[i] = result_index[i] + start[i];
+    }
+
+    auto* src = operand_base + (element_byte_size *
+                                IndexUtil::MultidimensionalIndexToLinearIndex(
+                                    operand_literal.shape(), operand_index));
+
+    std::memcpy(dest, src, element_byte_size);
+    return true;
+  };
+  TF_RETURN_IF_ERROR(result.PopulateInplace(func));
+  evaluated_[dynamic_slice] = std::move(result);
+  return OkStatus();
+}
+
+Status HloEvaluator::HandleDynamicUpdateSlice(HloInstruction* dus) {
+  auto operand = dus->operand(0);
+  auto update = dus->operand(1);
+  auto start_indices = dus->operand(2);
+  auto result_shape = dus->shape();
+  TF_ASSIGN_OR_RETURN(
+      auto inferred_return_shape,
+      ShapeInference::InferDynamicUpdateSliceShape(
+          operand->shape(), update->shape(),
+          Cast<HloDynamicUpdateSliceInstruction>(dus)->index_shapes()));
+  TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+      << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+  TF_RET_CHECK(
+      primitive_util::IsIntegralType(start_indices->shape().element_type()));
+  TF_RET_CHECK(ShapeUtil::Compatible(result_shape, operand->shape()));
+
+  const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  const Literal& update_literal = GetEvaluatedLiteralFor(update);
+
+  auto result = operand_literal.Clone();
+  const auto rank = result.shape().rank();
+  std::vector<int64_t> start =
+      GetS64Indices(absl::MakeConstSpan(dus->operands()).subspan(2));
+
+  // Clamp the update start indices so the slice is in-bounds w.r.t the
+  // operand.
+  for (int64_t i = 0; i < rank; ++i) {
+    start[i] = std::min<int64_t>(
+        std::max<int64_t>(0, start[i]),
+        result.shape().dimensions(i) - update_literal.shape().dimensions(i));
+  }
+  std::vector<int64_t> result_index(rank, 0);
+
+  auto func = [&](absl::Span<const int64_t> update_index) {
+    std::transform(update_index.begin(), update_index.end(), start.begin(),
+                   result_index.begin(), std::plus<int64_t>());
+    result.CopyElementFrom(update_literal, update_index, result_index);
+    return true;
+  };
+
+  std::vector<int64_t> base(update_literal.shape().dimensions_size(), 0);
+  std::vector<int64_t> step(update_literal.shape().dimensions_size(), 1);
+  ShapeUtil::ForEachIndexNoStatus(update_literal.shape(), base,
+                                  update_literal.shape().dimensions(), step,
+                                  func);
+  evaluated_[dus] = std::move(result);
+
   return OkStatus();
 }
 
@@ -3368,11 +3852,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
 namespace {
 template <typename NativeT>
 Literal ExtractLiteralFromIndexPositions(const Literal& from,
-                                         absl::Span<int64_t const> indices,
-                                         bool extract_as_scalar) {
-  if (extract_as_scalar) {
-    return LiteralUtil::CreateR0<NativeT>(from.Get<NativeT>({indices[0]}));
-  }
+                                         absl::Span<int64_t const> indices) {
   // We use a InlinedVector here because we need to convert it to an
   // absl::Span later, and this would not work with std::vector<bool>.
   absl::InlinedVector<NativeT, 10> values;
@@ -3383,79 +3863,399 @@ Literal ExtractLiteralFromIndexPositions(const Literal& from,
 }
 
 StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
-                                            absl::Span<int64_t const> indices,
-                                            bool extract_as_scalar = false) {
-  if (extract_as_scalar) {
-    CHECK_EQ(indices.size(), 1);
-  }
+                                            absl::Span<int64_t const> indices) {
   PrimitiveType type = from.shape().element_type();
   switch (type) {
     case PRED: {
-      return ExtractLiteralFromIndexPositions<bool>(from, indices,
-                                                    extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<bool>(from, indices);
     }
     case U8: {
-      return ExtractLiteralFromIndexPositions<uint8_t>(from, indices,
-                                                       extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint8_t>(from, indices);
     }
     case S8: {
-      return ExtractLiteralFromIndexPositions<int8_t>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int8_t>(from, indices);
     }
     case BF16: {
-      return ExtractLiteralFromIndexPositions<bfloat16>(from, indices,
-                                                        extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<bfloat16>(from, indices);
     }
     case F16: {
-      return ExtractLiteralFromIndexPositions<Eigen::half>(from, indices,
-                                                           extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<Eigen::half>(from, indices);
     }
     case U16: {
-      return ExtractLiteralFromIndexPositions<uint16_t>(from, indices,
-                                                        extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint16_t>(from, indices);
     }
     case S16: {
-      return ExtractLiteralFromIndexPositions<int16_t>(from, indices,
-                                                       extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int16_t>(from, indices);
     }
     case F32: {
-      return ExtractLiteralFromIndexPositions<float>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<float>(from, indices);
     }
     case U32: {
-      return ExtractLiteralFromIndexPositions<uint32_t>(from, indices,
-                                                        extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint32_t>(from, indices);
     }
     case S32: {
-      return ExtractLiteralFromIndexPositions<int32_t>(from, indices,
-                                                       extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int32_t>(from, indices);
     }
     case F64: {
-      return ExtractLiteralFromIndexPositions<double>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<double>(from, indices);
     }
     case C64: {
-      return ExtractLiteralFromIndexPositions<std::complex<float>>(
-          from, indices, extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<std::complex<float>>(from,
+                                                                   indices);
     }
     case U64: {
-      return ExtractLiteralFromIndexPositions<uint64_t>(from, indices,
-                                                        extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint64_t>(from, indices);
     }
     case S64: {
-      return ExtractLiteralFromIndexPositions<int64_t>(from, indices,
-                                                       extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int64_t>(from, indices);
     }
     case C128: {
-      return ExtractLiteralFromIndexPositions<std::complex<double>>(
-          from, indices, extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<std::complex<double>>(from,
+                                                                    indices);
     }
     default:
       return InvalidArgument("Unsupported type for Sort: %s",
                              PrimitiveType_Name(type));
   }
 }
+
+// For one particular placement of a window in a base shape (the placement is
+// represented as `window_count_index`), iterates inside the window.
+// Translates the window index into base index. If the base index is within
+// bound, call `f` with the base index.
+void IterateThroughWindow(
+    const Shape& window_shape, const Window& window, const Shape& base_shape,
+    const absl::Span<const int64_t> window_count_index,
+    const std::function<void(absl::Span<const int64_t>)>& f) {
+  const int64_t rank = base_shape.rank();
+  DimensionVector window_index(rank);
+  std::fill(window_index.begin(), window_index.end(), 0);
+  do {
+    DimensionVector base_index(rank);
+    bool out_of_bound = false;
+    for (int64_t i = 0; i < rank; ++i) {
+      // Padding is applied to the dilated base. Say that padding is 3 and
+      // dilation is 2 for some dimension. After applying base dilation and
+      // padding, the dimension looks like:
+      // P P P E D D E D D ... E D D E P P P
+      // where E are the elements and D are the holes. So, the elements are
+      // located in indices: padding + k*base_dilation for k = {0, 1, 2, ...}.
+      // We are accessing elements in the transformed base at indices:
+      // window_count_index * stride + window_index * window_dilation.
+      // Solving for k gives us
+      // (win_count_i * stride + win_i * win_dilation - pad) / base_dilation
+      // When this is a natural number, we index an original element.
+      // Otherwise, we index a 0 (pad or hole), and we don't need to apply
+      // the callback f.
+      base_index[i] = window_count_index[i] * window.dimensions(i).stride() +
+                      window_index[i] * window.dimensions(i).window_dilation() -
+                      window.dimensions(i).padding_low();
+      if (base_index[i] % window.dimensions(i).base_dilation() != 0) {
+        out_of_bound = true;
+        break;
+      }
+      base_index[i] /= window.dimensions(i).base_dilation();
+      if (base_index[i] < 0 || base_index[i] >= base_shape.dimensions(i)) {
+        out_of_bound = true;
+        break;
+      }
+    }
+    if (!out_of_bound) {
+      f(base_index);
+    }
+  } while (IndexUtil::BumpIndices(window_shape, absl::MakeSpan(window_index)));
+}
+
+template <typename Fp, typename Uint, typename ResultT>
+StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                      const Literal& random_literal,
+                                      const Shape& result_shape) {
+  std::function<ResultT(Fp, Uint)> stochastic_convert_op =
+      [](Fp operand, Uint random) -> ResultT {
+    bool is_negative = ToSignMagnitude(operand) < 0;
+    if (Eigen::numext::isinf(operand)) {
+      return is_negative ? std::numeric_limits<ResultT>::min()
+                         : std::numeric_limits<ResultT>::max();
+    }
+    if (Eigen::numext::isnan(operand)) {
+      return static_cast<ResultT>(0);
+    }
+    if (operand >= static_cast<Fp>(std::numeric_limits<ResultT>::max())) {
+      return std::numeric_limits<ResultT>::max();
+    }
+    if (operand <= static_cast<Fp>(std::numeric_limits<ResultT>::min())) {
+      return std::numeric_limits<ResultT>::min();
+    }
+
+    operand = Eigen::numext::abs(operand);
+
+    // Gets the integral piece of the floating point input.
+    auto truncated = static_cast<ResultT>(operand);
+
+    // Removes the integral piece to obtain the fractional piece.
+    Fp fractional = operand - static_cast<Fp>(truncated);
+    if (fractional == Fp{0}) {
+      // No rounding necessary.
+      return is_negative ? -truncated : truncated;
+    }
+
+    // Compares fractional values against unsigned random values by
+    // normalizing random values into [0, 1): fractional vs. (random /
+    // random_max). This equals to comparing (fractional * random_max) vs.
+    // random.
+    auto fixed_fractional = static_cast<Uint>(std::ldexp(
+        static_cast<double>(fractional), std::numeric_limits<Uint>::digits));
+
+    // Rounds the integer output up if the fractional pieces is larger than
+    // the input random number.
+    if (random < fixed_fractional) {
+      // This only happens when the operand is in the (min, -max) range and
+      // should be rounded to min.
+      if (truncated == std::numeric_limits<ResultT>::max()) {
+        return std::numeric_limits<ResultT>::min();
+      }
+      truncated++;
+    }
+    return is_negative ? -truncated : truncated;
+  };
+
+  Literal result(result_shape);
+  TF_RETURN_IF_ERROR(
+      result.Populate<ResultT>([&](absl::Span<const int64_t> multi_index) {
+        return stochastic_convert_op(operand_literal.Get<Fp>(multi_index),
+                                     random_literal.Get<Uint>(multi_index));
+      }));
+  return std::move(result);
+}
+
+// Converts from primitive types to native types.
+template <PrimitiveType operand_type, PrimitiveType random_type,
+          PrimitiveType result_type>
+StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                      const Literal& random_literal,
+                                      const Shape& result_shape) {
+  return StochasticConvertOp<
+      typename primitive_util::PrimitiveTypeToNative<operand_type>::type,
+      typename primitive_util::PrimitiveTypeToNative<random_type>::type,
+      typename primitive_util::PrimitiveTypeToNative<result_type>::type>(
+      operand_literal, random_literal, result_shape);
+}
+
+// Evaluates all possible paths of converting to different integers.
+template <PrimitiveType operand_type, PrimitiveType random_type>
+StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                      const Literal& random_literal,
+                                      const Shape& result_shape) {
+  switch (result_shape.element_type()) {
+#define CONVERT_IF_RESULT_TYPES_MATCH(type)                        \
+  case (type):                                                     \
+    return StochasticConvertOp<operand_type, random_type, (type)>( \
+        operand_literal, random_literal, result_shape);
+    CONVERT_IF_RESULT_TYPES_MATCH(S32)
+    CONVERT_IF_RESULT_TYPES_MATCH(S16)
+    CONVERT_IF_RESULT_TYPES_MATCH(S8)
+#undef CONVERT_IF_RESULT_TYPES_MATCH
+    default:
+      break;
+  }
+  // TODO(b/232442915): Enable converting big floats to small floats.
+  return Unimplemented(
+      "Stochastically converting from type %s to type %s is not implemented.",
+      PrimitiveType_Name(operand_literal.shape().element_type()),
+      PrimitiveType_Name(result_shape.element_type()));
+}
+
+StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                      const Literal& random_literal,
+                                      const Shape& result_shape) {
+  switch (operand_literal.shape().element_type()) {
+    case F16:
+      return StochasticConvertOp<F16, U16>(operand_literal, random_literal,
+                                           result_shape);
+    case BF16:
+      return StochasticConvertOp<BF16, U16>(operand_literal, random_literal,
+                                            result_shape);
+    case F32:
+      return StochasticConvertOp<F32, U32>(operand_literal, random_literal,
+                                           result_shape);
+    case F64:
+      return StochasticConvertOp<F64, U64>(operand_literal, random_literal,
+                                           result_shape);
+    default:
+      break;
+  }
+  // TODO(b/232442915): Enable converting big floats to small floats.
+  return Unimplemented(
+      "Stochastically converting from type %s to type %s is not implemented.",
+      PrimitiveType_Name(operand_literal.shape().element_type()),
+      PrimitiveType_Name(result_shape.element_type()));
+}
 }  // namespace
+
+Status HloEvaluator::HandleReverse(HloInstruction* reverse) {
+  const Shape& result_shape = reverse->shape();
+  const auto reverse_dimensions = reverse->dimensions();
+
+  auto operand = reverse->operand(0);
+  TF_ASSIGN_OR_RETURN(
+      auto inferred_return_shape,
+      ShapeInference::InferReverseShape(operand->shape(), reverse_dimensions));
+
+  TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+      << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  Literal result(result_shape);
+  const size_t element_byte_size =
+      primitive_util::ByteWidth(result_shape.element_type());
+  auto* operand_base = static_cast<const char*>(operand_literal.untyped_data());
+  TF_RETURN_IF_ERROR(result.PopulateInplaceParallel(
+      [&](void* dest, absl::Span<const int64_t> out_index, int) {
+        std::vector<int64_t> from_index(out_index.begin(), out_index.end());
+        for (const int64_t dim : reverse_dimensions) {
+          from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
+        }
+        auto* src =
+            operand_base +
+            (element_byte_size * IndexUtil::MultidimensionalIndexToLinearIndex(
+                                     operand_literal.shape(), from_index));
+        std::memcpy(dest, src, element_byte_size);
+      }));
+
+  evaluated_[reverse] = std::move(result);
+  return OkStatus();
+}
+
+Status HloEvaluator::HandleSelectAndScatter(
+    HloInstruction* select_and_scatter) {
+  auto operand = select_and_scatter->operand(0);
+  auto source = select_and_scatter->operand(1);
+  const Window& window = select_and_scatter->window();
+
+  const Literal& init_literal =
+      GetEvaluatedLiteralFor(select_and_scatter->operand(2));
+  TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
+
+  // Initialize result array with the init value.
+  TF_ASSIGN_OR_RETURN(Literal result,
+                      init_literal.Broadcast(select_and_scatter->shape(), {}));
+
+  std::vector<int64_t> window_dimension_sizes;
+  for (const auto& window_dimension : window.dimensions()) {
+    window_dimension_sizes.push_back(window_dimension.size());
+  }
+  const Shape window_shape = ShapeUtil::MakeShape(
+      operand->shape().element_type(), window_dimension_sizes);
+
+  HloComputation* select = select_and_scatter->select();
+  HloComputation* scatter = select_and_scatter->scatter();
+
+  const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  const Literal& source_literal = GetEvaluatedLiteralFor(source);
+
+  int64_t rank = operand_literal.shape().rank();
+
+  HloEvaluator embedded_evaluator(max_loop_iterations_);
+  DimensionVector source_index(rank, 0);
+
+  do {
+    // For each element in `source`, we place a window in `operand`. For each
+    // window placement, we iterate inside the window twice:
+    //
+    // 1. Find the selected index by applying `select` function to all
+    // elements. E.g., If the `select` function is GreaterEqual, the first
+    // iteration through the window finds the biggest value and returns its
+    // index.
+    //
+    // 2. Using the selected index, scatter value from `source` to result. We
+    // do this by iterating through the window, and compare each index with
+    // the selected index.
+    std::optional<Literal> selected_val;
+    std::optional<DimensionVector> selected_index;
+
+    IterateThroughWindow(
+        window_shape, window, operand_literal.shape(), source_index,
+        [&](absl::Span<const int64_t> operand_index) {
+          auto curr_val =
+              LiteralUtil::GetScalarLiteral(operand_literal, operand_index);
+          if (!selected_val.has_value()) {
+            selected_val.emplace(curr_val.Clone());
+            selected_index.emplace(operand_index.begin(), operand_index.end());
+          }
+          Literal computed_result =
+              embedded_evaluator
+                  .Evaluate(*select, {&selected_val.value(), &curr_val})
+                  .value();
+          bool selected = !computed_result.Get<bool>({});
+          if (selected) {
+            *selected_val = std::move(curr_val);
+            selected_index.emplace(operand_index.begin(), operand_index.end());
+          }
+          embedded_evaluator.ResetVisitStates();
+        });
+
+    IterateThroughWindow(
+        window_shape, window, operand_literal.shape(), source_index,
+        [&](absl::Span<const int64_t> operand_index) {
+          if (std::equal(operand_index.begin(), operand_index.end(),
+                         selected_index->begin())) {
+            auto source =
+                LiteralUtil::GetScalarLiteral(source_literal, source_index);
+            auto scattered =
+                LiteralUtil::GetScalarLiteral(result, operand_index);
+            Literal computed_result =
+                embedded_evaluator.Evaluate(*scatter, {&source, &scattered})
+                    .value();
+            LiteralUtil::SetScalarLiteral(result, operand_index,
+                                          computed_result);
+            // Clear visit states so that the we can use the evaluator again
+            // on the same computation.
+            embedded_evaluator.ResetVisitStates();
+          }
+        });
+  } while (
+      IndexUtil::BumpIndices(source->shape(), absl::MakeSpan(source_index)));
+
+  evaluated_[select_and_scatter] = std::move(result);
+  return OkStatus();
+}
+
+Status HloEvaluator::HandleSlice(HloInstruction* slice) {
+  auto operand = slice->operand(0);
+  const Shape& shape = slice->shape();
+  TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                      ShapeInference::InferSliceShape(
+                          operand->shape(), slice->slice_starts(),
+                          slice->slice_limits(), slice->slice_strides()));
+  TF_RET_CHECK(ShapeUtil::Compatible(shape, inferred_return_shape))
+      << "return shape set to: " << ShapeUtil::HumanString(shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  const int64_t rank = operand->shape().rank();
+  const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  const size_t element_byte_size =
+      primitive_util::ByteWidth(shape.element_type());
+  auto* operand_base = static_cast<const char*>(operand_literal.untyped_data());
+  auto func = [&](void* dest, absl::Span<const int64_t> out_index, int) {
+    DimensionVector operand_index(rank);
+    for (int64_t i = 0; i < rank; ++i) {
+      operand_index[i] =
+          slice->slice_starts(i) + out_index[i] * slice->slice_strides(i);
+    }
+    auto* src = operand_base + (element_byte_size *
+                                IndexUtil::MultidimensionalIndexToLinearIndex(
+                                    operand_literal.shape(), operand_index));
+    std::memcpy(dest, src, element_byte_size);
+  };
+
+  Literal result(shape);
+  TF_RETURN_IF_ERROR(result.PopulateInplaceParallel(func));
+  evaluated_[slice] = std::move(result);
+  return OkStatus();
+}
 
 Status HloEvaluator::HandleSort(HloInstruction* sort) {
   TF_RET_CHECK(sort->operand_count() >= 1)
@@ -3516,20 +4316,10 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
           std::vector<Literal> literals;
           literals.reserve(2 * sort->operand_count());
           for (int64_t i = 0; i < sort->operand_count(); ++i) {
-            auto lhs = ExtractFromIndexPositions(literals_to_sort[i], {a},
-                                                 /*extract_as_scalar=*/true);
-            if (!lhs.ok()) {
-              compare_status = lhs.status();
-              return false;
-            }
-            literals.push_back(std::move(lhs.value()));
-            auto rhs = ExtractFromIndexPositions(literals_to_sort[i], {b},
-                                                 /*extract_as_scalar=*/true);
-            if (!rhs.ok()) {
-              compare_status = rhs.status();
-              return false;
-            }
-            literals.push_back(std::move(rhs.value()));
+            literals.push_back(
+                LiteralUtil::GetScalarLiteral(literals_to_sort[i], {a}));
+            literals.push_back(
+                LiteralUtil::GetScalarLiteral(literals_to_sort[i], {b}));
           }
           std::vector<const Literal*> literal_ptrs;
           absl::c_transform(literals, std::back_inserter(literal_ptrs),
@@ -3586,6 +4376,22 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   return OkStatus();
 }
 
+Status HloEvaluator::HandleStochasticConvert(
+    HloInstruction* stochastic_convert) {
+  const HloInstruction* operand = stochastic_convert->operand(0);
+  const HloInstruction* random = stochastic_convert->operand(1);
+  const Shape& result_shape = stochastic_convert->shape();
+  TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), random->shape()));
+  TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), result_shape));
+
+  const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  const Literal& random_literal = GetEvaluatedLiteralFor(random);
+  TF_ASSIGN_OR_RETURN(
+      evaluated_[stochastic_convert],
+      StochasticConvertOp(operand_literal, random_literal, result_shape));
+  return OkStatus();
+}
+
 static bool IsScalarAdd(HloComputation* computation) {
   HloInstruction* instruction = computation->root_instruction();
   if (instruction->opcode() == HloOpcode::kAdd &&
@@ -3621,10 +4427,8 @@ static StatusOr<bool> PerformReductionStep(
     accumulators.emplace_back(
         ShapeUtil::MakeShape(input_args[i]->shape().element_type(), {}));
 
-    TF_RETURN_IF_ERROR(
-        arg_values[i].CopyElementFrom(*input_args[i], input_index, {}));
-    TF_RETURN_IF_ERROR(
-        accumulators[i].CopyElementFrom(results[i], output_index, {}));
+    arg_values[i].CopyElementFrom(*input_args[i], input_index, {});
+    accumulators[i].CopyElementFrom(results[i], output_index, {});
   }
 
   // Evaluate computation with specified literal operands.
@@ -3647,12 +4451,10 @@ static StatusOr<bool> PerformReductionStep(
   if (is_tuple) {
     std::vector<Literal> computed_results = computed_result.DecomposeTuple();
     for (int64_t i = 0; i < num_args; ++i) {
-      TF_RETURN_IF_ERROR(
-          results[i].CopyElementFrom(computed_results[i], {}, output_index));
+      results[i].CopyElementFrom(computed_results[i], {}, output_index);
     }
   } else {
-    TF_RETURN_IF_ERROR(
-        results[0].CopyElementFrom(computed_result, {}, output_index));
+    results[0].CopyElementFrom(computed_result, {}, output_index);
   }
 
   return true;
@@ -3680,20 +4482,39 @@ static StatusOr<bool> GenerateReduceOutputElement(
   }
 
   for (int64_t i = 0; i < results.size(); ++i) {
-    TF_RETURN_IF_ERROR(
-        results[i].CopyElementFrom(*init_values[i], {}, output_index));
+    results[i].CopyElementFrom(*init_values[i], {}, output_index);
   }
 
   if (use_fast_add) {
     double computed_result = *init_values[0]->GetAsDouble({});
-    auto reduction_step =
-        [&](absl::Span<const int64_t> input_index) -> StatusOr<bool> {
-      double argument = *input_args[0]->GetAsDouble(input_index);
-      computed_result += argument;
+    const Literal* input_arg0 = input_args[0];
+    const Shape& shape = input_arg0->shape();
+    absl::Span<const int64_t> minor_to_major = LayoutUtil::MinorToMajor(shape);
+
+    static constexpr int kChunkSize = 512;
+    int64_t linear_indices[kChunkSize];
+    int n_linear_indices = 0;
+
+    auto reduction_step = [&](absl::Span<const int64_t> input_index) -> bool {
+      linear_indices[n_linear_indices++] =
+          IndexUtil::MultidimensionalIndexToLinearIndex(shape, minor_to_major,
+                                                        input_index);
+      if (n_linear_indices == kChunkSize) {
+        // Periodically compute partial sum to avoid linear_indices getting
+        // large
+        computed_result += *input_arg0->GetSumAsDouble(
+            absl::MakeConstSpan(&linear_indices[0], n_linear_indices));
+        n_linear_indices = 0;
+      }
       return true;
     };
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-        arg_shape, base, arg_dim_counts, arg_dim_steps, reduction_step));
+    ShapeUtil::ForEachIndexNoStatus(arg_shape, base, arg_dim_counts,
+                                    arg_dim_steps, reduction_step);
+    if (n_linear_indices > 0) {
+      // Add in sum over any final indices collected
+      computed_result += *input_arg0->GetSumAsDouble(
+          absl::MakeConstSpan(&linear_indices[0], n_linear_indices));
+    }
     TF_RETURN_IF_ERROR(results[0].SetFromDouble(output_index, computed_result));
     return true;
   }
@@ -3773,7 +4594,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     }
   }
 
-  const int num_threads = tsl::port::MaxParallelism() + 1;
+  const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
   embedded_evaluators.reserve(num_threads);
   for (int i = 0; i < num_threads; ++i) {
@@ -3812,20 +4633,176 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
 }
 
 Status HloEvaluator::HandleReduceWindow(HloInstruction* hlo) {
-  // Here we delegate the handling to the typed visitor class, instantiated by
-  // using the type of the first input of ReduceWindow. The support for the
-  // variadic case inside the typed_visitor is made to not use the template
-  // parameter so it doesn't really matter which type is used to instantiate it
-  // here. We choose not to move the implementation for handle ReduceWindow
-  // from the typed visitor to here because we need to reuse the
-  // IterateThroughWindow method, which is defined and only avaiable inside the
-  // typed visitor.
-  if (hlo->shape().IsTuple()) {
-    return hlo->Visit(
-        typed_visitors_[hlo->shape().tuple_shapes(0).element_type()].get());
-  } else {
-    return DefaultAction(hlo);
+  auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
+  const Window& window = reduce_window->window();
+  HloComputation* function = reduce_window->to_apply();
+  TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                      ShapeInference::InferReduceWindowShape(
+                          reduce_window->input_shapes(),
+                          reduce_window->init_value_shapes(), window,
+                          /*to_apply_shape=*/function->ComputeProgramShape()));
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(reduce_window->shape(), inferred_return_shape))
+      << "return shape is set to: "
+      << ShapeUtil::HumanStringWithLayout(reduce_window->shape())
+      << " but is inferred to be: "
+      << ShapeUtil::HumanStringWithLayout(inferred_return_shape);
+
+  absl::InlinedVector<const Literal*, 2> input_literal_vec, init_literal_vec;
+  auto input_arrays = reduce_window->inputs();
+  auto init_values = reduce_window->init_values();
+  int64_t num_args = input_arrays.size();
+  for (int i = 0; i < num_args; ++i) {
+    const Literal& input_literal = GetEvaluatedLiteralFor(input_arrays[i]);
+    VLOG(3) << "HandleReduceWindow arg_literal: " << input_literal.ToString();
+    input_literal_vec.push_back(&input_literal);
+    const Literal& init_literal = GetEvaluatedLiteralFor(init_values[i]);
+    VLOG(3) << "HandleReduceWindow init_literal: " << init_literal.ToString();
+    TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
+    init_literal_vec.push_back(&init_literal);
   }
+  // Creates a Shape object from window, for iteration below.
+  absl::InlinedVector<int64_t, 2> window_dimension_sizes;
+  for (const auto& window_dimension : window.dimensions()) {
+    window_dimension_sizes.push_back(window_dimension.size());
+  }
+  const Shape window_shape = ShapeUtil::MakeShape(
+      input_arrays[0]->shape().element_type(), window_dimension_sizes);
+
+  const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
+  std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
+  embedded_evaluators.reserve(num_threads);
+  for (int i = 0; i < num_threads; ++i) {
+    embedded_evaluators.push_back(CreateEmbedded(max_loop_iterations_));
+  }
+
+  // For each resulting dimension, calculate and assign computed value.
+  auto evaluate_impl = [&init_literal_vec, &window_shape, &window,
+                        &input_literal_vec, &embedded_evaluators, function,
+                        &inferred_return_shape](
+                           absl::Span<const int64_t> output_index,
+                           int thread_id) -> absl::InlinedVector<Literal, 2> {
+    const int embedded_evaluator_index = thread_id + 1;
+    CHECK_GE(embedded_evaluator_index, 0);
+    CHECK_LT(embedded_evaluator_index, embedded_evaluators.size());
+    HloEvaluator& embedded_evaluator =
+        *embedded_evaluators[embedded_evaluator_index];
+    absl::InlinedVector<Literal, 2> computed_result;
+    computed_result.reserve(init_literal_vec.size());
+    for (const auto* init : init_literal_vec) {
+      computed_result.push_back(init->Clone());
+    }
+    IterateThroughWindow(
+        window_shape, window, input_literal_vec[0]->shape(), output_index,
+        [&](absl::Span<const int64_t> operand_index) -> void {
+          absl::InlinedVector<const Literal*, 2> args;
+          for (auto& curr_result_val : computed_result) {
+            VLOG(2) << "Pushing:" << curr_result_val.ToString() << "\n";
+            args.push_back(&curr_result_val);
+          }
+          absl::InlinedVector<Literal, 2> curr_val_literal_vec;
+          curr_val_literal_vec.reserve(input_literal_vec.size());
+          for (const auto* input_literal : input_literal_vec) {
+            // Evaluate computation with specified literal operands.
+            curr_val_literal_vec.push_back(Literal(ShapeUtil::MakeShape(
+                input_literal->shape().element_type(), {})));
+            curr_val_literal_vec.back().CopyElementFrom(*input_literal,
+                                                        operand_index, {});
+            VLOG(2) << "Pushing:" << curr_val_literal_vec.back().ToString()
+                    << "\n";
+            args.push_back(&curr_val_literal_vec.back());
+          }
+          computed_result[0] =
+              embedded_evaluator.Evaluate(*function, args).value();
+          VLOG(2) << "Computed result:" << computed_result[0].ToString()
+                  << "\n";
+          // Clear visit states so that the we can use the evaluate again
+          // on the same computation.
+          embedded_evaluator.ResetVisitStates();
+          if (inferred_return_shape.IsTuple()) {
+            auto decomposed = computed_result[0].DecomposeTuple();
+            computed_result.clear();
+            computed_result.reserve(decomposed.size());
+            for (int i = 0; i < decomposed.size(); ++i) {
+              computed_result.push_back(std::move(decomposed[i]));
+            }
+          }
+        });
+    VLOG(2) << "Final result size:" << computed_result.size() << "\n";
+    for (const auto& res : computed_result) {
+      VLOG(2) << res.ToString() << "\n";
+    }
+    return computed_result;
+  };
+  Literal result(inferred_return_shape);
+  if (inferred_return_shape.IsTuple()) {
+    absl::InlinedVector<Literal, 1> results(num_args);
+    for (int64_t i = 0; i < num_args; ++i) {
+      results[i] = Literal(inferred_return_shape.tuple_shapes(i));
+    }
+    ShapeUtil::ForEachIndexParallel(
+        inferred_return_shape.tuple_shapes(0),
+        [&results, &evaluate_impl](absl::Span<const int64_t> output_index,
+                                   int thread_id) -> bool {
+          absl::InlinedVector<Literal, 2> computed_result_vec =
+              evaluate_impl(output_index, thread_id);
+          for (int i = 0; i < computed_result_vec.size(); ++i) {
+            // We are reading from `computed_result_vec[i]` at the top-level
+            // literal index and writing to `results[i]` at `output_index`.
+            // This is thread-safe because:
+            //  - `results[i]` is not changing size.
+            //  - `computed_result_vec[i]` is thread-local.
+            //  - There is exactly one write to `results[i]` for each
+            //    `output_index`.
+            results[i].CopyElementFrom(computed_result_vec[i], {},
+                                       output_index);
+          }
+          return true;
+        });
+    result = Literal::MoveIntoTuple(absl::MakeSpan(results));
+    VLOG(2) << "Final result is:" << result.ToString() << "\n";
+  } else {
+    TF_RETURN_IF_ERROR(Apply<PopulateParallelImpl>(
+        result, [&evaluate_impl](absl::Span<const int64_t> output_index,
+                                 int thread_id) {
+          return std::move(evaluate_impl(output_index, thread_id)[0]);
+        }));
+  }
+  VLOG(2) << "Final result is:" << result.ToString() << "\n";
+  evaluated_[reduce_window] = std::move(result);
+  return OkStatus();
+}
+
+Status HloEvaluator::HandleMap(HloInstruction* map) {
+  auto operands = map->operands();
+  HloComputation* computation = map->to_apply();
+
+  Literal result(map->shape());
+
+  HloEvaluator embedded_evaluator(max_loop_iterations_);
+  TF_RETURN_IF_ERROR(
+      Apply<PopulateImpl>(result, [&](absl::Span<const int64_t> multi_index) {
+        std::vector<Literal> arg_literals;
+        arg_literals.reserve(operands.size());
+
+        // Construct scalar literal parameters to be passed to the map
+        // computation.
+        for (auto operand : operands) {
+          const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+          arg_literals.push_back(
+              LiteralUtil::GetScalarLiteral(arg_literal, multi_index));
+        }
+
+        Literal computed_result =
+            embedded_evaluator.Evaluate(*computation, arg_literals).value();
+        // Clear visit states so that the we can use the evaluate again on
+        // the same computation.
+        embedded_evaluator.ResetVisitStates();
+
+        return computed_result;
+      }));
+  evaluated_[map] = std::move(result);
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {

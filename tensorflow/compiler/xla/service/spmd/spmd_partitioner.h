@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -73,6 +77,10 @@ struct SpmdPartitionerOptions {
   // Whether doing bidirectional communication when decomposing independent
   // all-gathers.
   bool bidirectional_decomposed_all_gather = false;
+
+  // Whether to skip checking the numbers and shardings of windowed einsum's
+  // users.
+  bool skip_checking_windowed_einsum_users = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -344,19 +352,13 @@ class PartitionedHlo {
       : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {
     CHECK(hlo->has_sharding())
         << "PartitionedHlo is missing sharding:" << hlo->ToString();
-    // If the tuple shape instruction does not have a tuple sharding, reassign
-    // to use the tuple sharding. Reshard() implementation assumes this.
-    if (hlo_->shape().IsTuple() && !hlo_->sharding().IsTuple()) {
-      hlo_->set_sharding(
-          hlo_->sharding().GetTupleSharding(hlo_->shape()).value());
-    }
   }
 
   PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
     PartitionedHlo new_phlo = *this;
     new_phlo.hlo_ = hlo;
     if (!hlo->has_sharding() && hlo_->has_sharding()) {
-      hlo->set_sharding(hlo_->sharding());
+      hlo->copy_sharding(hlo_);
     }
     return new_phlo;
   }

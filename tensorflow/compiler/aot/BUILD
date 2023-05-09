@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_system_z_available")
 
 package(
@@ -15,7 +15,11 @@ cc_library(
     name = "tf_library_test_main",
     testonly = 1,
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core:test_main"],
+    deps = if_oss([
+        "//tensorflow/core:test_main",
+    ]) + if_google([
+        "//tensorflow/tsl/platform/default/build_config:test_main",
+    ]),
 )
 
 filegroup(
@@ -41,14 +45,14 @@ cc_library(
     defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]) + if_llvm_system_z_available([
         "TF_LLVM_S390X_AVAILABLE=1",
     ]),
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        ":llvm_targets",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
@@ -70,20 +74,17 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "//tensorflow/core/platform:regexp",
-    ] + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-    ]),
+    ],
 )
 
 tf_cc_test(
@@ -118,13 +119,17 @@ cc_library(
     name = "llvm_targets",
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        "@llvm-project//llvm:ARMAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ] + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
@@ -300,8 +305,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:MC",
-        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -353,5 +358,5 @@ test_suite(
 
 exports_files([
     "benchmark_main.template",  # used by tf_library(...,gen_benchmark=True)
-    "test.cc",  # used by tf_library(...,gen_test=True)
+    if_oss("test.cc", "test_google.cc"),  # used by tf_library(...,gen_test=True)
 ])

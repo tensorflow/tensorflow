@@ -1,10 +1,9 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -47,7 +46,7 @@ cc_library(
     ],
 )
 
-pybind_extension(
+tsl_pybind_extension(
     name = "tpu_client_extension",
     srcs = [
         "tpu_client_extension.cc",
@@ -62,11 +61,12 @@ pybind_extension(
         ":tpu_client",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/python:python_ref_manager",
+        "//tensorflow/compiler/xla/python:status_casters",
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/python:util",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/python:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@llvm-project//mlir:IR",

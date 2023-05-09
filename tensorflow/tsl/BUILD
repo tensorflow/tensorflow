@@ -31,6 +31,7 @@ alias(
         "@local_config_cuda//:is_cuda_enabled",
         "@local_config_cuda//cuda:using_clang",
     ),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -39,6 +40,7 @@ selects.config_setting_group(
         ":is_cuda_enabled",
         ":oss",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # Crosses between framework_shared_object and a bunch of other configurations
@@ -79,6 +81,7 @@ selects.config_setting_group(
         ":macos_x86_64_with_framework_shared_object",
         ":macos_arm64_with_framework_shared_object",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # This should be removed after Tensorflow moves to cc_shared_library
@@ -263,6 +266,24 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+selects.config_setting_group(
+    name = "linux_x86_64_with_onednn_v2",
+    match_all = [
+        ":linux_x86_64",
+        "@org_tensorflow//third_party/mkl_dnn:build_with_onednn_v2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "linux_x86_64_with_onednn_v3",
+    match_all = [
+        ":linux_x86_64",
+        "@org_tensorflow//third_party/mkl_dnn:build_with_onednn_v3",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "ios_x86_64",
     flag_values = if_google(
@@ -356,6 +377,7 @@ selects.config_setting_group(
         ":linux_aarch64",
         ":linux_armhf",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
@@ -398,6 +420,21 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_nccl_support",
+    define_values = dict(
+        if_google({"GOOGLE_CUDA_COMPILER": "clang"}),
+        no_nccl_support = "true",
+    ),
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
@@ -431,6 +468,7 @@ bzl_library(
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/mkl:build_defs_bzl",
         "//tensorflow/tsl/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",

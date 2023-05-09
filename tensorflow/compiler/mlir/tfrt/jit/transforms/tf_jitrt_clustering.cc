@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
 
 #include <functional>
+#include <optional>
 #include <utility>
 
 #include "mlir/IR/BuiltinAttributes.h"
@@ -135,7 +136,7 @@ class DefaultClusteringPolicy : public ClusteringPolicy {
  public:
   explicit DefaultClusteringPolicy(
       std::function<bool(Operation*)> filter,
-      llvm::Optional<ValueConstraint> default_constraint = llvm::None)
+      std::optional<ValueConstraint> default_constraint = std::nullopt)
       : filter_(std::move(filter)), default_constraint_(default_constraint) {}
 
   LogicalResult MatchAndUpdateConstraints(
@@ -146,14 +147,14 @@ class DefaultClusteringPolicy : public ClusteringPolicy {
   // A filter for operations that are supported.
   std::function<bool(Operation*)> filter_;
   // Default constraint for all operands.
-  llvm::Optional<ValueConstraint> default_constraint_;
+  std::optional<ValueConstraint> default_constraint_;
 };
 
 template <typename OpTy>
 class OpDefaultClusteringPolicy : public DefaultClusteringPolicy {
  public:
   explicit OpDefaultClusteringPolicy(
-      llvm::Optional<ValueConstraint> default_constraint = llvm::None)
+      std::optional<ValueConstraint> default_constraint = std::nullopt)
       : DefaultClusteringPolicy(
             [](Operation* op) -> bool { return mlir::isa<OpTy>(op); },
             default_constraint) {}
@@ -167,7 +168,7 @@ LogicalResult DefaultClusteringPolicy::MatchAndUpdateConstraints(
   if (!IsSupportedOperandAndResultTypes(op)) return failure();
 
   // Find the most restrictive constraint from the operation results.
-  llvm::Optional<ValueConstraint> default_constraint = default_constraint_;
+  std::optional<ValueConstraint> default_constraint = default_constraint_;
 
   for (mlir::Value result : op->getResults()) {
     if (auto result_constraint = results.GetConstraint(result)) {
@@ -400,7 +401,7 @@ class ConcatV2OpClusteringPolicy
     // a known rank.
     for (auto value : op.getValues()) {
       operands.Insert(value,
-                      result_constraint.getValueOr(ValueConstraint::kRank));
+                      result_constraint.value_or(ValueConstraint::kRank));
     }
 
     // Force axis to be a constant.
@@ -851,7 +852,7 @@ void populateTfJitRtConstraintsPolicies(ClusteringPolicySet& policies,
 
 mlir::LogicalResult IsCompilableConstant(mlir::ElementsAttr value) {
   return success(value.getNumElements() <= 16 &&
-                 value.getType().getElementType().isIntOrIndexOrFloat());
+                 value.getShapedType().getElementType().isIntOrIndexOrFloat());
 }
 
 static bool IsI1Integer(Type type) {

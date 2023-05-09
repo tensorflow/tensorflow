@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,8 +39,9 @@ limitations under the License.
 
 namespace xla {
 
-TpuDevice::TpuDevice(int id, int process_index,
-                     const std::array<int, 3>& coords, int core_on_chip)
+TpuDeviceDescription::TpuDeviceDescription(int id, int process_index,
+                                           const std::array<int, 3>& coords,
+                                           int core_on_chip)
     : id_(id),
       process_index_(process_index),
       coords_(coords),
@@ -52,9 +54,9 @@ TpuDevice::TpuDevice(int id, int process_index,
       process_index_, absl::StrJoin(coords_, ","), core_on_chip_);
 }
 
-absl::string_view TpuDevice::DebugString() const { return debug_string_; }
-
-absl::string_view TpuDevice::ToString() const { return to_string_; }
+TpuDevice::TpuDevice(int id, int process_index,
+                     const std::array<int, 3>& coords, int core_on_chip)
+    : description_(id, process_index, coords, core_on_chip) {}
 
 xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
 TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
@@ -336,9 +338,8 @@ Status PyTpuBuffer::CopyToHostAsync() {
     t->AddCallback([host_value](const xla::Status& status) {
       VLOG(1) << "Device to host transfer finished.";
       if (!status.ok()) {
-        host_value->status =
-            Status(static_cast<tsl::error::Code>(status.code()),
-                   status.error_message());
+        host_value->status = Status(
+            static_cast<absl::StatusCode>(status.code()), status.message());
       }
 
       absl::MutexLock m(&host_value->mutex);
@@ -737,7 +738,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     if (!s.ok()) {
       if (failed == 0) {
         first_failure_status =
-            Status(static_cast<tsl::error::Code>(s.code()), s.error_message());
+            Status(static_cast<absl::StatusCode>(s.code()), s.message());
       }
       ++failed;
     }
@@ -860,8 +861,8 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
         compiled_program->program_shape(&program_shape_proto);
 
     if (!fetch_metadata_status.ok()) {
-      return Status(static_cast<tsl::error::Code>(fetch_metadata_status.code()),
-                    fetch_metadata_status.error_message());
+      return Status(static_cast<absl::StatusCode>(fetch_metadata_status.code()),
+                    fetch_metadata_status.message());
     }
     result_layout = ::xla::Shape(program_shape_proto.result());
   }

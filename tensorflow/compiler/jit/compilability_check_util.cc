@@ -202,7 +202,7 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(
 
   Status s = FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr);
   if (!s.ok()) {
-    *uncompilable_reason = s.error_message();
+    *uncompilable_reason = s.message();
     return false;
   }
   return true;

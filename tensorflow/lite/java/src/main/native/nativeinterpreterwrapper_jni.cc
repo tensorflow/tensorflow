@@ -24,15 +24,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/core/shims/cc/create_op_resolver.h"
-#include "tensorflow/lite/core/shims/cc/interpreter.h"
-#include "tensorflow/lite/core/shims/cc/interpreter_builder.h"
-#include "tensorflow/lite/core/shims/cc/model_builder.h"
-#include "tensorflow/lite/core/shims/cc/tools/verifier_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/create_op_resolver.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/tools/verifier_internal.h"
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #else
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
@@ -42,15 +42,15 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
 
+using tflite::FlatBufferModel;
+using tflite::Interpreter;
+using tflite::InterpreterBuilder;
 using tflite::OpResolver;
 using tflite::jni::AreDimsDifferent;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::CastLongToPointer;
 using tflite::jni::ConvertJIntArrayToVector;
 using tflite::jni::ThrowException;
-using tflite_shims::FlatBufferModel;
-using tflite_shims::Interpreter;
-using tflite_shims::InterpreterBuilder;
 
 namespace {
 
@@ -87,7 +87,7 @@ int getDataType(TfLiteType data_type) {
 
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
 bool VerifyModel(const void* buf, size_t length) {
-  return tflite_shims::internal::VerifyFlatBufferAndGetModel(buf, length);
+  return tflite::internal::VerifyFlatBufferAndGetModel(buf, length);
 }
 
 // Verifies whether the model is a flatbuffer file.
@@ -104,6 +104,15 @@ class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
   }
 };
 
+// Like JNIEnv's FindClass method, but converts the result to a
+// JNI global reference rather than returning a local reference.
+jclass FindClassAndMakeGlobalRef(JNIEnv* env, const char* class_name) {
+  jclass local_ref = env->FindClass(class_name);
+  jclass global_ref = static_cast<jclass>(env->NewGlobalRef(local_ref));
+  env->DeleteLocalRef(local_ref);
+  return global_ref;
+}
+
 }  // namespace
 
 extern "C" {
@@ -116,7 +125,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
 
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  jclass string_class = env->FindClass("java/lang/String");
+  static jclass string_class =
+      FindClassAndMakeGlobalRef(env, "java/lang/String");
   if (string_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -191,7 +201,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureKeys(
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  jclass string_class = env->FindClass("java/lang/String");
+  static jclass string_class =
+      FindClassAndMakeGlobalRef(env, "java/lang/String");
   if (string_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -275,7 +286,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
 
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  jclass string_class = env->FindClass("java/lang/String");
+  static jclass string_class =
+      FindClassAndMakeGlobalRef(env, "java/lang/String");
   if (string_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -396,7 +408,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     jint num_threads, jboolean useXnnpack, jobject delegate_handle_list) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
 
-  static jclass list_class = env->FindClass("java/util/List");
+  static jclass list_class = FindClassAndMakeGlobalRef(env, "java/util/List");
   if (list_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -422,7 +434,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     }
     return 0;
   }
-  static jclass long_class = env->FindClass("java/lang/Long");
+  static jclass long_class = FindClassAndMakeGlobalRef(env, "java/lang/Long");
   if (long_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -451,7 +463,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
 
   std::unique_ptr<OpResolver> resolver =
       std::make_unique<tflite::jni::OpResolverLazyDelegateProxy>(
-          tflite_shims::CreateOpResolver(), useXnnpack != JNI_FALSE);
+          tflite::CreateOpResolver(), useXnnpack != JNI_FALSE);
 
   InterpreterBuilder interpreter_builder(*model, *resolver);
   interpreter_builder.SetNumThreads(static_cast<int>(num_threads));

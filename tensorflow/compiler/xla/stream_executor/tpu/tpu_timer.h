@@ -27,13 +27,15 @@ class TpuTimer : public ::stream_executor::internal::TimerInterface {
  public:
   explicit TpuTimer(SE_Timer* timer) : timer_(timer) {}
   ~TpuTimer() override {
-    tensorflow::tpu::ExecutorApiFn()->TpuTimer_FreeFn(timer_);
+    stream_executor::tpu::ExecutorApiFn()->TpuTimer_FreeFn(timer_);
   }
   uint64_t Microseconds() const override {
-    return tensorflow::tpu::ExecutorApiFn()->TpuTimer_MicrosecondsFn(timer_);
+    return stream_executor::tpu::ExecutorApiFn()->TpuTimer_MicrosecondsFn(
+        timer_);
   }
   uint64_t Nanoseconds() const override {
-    return tensorflow::tpu::ExecutorApiFn()->TpuTimer_NanosecondsFn(timer_);
+    return stream_executor::tpu::ExecutorApiFn()->TpuTimer_NanosecondsFn(
+        timer_);
   }
 
  private:

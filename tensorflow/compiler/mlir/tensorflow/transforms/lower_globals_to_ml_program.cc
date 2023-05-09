@@ -121,12 +121,6 @@ SymbolRefAttr lookupGlobalTensor(func::FuncOp func, Value resource,
 }
 
 static LogicalResult convertTFGlobals(ModuleOp module) {
-  if (auto sessionInitializer =
-          tf_saved_model::GetSessionInitializerOp(module)) {
-    return sessionInitializer.emitError()
-           << "Session initializer is not supported yet";
-  }
-
   OpBuilder globalBuilder(module.getBodyRegion());
   DenseMap<Operation *, std::string> opToName;
   for (auto globalTensor : module.getOps<tf_saved_model::GlobalTensorOp>()) {
@@ -140,10 +134,16 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
       return globalTensor.emitError()
              << "Multiple exported names for global tensor not supported yet";
     }
+    Attribute initial_value;
+    if (globalTensor.getValue()) {
+      initial_value = *globalTensor.getValue();
+    } else {
+      initial_value = mlir::Attribute();
+    }
     opToName[globalTensor] = name;
     auto variableOp = globalBuilder.create<ml_program::GlobalOp>(
         globalTensor.getLoc(), name, globalTensor.getType(),
-        globalTensor.getIsMutable(), globalTensor.getValue(),
+        globalTensor.getIsMutable(), initial_value,
         /*visibility=*/globalBuilder.getStringAttr("private"));
     variableOp.setPrivate();
   }

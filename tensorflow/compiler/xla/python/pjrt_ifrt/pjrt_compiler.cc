@@ -28,30 +28,17 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-char XlaCompatibleCompiler::ID = 0;
 char PjRtCompiler::ID = 0;
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
     mlir::ModuleOp mlir_module, CompileOptions options) {
   DCHECK(this);
-  XlaComputation xla_computation;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      mlir_module, xla_computation,
-      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false));
-  return PjRtLoadedExecutable::Create(client_, xla_computation,
-                                      std::move(options));
-}
-
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::CompileXla(
-    const XlaComputation& computation, CompileOptions options) {
-  DCHECK(this);
-  return PjRtLoadedExecutable::Create(client_, computation, std::move(options));
+  return PjRtLoadedExecutable::Create(client_, mlir_module, std::move(options));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
-PjRtCompiler::DeserializeLoadedExecutable(absl::string_view serialized,
-                                          CompileOptions options) {
+PjRtCompiler::DeserializeLoadedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executble,
                       client_->pjrt_client()->DeserializeExecutable(

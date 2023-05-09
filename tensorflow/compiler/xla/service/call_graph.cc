@@ -83,7 +83,7 @@ std::string CallSite::ToString() const {
       CallContextToString(context()), ": ",
       absl::StrJoin(called_computations(), ", ",
                     [](std::string* out, const HloComputation* computation) {
-                      out->append(computation->name());
+                      absl::StrAppend(out, computation->name());
                     }));
 }
 
@@ -99,7 +99,9 @@ const CallSite* CallGraphNode::GetCallSite(
   return &callsites_[it->second];
 }
 
-std::string CallGraphNode::ToString() const { return computation_->name(); }
+absl::string_view CallGraphNode::ToString() const {
+  return computation_->name();
+}
 
 void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
   caller_callsites_.push_back(caller_callsite);
@@ -391,6 +393,9 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
   auto next_caller = [this](HloInstruction* instruction) -> HloInstruction* {
     const CallGraphNode& node = GetNode(instruction->parent());
     if (node.caller_callsites().size() != 1) {
+      if (instruction->parent()->IsAsyncComputation()) {
+        return node.caller_callsites()[0].instruction();
+      }
       return nullptr;
     }
     return node.caller_callsites()[0].instruction();

@@ -161,6 +161,15 @@ def LHLO_CosineOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
+def LHLO_TanOp: LHLO_UnaryElementwiseOp<"tan", LHLO_FpOrComplexBuffer> {
+  let summary = "Tan operator";
+  let description = [{
+    Returns `Tan(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential", LHLO_FpOrComplexBuffer> {
   let summary = "Exponential operator";
   let description = [{
@@ -631,7 +640,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
+    OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
     DefaultValuedOptionalAttr<MHLO_CustomCallApiVersionAttr,
@@ -640,6 +649,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
+  let regions = (region AnyRegion:$called_computation);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1083,90 +1093,6 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]> {
   );
 }
 
-// Common base class for AllReduce, AllGather, and AllToAll.
-class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
-  LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize])> {
-  dag arguments_base = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
-    I64ElementsAttr:$replica_groups,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
-    OptionalAttr<MHLO_ChannelHandle>:$channel_id,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
-  );
-  let hasVerifier = 1;
-  let extraClassDeclaration = [{
-    // AllGather is cross replica if channel_id is not set.
-    bool IsCrossReplica() { return !getChannelId().has_value(); }
-  }];
-}
-
-def LHLO_AllGatherOp : LHLO_CollectiveCommunicationOp<"all_gather"> {
-  let summary = "AllGather operator";
-  let description = [{
-    Performs concatenation across replicas.
-
-    See https://www.tensorflow.org/xla/operation_semantics#allgather
-  }];
-  let arguments = !con(
-    arguments_base,
-    (ins I64Attr:$all_gather_dimension));
-}
-
-def LHLO_AllReduceOp : LHLO_CollectiveCommunicationOp<"all_reduce", [SameOperandsElementType]> {
-  let summary = "AllReduce operator";
-  let description = [{
-    Performs a custom reduction across replicas.
-
-    See https://www.tensorflow.org/xla/operation_semantics#allreduce.
-  }];
-  let arguments = arguments_base;
-  let regions = (region SizedRegion<1>:$computation);
-}
-
-def LHLO_ReduceScatterOp : LHLO_CollectiveCommunicationOp<"reduce_scatter", [SameOperandsElementType]> {
-  let summary = "ReduceScatter operator";
-  let description = [{
-     Performs all_reduce followed by a scatter.
-
-     See https://www.tensorflow.org/xla/operation_semantics#reducescatter
-  }];
-  let arguments = !con(
-    arguments_base,
-    (ins I64Attr:$scatter_dimension));
-  let regions = (region SizedRegion<1>:$computation);
-}
-
-def LHLO_AllToAllOp : LHLO_CollectiveCommunicationOp<"all_to_all", [SameOperandsElementType]> {
-  let arguments = !con(
-    arguments_base,
-    (ins OptionalAttr<I64Attr>:$split_dimension));
-}
-
-def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]> {
-  let summary = "CollectivePermute operator";
-  let description = [{
-    CollectivePermute is a collective operation that sends and receives data
-    cross replicas.
-    Note that there are the following restrictions on the source_target_pair:
-    - Any two pairs should not have the same target replica id, and they should
-    not have the same source replica id.
-    - If a replica id is not a target in any pair, then the output on that
-    replica is a tensor consists of 0(s) with the same shape as the input.
-
-    See https://www.tensorflow.org/xla/operation_semantics#collectivepermute.
-
-  }];
-
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    I64ElementsAttr:$source_target_pairs,
-    OptionalAttr<MHLO_ChannelHandle>:$channel_id
-  );
-  let hasVerifier = 1;
-}
-
 def LHLO_FftOp: LHLO_Op<"fft", []> {
   let summary = "Fast fourier transform operator";
   let description = [{
@@ -1346,6 +1272,90 @@ def LHLO_SortOp: LHLO_Op<"sort", [SameVariadicOperandSize, SameOperandsShape]> {
 }
 
 //===----------------------------------------------------------------------===//
+// Point-to-point communication operations.
+//===----------------------------------------------------------------------===//
+
+def LHLO_SendOp : LHLO_Op<"send", []> {
+
+  let summary = "Send operator";
+
+  let description = [{
+    Sends the given operand data to a Recv instruction in another computation
+    that shares the same channel handle. Does not return any data. Send is an
+    asynchronous operation, and must be paired with a SendDone operation to
+    wait for the completion of the data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#send.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    DefaultValuedOptionalAttr<DictionaryAttr, "{}">:$frontend_attributes
+  );
+
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLO_RecvOp : LHLO_Op<"recv", []> {
+
+  let summary = "Recv operator";
+
+  let description = [{
+    Receives data of the given shape from a Send instruction in another
+    computation that shares the same channel handle. Recv is an asynchronous
+    operation, and must be paired with a RecvDone operation to wait for the
+    completion of the data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#recv.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    DefaultValuedOptionalAttr<DictionaryAttr, "{}">:$frontend_attributes
+  );
+
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLO_SendDoneOp : LHLO_Op<"send_done", []> {
+
+  let summary = "SendDone operator";
+
+  let description = [{
+    Waits for the completion of corresponding Send operation data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#send.
+  }];
+
+  let arguments = (ins
+    MHLO_Token:$token,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+  );
+}
+
+def LHLO_RecvDoneOp : LHLO_Op<"recv_done", []> {
+
+  let summary = "RecvDone operator";
+
+  let description = [{
+    Waits for the completion of corresponding Recv operation data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#recv.
+  }];
+
+  let arguments = (ins
+    MHLO_Token:$token,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+  );
+}
+
+//===----------------------------------------------------------------------===//
 // Late operations
 //===----------------------------------------------------------------------===//
 
@@ -1365,6 +1375,9 @@ def FusionOp : LHLO_Op<"fusion", [
     The XLA runtime expects this hint to be followed, as it expects a single
     kernel per HLO instruction. This restriction might be lifted in the future.
   }];
+  let arguments = (ins
+    OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config
+  );
   let regions = (region SizedRegion<1>:$region);
 
   let skipDefaultBuilders = 1;
@@ -1426,7 +1439,7 @@ def TerminatorOp :
   }];
   let builders = [
     OpBuilder<(ins "ValueRange":$operands),
-    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
+    [{ build($_builder, $_state, std::nullopt, operands, std::nullopt); }]>];
 }
 
 def LHLO_RealDynamicSliceOp: LHLO_Op<

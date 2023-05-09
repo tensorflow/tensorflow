@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -36,12 +37,12 @@ namespace xla {
 namespace gpu {
 
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
-                         absl::Span<const BufferAllocation* const> args,
+                         std::vector<BufferAllocation::Slice> args,
                          const std::string& kernel_name,
                          const LaunchDimensions& launch_dimensions,
                          std::vector<mlir::Value> values)
     : Thunk(Kind::kKernel, thunk_info),
-      args_(args.begin(), args.end()),
+      args_(std::move(args)),
       kernel_name_(kernel_name),
       launch_dimensions_(launch_dimensions),
       values_(std::move(values)) {}
@@ -65,7 +66,8 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::KernelBase> kernel,
         CreateKernel(kernel_name_, args_.size(), executable.text(),
-                     executable.binary(), executor));
+                     executable.binary(), executor,
+                     launch_dimensions_.SharedMemBytes()));
 
     kernel_cache_.emplace(executor, std::move(kernel));
   }
@@ -107,11 +109,10 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(3) << "Launching " << kernel->name();
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
-  for (const BufferAllocation* arg : args_) {
-    se::DeviceMemoryBase buf =
-        params.buffer_allocations->GetDeviceAddress(arg->index());
-    VLOG(3) << "  Arg: alloc #" << arg->index() << ": " << buf.opaque() << "  ("
-            << buf.size() << "B)";
+  for (const BufferAllocation::Slice& arg : args_) {
+    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
+            << ": " << buf.opaque() << " (" << buf.size() << "B)";
     buffer_args.push_back(buf);
   }
 

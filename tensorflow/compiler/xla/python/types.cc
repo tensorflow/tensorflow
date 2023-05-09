@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/types.h"
 
+#include <tuple>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -26,32 +28,45 @@ namespace py = pybind11;
 
 xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
   static auto* types =
-      new absl::flat_hash_map<std::pair<char, int>, PrimitiveType>({
-          {{'b', 1}, PRED},
-          {{'i', 1}, S8},
-          {{'i', 2}, S16},
-          {{'i', 4}, S32},
-          {{'i', 8}, S64},
-          {{'u', 1}, U8},
-          {{'u', 2}, U16},
-          {{'u', 4}, U32},
-          {{'u', 8}, U64},
-          {{'V', 2}, BF16},  // array protocol code for raw data (void*)
-          {{'f', 2}, F16},
-          {{'f', 4}, F32},
-          {{'f', 8}, F64},
-          {{'c', 8}, C64},
-          {{'c', 16}, C128},
+      new absl::flat_hash_map<std::tuple<char, char, int>, PrimitiveType>({
+          {{'?', 'b', 1}, PRED},          {{'b', 'i', 1}, S8},
+          {{'h', 'i', 2}, S16},           {{'i', 'i', 4}, S32},
+          {{'l', 'i', 4}, S32},           {{'q', 'i', 8}, S64},
+          {{'l', 'i', 8}, S64},           {{'B', 'u', 1}, U8},
+          {{'H', 'u', 2}, U16},           {{'I', 'u', 4}, U32},
+          {{'L', 'u', 4}, U32},           {{'Q', 'u', 8}, U64},
+          {{'L', 'u', 8}, U64},           {{'4', 'V', 1}, F8E4M3FN},
+          {{'L', 'V', 1}, F8E4M3B11FNUZ}, {{'5', 'f', 1}, F8E5M2},
+          {{'E', 'V', 2}, BF16},  // array protocol code for raw data (void*)
+          {{'e', 'f', 2}, F16},           {{'f', 'f', 4}, F32},
+          {{'d', 'f', 8}, F64},           {{'F', 'c', 8}, C64},
+          {{'D', 'c', 16}, C128},
       });
-  auto it = types->find({np_type.kind(), np_type.itemsize()});
+  auto it = types->find({np_type.char_(), np_type.kind(), np_type.itemsize()});
   if (it == types->end()) {
-    return InvalidArgument("Unknown NumPy type %c size %d", np_type.kind(),
-                           np_type.itemsize());
+    return InvalidArgument("Unknown NumPy type %c kind %c size %d",
+                           np_type.char_(), np_type.kind(), np_type.itemsize());
   }
   return it->second;
 }
 
 xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+  struct FloatTypes {
+    py::dtype bfloat16;
+    py::dtype float8_e4m3fn;
+    py::dtype float8_e4m3b11;
+    py::dtype float8_e5m2;
+  };
+
+  static const FloatTypes& float_types = *[]() {
+    py::module ml_dtypes = py::module::import("ml_dtypes");
+    return new FloatTypes{
+        py::dtype::from_args(ml_dtypes.attr("bfloat16")),
+        py::dtype::from_args(ml_dtypes.attr("float8_e4m3fn")),
+        py::dtype::from_args(ml_dtypes.attr("float8_e4m3b11")),
+        py::dtype::from_args(ml_dtypes.attr("float8_e5m2")),
+    };
+  }();
   switch (type) {
     case PRED:
       return py::dtype::of<bool>();
@@ -71,10 +86,14 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
       return py::dtype::of<uint32_t>();
     case U64:
       return py::dtype::of<uint64_t>();
-    case BF16: {
-      py::handle bfloat16(tensorflow::Bfloat16Dtype());
-      return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
-    }
+    case F8E4M3FN:
+      return float_types.float8_e4m3fn;
+    case F8E4M3B11FNUZ:
+      return float_types.float8_e4m3b11;
+    case F8E5M2:
+      return float_types.float8_e5m2;
+    case BF16:
+      return float_types.bfloat16;
     case F16:
       return py::dtype("e");  // PEP 3118 code for "float16
     case F32:
@@ -94,7 +113,8 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
 const NumpyScalarTypes& GetNumpyScalarTypes() {
   static const NumpyScalarTypes* singleton = []() {
     NumpyScalarTypes* dtypes = new NumpyScalarTypes();
-    const auto numpy = py::module::import("numpy");
+    py::module numpy = py::module::import("numpy");
+    py::module ml_dtypes = py::module::import("ml_dtypes");
     dtypes->np_bool = py::object(numpy.attr("bool_"));
     dtypes->np_int8 = py::object(numpy.attr("int8"));
     dtypes->np_int16 = py::object(numpy.attr("int16"));
@@ -104,8 +124,11 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_uint16 = py::object(numpy.attr("uint16"));
     dtypes->np_uint32 = py::object(numpy.attr("uint32"));
     dtypes->np_uint64 = py::object(numpy.attr("uint64"));
-    dtypes->np_bfloat16 =
-        py::reinterpret_borrow<py::object>(tensorflow::Bfloat16Dtype());
+    dtypes->np_bfloat16 = py::object(ml_dtypes.attr("bfloat16"));
+    dtypes->np_float8_e4m3fn = py::object(ml_dtypes.attr("float8_e4m3fn"));
+    dtypes->np_float8_e4m3b11fnuz =
+        py::object(ml_dtypes.attr("float8_e4m3b11"));
+    dtypes->np_float8_e5m2 = py::object(ml_dtypes.attr("float8_e5m2"));
     dtypes->np_float16 = py::object(numpy.attr("float16"));
     dtypes->np_float32 = py::object(numpy.attr("float32"));
     dtypes->np_float64 = py::object(numpy.attr("float64"));
@@ -159,39 +182,42 @@ StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
 }
 
 StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
-  static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
-                "Big endian support not implemented");
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define ENDIAN_PREFIX "<"
+#else
+#define ENDIAN_PREFIX ">"
+#endif
   switch (type) {
     case PRED:
       return py::str("|b1");
     case S8:
       return py::str("|i1");
     case S16:
-      return py::str("<i2");
+      return py::str(ENDIAN_PREFIX "i2");
     case S32:
-      return py::str("<i4");
+      return py::str(ENDIAN_PREFIX "i4");
     case S64:
-      return py::str("<i8");
+      return py::str(ENDIAN_PREFIX "i8");
     case U8:
       return py::str("|u1");
     case U16:
-      return py::str("<u2");
+      return py::str(ENDIAN_PREFIX "u2");
     case U32:
-      return py::str("<u4");
+      return py::str(ENDIAN_PREFIX "u4");
     case U64:
-      return py::str("<u8");
+      return py::str(ENDIAN_PREFIX "u8");
     case BF16:
-      return py::str("<V2");
+      return py::str(ENDIAN_PREFIX "V2");
     case F16:
-      return py::str("<f2");
+      return py::str(ENDIAN_PREFIX "f2");
     case F32:
-      return py::str("<f4");
+      return py::str(ENDIAN_PREFIX "f4");
     case F64:
-      return py::str("<f8");
+      return py::str(ENDIAN_PREFIX "f8");
     case C64:
-      return py::str("<c8");
+      return py::str(ENDIAN_PREFIX "c8");
     case C128:
-      return py::str("<c16");
+      return py::str(ENDIAN_PREFIX "c16");
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));

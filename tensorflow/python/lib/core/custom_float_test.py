@@ -29,13 +29,15 @@ import numpy as np
 # pylint: disable=unused-import,g-bad-import-order
 from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.core import _pywrap_float8
-from tensorflow.python.lib.core import _pywrap_bfloat16
+from tensorflow.python.lib.core import _pywrap_custom_casts
 from tensorflow.python.platform import test
+from tensorflow.tsl.python.lib.core import pywrap_bfloat16
 
-bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
-float8_e4m3b11 = _pywrap_bfloat16.TF_float8_e4m3b11_type()
-float8_e4m3 = _pywrap_float8.TF_float8_e4m3_type()
+bfloat16 = pywrap_bfloat16.bfloat16_type()
+float8_e4m3b11 = pywrap_bfloat16.float8_e4m3b11_type()
+float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
 float8_e5m2 = _pywrap_float8.TF_float8_e5m2_type()
+_pywrap_custom_casts.TF_register_custom_casts()
 
 
 def numpy_assert_allclose(a, b, float_type, **kwargs):
@@ -93,28 +95,28 @@ def dtype_has_inf(dtype):
 FLOAT_EPSILON = {
     bfloat16: float.fromhex("1.0p-7"),
     float8_e4m3b11: float.fromhex("1.0p-3"),
-    float8_e4m3: float.fromhex("1.0p-3"),
+    float8_e4m3fn: float.fromhex("1.0p-3"),
     float8_e5m2: float.fromhex("1.0p-2"),
 }
 
 FLOAT_MAX = {
     bfloat16: float.fromhex("1.FEp127"),
     float8_e4m3b11: float.fromhex("1.Ep4"),
-    float8_e4m3: float.fromhex("1.Cp8"),
+    float8_e4m3fn: float.fromhex("1.Cp8"),
     float8_e5m2: float.fromhex("1.Cp15"),
 }
 
 FLOAT_SMALLEST_SUBNORMAL = {
     bfloat16: float.fromhex("1.0p-133"),
     float8_e4m3b11: float.fromhex("1.0p-13"),
-    float8_e4m3: float.fromhex("1.0p-9"),
+    float8_e4m3fn: float.fromhex("1.0p-9"),
     float8_e5m2: float.fromhex("1.0p-16"),
 }
 
 FLOAT_SMALLEST_NORMAL = {
     bfloat16: float.fromhex("1.0p-126"),
     float8_e4m3b11: float.fromhex("1.0p-10"),
-    float8_e4m3: float.fromhex("1.0p-6"),
+    float8_e4m3fn: float.fromhex("1.0p-6"),
     float8_e5m2: float.fromhex("1.0p-14"),
 }
 
@@ -136,7 +138,7 @@ INT_VALUES = {
     bfloat16: [0, 1, 2, 10, 34, 47, 128, 255, 256, 512],
     float8_e4m3b11:
         list(range(0, 30, 2)) + list(range(1, 15, 2)),
-    float8_e4m3: [
+    float8_e4m3fn: [
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22,
         24, 26, 28, 30, 32, 36, 40, 44, 48, 52, 56, 60, 64, 72, 80, 88, 96, 104,
         112, 120, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352,
@@ -154,7 +156,7 @@ INT_VALUES = {
 BITS_TYPE = {
     bfloat16: np.uint16,
     float8_e4m3b11: np.uint8,
-    float8_e4m3: np.uint8,
+    float8_e4m3fn: np.uint8,
     float8_e5m2: np.uint8
 }
 
@@ -163,7 +165,7 @@ BITS_TYPE = {
 @parameterized.named_parameters(({
     "testcase_name": "_" + dtype.__name__,
     "float_type": dtype
-} for dtype in [bfloat16, float8_e4m3b11, float8_e4m3, float8_e5m2]))
+} for dtype in [bfloat16, float8_e4m3b11, float8_e4m3fn, float8_e5m2]))
 class CustomFloatTest(parameterized.TestCase):
   """Tests the non-numpy Python methods of the custom float type."""
 
@@ -202,6 +204,13 @@ class CustomFloatTest(parameterized.TestCase):
               np.array(FLOAT_VALUES[float_type], dtype),
               float_type(np.array(FLOAT_VALUES[float_type],
                                   dtype)).astype(dtype))
+
+  def testBetweenCustomTypes(self, float_type):
+    for dtype in [bfloat16, float8_e4m3b11, float8_e4m3fn, float8_e5m2]:
+      x = np.array(FLOAT_VALUES[float_type], dtype=dtype)
+      y = x.astype(float_type)
+      z = x.astype(float).astype(float_type)
+      numpy_assert_allclose(y, z, float_type=float_type)
 
   def testStr(self, float_type):
     for value in FLOAT_VALUES[float_type]:
@@ -431,7 +440,7 @@ BINARY_PREDICATE_UFUNCS = [
 @parameterized.named_parameters(({
     "testcase_name": "_" + dtype.__name__,
     "float_type": dtype
-} for dtype in [bfloat16, float8_e4m3b11, float8_e4m3, float8_e5m2]))
+} for dtype in [bfloat16, float8_e4m3b11, float8_e4m3fn, float8_e5m2]))
 class CustomFloatNumPyTest(parameterized.TestCase):
   """Tests NumPy integration of the custom float types."""
 

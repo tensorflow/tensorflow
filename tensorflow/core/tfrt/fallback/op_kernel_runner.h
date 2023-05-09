@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -40,43 +41,76 @@ namespace tfrt_stub {
 class OpKernelRunner {
  public:
   static StatusOr<OpKernelRunner> Create(
-      absl::string_view op_name, absl::string_view device_name, int num_args,
+      absl::string_view op_name, absl::string_view node_name,
+      absl::string_view device_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
 
+  ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
   static StatusOr<OpKernelRunner> Create(
-      absl::string_view op_name, int num_args,
+      absl::string_view op_name, absl::string_view device_name, int num_args,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const tensorflow::DeviceMgr& device_manager,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime) {
+    return Create(op_name, /*node_name=*/op_name, device_name, num_args,
+                  attr_builder, device_manager,
+                  process_function_library_runtime);
+  }
+
+  static StatusOr<OpKernelRunner> Create(
+      absl::string_view op_name, absl::string_view node_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime,
       tensorflow::Device* device);
 
+  ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
+  static StatusOr<OpKernelRunner> Create(
+      absl::string_view op_name, int num_args,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime,
+      tensorflow::Device* device) {
+    return Create(op_name, /*node_name=*/op_name, num_args, attr_builder,
+                  process_function_library_runtime, device);
+  }
+
   OpKernelRunner() = default;
 
   explicit operator bool() const { return op_kernel_ != nullptr; }
 
-  void Run(OpKernelContext* context) const;
+  void Run(OpKernelContext* context) const {
+    DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
+             << op_kernel_->def().DebugString()
+             << ", on Device: " << context->device()->name();
+
+    // For TFRT GPU or TPU, we currently only run xla clusters on GPU or TPU,
+    // and all other ops are run on CPU.
+
+    op_kernel_->Compute(context);
+  }
 
   void RunAsync(OpKernelContext* context,
                 AsyncOpKernel::DoneCallback done_callback) const;
 
-  bool IsAsync() const { return is_async_; }
+  bool IsAsync() const { return info_->is_async; }
 
   tensorflow::OpKernel* op_kernel() const { return op_kernel_.get(); }
-  tensorflow::Device* device() const { return device_; }
+  tensorflow::Device* device() const { return info_->device; }
   tensorflow::FunctionLibraryRuntime* function_library_runtime() const {
-    return function_library_runtime_;
+    return info_->function_library_runtime;
   }
   tensorflow::ResourceMgr* resource_manager() const {
-    return resource_manager_;
+    return info_->resource_manager;
   }
 
-  const gtl::InlinedVector<AllocatorAttributes, 4>& input_alloc_attrs() const {
+  absl::Span<const AllocatorAttributes> input_alloc_attrs() const {
     return input_alloc_attrs_;
   }
-  const gtl::InlinedVector<AllocatorAttributes, 1>& output_alloc_attrs() const {
+  absl::Span<const AllocatorAttributes> output_alloc_attrs() const {
     return output_alloc_attrs_;
   }
 
@@ -86,25 +120,31 @@ class OpKernelRunner {
       tensorflow::FunctionLibraryRuntime* function_library_runtime,
       std::unique_ptr<OpKernel> op_kernel);
 
-  tensorflow::Device* device_ = nullptr;
-  tensorflow::FunctionLibraryRuntime* function_library_runtime_ = nullptr;
-  tensorflow::ResourceMgr* resource_manager_ = nullptr;
   std::unique_ptr<OpKernel> op_kernel_;
-  bool is_async_ = false;
-  gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
-  gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
+  absl::Span<const AllocatorAttributes> input_alloc_attrs_;
+  absl::Span<const AllocatorAttributes> output_alloc_attrs_;
+
+  struct Info {
+    tensorflow::Device* device = nullptr;
+    tensorflow::FunctionLibraryRuntime* function_library_runtime = nullptr;
+    tensorflow::ResourceMgr* resource_manager = nullptr;
+    bool is_async = false;
+    gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs;
+    gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs;
+  };
+  std::unique_ptr<Info> info_;
 };
 
 // OpKernelRunState keeps the states needed for per-kernel execution.
 struct OpKernelRunState {
-  gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
-  gtl::InlinedVector<tensorflow::TensorValue, 4> input_tf_tensor_values;
+  std::vector<const tensorflow::TensorBuffer*> tensor_buffers;
+  std::vector<tensorflow::TensorValue> input_tf_tensor_values;
   OpKernelContext::Params params;
+  gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
 
   OpKernelRunState() = default;
-  OpKernelRunState(
-      const gtl::InlinedVector<tensorflow::TensorValue, 4>& tensor_values,
-      const OpKernelContext::Params& p) {
+  OpKernelRunState(absl::Span<const tensorflow::TensorValue> tensor_values,
+                   const OpKernelContext::Params& p) {
     // `input_tf_tensor_values` contains the reference to all tensor used,
     // while `input_tf_tensors` only contains those needs ownership so their
     // sizes may not match. For this copy assignment, we conservatively copy all
@@ -144,7 +184,7 @@ class OpKernelRunnerTable {
   // dense.
   bool Insert(int64_t index, OpKernelRunner runner) {
     if (runners_.size() <= index) runners_.resize(index + 1);
-    if (runners_[index].has_value()) return false;
+    if (runners_[index]) return false;
     runners_[index] = std::move(runner);
     return true;
   }
@@ -159,14 +199,20 @@ class OpKernelRunnerTable {
     CHECK_GT(runners_.size(), index)  // Crash OK
         << "runner index is out of bounds: index=" << index
         << " size=" << runners_.size();
-    auto& result = runners_.at(index);
-    CHECK(result.has_value())  // Crash OK
+    CHECK(runners_[index])  // Crash OK
         << "runner is not available: index=" << index;
-    return &(*result);
+    return GetUnsafe(index);
+  }
+
+  const OpKernelRunner* GetUnsafe(int64_t index) const {
+    DCHECK_GT(runners_.size(), index);
+    auto& result = runners_[index];
+    DCHECK(result);
+    return &result;
   }
 
  private:
-  std::vector<absl::optional<OpKernelRunner>> runners_;
+  std::vector<OpKernelRunner> runners_;
 };
 
 }  // namespace tfrt_stub

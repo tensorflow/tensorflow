@@ -87,7 +87,10 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
-  EXPECT_NEAR(900, perf_env.peak_hbm_bw_giga_bytes_per_second(), kMaxError);
+  EXPECT_NEAR(
+      900,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
+      kMaxError);
   EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
 }
 
@@ -132,12 +135,17 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
   OpStatsOptions options;
@@ -169,12 +177,17 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kCorrelationId}});
 
@@ -241,12 +254,17 @@ void BuildXSpaceForTest(XSpace& xspace, absl::string_view hostname) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   // Create a TensorFlow op that runs for 70 ps.
   CreateXEvent(&host_plane_builder, &executor_thread, "aaa:bbb", 30, 70);
   xspace.add_hostnames(std::string(hostname));
@@ -366,7 +384,10 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
-  EXPECT_NEAR(900, perf_env.peak_hbm_bw_giga_bytes_per_second(), kMaxError);
+  EXPECT_NEAR(
+      900,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
+      kMaxError);
   EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
 }
 
@@ -399,7 +420,7 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   constexpr int64_t kCorrelationId = 100;
   constexpr int kCoreCount = 80;
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
-  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 1000.0;
 
   auto space = std::make_unique<XSpace>();
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(space.get()));
@@ -409,12 +430,17 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
                0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, kStepId}});
+               10, 90,
+               {{StatType::kStepId, kStepId},
+                {StatType::kProducerType, int64_t{1}},
+                {StatType::kProducerId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, kStepId}});
+               {{StatType::kStepId, kStepId},
+                {StatType::kConsumerType, int64_t{1}},
+                {StatType::kConsumerId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kCorrelationId}});
 
@@ -453,7 +479,7 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
 TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   auto space = std::make_unique<XSpace>();
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
-  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 1000.0;
   XPlaneBuilder xplane_builder(GetOrCreateTpuXPlane(
       space.get(), /*device_ordinal=*/0, "TPU V4",
       kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));

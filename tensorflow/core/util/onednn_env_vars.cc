@@ -42,5 +42,26 @@ bool UseSystemAlloc() {
   return use_sys_alloc;
 }
 
+bool ThreadPoolUseCallerThread() {
+  static bool threadpool_use_caller_thread = false;
+  static absl::once_flag once;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_THREADPOOL_USE_CALLER_THREAD",
+                                   /*default_value*/ false,
+                                   &threadpool_use_caller_thread));
+  });
+  return threadpool_use_caller_thread;
+}
+
+std::string FPMathModeSetting() {
+  static std::string math_mode_setting = [] {
+    std::string setting = "";
+    TF_CHECK_OK(ReadStringFromEnvVar("TF_SET_ONEDNN_FPMATH_MODE",
+                                     /*default_value*/ "", &setting));
+    return setting;
+  }();
+
+  return math_mode_setting;
+}
 }  // namespace tensorflow
 #endif  // INTEL_MKL

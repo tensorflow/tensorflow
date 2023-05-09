@@ -41,7 +41,7 @@ TEST_F(DeviceDbTest, Load) {
   LoadSample();
   ASSERT_TRUE(device_db_);
   ASSERT_TRUE(device_db_->root());
-  EXPECT_EQ(device_db_->root()->size(), 3);
+  EXPECT_EQ(device_db_->root()->size(), 4);
 }
 
 TEST_F(DeviceDbTest, SocLookup) {
@@ -128,6 +128,30 @@ TEST_F(DeviceDbTest, StatusLookupBasedOnDerivedProperties) {
   variables[kDeviceModel] = "m712c";
   UpdateVariablesFromDatabase(&variables, *device_db_);
   EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusSupported);
+}
+
+TEST_F(DeviceDbTest, StatusLookupWithMaximumComparison) {
+  LoadSample();
+  ASSERT_TRUE(device_db_);
+  std::map<std::string, std::string> variables;
+  variables[kDeviceModel] = "shiraz_ag_2011";
+
+  // Value exactly equals the maximum, expecting match
+  variables[kAndroidSdkVersion] = "28";
+  UpdateVariablesFromDatabase(&variables, *device_db_);
+  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusUnsupported);
+
+  // Value below the maximum, expecting match
+  variables[kAndroidSdkVersion] = "27";
+  variables.erase(variables.find(gpu::kStatus));
+  UpdateVariablesFromDatabase(&variables, *device_db_);
+  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusUnsupported);
+
+  // Value above the maximum, expecting no match
+  variables[kAndroidSdkVersion] = "29";
+  variables.erase(variables.find(gpu::kStatus));
+  UpdateVariablesFromDatabase(&variables, *device_db_);
+  EXPECT_EQ(variables.find(gpu::kStatus), variables.end());
 }
 
 }  // namespace

@@ -42,7 +42,6 @@ struct WorkerCacheFactoryOptions {
   const ClusterDef* cluster_def = nullptr;
   const string* job_name = nullptr;
   int task_index;
-  const string* protocol = nullptr;
   const RPCOptions* rpc_options = nullptr;
 
   WorkerCacheFactoryOptions() {}
@@ -55,7 +54,6 @@ struct WorkerCacheFactoryOptions {
       cluster_def = &server_def.cluster();
       job_name = &server_def.job_name();
       task_index = server_def.task_index();
-      protocol = &server_def.protocol();
       rpc_options = &server_def.default_session_config().rpc_options();
     }
   }

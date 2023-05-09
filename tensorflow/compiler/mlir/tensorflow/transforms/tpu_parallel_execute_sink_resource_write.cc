@@ -137,7 +137,7 @@ void SinkResourceWritesIntoParallelExecute(
 
   for (auto region : llvm::zip(new_parallel_execute.getRegions(),
                                parallel_execute.getRegions()))
-    std::get<0>(region)->takeBody(*std::get<1>(region));
+    std::get<0>(region).takeBody(std::get<1>(region));
 
   for (auto result :
        llvm::zip(results_to_remap, new_parallel_execute.getResults()))

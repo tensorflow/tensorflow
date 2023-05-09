@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -181,15 +180,15 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
 }
 
 // For dynamic inputs, copy them and attach metadata of shape sizes to the
-// end of the tensor.
+// beginning of the tensor.
 //
 // The buffer for dynamic shapes contains three parts:
 // +--------+
+// |Metadata|
+// +--------+
 // |Payload |
 // +--------+
-// | Padding|
-// +--------+
-// |Metadata|
+// |Padding |
 // +--------+
 //
 // Metadata contains the sizes of shape without padding, eventually
@@ -235,8 +234,9 @@ xla::Status UpdateDynamicInputs(
               se::DeviceMemory<int8>(mutable_input_mem->AsDeviceMemoryBase()),
               absl::MakeSpan(absl::bit_cast<int8*>(raw_input_runtime->data()),
                              ShapeSizeCompactRaw(runtime_shape)));
-          stream->ThenDoHostCallback([raw_input_runtime, padded_data,
-                                      runtime_shape, compile_time_shape]() {
+          stream->ThenDoHostCallbackWithStatus([raw_input_runtime, padded_data,
+                                                runtime_shape,
+                                                compile_time_shape]() {
             // After getting the data onto the host, transpose the data to
             // the correct layout by delinearizing it and linearizing it again.
             XLA_Shape c_runtime_shape, c_compile_time_shape;
@@ -273,7 +273,7 @@ xla::Status UpdateDynamicInputs(
           stream->ThenMemcpyH2D<int8>(*padded_data, &typed_new_input_memory);
 
           // Retain the memory until the end of the transfer.
-          stream->ThenDoHostCallback([padded_data]() { return OkStatus(); });
+          stream->ThenDoHostCallback([padded_data] {});
 
           // Modify the memory location in the input shape tree to point to the
           // new input.
@@ -481,7 +481,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   for (auto& prefetch : hlo_metadata.hlo_module().cross_program_prefetches()) {
     module->AddCrossProgramPrefetch(
         prefetch.parameter(),
-        xla::ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
+        xla::ShapeIndex(prefetch.index().begin(), prefetch.index().end()),
+        prefetch.offset());
   }
 
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
@@ -515,7 +516,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     // If cancellation manager is already cancelled or cancelling, it means
     // another failure has occurred earlier and this TpuExecuteOp is cancelled
     // regardless of whether itself is an error.
-    already_cancelled = cancellation_manager->IsCancelRequested();
+    already_cancelled = cancellation_manager->IsCancelling() ||
+                        cancellation_manager->IsCancelled();
     if (already_cancelled) {
       return errors::Cancelled(
           "RPC cancelled, not running TPU program on device ", device_ordinal);

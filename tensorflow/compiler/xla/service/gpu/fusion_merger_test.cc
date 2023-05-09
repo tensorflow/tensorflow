@@ -18,9 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -984,6 +984,47 @@ ENTRY e {
   )")
                     .value();
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
+}
+
+TEST_F(FusionMergerTest, CommonElementwiseUsedParameter) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    p {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      p2 = f32[10000000] parameter(2)
+      p3 = f32[10000000] parameter(3)
+      a0 = f32[10000000] add(p1, p2)
+      a1 = f32[10000000] add(a0, p3)
+      ROOT _ = add(p0, a1)
+    }
+
+    c1 {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      ROOT _ = add(p0, p1)
+    }
+
+    c2 {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      ROOT _ = multiply(p0, p1)
+    }
+
+    ENTRY entry {
+      p0 = f32[10000000] parameter(0)
+      p1 = f32[10000000] parameter(1)
+      p2 = f32[10000000] parameter(2)
+      p3 = f32[10000000] parameter(3)
+      f = f32[10000000] fusion(p0, p1, p2, p3), kind=kLoop, calls=p
+      f1 = f32[10000000] fusion(p0, f), kind=kLoop, calls=c1
+      f2 = f32[10000000] fusion(p1, f), kind=kLoop, calls=c2
+      ROOT _ = (f32[10000000], f32[10000000]) tuple(f1, f2)
+    }
+    )")
+                    .value();
+  EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
 }
 
 }  // namespace

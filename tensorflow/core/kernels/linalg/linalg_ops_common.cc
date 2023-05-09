@@ -133,7 +133,8 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::AnalyzeInputs(
       // dimensions as matrices, and loop over all the other outer ("batch")
       // dimensions to compute the results.
       for (int dim = 0; dim < input_rank - 2; ++dim) {
-        batch_shape->AddDim(in.dim_size(dim));
+        OP_REQUIRES_OK(context,
+                       batch_shape->AddDimWithStatus(in.dim_size(dim)));
       }
     } else {
       // Make sure that all inputs have the same rank and outer dimensions.
@@ -152,8 +153,10 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::AnalyzeInputs(
     const int col_dimension = input_rank - 1;
     const int64_t num_rows = in.dim_size(row_dimension);
     const int64_t num_cols = in.dim_size(col_dimension);
-    input_matrix_shapes->emplace_back(
-        std::initializer_list<int64_t>({num_rows, num_cols}));
+    TensorShape input_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape({num_rows, num_cols},
+                                                          &input_shape));
+    input_matrix_shapes->push_back(std::move(input_shape));
     inputs->emplace_back(&in);
     OP_REQUIRES(
         context, in.dtype() == DataTypeToEnum<InputScalar>::v(),

@@ -28,11 +28,9 @@ limitations under the License.
 
 namespace tsl {
 
-const int kNumShards = 7;
-
 TEST(Cancellation, SimpleNoCancel) {
   bool is_cancelled = false;
-  CancellationManager* manager = new CancellationManager(kNumShards);
+  CancellationManager* manager = new CancellationManager();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
@@ -45,7 +43,7 @@ TEST(Cancellation, SimpleNoCancel) {
 
 TEST(Cancellation, SimpleCancel) {
   bool is_cancelled = false;
-  CancellationManager* manager = new CancellationManager(kNumShards);
+  CancellationManager* manager = new CancellationManager();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
@@ -58,7 +56,7 @@ TEST(Cancellation, SimpleCancel) {
 TEST(Cancellation, StartCancelTriggersAllCallbacks) {
   bool is_cancelled_1 = false;
   bool is_cancelled_2 = false;
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token_1 = manager->get_cancellation_token();
   EXPECT_TRUE(manager->RegisterCallbackWithErrorLogging(
       token_1, [&is_cancelled_1]() { is_cancelled_1 = true; }, "TestCallback"));
@@ -73,7 +71,7 @@ TEST(Cancellation, StartCancelTriggersAllCallbacks) {
 TEST(Cancellation, StartCancelWithStatusTriggersAllCallbacks) {
   bool is_cancelled_1 = false;
   bool is_cancelled_2 = false;
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token_1 = manager->get_cancellation_token();
   EXPECT_TRUE(manager->RegisterCallbackWithErrorLogging(
       token_1, [&is_cancelled_1]() { is_cancelled_1 = true; }, "TestCallback"));
@@ -86,7 +84,7 @@ TEST(Cancellation, StartCancelWithStatusTriggersAllCallbacks) {
 }
 
 TEST(Cancellation, CancelBeforeRegister) {
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   manager->StartCancel();
   bool registered = manager->RegisterCallback(token, nullptr);
@@ -95,7 +93,7 @@ TEST(Cancellation, CancelBeforeRegister) {
 
 TEST(Cancellation, DeregisterAfterCancel) {
   bool is_cancelled = false;
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
@@ -108,7 +106,7 @@ TEST(Cancellation, DeregisterAfterCancel) {
 
 TEST(Cancellation, CancelMultiple) {
   bool is_cancelled_1 = false, is_cancelled_2 = false, is_cancelled_3 = false;
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token_1 = manager->get_cancellation_token();
   bool registered_1 = manager->RegisterCallback(
       token_1, [&is_cancelled_1]() { is_cancelled_1 = true; });
@@ -131,7 +129,7 @@ TEST(Cancellation, CancelMultiple) {
 }
 
 TEST(Cancellation, IsCancelled) {
-  auto cm = std::make_unique<CancellationManager>(kNumShards);
+  auto cm = std::make_unique<CancellationManager>();
   thread::ThreadPool w(Env::Default(), "test", 4);
   std::vector<Notification> done(8);
   for (size_t i = 0; i < done.size(); ++i) {
@@ -139,7 +137,7 @@ TEST(Cancellation, IsCancelled) {
     w.Schedule([n, &cm]() {
       while (!cm->IsCancelled()) {
       }
-      ASSERT_TRUE(cm->IsCancelRequested());
+      ASSERT_FALSE(cm->IsCancelling());
       n->Notify();
     });
   }
@@ -150,8 +148,8 @@ TEST(Cancellation, IsCancelled) {
   }
 }
 
-TEST(Cancellation, IsCancelRequested) {
-  CancellationManager cm(kNumShards);
+TEST(Cancellation, IsCancelling) {
+  CancellationManager cm;
   Notification started_cancelling;
   Notification can_finish_cancel;
   Notification cancel_done;
@@ -167,16 +165,16 @@ TEST(Cancellation, IsCancelRequested) {
     cancel_done.Notify();
   });
   started_cancelling.WaitForNotification();
-  ASSERT_TRUE(cm.IsCancelRequested());
+  ASSERT_TRUE(cm.IsCancelling());
   can_finish_cancel.Notify();
   cancel_done.WaitForNotification();
-  ASSERT_TRUE(cm.IsCancelRequested());
+  ASSERT_FALSE(cm.IsCancelling());
   ASSERT_TRUE(cm.IsCancelled());
 }
 
 TEST(Cancellation, TryDeregisterWithoutCancel) {
   bool is_cancelled = false;
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
@@ -188,7 +186,7 @@ TEST(Cancellation, TryDeregisterWithoutCancel) {
 
 TEST(Cancellation, TryDeregisterAfterCancel) {
   bool is_cancelled = false;
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
@@ -201,7 +199,7 @@ TEST(Cancellation, TryDeregisterAfterCancel) {
 
 TEST(Cancellation, TryDeregisterDuringCancel) {
   Notification cancel_started, finish_callback, cancel_complete;
-  auto manager = std::make_unique<CancellationManager>(kNumShards);
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(token, [&]() {
     cancel_started.Notify();
@@ -224,11 +222,10 @@ TEST(Cancellation, TryDeregisterDuringCancel) {
 }
 
 TEST(Cancellation, Parent_CancelManyChildren) {
-  CancellationManager parent(kNumShards);
+  CancellationManager parent;
   std::vector<std::unique_ptr<CancellationManager>> children;
   for (size_t i = 0; i < 5; ++i) {
-    children.push_back(
-        std::make_unique<CancellationManager>(&parent, kNumShards));
+    children.push_back(absl::make_unique<CancellationManager>(&parent));
     EXPECT_FALSE(children.back()->IsCancelled());
   }
   parent.StartCancel();
@@ -238,9 +235,9 @@ TEST(Cancellation, Parent_CancelManyChildren) {
 }
 
 TEST(Cancellation, Parent_NotCancelled) {
-  CancellationManager parent(kNumShards);
+  CancellationManager parent;
   {
-    CancellationManager child(&parent, kNumShards);
+    CancellationManager child(&parent);
     child.StartCancel();
     EXPECT_TRUE(child.IsCancelled());
   }
@@ -248,16 +245,16 @@ TEST(Cancellation, Parent_NotCancelled) {
 }
 
 TEST(Cancellation, Parent_AlreadyCancelled) {
-  CancellationManager parent(kNumShards);
+  CancellationManager parent;
   parent.StartCancel();
   EXPECT_TRUE(parent.IsCancelled());
 
-  CancellationManager child(&parent, kNumShards);
+  CancellationManager child(&parent);
   EXPECT_TRUE(child.IsCancelled());
 }
 
 TEST(Cancellation, Parent_RandomDestructionOrder) {
-  CancellationManager parent(kNumShards);
+  CancellationManager parent;
   std::random_device rd;
   std::mt19937 g(rd());
 
@@ -270,8 +267,7 @@ TEST(Cancellation, Parent_RandomDestructionOrder) {
     std::uniform_int_distribution<int> dist(1, 9);
     const size_t round_size = dist(rd);
     for (size_t i = 0; i < round_size; ++i) {
-      children.push_back(
-          std::make_unique<CancellationManager>(&parent, kNumShards));
+      children.push_back(absl::make_unique<CancellationManager>(&parent));
       EXPECT_FALSE(children.back()->IsCancelled());
     }
 

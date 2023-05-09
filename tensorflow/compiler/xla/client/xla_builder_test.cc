@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
+#include <algorithm>
 #include <complex>
 #include <functional>
 #include <memory>
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -180,7 +181,7 @@ TEST_F(XlaBuilderTest, ShiftRightOperatorOnNonIntegerProducesError) {
   auto statusor = b.Build();
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
-      statusor.status().error_message(),
+      statusor.status().message(),
       HasSubstr("Argument to >> operator does not have an integral type"));
 }
 
@@ -225,7 +226,7 @@ TEST_F(XlaBuilderTest, ShapeInferenceError) {
   Add(x, y);
   auto statusor = BuildHloModule(&b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(),
+  EXPECT_THAT(statusor.status().message(),
               HasSubstr("Shapes must be equal rank"));
 }
 
@@ -249,7 +250,7 @@ TEST_F(XlaBuilderTest, ParameterAlreadyRegistered) {
   Add(x, y);
   auto statusor = BuildHloModule(&b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(),
+  EXPECT_THAT(statusor.status().message(),
               HasSubstr("parameter 0 already registered"));
 }
 
@@ -344,7 +345,7 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
                  /*broadcast_dimensions=*/{0, 1, 2});
   auto statusor = BuildHloModule(&b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(), HasSubstr("invalid shape"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("invalid shape"));
 }
 
 TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
@@ -356,7 +357,7 @@ TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
   auto statusor = builder.Build();
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
-      statusor.status().error_message(),
+      statusor.status().message(),
       HasSubstr(
           "built by builder 'b1', but is trying to use it in builder 'main'"));
 }
@@ -526,7 +527,7 @@ TEST_F(XlaBuilderTest, ReportError) {
   Add(b.ReportError(InvalidArgument("a test error")), x);
   auto statusor = b.Build();
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(), HasSubstr("a test error"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
 }
 
 TEST_F(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
@@ -544,7 +545,7 @@ TEST_F(XlaBuilderTest, ReportErrorOrReturnHandlesErrors) {
   Add(b.ReportErrorOrReturn(op), ConstantR0<float>(&b, 2.0));
   auto statusor = b.Build();
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(), HasSubstr("a test error"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
 }
 
 TEST_F(XlaBuilderTest, BuildWithSpecificRoot) {
@@ -583,7 +584,7 @@ TEST_F(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
   Status status = b.Build(other_param).status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("root operation is not in this computation"));
 }
 
@@ -1237,7 +1238,7 @@ TEST_F(XlaBuilderTest, AfterAllWithNonTokenOperands) {
   AfterAll(&b, {CreateToken(&b), ConstantR0<float>(&b, 1.0)});
   Status status = b.Build().status();
   ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("All operands to AfterAll must be tokens"));
 }
 
@@ -1460,6 +1461,29 @@ TEST_F(XlaBuilderTest, OutfeedDummyTupleSharding) {
   EXPECT_FALSE(module->entry_computation()->root_instruction()->has_sharding());
 }
 
+TEST_F(XlaBuilderTest, OutfeedTokenSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  b.SetSharding(sharding_builder::Replicate());
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto it = std::find_if(module->entry_computation()->instructions().begin(),
+                         module->entry_computation()->instructions().end(),
+                         HloPredicateIsOp<HloOpcode::kOutfeed>);
+  EXPECT_NE(it, module->entry_computation()->instructions().end());
+  auto* outfeed = *it;
+  EXPECT_TRUE(outfeed->has_sharding());
+  EXPECT_TRUE(outfeed->sharding().IsTuple());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().size(), 2);
+  EXPECT_TRUE(outfeed->operand(1)->has_sharding());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().back(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+  EXPECT_EQ(outfeed->operand(1)->sharding(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+}
+
 TEST_F(XlaBuilderTest, NormalizeTupleSharding) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
@@ -1481,7 +1505,7 @@ TEST_F(XlaBuilderTest, InvalidSharding) {
   Parameter(&b, 0, shape2d, "p0");
   auto statusor = b.Build();
   EXPECT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(),
+  EXPECT_THAT(statusor.status().message(),
               HasSubstr("Number of tile assignment dimensions (excluding "
                         "subgroups) is different than the input rank"));
 }

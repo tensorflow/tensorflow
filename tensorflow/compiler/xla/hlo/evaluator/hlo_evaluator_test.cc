@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -458,6 +459,12 @@ TEST_P(HloEvaluatorBf16Test, DoesSinR2) {
   auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
   TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand),
+              use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
+}
+TEST_P(HloEvaluatorBf16Test, DoesTanR2) {
+  auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
+  auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
+  TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_F(HloEvaluatorTest, DoesNotR2) {
@@ -4397,16 +4404,14 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal input_wrong_shape = LiteralUtil::CreateR1<int32_t>({0, 1});
 
-  EXPECT_EQ(HloEvaluator()
-                .Evaluate(*m_, {&input_wrong_shape})
-                .status()
-                .error_message(),
-            "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
-            "but arg was s32[2]{0}.");
+  EXPECT_EQ(
+      HloEvaluator().Evaluate(*m_, {&input_wrong_shape}).status().message(),
+      "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
+      "but arg was s32[2]{0}.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input_wrong_shape})
                 .status()
-                .error_message(),
+                .message(),
             "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
             "but arg was s32[2]{0}.");
 }
@@ -4424,13 +4429,12 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal input = LiteralUtil::CreateR1<int32_t>({0});
 
-  EXPECT_EQ(
-      HloEvaluator().Evaluate(*m_, {&input, &input}).status().error_message(),
-      "Expected 1 argument, but got 2.");
+  EXPECT_EQ(HloEvaluator().Evaluate(*m_, {&input, &input}).status().message(),
+            "Expected 1 argument, but got 2.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input, &input})
                 .status()
-                .error_message(),
+                .message(),
             "Expected 1 argument, but got 2.");
 }
 
@@ -5460,6 +5464,136 @@ TEST_F(PatternMatchParseWhileLoopTest, BooleanCond) {
   EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
   EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
   EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 1);
+}
+
+TEST_F(PatternMatchParseWhileLoopTest, NestedLoop) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %nested_while_condition {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %nested_while_body {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.2, f32[1024, 1024] %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = s32[] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %gte.4 = f32[1024, 1024] get-tuple-element(%param), index=4
+      %constant.4 = s32[] constant(0)
+      %nested_while_init = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.4, s32[] %gte.2, f32[1024, 1024] %gte.3, f32[1024, 1024] %gte.4)
+      %nested_while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%nested_while_init), condition=%nested_while_condition, body=%nested_while_body
+      %nested_while_result = f32[1024, 1024] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %nested_while), index=3
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %gte.3, %nested_while_result)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.1 = f32[1024, 1024] parameter(0)
+      %param.2 = s32[] parameter(1)
+      %constant.0 = s32[] constant(0)
+      %constant.2 = s32[] constant(4)
+      %loop_bound = s32[] multiply(s32[] %param.2, s32[] %constant.2)
+      %constant.3 = s32[] constant(5)
+      %nested_loop_bound = s32[] multiply(s32[] %constant.3, s32[] %constant.2)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %loop_bound, s32[] %nested_loop_bound, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      %while = (s32[], s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %result = f32[1024, 1024] get-tuple-element((s32[], s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=4
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  HloInstruction* while_op =
+      hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
+  CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
+  HloComputation* while_body = while_op->while_body();
+  HloInstruction* nested_while =
+      while_body->root_instruction()->mutable_operand(4)->mutable_operand(0);
+  CHECK_EQ(nested_while->opcode(), HloOpcode::kWhile);
+  std::optional<ParsedWhileLoop> parsed_while_loop =
+      PatternMatchParseWhileLoop(nested_while);
+  ASSERT_TRUE(parsed_while_loop.has_value());
+  EXPECT_FALSE(parsed_while_loop->is_dynamic());
+  EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 20);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_index, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 20);
+}
+
+TEST_F(PatternMatchParseWhileLoopTest, CopiedLoopCond) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %while_condition {
+      %param = (s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %copy.0 = s32[] copy(s32[] %gte.0)
+      %loop_bound = s32[] constant(5)
+      %result = pred[] compare(%gte.0, %loop_bound), direction=LT
+      ROOT %copy.1 = pred[] copy(pred[] %result) 
+    }
+
+    %while_body {
+      %param = (s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[1024, 1024] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.1, f32[1024, 1024] %gte.2)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %accumulation)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.1 = f32[1024, 1024] parameter(0)
+      %constant.0 = s32[] constant(0)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      %while = (s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %result = f32[1024, 1024] get-tuple-element((s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  HloInstruction* while_op =
+      hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
+  std::optional<ParsedWhileLoop> parsed_while_loop =
+      PatternMatchParseWhileLoop(while_op);
+  ASSERT_TRUE(parsed_while_loop.has_value());
+  EXPECT_FALSE(parsed_while_loop->is_dynamic());
+  EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_index, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 5);
 }
 
 }  // namespace

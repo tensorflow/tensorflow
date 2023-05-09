@@ -18,7 +18,7 @@ if(TARGET fp16_headers OR fp16_headers_POPULATED OR TFLITE_ENABLE_XNNPACK)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   fp16_headers

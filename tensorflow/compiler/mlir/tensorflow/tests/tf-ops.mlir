@@ -701,6 +701,7 @@ func.func @testConv2D(%arg0: tensor<256x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) 
 // -----
 
 func.func @testConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+2 {{'tf.Conv3D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x32x32x32x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
@@ -757,6 +758,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x16x11x16xf32>' are incompatible with return type(s) of operation 'tensor<256x30x30x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
   func.return %0 : tensor<256x30x30x16xf32>
@@ -765,6 +767,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x16x11x16xf32>' are incompatible with return type(s) of operation 'tensor<256x16x30x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32>
   func.return %0 : tensor<256x16x30x16xf32>
@@ -773,6 +776,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x6x6x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "EXPLICIT", dilations = [1, 2, 3, 4], explicit_paddings = [1, 2, 3, 4, 5, 6, 7, 8], strides = [5, 6, 7, 8]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
@@ -781,6 +785,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x30x30x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
@@ -1639,7 +1644,7 @@ func.func @invalidSelect(%arg0: tensor<1x8xi1>, %arg1: tensor<1x8x8xi32>, %arg2:
 //===--------------------------------------------------------------------===//
 
 // Test valid tf.SelectV2
-// CHfaECK-LABEL: func @selectV2BroadcastThen
+// CHECK-LABEL: func @selectV2BroadcastThen
 func.func @selectV2BroadcastThen(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
   func.return %0: tensor<2x8x8xi32>
@@ -2554,9 +2559,30 @@ func.func @testConst() -> tensor<f32> {
 
 // Test invalid tf.ToBool
 func.func @testInvalidToBool(%arg0: tensor<i32>) -> tensor<1xi1> {
+  // expected-error @+2 {{'tf.ToBool' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<i1>' are incompatible with return type(s) of operation 'tensor<1xi1>'}}
   %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<1xi1>
   func.return %0 : tensor<1xi1>
+}
+
+// -----
+
+// Test invalid tf.TPUPartitionedInputV2 with packing
+func.func @testPackedTPUPartitionedInputV2(tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32> {
+^bb0(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>):
+  // expected-error @+1 {{expected 1 inputs, got 2}}
+  %0 = "tf.TPUPartitionedInputV2"(%arg0, %arg1) {partition_dims = [2, 1], is_packed = true} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+// Test invalid tf.TPUPartitionedInputV2 without packing
+func.func @testUnpackedTPUPartitionedInputV2(tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32> {
+^bb0(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>):
+  // expected-error @+1 {{expected 2 inputs, got 1}}
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {partition_dims = [2, 1], is_packed = false} : (tensor<2x4xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
 }
 
 // -----
@@ -2611,6 +2637,17 @@ func.func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
   // expected-error @+1 {{expected perm to be a 1-D Tensor of size equal to the rank of x, got perm of size 3, and x of rank 2}}
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<3x2xf32>
   func.return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid index of perm
+func.func @testTranspose(tensor<2x2xf32>) -> tensor<2x2xf32> {
+^bb0(%arg0: tensor<2x2xf32>):
+  %cst = arith.constant dense<[1, -3]> : tensor<2xi32>
+  // expected-error @+1 {{'tf.Transpose' op perm[1]=-3 must be in range [-2, 2)}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
 }
 
 // -----
@@ -4310,6 +4347,7 @@ func.func @testVarHandleOp() -> tensor<*x!tf_type.resource> {
 
 func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
   %0 = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+  // expected-error @+2 {{'tf.XlaBroadcastHelper' op failed to infer returned types}}
   // expected-error @+1 {{broadcast_dims must have size equal to the smaller argument rank}}
   %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<1xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
   func.return
@@ -4319,6 +4357,7 @@ func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi3
 
 func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
   %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+  // expected-error @+2 {{'tf.XlaBroadcastHelper' op failed to infer returned types}}
   // expected-error @+1 {{if broadcast_dims is empty, both arguments must have equal rank or at least one argument must be a scalar}}
   %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<0xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
   func.return
@@ -4328,6 +4367,7 @@ func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi3
 
 func.func @testXlaBroadcastHelper(%arg0: tensor<5x2xi32>, %arg1: tensor<2x3x5xi32>) -> () {
   %0 = "tf.Const"() {value = dense<0> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+2 {{'tf.XlaBroadcastHelper' op failed to infer returned types}}
   // expected-error @+1 {{broadcast_dims has duplicates}}
   %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<5x2xi32>, tensor<2x3x5xi32>, tensor<2xi64>) -> (tensor<2x1x5xi32>, tensor<2x3x5xi32>)
   func.return
@@ -4643,6 +4683,7 @@ func.func @testReluStaticShapeInputAndDynamicShapeOutput(%arg0: tensor<8x16xf32>
 
 func.func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf16> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // expected-error @+2 {{'tf.XlaSetDynamicDimensionSize' op failed to infer returned types}}
   // expected-error @+1 {{dim_index (1) is out of range [0, 1)}}
   %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf16>
   func.return %0 : tensor<?xf16>
@@ -4680,6 +4721,364 @@ func.func @testSetStaticDimensionBounds(%arg0: tensor<?x?xi32>, %arg1: tensor<4x
   func.return %dyn_arg0 : tensor<?x?xi32>
 }
 
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<i32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<i32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<f32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is -1, zero_points must have 0 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<f32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2x2xf32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is not -1, scales must have 1 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2x2xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<2x2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is not -1, zero_points must have 1 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<2x2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<3xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op scales and zero points must have same number of elements.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<i32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<i32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<f32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is -1, zero_points must have 0 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<f32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2x2xf32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is not -1, scales must have 1 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2x2xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<2x2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is not -1, zero_points must have 1 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<2x2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<3xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op scales and zero points must have same number of elements.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantize(%arg0: tensor<*xf32>, %scales: tensor<2xf32>, %zps: tensor<i32>) -> tensor<*x!tf_type.qint8> {
+  // expected-error @below {{'tf.UniformQuantize' op quantization_axis is -1, scales must have 0 rank.}}
+   %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*xf32>, tensor<2xf32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  func.return %0 : tensor<*x!tf_type.qint8>
+}
+
+// -----
+
+func.func @testUniformRequantize(
+  %arg0: tensor<*x!tf_type.qint8>,
+  %scales_0: tensor<2xf32>, %zps_0: tensor<i32>,
+  %scales_1: tensor<f32>, %zps_1: tensor<i32>) -> tensor<*x!tf_type.qint8> {
+  // expected-error @below {{'tf.UniformRequantize' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformRequantize"(%arg0, %scales_0, %zps_0, %scales_1, %zps_1) {
+    input_quantization_axis = -1 : i64, input_quantization_min_val = -2147483648 : i64, input_quantization_max_val = 2147483647 : i64,
+    output_quantization_axis = -1 : i64, output_quantization_min_val = -128 : i64, output_quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<2xf32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  func.return %0 : tensor<*x!tf_type.qint8>
+}
+
+// -----
+
+func.func @testUniformRequantize(
+  %arg0: tensor<*x!tf_type.qint8>,
+  %scales_0: tensor<f32>, %zps_0: tensor<i32>,
+  %scales_1: tensor<2xf32>, %zps_1: tensor<i32>) -> tensor<*x!tf_type.qint8> {
+  // expected-error @below {{'tf.UniformRequantize' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformRequantize"(%arg0, %scales_0, %zps_0, %scales_1, %zps_1) {
+    input_quantization_axis = -1 : i64, input_quantization_min_val = -2147483648 : i64, input_quantization_max_val = 2147483647 : i64,
+    output_quantization_axis = -1 : i64, output_quantization_min_val = -128 : i64, output_quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<f32>, tensor<i32>, tensor<2xf32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  func.return %0 : tensor<*x!tf_type.qint8>
+}
+
+// -----
+
+func.func @testUniformDequantize(%arg0: tensor<*x!tf_type.qint8>, %scales: tensor<2xf32>, %zps: tensor<i32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformDequantize' op quantization_axis is -1, scales must have 0 rank.}}
+   %0 = "tf.UniformDequantize"(%arg0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<2xf32>, tensor<i32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDot(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<2xf32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<f32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<f32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedDot' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedDot"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<2xf32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedDot(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<2xf32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<f32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedDot' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedDot"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedDot(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<f32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<2xf32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedDot' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedDot"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolution(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<2xf32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<f32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedConvolution' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedConvolution"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      window_strides = [1, 2],
+      padding = "VALID",
+      explicit_padding = [],
+      lhs_dilation = [1, 1],
+      rhs_dilation = [2, 2],
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64,
+      dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedAdd(
+  %input: tensor<2x2x!tf_type.qint32>, %bias: tensor<2x!tf_type.qint32>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %bias_scales: tensor<f32>, %bias_zps: tensor<i32>,
+  %output_scales: tensor<2xf32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedAdd' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedAdd"(
+    %input, %bias,
+    %input_scales, %input_zps,
+    %bias_scales, %bias_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -2147483648 : i64,
+      lhs_quantization_max_val = 2147483647 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -2147483648 : i64,
+      rhs_quantization_max_val = 2147483647 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<2x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>) -> tensor<2x2x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedClipByValue(
+    %operand: tensor<*x!tf_type.qint32>, %min: tensor<!tf_type.qint32>, %max: tensor<!tf_type.qint32>, 
+    %scales: tensor<2xf32>, %zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedClipByValue' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformQuantizedClipByValue"(%operand, %min, %max, %scales, %zps) {
+    quantization_axis = -1 : i64,
+    quantization_min_val = -2147483648 : i64,
+    quantization_max_val = 2147483647 : i64
+  } : (
+    tensor<*x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>,
+    tensor<2xf32>, tensor<i32>
+  ) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
 // Following tests are for LegacyCall symbol use verifier.
 
 // -----
@@ -4714,4 +5113,24 @@ func.func @test_arg_count_mismatch(%arg0: tensor<i32>) -> () {
 
 func.func @call_func(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   func.return %arg0 : tensor<f32>
+}
+
+// -----
+
+func.func @test_batch_function_with_valid_symbol(%arg0: tensor<1x3xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> () {
+  "tf.BatchFunction"(%arg0, %arg1) {batch_timeout_micros = 100000 : i64, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  func.return
+}
+
+func.func private @batched_function(%arg0: tensor<1x3xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<1x3xf32> {
+  %0 = "tf.Identity"(%arg0) : (tensor<1x3xf32>) -> tensor<1x3xf32>
+  func.return %0 : tensor<1x3xf32>
+}
+
+// -----
+
+func.func @test_batch_function_with_invalid_symbol(%arg0: tensor<1x3xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> () {
+  // expected-error @below {{'f' attribute refers to an undefined function: undefined_function}}
+  "tf.BatchFunction"(%arg0, %arg1) {batch_timeout_micros = 100000 : i64, f = @undefined_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  func.return
 }

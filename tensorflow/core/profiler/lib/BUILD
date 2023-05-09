@@ -43,9 +43,9 @@ cc_library(
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_session",
     ] + if_not_android([
         ":profiler_interface",
@@ -65,8 +65,8 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     deps = [
         ":profiler_interface",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -123,8 +123,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
-        "//tensorflow/core/profiler/backends/cpu:host_tracer",
-        "//tensorflow/core/profiler/backends/cpu:metadata_collector",
     ],
     alwayslink = True,
 )
@@ -135,11 +133,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":traceme_encode",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/core/profiler/utils:time_utils",
@@ -201,10 +199,10 @@ cc_library(
 
 cc_library(
     name = "scoped_memory_debug_annotation",
-    srcs = ["scoped_memory_debug_annotation.cc"],
     hdrs = ["scoped_memory_debug_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
     ],
 )
 
@@ -213,10 +211,10 @@ cc_library(
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/tsl/profiler/lib:scoped_annotation",
+        "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
@@ -227,10 +225,10 @@ cc_library(
     hdrs = ["scoped_annotation_stack.h"],
     visibility = ["//tensorflow/compiler/xla:runtime"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
+        "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
@@ -263,7 +261,6 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "scoped_annotation.h",
-        "scoped_memory_debug_annotation.cc",
         "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",

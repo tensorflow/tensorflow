@@ -53,7 +53,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
 }
 
 Status CpuTransferManager::ReadDynamicShapes(se::Stream* stream,
-                                             ShapedBuffer* device_buffer,
+                                             const ShapedBuffer* device_buffer,
                                              Shape* device_shape) {
   if (stream != nullptr) {
     // When a stream is presented, respect the stream dependency.

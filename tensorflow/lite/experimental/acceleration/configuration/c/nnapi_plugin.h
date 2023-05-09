@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,21 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_
 
-// This header file is for the delegate plugin for NNAPI.
-//
-// For the C++ delegate plugin interface, the NNAPI delegate plugin is added to
-// the DelegatePluginRegistry by the side effect of a constructor for a static
-// object, so there's no public API needed for this plugin, other than the API
-// of tflite::delegates::DelegatePluginRegistry, which is declared in
-// delegate_registry.h.
-//
-// But to provide a C API to access the NNAPI delegate plugin, we do expose
-// some functions, which are declared below.
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-// NOLINTBEGIN(whitespace/line_length)
-/// For documentation, see
-/// third_party/tensorflow/lite/core/experimental/acceleration/configuration/c/nnapi_plugin.h.
-// NOLINTEND(whitespace/line_length)
-#include "tensorflow/lite/core/experimental/acceleration/configuration/c/nnapi_plugin.h"  // IWYU pragma: export
+#include "tensorflow/lite/acceleration/configuration/c/nnapi_plugin.h"  // IWYU pragma: export
+
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/c/nnapi_plugin.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_

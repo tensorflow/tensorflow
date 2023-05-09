@@ -1,13 +1,26 @@
 # Description:
 #   A tool for reducing a HLO module that produces incorrect results.
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
-tf_cc_binary(
+build_test(
+    name = "hlo_bisect_build_test",
+    targets = [
+        ":hlo_bisect",
+    ],
+)
+
+xla_cc_binary(
     name = "hlo_bisect",
     testonly = True,
     srcs = ["hlo_bisect.cc"],
@@ -20,7 +33,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
-    ],
+    ] + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]),
 )
 
 cc_library(
@@ -35,7 +48,6 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -43,7 +55,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_bisect_state_test",
     srcs = ["hlo_bisect_state_test.cc"],
     deps = [

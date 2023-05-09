@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 
+#include <optional>
 #include <string>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"

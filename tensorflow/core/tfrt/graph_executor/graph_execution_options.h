@@ -22,10 +22,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
+
+class Runtime;
 
 // General options for graph execution.
 struct GraphExecutionOptions {
@@ -52,6 +55,18 @@ struct GraphExecutionOptions {
   // Model metadata used for monitoring and tracing.
   tensorflow::SessionMetadata model_metadata;
 
+  // The model-specific configurations.
+  tensorflow::tfrt_stub::ModelConfig model_config;
+
+  // If true, for each client graph, the op costs of the first request will be
+  // recorded and used to re-compile the client graph.
+  // TODO(b/266251216): Maybe flip the default value or remote it.
+  bool enable_online_cost_analysis = false;
+
+  // If true, the MLRT interpreter will be used instead of the BEF executor.
+  // This option is experimental.
+  bool enable_mlrt = false;
+
   tensorflow::TfrtCompileOptions compile_options;
 };
 
@@ -77,9 +92,6 @@ struct GraphExecutionRunOptions {
   // The thread pool used for this run. If it is nullptr, a default one set
   // in the tensorflow::tfrt_stub::Runtime will be used.
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
-
-  // If true, the cost of the op will be measured at the execution time.
-  bool enable_cost_measurement = false;
 
   // If true, just-in-time host compilation is disabled, and then if the
   // specified graph is not compiled, the execution will return an error.

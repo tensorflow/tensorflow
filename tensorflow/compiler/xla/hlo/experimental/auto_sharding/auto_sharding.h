@@ -17,17 +17,20 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_H_
 
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
-
 namespace xla {
 
 class DummyAutoSharding : public HloModulePass {
@@ -156,6 +159,9 @@ struct AutoShardingOption {
   std::vector<double> device_mesh_beta;
   // Load the strategy vector instead of solving one.
   bool load_strategy = false;
+  // Explore other mesh shapes with the same number of devices as the provided
+  // one for a potentially better auto-sharding solution.
+  bool try_multiple_mesh_shapes = false;
   std::vector<int64_t> strategy_vector;
 
   std::string ToString() {
@@ -169,6 +175,8 @@ struct AutoShardingOption {
           absl::StrCat("memory_budget_per_device: ",
                        memory_budget_per_device / (1024 * 1024 * 1024), " GB"));
     }
+    lines.push_back(
+        absl::StrCat("try_multiple_mesh_shapes: ", try_multiple_mesh_shapes));
     lines.push_back(
         absl::StrCat("force_all_gather_cost: ", force_all_gather_cost));
 
@@ -248,6 +256,12 @@ struct AutoShardingOption {
                        "device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
     }
+    if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 2) {
+      return tsl::errors::OutOfRange(
+          absl::StrCat("the auto-sharding pass currently does not support ",
+                       "more than two shardable dims: device_mesh_shape=",
+                       absl::StrJoin(device_mesh_shape, ",")));
+    }
     if (device_mesh_alpha.empty()) {
       // Generates simple device_mesh_alpha based on the size of
       // device_mesh_shape.
@@ -306,16 +320,15 @@ struct AutoShardingOption {
   }
 };
 
-class AutoSharding : public HloModulePass {
+class AutoShardingImplementation {
  public:
-  explicit AutoSharding(const AutoShardingOption& option);
-  ~AutoSharding() override = default;
-  absl::string_view name() const override { return "auto_sharding"; }
+  explicit AutoShardingImplementation(const AutoShardingOption& option);
+  ~AutoShardingImplementation() = default;
 
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  // using HloPassInterface::Run;
+  StatusOr<bool> RunAutoSharding(
       HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Removes SPMD annotations (if there are) to test AutoSharding on manually
   // annotated graphs.
@@ -331,10 +344,124 @@ class AutoSharding : public HloModulePass {
   //     tensorflow/compiler/xla/pjrt/utils.cc
   Status CanonicalizeLayouts(HloModule* module);
 
+  // Returns the optimal objective value that the ILP solver computes
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
  private:
   AutoShardingOption option_;
+
+  // Stores the optimal value of the objective the solver found. This is used to
+  // chose the best mesh shape when the try_multiple_mesh_shapes option is on.
+  double solver_optimal_objective_value_ = -1.0;
 };
 
+class AutoSharding : public HloModulePass {
+ public:
+  explicit AutoSharding(const AutoShardingOption& option);
+  ~AutoSharding() override = default;
+  absl::string_view name() const override { return "auto_sharding"; }
+
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
+ private:
+  AutoShardingOption option_;
+  // Stores the optimal value of the objective the solver found.
+  double solver_optimal_objective_value_ = -1.0;
+};
+
+namespace spmd {
+// Function declarations
+// Their comments can be found in their definitions in *.cc files.
+HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
+                 absl::Span<const int64_t> mesh_dims,
+                 const Array<int64_t>& device_mesh);
+
+std::vector<double> ReshardingCostVector(const StrategyVector* strategies,
+                                         const Shape& shape,
+                                         const HloSharding& required_sharding,
+                                         const ClusterEnvironment& cluster_env);
+
+std::vector<double> FollowInsCostVector(int64_t source_len, int64_t index);
+
+std::unique_ptr<StrategyVector> CreateLeafStrategyVector(
+    size_t instruction_id, const HloInstruction* ins,
+    const StrategyMap& strategy_map, LeafStrategies& leaf_strategies);
+
+void SetInNodesWithInstruction(std::unique_ptr<StrategyVector>& strategies,
+                               const HloInstruction* ins,
+                               const StrategyMap& strategy_map);
+
+void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies);
+
+Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
+                      std::unique_ptr<StrategyVector>& strategies,
+                      const ClusterEnvironment& cluster_env,
+                      const InstructionBatchDimMap& batch_map,
+                      const AutoShardingSolverOption& solver_option);
+
+Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
+                 LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+                 const HloInstruction* ins, size_t instruction_id,
+                 const ClusterEnvironment& cluster_env,
+                 const InstructionBatchDimMap& batch_map,
+                 const AutoShardingSolverOption& solver_option);
+
+Status HandleConv(std::unique_ptr<StrategyVector>& strategies,
+                  LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+                  const HloInstruction* ins, size_t instruction_id,
+                  const ClusterEnvironment& cluster_env,
+                  const InstructionBatchDimMap& batch_map,
+                  const AutoShardingSolverOption& solver_option);
+
+void AnnotateShardingWithSimpleHeuristic(HloModule* module,
+                                         const std::string& heuristic,
+                                         const AliasMap& alias_map,
+                                         const ClusterEnvironment& cluster_env);
+
+// Handle alias: alias pairs must have the same HloSharding.
+// To deal with alias, we do special process both before and after
+// BuildStrategyAndCost. Because it is easier to handle elementwise
+// instructions before BuildStrategyAndCost and it is easier to handle
+// dot/conv instructions after BuildStrategyAndCost. Before
+// BuildStrategyAndCost, we build an AliasMap to guide the generation of
+// strategies. After BuildStrategyAndCost, we use AliasSet to add alias
+// constraints in the ILP problem.
+AliasMap BuildAliasMap(const HloModule* module);
+
+AliasSet BuildAliasSet(const HloModule* module,
+                       const StrategyMap& strategy_map);
+
+void CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                const LeafStrategies& leaf_strategies,
+                                const HloInstructionSequence& sequence);
+
+void GenerateReduceScatter(const HloInstructionSequence& sequence,
+                           const AliasMap& alias_map,
+                           const InstructionDepthMap& depth_map,
+                           const StrategyMap& strategy_map,
+                           const CostGraph& cost_graph,
+                           absl::Span<const int64_t> s_val,
+                           const ClusterEnvironment& cluster_env,
+                           const AutoShardingSolverOption& solver_option);
+
+bool HasReduceScatterOpportunity(
+    const HloInstruction* inst, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
+    const StableHashSet<const HloInstruction*>& modified);
+
+HloSharding GetReduceScatterOutput(const HloInstruction* ins,
+                                   const ShardingStrategy& strategy,
+                                   const ClusterEnvironment& cluster_env);
+}  // namespace spmd
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_H_

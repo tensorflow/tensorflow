@@ -112,14 +112,12 @@ ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(context, ": ", prior.error_message())};
+  return Status{prior.code(), absl::StrCat(context, ": ", prior.message())};
 }
 
 Status AppendStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(prior.error_message(), ": ", context)};
+  return Status{prior.code(), absl::StrCat(prior.message(), ": ", context)};
 }
 
 std::string Reindent(absl::string_view original,
@@ -134,8 +132,10 @@ std::string Reindent(absl::string_view original,
 
 template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
+  static_assert(!std::is_same<FloatT, tsl::float8_e4m3fn>::value,
+                "RoundTripNanPayload does not support E4M3");
   const int kPayloadBits = NanPayloadBits<FloatT>();
-  if (std::isnan(value) && kPayloadBits > 0) {
+  if (Eigen::numext::isnan(value) && kPayloadBits > 0) {
     auto rep = absl::bit_cast<
         typename UnsignedIntegerTypeForSize<sizeof(FloatT)>::type>(value);
     auto payload = rep & NanPayloadBitMask<FloatT>();
@@ -152,6 +152,22 @@ static std::string GenericRoundTripFpToString(FloatT value) {
   int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
   return absl::StrFormat("%.*g", max_decimal_digits,
                          static_cast<double>(value));
+}
+
+std::string RoundTripFpToString(tsl::float8_e5m2 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
 }
 
 std::string RoundTripFpToString(bfloat16 value) {
@@ -375,7 +391,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
       }
     } else if (any_present) {
       // Try to find if there is a to dimension that is like (from) [2,32] ->
-      // (to) [4,4,4] to detect that from dimensoin 1 can be partially mapped
+      // (to) [4,4,4] to detect that from dimension 1 can be partially mapped
       // into dimension 1 and 2 of the to sizes with a partial size of 2.
       if (common_factors[i].first + 2 == common_factors[i + 1].first &&
           absl::c_linear_search(from_dimensions, common_factors[i].first + 1)) {

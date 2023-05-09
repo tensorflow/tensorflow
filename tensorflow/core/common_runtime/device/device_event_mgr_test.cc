@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -56,7 +57,11 @@ class TEST_EventMgrHelper {
 
   size_t queue_size() {
     mutex_lock l(em_->mu_);
-    return em_->used_events_.size();
+    size_t n = 0;
+    for (const auto& [stream, events_and_callbacks] : em_->callbacks_) {
+      n += events_and_callbacks.size();
+    }
+    return n;
   }
 
   size_t free_size() {
@@ -66,15 +71,8 @@ class TEST_EventMgrHelper {
 
   void PollEvents() {
     while (queue_size() > 0) {
-      // For ordinary tensor frees, this function
-      // should synchronously harvest all complete
-      // events and execute the corresponding memory frees.
-      EventMgr::ToFreeVector to_free;
-      {
-        mutex_lock l(em_->mu_);
-        em_->PollEvents(true, &to_free);
-      }
-      em_->FreeMemory(to_free);
+      mutex_lock l(em_->mu_);
+      em_->PollEvents();
     }
   }
 
@@ -150,7 +148,7 @@ class GPUDeviceTestHelper {
         DeviceFactory::NewDevice(DEVICE_GPU, sops, "/job:a/replica:0/task:0");
     gpu_.reset(reinterpret_cast<BaseGPUDevice*>(device_.release()));
     gpu_allocator_ = GPUProcessState::singleton()->GetGPUAllocator(
-        GPUOptions(), TfDeviceId(0), memory_limit, /*peer_gpu_ids=*/{});
+        GPUOptions(), tsl::TfDeviceId(0), memory_limit, /*peer_gpu_ids=*/{});
     host_allocator_ = GPUProcessState::singleton()->GetGpuHostAllocator(
         /*options=*/{}, /*numa_node=*/0);
   }
@@ -212,7 +210,7 @@ class EMBenchmarkHelper {
                                    {tensor_size}, AllocationAttributes()));
     }
     gpu_outputs_.clear();
-    while (gpu_outputs_.size() < 1) {
+    while (gpu_outputs_.empty()) {
       gpu_outputs_.push_back(Tensor(gpu_helper_->gpu_allocator(), DT_FLOAT,
                                     {tensor_size}, AllocationAttributes()));
     }
@@ -227,7 +225,7 @@ class EMBenchmarkHelper {
       }
     }
     host_outputs_.clear();
-    while (host_outputs_.size() < 1) {
+    while (host_outputs_.empty()) {
       host_outputs_.push_back(Tensor(gpu_helper_->host_allocator(), DT_FLOAT,
                                      {tensor_size}, AllocationAttributes()));
       for (int i = 0; i < tensor_size; ++i) {

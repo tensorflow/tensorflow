@@ -789,6 +789,10 @@ tf_module {
     argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CollectiveAllToAllV2"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+  }
+  member_method {
     name: "CollectiveAllToAllV3"
     argspec: "args=[\'input\', \'communicator\', \'group_assignment\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
@@ -831,6 +835,10 @@ tf_module {
   member_method {
     name: "CollectiveReduce"
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'auto\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveReduceScatterV2"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
   }
   member_method {
     name: "CollectiveReduceV2"
@@ -929,8 +937,16 @@ tf_module {
     argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
+    name: "Conv2DBackpropFilterV2"
+    argspec: "args=[\'input\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
     name: "Conv2DBackpropInput"
     argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "Conv2DBackpropInputV2"
+    argspec: "args=[\'input\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "Conv3D"
@@ -1082,7 +1098,7 @@ tf_module {
   }
   member_method {
     name: "DatasetCardinality"
-    argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'cardinality_options\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "DatasetFromGraph"
@@ -1123,6 +1139,10 @@ tf_module {
   member_method {
     name: "DebugIdentityV2"
     argspec: "args=[\'input\', \'tfdbg_context_id\', \'op_name\', \'output_slot\', \'tensor_debug_mode\', \'debug_urls\', \'circular_buffer_size\', \'tfdbg_run_id\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'-1\', \'-1\', \'[]\', \'1000\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "DebugIdentityV3"
+    argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'io_of_node\', \'is_input\', \'io_index\', \'debug_urls\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'False\', \'-1\', \'[]\', \'False\', \'None\'], "
   }
   member_method {
     name: "DebugNanCount"
@@ -1319,6 +1339,10 @@ tf_module {
   member_method {
     name: "DisableCopyOnRead"
     argspec: "args=[\'resource\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DistributedSave"
+    argspec: "args=[\'dataset\', \'directory\', \'address\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Div"
@@ -3285,6 +3309,14 @@ tf_module {
     argspec: "args=[\'ragged_values\', \'ragged_row_splits\', \'sparse_indices\', \'sparse_values\', \'sparse_shape\', \'dense_inputs\', \'input_order\', \'hashed_output\', \'num_buckets\', \'hash_key\', \'out_values_type\', \'out_row_splits_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "RaggedFillEmptyRows"
+    argspec: "args=[\'value_rowids\', \'values\', \'nrows\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RaggedFillEmptyRowsGrad"
+    argspec: "args=[\'reverse_index_map\', \'grad_values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "RaggedGather"
     argspec: "args=[\'params_nested_splits\', \'params_dense_values\', \'indices\', \'OUTPUT_RAGGED_RANK\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4049,6 +4081,10 @@ tf_module {
     argspec: "args=[\'data\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SegmentMaxV2"
+    argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SegmentMean"
     argspec: "args=[\'data\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4057,8 +4093,16 @@ tf_module {
     argspec: "args=[\'data\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SegmentMinV2"
+    argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SegmentProd"
     argspec: "args=[\'data\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SegmentProdV2"
+    argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "SegmentSum"
@@ -4211,6 +4255,10 @@ tf_module {
   member_method {
     name: "Snapshot"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SnapshotChunkDataset"
+    argspec: "args=[\'chunk_file\', \'output_types\', \'output_shapes\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "SnapshotDataset"
@@ -4869,6 +4917,10 @@ tf_module {
     argspec: "args=[\'input\', \'Tout\', \'f\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SyncDevice"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TFRecordDataset"
     argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
@@ -4901,8 +4953,16 @@ tf_module {
     argspec: "args=[\'inputs\', \'partition_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
+    name: "TPUPartitionedInputV2"
+    argspec: "args=[\'inputs\', \'partition_dims\', \'is_packed\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "TPUPartitionedOutput"
     argspec: "args=[\'inputs\', \'num_splits\', \'partition_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "TPUPartitionedOutputV2"
+    argspec: "args=[\'inputs\', \'num_splits\', \'partition_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "TPUReplicateMetadata"
@@ -5146,7 +5206,7 @@ tf_module {
   }
   member_method {
     name: "TensorListSetItem"
-    argspec: "args=[\'input_handle\', \'index\', \'item\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_handle\', \'index\', \'item\', \'resize_if_index_out_of_bounds\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "TensorListSplit"
@@ -5238,7 +5298,7 @@ tf_module {
   }
   member_method {
     name: "TopKV2"
-    argspec: "args=[\'input\', \'k\', \'sorted\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input\', \'k\', \'sorted\', \'index_type\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "Transpose"
@@ -5311,6 +5371,10 @@ tf_module {
   member_method {
     name: "UniformQuantize"
     argspec: "args=[\'input\', \'scales\', \'zero_points\', \'Tout\', \'quantization_min_val\', \'quantization_max_val\', \'quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "UniformQuantizedAdd"
+    argspec: "args=[\'lhs\', \'rhs\', \'lhs_scales\', \'lhs_zero_points\', \'rhs_scales\', \'rhs_zero_points\', \'output_scales\', \'output_zero_points\', \'lhs_quantization_min_val\', \'lhs_quantization_max_val\', \'rhs_quantization_min_val\', \'rhs_quantization_max_val\', \'output_quantization_min_val\', \'output_quantization_max_val\', \'lhs_quantization_axis\', \'rhs_quantization_axis\', \'output_quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'-1\', \'None\'], "
   }
   member_method {
     name: "UniformQuantizedClipByValue"

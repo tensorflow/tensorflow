@@ -486,8 +486,9 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
 #if GOOGLE_CUDA
     constexpr bool is_supported = true;
 #else
-    // GpuRadixSortDescending is not supported on ROCm for fp16.
-    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value;
+    // GpuRadixSortDescending is not supported on ROCm for fp16/bf16.
+    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value &&
+                                  !std::is_same<T, Eigen::bfloat16>::value;
 #endif
     if constexpr (is_supported) {
       // Note: DeviceSegmentedRadixSort is very slow when num_segments=1 because
@@ -564,17 +565,17 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   return OkStatus();
 }
 
-}  // end namespace impl
+}  // namespace impl
 
 namespace functor {
 
-template <typename T>
-struct TopKFunctor<GPUDevice, T> {
+template <typename T, typename Tidx>
+struct TopKFunctor<GPUDevice, T, Tidx> {
   static EIGEN_ALWAYS_INLINE Status
   Compute(OpKernelContext* context, bool sorted, int k,
           const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows,
           const int64 num_cols, typename TTypes<T, 2>::Tensor values,
-          typename TTypes<int, 2>::Tensor indices) {
+          typename TTypes<Tidx, 2>::Tensor indices) {
     // For small k, use the heap implementation.  For larger k, use
     // the in-place gpuprim sort.  For k == num_cols, always use the
     // in-place gpuprim sort.  The thresholds for n and k were determined
@@ -597,7 +598,7 @@ struct TopKFunctor<GPUDevice, T> {
   }
 };
 
-}  // end namespace functor
+}  // namespace functor
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

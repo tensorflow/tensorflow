@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for high-level function transformation API."""
 
+import collections
+
 from absl.testing import parameterized
 
 from tensorflow.core.function.testing import test_pass
@@ -24,10 +26,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module as module_lib
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as load_lib
 from tensorflow.python.saved_model import save as save_lib
@@ -127,6 +129,48 @@ class TransformTest(test.TestCase, parameterized.TestCase):
         f_g(constant_op.constant(2.0), constant_op.constant(3.0)), 5.0)
 
   @test_util.run_v2_only
+  def test_transform_with_keywords(self):
+
+    @def_function.function
+    def f(x, y):
+      return math_ops.add(x, y, name="x_plus_y")
+
+    one = constant_op.constant(1.0)
+
+    # transfrom f(x, y): x + y -> f(x, y): x * y
+    g = transform.transform_function(
+        f,
+        inputs=[one],
+        kw_inputs={"y": one},
+        transform_fn=add_to_multiply,
+        mlir_pipeline="test-pass")
+
+    self.assertEqual(g(one, one), 1.0)
+    self.assertEqual(g(one, y=one), 1.0)
+    self.assertEqual(g(x=one, y=one), 1.0)
+
+  @test_util.run_v2_only
+  def test_transform_with_keywords_only(self):
+
+    @def_function.function
+    def f(x, y):
+      return math_ops.add(x, y, name="x_plus_y")
+
+    one = constant_op.constant(1.0)
+
+    # transfrom f(x, y): x + y -> f(x, y): x * y
+    g = transform.transform_function(
+        f,
+        inputs=None,
+        kw_inputs={"x": one, "y": one},
+        transform_fn=add_to_multiply,
+        mlir_pipeline="test-pass")
+
+    self.assertEqual(g(one, one), 1.0)
+    self.assertEqual(g(one, y=one), 1.0)
+    self.assertEqual(g(x=one, y=one), 1.0)
+
+  @test_util.run_v2_only
   def test_function_spec(self):
 
     @def_function.function
@@ -189,7 +233,7 @@ class TransformTest(test.TestCase, parameterized.TestCase):
         i = constant_op.constant(1.0)
         c = lambda i: math_ops.less(i, 3.0)
         b = lambda i: (math_ops.add(i, z, name="x_plus_y"))
-        i = control_flow_ops.while_loop_v2(c, b, [i])
+        i = while_loop.while_loop_v2(c, b, [i])
         return i
 
       y = add()
@@ -325,6 +369,83 @@ class TransformTest(test.TestCase, parameterized.TestCase):
         nested_fn_transforms=nested_fn_transforms,
         nested_mlir_transforms=nested_mlir_transforms)
     self.assertEqual(updated_f(*inputs), 8.0)  # 1 x (2 x 4) = 8
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="fn_and_nested_fn",
+          transform_fn=add_to_multiply,
+          nested_fn=True),
+      dict(
+          testcase_name="fn_and_nested_mlir",
+          transform_fn=add_to_multiply,
+          nested_mlir=True),
+      dict(
+          testcase_name="mlir_and_nested_fn",
+          mlir_pipeline="test-pass",
+          nested_fn=True),
+      dict(
+          testcase_name="mlir_and_nested_mlir",
+          mlir_pipeline="test-pass",
+          nested_mlir=True),
+      dict(
+          testcase_name="mlir_fn_and_nested_mlir_fn",
+          transform_fn=add_to_multiply,
+          mlir_pipeline="test-pass",
+          nested_fn=True,
+          nested_mlir=True),
+  )
+  @test_util.run_v2_only
+  def test_nested_transform_in_tf_function_with(self,
+                                                transform_fn=None,
+                                                mlir_pipeline=None,
+                                                nested_fn=False,
+                                                nested_mlir=False):
+
+    @def_function.function
+    def g(x, y, z):
+
+      @def_function.function
+      def f(x, y, z):
+
+        @def_function.function
+        def inner_add():
+          return math_ops.add(y, z, name="x_plus_y")
+
+        return math_ops.add(x, inner_add(), name="x_plus_y")
+
+      nested_fn_transforms = {}
+      nested_mlir_transforms = {}
+
+      cf = f.get_concrete_function(*inputs)
+      gdef = cf.graph.as_graph_def()
+      for fdef in gdef.library.function:
+        fdef_name = fdef.signature.name
+        if nested_fn:
+          nested_fn_transforms[fdef_name] = add_to_multiply
+        if nested_mlir:
+          nested_mlir_transforms[fdef_name] = "test-pass"
+
+      updated_f = transform.transform_function(
+          f,
+          inputs=inputs,
+          transform_fn=transform_fn,
+          mlir_pipeline=mlir_pipeline,
+          nested_fn_transforms=nested_fn_transforms,
+          nested_mlir_transforms=nested_mlir_transforms)
+
+      return updated_f(x, y, z)
+
+    inputs = [1.0, 2.0, 4.0]
+    graph_def = g.get_concrete_function(*inputs).graph.as_graph_def()
+    # Confirm all "AddV2" nodes in the library functions of graph_def are
+    # transformed to "Mul".
+    ops = collections.Counter()
+    for fdef in graph_def.library.function:
+      for node in fdef.node_def:
+        ops[node.op] += 1
+
+    self.assertNotIn("AddV2", ops)
+    self.assertEqual(ops["Mul"], 2)
 
   @test_util.run_v2_only
   def test_save_transform_for_all_signatures(self):

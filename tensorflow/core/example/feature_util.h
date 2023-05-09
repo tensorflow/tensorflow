@@ -277,16 +277,43 @@ template <typename ProtoType>
 typename std::enable_if<TypeHasFeatures<ProtoType>::value, Features*>::type
 GetFeatures(ProtoType* proto);
 
+template <>
+Features* GetFeatures<Features>(Features* proto);
+template <>
+Features* GetFeatures<Example>(Example* proto);
+template <>
+Features* GetFeatures<SequenceExample>(SequenceExample* proto);
+
 template <typename ProtoType>
 typename std::enable_if<TypeHasFeatures<ProtoType>::value,
                         const Features&>::type
 GetFeatures(const ProtoType& proto);
+
+template <>
+const Features& GetFeatures<Features>(const Features& proto);
+template <>
+const Features& GetFeatures<Example>(const Example& proto);
+template <>
+const Features& GetFeatures<SequenceExample>(const SequenceExample& proto);
 
 // Base declaration of a family of template functions to return a read only
 // repeated field of feature values.
 template <typename FeatureType>
 const typename internal::RepeatedFieldTrait<FeatureType>::Type&
 GetFeatureValues(const Feature& feature);
+
+template <>
+const protobuf::RepeatedField<protobuf_int64>& GetFeatureValues<protobuf_int64>(
+    const Feature& feature);
+template <>
+const protobuf::RepeatedField<float>& GetFeatureValues<float>(
+    const Feature& feature);
+template <>
+const protobuf::RepeatedPtrField<std::string>& GetFeatureValues<tstring>(
+    const Feature& feature);
+template <>
+const protobuf::RepeatedPtrField<std::string>& GetFeatureValues<std::string>(
+    const Feature& feature);
 
 // Returns a read only repeated field corresponding to a feature with the
 // specified name and FeatureType. Supported ProtoTypes: SequenceExample,
@@ -301,6 +328,18 @@ GetFeatureValues(absl::string_view key, const ProtoType& proto) {
 // Returns a mutable repeated field of a feature values.
 template <typename FeatureType>
 typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
+    Feature* feature);
+
+template <>
+protobuf::RepeatedField<protobuf_int64>* GetFeatureValues<protobuf_int64>(
+    Feature* feature);
+template <>
+protobuf::RepeatedField<float>* GetFeatureValues<float>(Feature* feature);
+template <>
+protobuf::RepeatedPtrField<std::string>* GetFeatureValues<tstring>(
+    Feature* feature);
+template <>
+protobuf::RepeatedPtrField<std::string>* GetFeatureValues<std::string>(
     Feature* feature);
 
 // Returns a mutable repeated field corresponding to a feature with the
@@ -320,6 +359,54 @@ typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
 template <typename ProtoType>
 const Feature& GetFeature(absl::string_view key, const ProtoType& proto) {
   return GetFeatures(proto).feature().at(internal::ProtoMapKey(key));
+}
+
+// Returns a read-only Feature proto for the specified key, returns nullptr
+// if the key is not found. Supported types for the proto: SequenceExample,
+// Example, Features.
+template <typename ProtoType>
+const Feature* MaybeGetFeature(absl::string_view key, const ProtoType& proto) {
+  const protobuf::Map<std::string, Feature>& feature_map =
+      GetFeatures(proto).feature();
+  auto it = feature_map.find(internal::ProtoMapKey(key));
+
+  if (it == feature_map.end()) {
+    return nullptr;
+  }
+
+  return &it->second;
+}
+
+// Base declaration of a family of template functions to return a read only
+// repeated field of feature values or nullptr.
+template <typename FeatureType>
+const typename internal::RepeatedFieldTrait<FeatureType>::Type*
+MaybeGetFeatureValues(const Feature& feature);
+
+template <>
+const protobuf::RepeatedField<protobuf_int64>*
+MaybeGetFeatureValues<protobuf_int64>(const Feature& feature);
+template <>
+const protobuf::RepeatedField<float>* MaybeGetFeatureValues<float>(
+    const Feature& feature);
+template <>
+const protobuf::RepeatedPtrField<std::string>* MaybeGetFeatureValues<tstring>(
+    const Feature& feature);
+template <>
+const protobuf::RepeatedPtrField<std::string>*
+MaybeGetFeatureValues<std::string>(const Feature& feature);
+
+// Returns a read only repeated field corresponding to a feature with the
+// specified name and FeatureType. Supported ProtoTypes: SequenceExample,
+// Example, Features.
+template <typename FeatureType, typename ProtoType>
+const typename internal::RepeatedFieldTrait<FeatureType>::Type*
+MaybeGetFeatureValues(absl::string_view key, const ProtoType& proto) {
+  const Feature* feature = MaybeGetFeature(key, proto);
+  if (feature == nullptr) {
+    return nullptr;
+  }
+  return &GetFeatureValues<FeatureType>(*feature);
 }
 
 // Returns a mutable Feature proto for the specified key, creates a new if
@@ -434,6 +521,15 @@ void AppendFeatureValues(std::initializer_list<ValueType> container,
 template <typename... FeatureType>
 void ClearFeatureValues(Feature* feature);
 
+template <>
+void ClearFeatureValues<protobuf_int64>(Feature* feature);
+template <>
+void ClearFeatureValues<float>(Feature* feature);
+template <>
+void ClearFeatureValues<std::string>(Feature* feature);
+template <>
+void ClearFeatureValues<tstring>(Feature* feature);
+
 // Clears the feature's repeated field (int64, float, or string). Copies
 // elements from the range, defined by [first, last) into the feature's repeated
 // field.
@@ -500,12 +596,34 @@ void SetFeatureValues(std::initializer_list<ValueType> container,
 template <typename... FeatureType>
 bool HasFeature(absl::string_view key, const Features& features);
 
+template <>
+bool HasFeature<>(absl::string_view key, const Features& features);
+template <>
+bool HasFeature<protobuf_int64>(absl::string_view key,
+                                const Features& features);
+template <>
+bool HasFeature<float>(absl::string_view key, const Features& features);
+template <>
+bool HasFeature<std::string>(absl::string_view key, const Features& features);
+template <>
+bool HasFeature<tstring>(absl::string_view key, const Features& features);
+
 // Returns true if a feature with the specified key belongs to the Example.
 // Doesn't check feature type if used without FeatureType, otherwise the
 // specialized versions return false if the feature has a wrong type.
 template <typename... FeatureType>
 bool HasFeature(absl::string_view key, const Example& example) {
   return HasFeature<FeatureType...>(key, GetFeatures(example));
+}
+
+// Returns true if a feature with the specified key belongs to the
+// SequenceExample. Doesn't check feature type if used without FeatureType,
+// otherwise the specialized versions return false if the feature has a wrong
+// type.
+template <typename... FeatureType>
+bool HasFeature(absl::string_view key,
+                const SequenceExample& sequence_example) {
+  return HasFeature<FeatureType...>(key, GetFeatures(sequence_example));
 }
 
 // TODO(gorban): update all clients in a followup CL.
@@ -516,4 +634,5 @@ bool ExampleHasFeature(absl::string_view key, const Example& example) {
 }
 
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_

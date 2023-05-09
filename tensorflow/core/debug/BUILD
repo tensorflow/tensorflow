@@ -28,7 +28,6 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
 )
 
@@ -126,13 +125,13 @@ tf_cuda_library(
         ":debug_node_key",
         ":debug_service_cc_grpc_proto",
         ":debugger_event_metadata_proto_cc",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -172,7 +171,6 @@ tf_cc_test(
     name = "debug_io_utils_test",
     size = "small",
     srcs = ["debug_io_utils_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_oss",  # TODO(b/137652456): remove when fixed
     ],
@@ -201,7 +199,6 @@ tf_cc_test(
     name = "debug_graph_utils_test",
     size = "small",
     srcs = ["debug_graph_utils_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":debug_graph_utils",
         "//tensorflow/core:lib",
@@ -216,7 +213,6 @@ tf_cc_test(
     name = "grpc_session_debug_test",
     size = "medium",
     srcs = ["grpc_session_debug_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_oss",  # b/62956105: port conflicts.
         "nomac",  # b/38276817
@@ -250,7 +246,6 @@ tf_cc_test(
     name = "debug_grpc_io_utils_test",
     size = "small",
     srcs = ["debug_grpc_io_utils_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_oss",  # b/73962011
     ],

@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Host.h"
+#include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
@@ -102,7 +102,8 @@ SimpleOrcJIT::SimpleOrcJIT(
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-    bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+    bool disable_expensive_passes, bool disable_slp_vectorizer,
+    llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook)
@@ -120,12 +121,14 @@ SimpleOrcJIT::SimpleOrcJIT(
           *execution_session_, object_layer_,
           std::make_unique<CompilerFunctor>(
               target_machine_.get(), opt_level, optimize_for_size,
-              disable_expensive_passes, fast_math_flags,
+              disable_expensive_passes, disable_slp_vectorizer, fast_math_flags,
               std::move(pre_optimization_hook),
               std::move(post_optimization_hook), std::move(post_codegen_hook))),
       main_jit_dylib_(&execution_session_->createBareJITDylib("<main>")),
       gdb_jit_event_listener_(
-          llvm::JITEventListener::createGDBRegistrationListener()) {
+          llvm::JITEventListener::createGDBRegistrationListener()),
+      perf_jit_event_listener_(
+          llvm::JITEventListener::createPerfJITEventListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 
@@ -143,8 +146,8 @@ SimpleOrcJIT::SimpleOrcJIT(
 
       for (const auto& kv : names) {
         const auto& name = kv.first;
-        if (llvm::JITEvaluatedSymbol symbol =
-                jit_.ResolveRuntimeSymbol(*name)) {
+        llvm::orc::ExecutorSymbolDef symbol = jit_.ResolveRuntimeSymbol(*name);
+        if (symbol.getAddress()) {
           new_defs[name] = symbol;
         }
       }
@@ -156,6 +159,9 @@ SimpleOrcJIT::SimpleOrcJIT(
   main_jit_dylib_->addGenerator(
       std::make_unique<RuntimeSymbolGenerator>(*this));
   object_layer_.registerJITEventListener(*this);
+  if (perf_jit_event_listener_) {
+    object_layer_.registerJITEventListener(*perf_jit_event_listener_);
+  }
 
   // Copied from LLJIT, required to find symbols on Windows.
   if (target_triple_.isOSBinFormatCOFF()) {
@@ -173,7 +179,8 @@ SimpleOrcJIT::~SimpleOrcJIT() {
 llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-    bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+    bool disable_expensive_passes, bool disable_slp_vectorizer,
+    llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
@@ -189,11 +196,11 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
   return std::make_unique<SimpleOrcJIT>(
       std::move(*target_process_control), std::move(execution_session),
       target_options, opt_level, optimize_for_size, disable_expensive_passes,
-      fast_math_flags, std::move(pre_optimization_hook),
+      disable_slp_vectorizer, fast_math_flags, std::move(pre_optimization_hook),
       std::move(post_optimization_hook), std::move(post_codegen_hook));
 }
 
-llvm::JITEvaluatedSymbol SimpleOrcJIT::ResolveRuntimeSymbol(
+llvm::orc::ExecutorSymbolDef SimpleOrcJIT::ResolveRuntimeSymbol(
     llvm::StringRef name) {
   void* func_addr = nullptr;
   if (name.size() > 1 && name.front() == data_layout_.getGlobalPrefix()) {
@@ -210,14 +217,13 @@ llvm::JITEvaluatedSymbol SimpleOrcJIT::ResolveRuntimeSymbol(
   if (func_addr == nullptr) {
     LOG(ERROR)
         << "Unable to resolve runtime symbol: `" << name.str()
-        << "'.  Hint: if the symbol a custom call target, make sure you've "
+        << "'. Hint: if the symbol a custom call target, make sure you've "
            "registered it with the JIT using "
            "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
-    return nullptr;
+    return {};
   }
-  llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
-                                       llvm::JITSymbolFlags::None);
-  return symbol_info;
+  return {llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(func_addr)),
+          llvm::JITSymbolFlags::None};
 }
 
 void SimpleOrcJIT::notifyObjectLoaded(
@@ -242,7 +248,7 @@ void SimpleOrcJIT::DoneCompiling() {
   target_machine_.reset();
 }
 
-llvm::Expected<llvm::JITEvaluatedSymbol> SimpleOrcJIT::FindCompiledSymbol(
+llvm::Expected<llvm::orc::ExecutorSymbolDef> SimpleOrcJIT::FindCompiledSymbol(
     const std::string& name) {
   return execution_session_->lookup({main_jit_dylib_}, name);
 }

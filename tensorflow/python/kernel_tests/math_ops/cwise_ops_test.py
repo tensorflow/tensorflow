@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -24,6 +25,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -1327,6 +1329,41 @@ class PolyvalTest(test.TestCase):
     coeffs = {}
     with self.assertRaisesRegex(ValueError, "Argument coeffs must be list"):
       math_ops.polyval(coeffs, x)
+
+
+class SingularGradientOpTest(test.TestCase):
+
+  def testGradientAtSingularity(self):
+    if context.executing_eagerly():
+      self.skipTest(
+          "Only graph mode allows specifying gradient inputs directly"
+      )
+
+    ops_and_singularity = [
+        (math_ops.reciprocal, [0.0], [np.nan]),
+        (math_ops.rsqrt, [0.0], [np.nan]),
+        (math_ops.sqrt, [0.0], [np.nan]),
+        (math_ops.sqrt_grad, [0.0, 0.0], [np.nan, np.nan]),
+        (math_ops.reciprocal_grad, [1.0, 0.0], [-0.0, -0.0]),
+        (math_ops.tan, [np.pi / 2], [0.0]),
+        (math_ops.log, [0.0], [np.nan]),
+        (math_ops.log1p, [-1.0], [np.nan]),
+        (math_ops.acosh, [0.0], [np.nan]),
+        (math_ops.asin, [1.0], [np.nan]),
+        (math_ops.acos, [1.0], [np.nan]),
+        (math_ops.atan2, [0.0, 0.0], [np.nan, np.nan]),
+        (math_ops.div, [1.0, 0.0], [np.nan, np.nan]),
+        (math_ops.div_no_nan, [1.0, 0.0], [0.0, 0.0]),
+        (math_ops.real_div, [1.0, 0.0], [np.nan, np.nan]),
+        (math_ops.pow, [0.0, -1.0], [np.nan, np.nan]),
+    ]
+    for op, singularity, expected in ops_and_singularity:
+      with self.subTest(op=op.__name__):
+        args = [constant_op.constant(s) for s in singularity]
+        grad_y = constant_op.constant(0.0)
+        y = op(*args)
+        g = self.evaluate(gradients_impl.gradients(y, args, grad_ys=grad_y))
+        self.assertAllEqual(g, expected)
 
 
 if __name__ == "__main__":

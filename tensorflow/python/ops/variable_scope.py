@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -40,6 +41,7 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
+
 
 __all__ = [
     "AUTO_REUSE", "VariableScope", "get_variable_scope", "get_variable",
@@ -953,7 +955,7 @@ class _VariableStore:
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = _DEFAULT_USE_RESOURCE
-    v = variables.VariableV1(
+    v = _variable_v1(
         initial_value=init_val,
         name=name,
         trainable=trainable,
@@ -1087,7 +1089,7 @@ for _name in _op_list:
   setattr(_LazyEvalTensor, _name, _make_op_method(_name))
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     _LazyEvalTensor,
     lambda val, dtype, name, as_ref: val._as_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
     )
@@ -2677,113 +2679,18 @@ def _iter_slices(full_shape, num_slices, slice_dim):
     offset[slice_dim] += shape[slice_dim]
 
 
-def default_variable_creator(next_creator=None, **kwargs):
-  """Default variable creator."""
-  assert next_creator is None
-  initial_value = kwargs.get("initial_value", None)
-  trainable = kwargs.get("trainable", None)
-  collections = kwargs.get("collections", None)
-  validate_shape = kwargs.get("validate_shape", True)
-  caching_device = kwargs.get("caching_device", None)
-  name = kwargs.get("name", None)
-  variable_def = kwargs.get("variable_def", None)
-  dtype = kwargs.get("dtype", None)
-  expected_shape = kwargs.get("expected_shape", None)
-  import_scope = kwargs.get("import_scope", None)
-  constraint = kwargs.get("constraint", None)
-  use_resource = kwargs.get("use_resource", None)
-  synchronization = kwargs.get("synchronization", None)
-  aggregation = kwargs.get("aggregation", None)
-  shape = kwargs.get("shape", None)
-
-  if use_resource is None:
-    use_resource = get_variable_scope().use_resource
-  if use_resource is None:
-    use_resource = _DEFAULT_USE_RESOURCE
-  use_resource = use_resource or context.executing_eagerly()
-  if use_resource:
-    distribute_strategy = kwargs.get("distribute_strategy", None)
-    return resource_variable_ops.ResourceVariable(
-        initial_value=initial_value,
-        trainable=trainable,
-        collections=collections,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        dtype=dtype,
-        constraint=constraint,
-        variable_def=variable_def,
-        import_scope=import_scope,
-        distribute_strategy=distribute_strategy,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape)
-  else:
-    return variables.RefVariable(
-        initial_value=initial_value,
-        trainable=trainable,
-        collections=collections,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        dtype=dtype,
-        constraint=constraint,
-        variable_def=variable_def,
-        expected_shape=expected_shape,
-        import_scope=import_scope,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape)
-
-
-def default_variable_creator_v2(next_creator=None, **kwargs):
-  """Default variable creator."""
-  assert next_creator is None
-  initial_value = kwargs.get("initial_value", None)
-  trainable = kwargs.get("trainable", None)
-  validate_shape = kwargs.get("validate_shape", True)
-  caching_device = kwargs.get("caching_device", None)
-  name = kwargs.get("name", None)
-  variable_def = kwargs.get("variable_def", None)
-  dtype = kwargs.get("dtype", None)
-  import_scope = kwargs.get("import_scope", None)
-  constraint = kwargs.get("constraint", None)
-  distribute_strategy = kwargs.get("distribute_strategy", None)
-  synchronization = kwargs.get("synchronization", None)
-  aggregation = kwargs.get("aggregation", None)
-  shape = kwargs.get("shape", None)
-  experimental_enable_variable_lifting = kwargs.get(
-      "experimental_enable_variable_lifting", None)
-
-  return resource_variable_ops.ResourceVariable(
-      initial_value=initial_value,
-      trainable=trainable,
-      validate_shape=validate_shape,
-      caching_device=caching_device,
-      name=name,
-      dtype=dtype,
-      constraint=constraint,
-      variable_def=variable_def,
-      import_scope=import_scope,
-      distribute_strategy=distribute_strategy,
-      synchronization=synchronization,
-      aggregation=aggregation,
-      shape=shape,
-      experimental_enable_variable_lifting=experimental_enable_variable_lifting,
-      )
-
-
-variables.default_variable_creator = default_variable_creator
-variables.default_variable_creator_v2 = default_variable_creator_v2
-
-
 def _make_getter(captured_getter, captured_previous):
   """Gets around capturing loop variables in python being broken."""
   return lambda **kwargs: captured_getter(captured_previous, **kwargs)
 
 
-# TODO(apassos) remove forwarding symbol
-variable = variables.VariableV1
+_variable_v1 = None
+
+
+def set_variable_v1(variable_v1):
+  """Sets a reference to variable_v1.VariableV1."""
+  global _variable_v1
+  _variable_v1 = variable_v1
 
 
 @tf_export(v1=["variable_creator_scope"])

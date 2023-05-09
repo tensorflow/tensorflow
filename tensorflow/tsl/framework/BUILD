@@ -4,6 +4,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
@@ -35,7 +36,6 @@ filegroup(
         "cancellation.h",
         "device_type.h",
         "fixedpoint_types.h",
-        "lazy.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
@@ -67,7 +67,6 @@ filegroup(
         "cancellation.cc",
         "cancellation.h",
         "fixedpoint_types.h",
-        "lazy.h",
         "metrics.cc",
         "metrics.h",
     ],
@@ -83,7 +82,7 @@ filegroup(
         "tracking_allocator.h",
         "type_traits.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 # Files needed for tf2xla build.
@@ -154,15 +153,14 @@ cc_library(
         "cpu_allocator_impl.cc",
         "tracking_allocator.h",
     ],
-    visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+    visibility = set_external_visibility([
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
     deps = [
         ":numeric_types",
         ":type_traits",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/lib/gtl:inlined_vector",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
@@ -172,6 +170,7 @@ cc_library(
         "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -193,23 +192,20 @@ cc_library(
         ":allocator",
         ":metrics",
         ":shared_counter",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/lib/core:bits",
-        "//tensorflow/tsl/lib/monitoring:counter",
-        "//tensorflow/tsl/lib/monitoring:gauge",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:numbers",
-        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:stacktrace",
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -259,6 +255,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_id_utils",
+    srcs = ["device_id_utils.cc"],
+    hdrs = [
+        "device_id_utils.h",
+    ],
+    deps = [
+        ":device_id_impl",
+        ":device_type",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/util:device_name_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 filegroup(
     name = "device_runtime_headers",
     srcs = [
@@ -270,10 +285,10 @@ filegroup(
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core:__subpackages__",
-    ],
+    ]),
     deps = [
         ":fixedpoint_types",
         "//tensorflow/tsl/platform:types",
@@ -312,9 +327,9 @@ cc_library(
 cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/framework:__pkg__",
-    ],
+    ]),
     deps = [
         ":numeric_types",
         "//tensorflow/tsl/platform:types",
@@ -326,7 +341,7 @@ filegroup(
     srcs = [
         "cancellation.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 cc_library(
@@ -339,8 +354,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":lazy",
+        "//tensorflow/tsl/lib/gtl:flatmap",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:hash",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:notification",
@@ -348,7 +364,6 @@ cc_library(
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -368,27 +383,6 @@ tsl_cc_test(
     ],
 )
 
-cc_library(
-    name = "lazy",
-    hdrs = [
-        "lazy.h",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform:mutex",
-    ],
-)
-
-tsl_cc_test(
-    name = "lazy_test",
-    size = "small",
-    srcs = ["lazy_test.cc"],
-    deps = [
-        ":lazy",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
 # Export all header files for which we do not yet provide a dedicated build
 # rule. This avoids breaking all the rules in tensorflow/core/BUILD.
 exports_files(
@@ -403,12 +397,12 @@ exports_files(
         "shared_counter.h",
         "tracking_allocator.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime:__pkg__",
         "//tensorflow/core/common_runtime/gpu:__pkg__",
         "//tensorflow/core/framework:__pkg__",
-    ],
+    ]),
 )
 
 # Files whose users still need to be migrated from core:framework to the
@@ -421,5 +415,20 @@ exports_files(
         "cancellation.h",
         "numeric_types.h",
         "type_traits.h",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_id_utils_test",
+    srcs = [
+        "device_id_utils_test.cc",
+    ],
+    deps = [
+        ":device_id_impl",
+        ":device_id_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/util:device_name_utils",
     ],
 )

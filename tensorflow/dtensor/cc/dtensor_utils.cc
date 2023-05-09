@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 
 #include <cstdlib>
+#include <string>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -95,6 +98,45 @@ int ReduceInBfloat16MaxGroupSize() {
   LOG(WARNING) << "Invalid DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE, using "
                   "the default value 8.";
   return 8;
+}
+
+bool LowerCollectiveGatherToCollectiveGatherV2() {
+  // We lower DTensorGather to CollectiveReduceV2 ops instead of
+  // CollectiveGatherV2, since we do not observe a performance gain with Gather
+  // lowering and ReduceV2 is agnostic of the rank order.
+  //
+  // If LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2 environment variable is set
+  // to '1', it is reduced to collective
+  char* use_collective_gather =
+      std::getenv("LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2");
+  if (use_collective_gather == nullptr) return false;
+  return true;
+}
+
+bool EnableReplicatedSpmdAsDefault(const std::string& op_name) {
+  // These environment variables enroll MLIR ops of the given name for default
+  // replicated SPMD expansion. No expanders are registered for these Ops,
+  // and without enrolling to the default replicated behavior, SPMD expansion
+  // raises an error for these Op.
+  //
+  // For example, to enroll tf.Mod, set
+  //   DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_TF.MOD = 1
+  std::string env_name = "DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_" +
+                         absl::AsciiStrToUpper(op_name);
+  char* dtensor_enable_replicated_spmd_as_default =
+      std::getenv(env_name.c_str());
+  return dtensor_enable_replicated_spmd_as_default != nullptr;
+}
+
+bool EnableAllToAllForRelayout() {
+  // Whether to use all-to-all collective for relayout when possible.
+  static bool is_enabled = [] {
+    bool ret = true;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("DTENSOR_USE_ALL_TO_ALL_RELAYOUT",
+                                        /*default_val=*/true, &ret));
+    return ret;
+  }();
+  return is_enabled;
 }
 
 }  // namespace dtensor

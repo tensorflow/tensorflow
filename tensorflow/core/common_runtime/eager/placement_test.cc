@@ -83,11 +83,12 @@ class PlacementTest : public ::testing::Test {
                    ContextDevicePlacementPolicy policy) {
     ASSERT_EQ(context_, nullptr);
     InitDeviceManager();
-    context_ =
-        new EagerContext(opts, policy,
-                         /* async */ false, device_manager_,
-                         /* device_mgr_owned */ false, /* rendezvous */ nullptr,
-                         /* cluster_flr */ nullptr);
+    context_ = new EagerContext(
+        opts, policy,
+        /* async */ false, device_manager_,
+        /* device_mgr_owned */ false, /* rendezvous */ nullptr,
+        /* cluster_flr */ nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true);
   }
 
  protected:
@@ -125,9 +126,9 @@ TEST_F(PlacementTest, SelectDeviceExplicitHardPlacement) {
   Status status = context()->SelectDevice(requested, invalid_op, &dev);
   LOG(ERROR) << status.ToString();
   EXPECT_TRUE(errors::IsNotFound(status));
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "Could not find device for node"))
-      << "unexpected error message " << status.error_message();
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "Could not find device for node"))
+      << "unexpected error message " << status.message();
 
   // An invalid requested device should also cause an error.
   ASSERT_TRUE(DeviceNameUtils::ParseLocalName("FakeGPU:99", &requested));
@@ -135,9 +136,9 @@ TEST_F(PlacementTest, SelectDeviceExplicitHardPlacement) {
   status = context()->SelectDevice(requested, node, &dev);
 
   EXPECT_TRUE(errors::IsInvalidArgument(status));
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
+  EXPECT_TRUE(absl::StrContains(status.message(),
                                 "Could not satisfy device specification"))
-      << "unexpected error message " << status.error_message();
+      << "unexpected error message " << status.message();
 
   // Should pick the device with higher priority if given no constraints.
   requested.Clear();
@@ -166,9 +167,9 @@ TEST_F(PlacementTest, SelectDeviceExplicitSoftPlacement) {
   Status status = context()->SelectDevice(requested, invalid_op, &dev);
   LOG(ERROR) << status.ToString();
   EXPECT_TRUE(errors::IsNotFound(status));
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "Could not find device for node"))
-      << "unexpected error message " << status.error_message();
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "Could not find device for node"))
+      << "unexpected error message " << status.message();
 
   // An invalid requested device should be replaced by the "best" one.
   ASSERT_TRUE(DeviceNameUtils::ParseLocalName("FakeGPU:99", &requested));

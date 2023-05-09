@@ -134,6 +134,79 @@ Attribute convertAttr(Attribute stablehloAttr) {
 
 #undef RETURN_CONVERTED_ENUM_ATTR
 
+// Convert array of enum strings to array of enum attrs
+//   ["PACKED_NIBBLE"] --> [#mhlo<precision PACKED_NIBBLE>]
+Attribute decodePrecisionConfig(Attribute stablehloAttr) {
+  auto arrayAttr = stablehloAttr.dyn_cast<ArrayAttr>();
+  if (!arrayAttr) return {};
+  SmallVector<Attribute> hloAttrs;
+  for (auto attr : arrayAttr) {
+    auto precisionStr = attr.dyn_cast<StringAttr>();
+    if (!precisionStr) return {};
+    auto precisionOpt = mhlo::symbolizePrecision(precisionStr.getValue());
+    if (!precisionOpt.has_value()) return {};
+    hloAttrs.push_back(mhlo::PrecisionAttr::get(stablehloAttr.getContext(),
+                                                precisionOpt.value()));
+  }
+  return ArrayAttr::get(stablehloAttr.getContext(), hloAttrs);
+}
+
+// Experimental and public ops in MHLO that do not exist yet in StableHLO can be
+// encoded as a StableHLO CustomCallOp to allow round-tripping between dialects.
+//
+// Example:
+//  %0 = stablehlo.custom_call @mhlo.dot {
+//    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}}
+//  ==>
+//   %0 = "mhlo.dot"(%arg0, %arg1) {
+//     precision_config = [#mhlo<precision PACKED_NIBBLE>] } ...
+LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
+                                        ConversionPatternRewriter& rewriter,
+                                        SmallVector<Type>& hloTypes,
+                                        ValueRange hloOperands) {
+  // Only call_target_name, backend_config, and mhlo.attributes are compatible
+  // with the extensibility protocol.
+  auto isSupportedAttrName = [](NamedAttribute attr) {
+    auto name = attr.getName();
+    return name == "call_target_name" || name == "backend_config" ||
+           name == "mhlo.attributes" || name == "mhlo.version";
+  };
+  if (!llvm::all_of(stablehloOp->getAttrs(), isSupportedAttrName) ||
+      !stablehloOp.getBackendConfig().empty()) {
+    return failure();
+  }
+
+  auto stablehloConvertedAttrs = stablehloOp->getAttr("mhlo.attributes")
+                                     .dyn_cast_or_null<DictionaryAttr>();
+  if (!stablehloConvertedAttrs) {
+    return failure();
+  }
+
+  // Convert Attributes back to MHLO
+  SmallVector<NamedAttribute> hloConvertedAttrs;
+  for (NamedAttribute stablehloAttr : stablehloConvertedAttrs.getValue()) {
+    Attribute hloAttr;
+    if (stablehloAttr.getName() == "precision_config") {
+      hloAttr = decodePrecisionConfig(stablehloAttr.getValue());
+    } else {
+      hloAttr = convertAttr(stablehloAttr.getValue());
+    }
+    if (!hloAttr) return failure();
+    hloConvertedAttrs.push_back({stablehloAttr.getName(), hloAttr});
+  }
+
+  // Dynamically create the corresponding MHLO op using call_target_name
+  // and converted attributes. (It is quite neat that we have an API for this!).
+  OperationState hloOpState(stablehloOp.getLoc(),
+                            stablehloOp.getCallTargetName());
+  hloOpState.addOperands(hloOperands);
+  hloOpState.addTypes(hloTypes);
+  hloOpState.addAttributes(hloConvertedAttrs);
+  Operation* hloOp = rewriter.create(hloOpState);
+  rewriter.replaceOp(stablehloOp, hloOp->getResults());
+  return success();
+}
+
 template <typename StablehloOpTy>
 class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
  public:
@@ -155,6 +228,15 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // These operands have already been converted to MHLO by
     // the dialect conversion infrastructure.
     ValueRange hloOperands = adaptor.getOperands();
+
+    // Extensibility protocol for public MHLO features that are not yet
+    // supported in StableHLO. See hlo_legalize_to_stablehlo.cc for details.
+    if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
+      if (stablehloOp.getCallTargetName().starts_with("mhlo.")) {
+        return rewriteCustomCallAsMhloOp(stablehloOp, rewriter, hloTypes,
+                                         hloOperands);
+      }
+    }
 
     // Convert StableHLO attributes to MHLO equivalents.
     // If an attribute is not defined in StableHLO, then it is unchanged,
@@ -185,6 +267,10 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     for (auto [stablehloRegion, hloRegion] :
          llvm::zip(stablehloOp->getRegions(), hloOp->getRegions())) {
       rewriter.inlineRegionBefore(stablehloRegion, hloRegion, hloRegion.end());
+      if (failed(rewriter.convertRegionTypes(&hloRegion,
+                                             *this->getTypeConverter(),
+                                             /*entryConversion=*/nullptr)))
+        return failure();
     }
     return success();
   }

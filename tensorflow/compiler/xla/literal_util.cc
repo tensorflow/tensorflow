@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -28,11 +29,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -107,6 +110,14 @@ Literal CreateScalar(PrimitiveType primitive_type, Args... args) {
       return CreateScalarImpl<S32>(F<S32>{}, std::forward<Args>(args)...);
     case S64:
       return CreateScalarImpl<S64>(F<S64>{}, std::forward<Args>(args)...);
+    case F8E5M2:
+      return CreateScalarImpl<F8E5M2>(F<F8E5M2>{}, std::forward<Args>(args)...);
+    case F8E4M3FN:
+      return CreateScalarImpl<F8E4M3FN>(F<F8E4M3FN>{},
+                                        std::forward<Args>(args)...);
+    case F8E4M3B11FNUZ:
+      return CreateScalarImpl<F8E4M3B11FNUZ>(F<F8E4M3B11FNUZ>{},
+                                             std::forward<Args>(args)...);
     case F16:
       return CreateScalarImpl<F16>(F<F16>{}, std::forward<Args>(args)...);
     case BF16:
@@ -150,7 +161,10 @@ template <typename T>
 struct IsReal {
   static constexpr bool value =
       std::is_integral<T>::value || std::is_floating_point<T>::value ||
-      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value;
+      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value ||
+      std::is_same<tsl::float8_e5m2, T>::value ||
+      std::is_same<tsl::float8_e4m3fn, T>::value ||
+      std::is_same<tsl::float8_e4m3b11, T>::value;
 };
 
 template <typename T>
@@ -161,42 +175,24 @@ struct IsValidScalarType {
 };
 
 template <typename NativeT>
-std::enable_if_t<std::is_integral<NativeT>::value, NativeT> GetMaxImpl() {
-  return std::numeric_limits<NativeT>::max();
-}
-
-template <typename NativeT>
-std::enable_if_t<std::is_integral<NativeT>::value, NativeT> GetMinImpl() {
-  return std::numeric_limits<NativeT>::min();
-}
-
-template <typename NativeT>
-std::enable_if_t<std::is_floating_point<NativeT>::value, NativeT> GetMaxImpl() {
-  return std::numeric_limits<NativeT>::infinity();
-}
-
-template <typename NativeT>
-std::enable_if_t<std::is_floating_point<NativeT>::value, NativeT> GetMinImpl() {
-  return -std::numeric_limits<NativeT>::infinity();
-}
-
-template <typename NativeT>
-std::enable_if_t<Is16BitFloat<NativeT>::value, NativeT> GetMaxImpl() {
-  return static_cast<NativeT>(std::numeric_limits<float>::infinity());
-}
-
-template <typename NativeT>
-std::enable_if_t<Is16BitFloat<NativeT>::value, NativeT> GetMinImpl() {
-  return static_cast<NativeT>(-std::numeric_limits<float>::infinity());
-}
-
-template <typename NativeT>
-std::enable_if_t<!IsReal<NativeT>::value, NativeT> GetMaxImpl() {
+NativeT GetMaxImpl() {
+  if constexpr (IsReal<NativeT>::value) {
+    if constexpr (std::numeric_limits<NativeT>::has_infinity) {
+      return std::numeric_limits<NativeT>::infinity();
+    }
+    return std::numeric_limits<NativeT>::max();
+  }
   LOG(FATAL) << "No max value for given type.";
 }
 
 template <typename NativeT>
-std::enable_if_t<!IsReal<NativeT>::value, NativeT> GetMinImpl() {
+NativeT GetMinImpl() {
+  if constexpr (IsReal<NativeT>::value) {
+    if constexpr (std::numeric_limits<NativeT>::has_infinity) {
+      return -std::numeric_limits<NativeT>::infinity();
+    }
+    return std::numeric_limits<NativeT>::lowest();
+  }
   LOG(FATAL) << "No min value for given type.";
 }
 
@@ -292,6 +288,11 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
   return ConvertType<float, bfloat16>(f32_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertF32ToS8(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, int8_t>(f32_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertF32ToF64(
     const LiteralSlice& f32_literal) {
   return ConvertType<float, double>(f32_literal);
@@ -334,31 +335,26 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 
 /* static */ StatusOr<Literal> LiteralUtil::NanValue(
     PrimitiveType primitive_type) {
-  switch (primitive_type) {
-    case F16:
-      return LiteralUtil::CreateR0<half>(
-          static_cast<half>(std::numeric_limits<float>::quiet_NaN()));
-    case BF16:
-      return LiteralUtil::CreateR0<bfloat16>(
-          static_cast<bfloat16>(std::numeric_limits<float>::quiet_NaN()));
-    case F32:
-      return LiteralUtil::CreateR0<float>(
-          std::numeric_limits<float>::quiet_NaN());
-    case F64:
-      return LiteralUtil::CreateR0<double>(
-          std::numeric_limits<double>::quiet_NaN());
-    case C64: {
-      float nan = std::numeric_limits<float>::quiet_NaN();
-      return LiteralUtil::CreateR0<complex64>(complex64(nan, nan));
-    }
-    case C128: {
-      double nan = std::numeric_limits<double>::quiet_NaN();
-      return LiteralUtil::CreateR0<complex128>(complex128(nan, nan));
-    }
-    default:
-      return InvalidArgument("Invalid type for NanValue: %s",
-                             PrimitiveType_Name(primitive_type));
-  }
+  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+      [&](auto primitive_type_constant) -> StatusOr<Literal> {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = typename primitive_util::PrimitiveTypeToNative<
+              primitive_type_constant>::type;
+          return LiteralUtil::CreateR0<NativeT>(
+              std::numeric_limits<NativeT>::quiet_NaN());
+        }
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = typename primitive_util::PrimitiveTypeToNative<
+              primitive_type_constant>::type;
+          auto nan =
+              std::numeric_limits<typename NativeT::value_type>::quiet_NaN();
+          return LiteralUtil::CreateR0<NativeT>(NativeT(nan, nan));
+        }
+        return InvalidArgument("Invalid type for NanValue: %s",
+                               PrimitiveType_Name(primitive_type));
+      },
+      primitive_type);
 }
 
 /* static */ Literal LiteralUtil::CreateR1(const tsl::core::Bitmap& values) {

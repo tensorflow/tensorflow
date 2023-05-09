@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
@@ -326,7 +328,7 @@ static Status PutValueIntoTensor(const int64_t value, const DataType& type,
                                  const int index, Tensor* tensor) {
   if (type == DT_INT32) {
     if (value >= INT_MAX) {
-      return Status(error::INVALID_ARGUMENT, "int32 overflow");
+      return Status(absl::StatusCode::kInvalidArgument, "int32 overflow");
     }
     tensor->flat<int32>()(index) = static_cast<int32>(value);
   } else {
@@ -1012,9 +1014,13 @@ bool ConstantFolding::IsFoldableUncached(
     for (const auto& input_prop : input_props) {
       const PartialTensorShape input_shape(input_prop.shape());
       if (input_shape.IsFullyDefined()) {
-        input_size_bytes +=
-            input_shape.num_elements() * DataTypeSize(input_prop.dtype());
+        int64_t bytes = MultiplyWithoutOverflow(
+            input_shape.num_elements(), DataTypeSize(input_prop.dtype()));
+        input_size_bytes = AddWithoutOverflow(input_size_bytes, bytes);
       }
+    }
+    if (input_size_bytes < 0) {  // Overflown
+      input_size_bytes = INT64_MAX;
     }
     for (const auto& output_prop : output_props) {
       PartialTensorShape output_shape;
@@ -1024,8 +1030,11 @@ bool ConstantFolding::IsFoldableUncached(
         return false;
       }
       if (output_shape.IsFullyDefined()) {
-        const int64_t num_bytes =
-            output_shape.num_elements() * DataTypeSize(output_prop.dtype());
+        const int64_t num_bytes = MultiplyWithoutOverflow(
+            output_shape.num_elements(), DataTypeSize(output_prop.dtype()));
+        if (num_bytes < 0) {  // Overflown
+          return false;
+        }
         if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
           // Do not fold nodes if the in-memory size of output is too large.
           // Notice that this is not exactly the same check used in
@@ -1355,7 +1364,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
     const NodeDef* input_node = node_map_->GetNode(input);
     if (!IsReallyConstant(*input_node)) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     strings::StrCat("Can't fold ", node.name(), ", its ", input,
                                     " isn't constant"));
     }
@@ -1363,7 +1372,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     if (raw_val.dtype() == DT_INVALID) {
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           strings::StrCat("A tensor in the input node, with TensorId of ",
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
@@ -1386,7 +1395,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
   if (output_tensors.empty()) {
-    return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "Expected at least one output.");
   }
 
   outputs->resize(output_tensors.size());
@@ -1985,7 +1995,7 @@ void ConstantFolding::ReplaceOperationWithNoOp(NodeDef* node,
                                                GraphProperties* properties,
                                                GraphDef* graph) {
   if (HasRegularOutputs(*node, *node_map_)) return;
-  node->set_op("NoOp");
+  ChangeToNoOp(node);
   EraseRegularNodeAttributes(node);
   EraseNodeOutputAttributes(node);
   // Erase attributes that describe output properties.

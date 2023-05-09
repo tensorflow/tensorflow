@@ -42,7 +42,7 @@ Expected<CoreRuntimeOp*> OpCache::GetOrAddOp(
     tensorflow::Status s = context->SelectOpHandlerFromNodeDef(
         *op_interface, &op_interface->fallback_attrs_.BuildNodeDef(),
         &op_handler);
-    if (!s.ok()) return MakeStringError(s.error_message());
+    if (!s.ok()) return MakeStringError(s.message());
   }
   Expected<CoreRuntimeOp> expected_op =
       context->GetCoreRuntime()->MakeOp(tfrt_op_name, op_handler);

@@ -48,7 +48,11 @@ using dnnl::stream;
 
 namespace tensorflow {
 
+#ifndef ENABLE_ONEDNN_V3
+// Op descriptor is no longer supported in oneDNN v3.x. Instead, primitive
+// descriptor will directly accept primitive parameters during creation.
 using ConvFwdDesc = dnnl::convolution_forward::desc;
+#endif  // !ENABLE_ONEDNN_V3
 using ConvFwdPd = dnnl::convolution_forward::primitive_desc;
 
 class MklDnnConvUtil {
@@ -223,6 +227,11 @@ class MklDnnConvUtil {
                       input_depth, " vs ", filter_in_depth));
       *is_grouped_convolution = filter_in_depth != input_depth;
       int group_count = input_depth / filter_in_depth;
+      OP_REQUIRES(context_, group_count > 0,
+                  errors::InvalidArgument(
+                      "grouped convolution must have at least one group: ",
+                      group_count, " groups"));
+
       // oneDNN always needs filter in OIHW format for regular convolutions
       // and GOIHW for grouped/depthwise convolutions,
       // OIHW = (out_depth, in_depth, rows, cols)
@@ -494,12 +503,17 @@ class MklDnnConvUtil {
     //     Conv2D: NHWC or NCHW
     //     Conv3D: NDHWC or NCDHW
     // oneDNN uses asymmetric padding.
-    TensorShape out_shape =
-        is_conv2d
-            ? ShapeFromFormat(data_format_, out_batch, out_rows, out_cols,
-                              out_depth)
-            : ShapeFromFormat(data_format_, out_batch,
-                              {{out_planes, out_rows, out_cols}}, out_depth);
+    TensorShape out_shape;
+    if (is_conv2d) {
+      OP_REQUIRES_OK(
+          context_, ShapeFromFormatWithStatus(data_format_, out_batch, out_rows,
+                                              out_cols, out_depth, &out_shape));
+    } else {
+      OP_REQUIRES_OK(context_, ShapeFromFormatWithStatus(
+                                   data_format_, out_batch,
+                                   {{out_planes, out_rows, out_cols}},
+                                   out_depth, &out_shape));
+    }
     *output_dims_tf_order = TFShapeToMklDnnDims(out_shape);
     if (is_grouped_convolution) {
       int out_depth = GetTensorDim(out_shape, data_format_, 'C');

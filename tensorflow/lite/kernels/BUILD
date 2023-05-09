@@ -2,6 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -178,7 +179,6 @@ cc_library(
     deps = [
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_benchmark//:benchmark",
         "@flatbuffers",
     ],
 )
@@ -190,19 +190,20 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":acceleration_test_util",
-        ":builtin_ops",
+        ":kernel_util",
         ":test_delegate_providers_lib",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:simple_planner",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:type_to_tflitetype",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:acceleration_test_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -214,6 +215,7 @@ cc_library(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/versioning",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -234,6 +236,7 @@ cc_library(
         "//tensorflow/lite/tools/delegates:hexagon_delegate_provider",
         "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
         "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:delegate_provider",
     ] + select({
         # Metal GPU delegate for iOS has its own setups for kernel tests, so
         # skipping linking w/ the gpu_delegate_provider.
@@ -291,7 +294,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/lite:arena_planner",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
     ],
 )
@@ -306,7 +309,7 @@ cc_test(
     }),
     deps = [
         ":eigen_support",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
         "@com_google_googletest//:gtest_main",
     ],
@@ -384,11 +387,11 @@ cc_library(
         "@ruy//ruy:context",
         "@ruy//ruy:path",
         "@gemmlowp",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:macros",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "@pthreadpool//:pthreadpool",
+        "@pthreadpool",
     ] + select({
         # This select must match the similar select in `copts`
         "//tensorflow:linux_ppc64le": [],
@@ -471,7 +474,6 @@ cc_library(
 cc_test(
     name = "cpu_backend_gemm_test",
     srcs = ["cpu_backend_gemm_test.cc"],
-    tags = ["notsan"],
     deps = [
         ":cpu_backend_context",
         ":cpu_backend_gemm",
@@ -504,7 +506,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
     ],
@@ -521,7 +523,7 @@ cc_test(
     tags = ["tflite_smoke_test"],
     deps = [
         ":kernel_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -534,7 +536,8 @@ cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -565,7 +568,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:types",
     ],
 )
@@ -583,6 +586,8 @@ BUILTIN_KERNEL_SRCS = [
     "batch_to_space_nd.cc",
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
+    "bitcast.cc",
+    "bitwise_xor.cc",
     "broadcast_args.cc",
     "broadcast_to.cc",
     "bucketize.cc",
@@ -651,6 +656,7 @@ BUILTIN_KERNEL_SRCS = [
     "resize_nearest_neighbor.cc",
     "reverse.cc",
     "reverse_sequence.cc",
+    "right_shift.cc",
     "round.cc",
     "scatter_nd.cc",
     "segment_sum.cc",
@@ -704,9 +710,10 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
+    "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     "//tensorflow/lite/core:subgraph",
     "//tensorflow/lite:util",
-    "//tensorflow/lite/c:common",
+    "//tensorflow/lite/core/c:common",
     "//tensorflow/lite/kernels/internal:audio_utils",
     "//tensorflow/lite/kernels/internal:common",
     "//tensorflow/lite/kernels/internal:compatibility",
@@ -726,6 +733,11 @@ BUILTIN_KERNEL_DEPS = [
         ":eigen_support",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
     ],
+}) + select({
+    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//conditions:default": [
+        "@XNNPACK//:xnnpack_for_tflite",
+    ],
 })
 
 cc_library(
@@ -743,8 +755,8 @@ cc_library(
         ":variable_op_kernels",
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
-        "//tensorflow/core/lib/random:philox_random",
-        "//tensorflow/core/lib/random:random_distributions_utils",
+        "//tensorflow/tsl/lib/random:philox_random",
+        "//tensorflow/tsl/lib/random:random_distributions_utils",
         "//tensorflow/lite/core/c:c_api_types",
         # TODO(b/179298174): Move out from the experimental directory.
         "//tensorflow/lite/experimental/resource",
@@ -763,8 +775,8 @@ cc_library(
     deps = [
         ":kernel_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:tensor",
         "@flatbuffers",
@@ -778,12 +790,12 @@ cc_test(
         "variable_ops_test.cc",
     ],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":variable_op_kernels",  # buildcleaner: keep
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -840,7 +852,7 @@ cc_library(
     deps = [
         ":gru_cell",
         ":kernel_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
@@ -864,7 +876,7 @@ cc_library(
     deps = [
         ":cpu_backend_context",
         ":op_macros",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized_base",
@@ -882,8 +894,19 @@ cc_library(
     copts = tflite_copts(),
 )
 
-# For internal usage by shared libraries only.
 cc_library(
+    name = "builtin_ops_list",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["builtin_ops_list.inc"],
+)
+
+exports_files(
+    srcs = ["builtin_ops_list.inc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+# For internal usage by shared libraries only.
+cc_library_with_tflite(
     name = "builtin_ops_all_linked",
     hdrs = [
         "builtin_op_kernels.h",
@@ -891,21 +914,24 @@ cc_library(
         "register.h",
     ],
     copts = tflite_copts(),
+    tflite_deps = [
+        "//tensorflow/lite:framework_stable",
+    ],
     # Limit visibility to TFLite only.
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework_stable",
+        ":builtin_ops_list",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops_all_linked",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "builtin_ops",
     hdrs = [
         "builtin_op_kernels.h",
@@ -913,12 +939,16 @@ cc_library(
         "register.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    generate_opaque_delegate_target = True,
+    tflite_deps = [
+        "//tensorflow/lite:cc_api_stable",
+    ],
     deps = [
         ":builtin_op_kernels",  # buildcleaner: keep
-        "//tensorflow/lite:cc_api_stable",
+        ":builtin_ops_list",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -937,7 +967,7 @@ cc_library(
         ":builtin_op_kernels",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -950,7 +980,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -965,7 +995,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -980,7 +1010,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1000,7 +1030,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
@@ -1011,8 +1041,9 @@ cc_test(
 
 cc_test(
     name = "add_test",
-    size = "small",
+    size = "medium",
     srcs = ["add_test.cc"],
+    shard_count = 10,
     tags = [
         "tflite_nnapi",
         "tflite_xnnpack",
@@ -1157,7 +1188,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1182,11 +1213,11 @@ cc_test(
     size = "small",
     srcs = ["broadcast_args_test.cc"],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1196,11 +1227,11 @@ cc_test(
     size = "small",
     srcs = ["broadcast_to_test.cc"],
     deps = [
-        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1258,7 +1289,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
@@ -1279,9 +1310,9 @@ cc_test(
     deps = [
         ":kernel_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/tools:logging",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1310,7 +1341,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
@@ -1327,7 +1358,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:test_util",
         "//tensorflow/lite/schema:schema_fbs",
@@ -1347,7 +1378,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:test_util",
         "//tensorflow/lite/schema:schema_fbs",
@@ -1366,7 +1397,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
@@ -1387,7 +1418,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
@@ -1632,7 +1663,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1691,7 +1722,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1759,7 +1790,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1789,7 +1820,7 @@ cc_test(
         ":test_main",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1803,7 +1834,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1818,7 +1849,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1832,7 +1863,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1847,7 +1878,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -1905,7 +1936,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -1921,7 +1952,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -1940,7 +1971,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
@@ -2055,7 +2086,7 @@ cc_test(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -2071,7 +2102,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2086,7 +2117,7 @@ cc_test(
         ":cpu_backend_context",
         ":lstm_eval",
         ":test_main",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2101,7 +2132,7 @@ cc_test(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2167,7 +2198,9 @@ cc_test(
     name = "squeeze_test",
     size = "small",
     srcs = ["squeeze_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+    ],
     deps = [
         ":test_main",
         ":test_util",
@@ -2215,7 +2248,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2279,7 +2312,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2293,9 +2326,8 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
@@ -2311,7 +2343,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2324,7 +2356,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2338,8 +2370,8 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2353,8 +2385,8 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2369,7 +2401,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -2383,7 +2415,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2397,7 +2429,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2411,7 +2443,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2464,7 +2496,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2531,7 +2563,7 @@ cc_test(
         ":test_main",
         ":variable_op_kernels",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2546,7 +2578,7 @@ cc_test(
         ":subgraph_test_util",
         ":test_main",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2560,7 +2592,7 @@ cc_test(
         ":subgraph_test_util",
         ":test_main",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/profiling:memory_info",
         "@com_google_googletest//:gtest",
     ],
@@ -2625,8 +2657,8 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
@@ -2646,18 +2678,6 @@ cc_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_test(
     name = "mirror_pad_test",
     srcs = ["mirror_pad_test.cc"],
@@ -2675,16 +2695,16 @@ cc_library(
     srcs = ["subgraph_test_util.cc"],
     hdrs = ["subgraph_test_util.h"],
     deps = [
-        ":builtin_ops",
         ":kernel_util",
         ":variable_op_kernels",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2697,7 +2717,7 @@ cc_test(
         ":kernel_util",
         ":subgraph_test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2723,7 +2743,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2752,7 +2772,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2790,7 +2810,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
@@ -2805,7 +2825,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
@@ -2818,7 +2838,7 @@ exports_files(
         "builtin_op_kernels.h",
         "fully_connected.h",
     ],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 cc_test(
@@ -2829,7 +2849,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:test_main",
@@ -2896,7 +2916,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2913,7 +2933,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2930,7 +2950,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2947,16 +2967,51 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bitcast_test",
+    size = "small",
+    srcs = ["bitcast_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bitwise_xor_test",
+    size = "small",
+    srcs = ["bitwise_xor_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "right_shift_test",
+    size = "small",
+    srcs = ["right_shift_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 tflite_portable_test_suite_combined(
     combine_conditions = {"deps": [":test_main"]},
     # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
-    nnapi_args = ["--gunit_filter=-*QuantizedActivationsOpTest.Relu0To1*"],
+    nnapi_args = ["--gunit_filter=*Reshape*"],
+    #nnapi_args = ["--gunit_filter=-*QuantizedActivationsOpTest.Relu0To1*"],
 )
 
 # Note this is created mainly for validating external delegates in OSS.

@@ -4,73 +4,71 @@
 
 // CHECK-LABEL: entry:
 // CHECK:         %[[VAL_0:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_1:.*]] = getelementptr inbounds i8, ptr %[[VAL_2:.*]], i64 0
-// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, ptr %[[VAL_4:.*]], i64 0
 // CHECK:         store i32 0, ptr %[[VAL_0]], align 4
-// CHECK:         br label %[[VAL_5:.*]]
-// CHECK:       loop.loop_header:                                 ; preds = %[[VAL_6:.*]], %[[VAL_7:.*]]
-// CHECK:         %[[VAL_8:.*]] = load i32, ptr %[[VAL_0]], align 4
-// CHECK:         %[[VAL_9:.*]] = icmp uge i32 %[[VAL_8]], 6000000
-// CHECK:         br i1 %[[VAL_9]], label %[[VAL_10:.*]], label %[[VAL_11:.*]]
-// CHECK:       loop.loop_body:                                   ; preds = %[[VAL_5]]
-// CHECK:         %[[VAL_12:.*]] = add nuw nsw i32 %[[VAL_8]], 655360
-// CHECK:         store i32 %[[VAL_12]], ptr %[[VAL_0]], align 4
-// CHECK:         %[[VAL_13:.*]] = icmp eq i32 %[[VAL_8]], 0
-// CHECK:         %[[VAL_14:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
-// CHECK:         %[[VAL_15:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
-// CHECK:         %[[VAL_16:.*]] = mul nuw nsw i32 %[[VAL_14]], 128
-// CHECK:         %[[VAL_17:.*]] = add nuw nsw i32 %[[VAL_16]], %[[VAL_15]]
-// CHECK:         %[[VAL_18:.*]] = icmp ult i32 %[[VAL_17]], 163840
-// CHECK:         call void @llvm.assume(i1 %[[VAL_18]])
-// CHECK:         %[[VAL_19:.*]] = mul nuw nsw i32 %[[VAL_17]], 4
-// CHECK:         %[[VAL_20:.*]] = add nuw nsw i32 %[[VAL_19]], %[[VAL_8]]
-// CHECK:         %[[VAL_21:.*]] = udiv i32 %[[VAL_20]], 1
-// CHECK:         %[[VAL_22:.*]] = urem i32 %[[VAL_21]], 300
-// CHECK:         %[[VAL_23:.*]] = udiv i32 %[[VAL_20]], 300
-// CHECK:         %[[VAL_24:.*]] = urem i32 %[[VAL_23]], 100
-// CHECK:         %[[VAL_25:.*]] = udiv i32 %[[VAL_20]], 30000
-// CHECK:         %[[VAL_26:.*]] = add nuw nsw i32 %[[VAL_20]], 1
-// CHECK:         %[[VAL_27:.*]] = udiv i32 %[[VAL_26]], 1
-// CHECK:         %[[VAL_28:.*]] = urem i32 %[[VAL_27]], 300
-// CHECK:         %[[VAL_29:.*]] = udiv i32 %[[VAL_26]], 300
-// CHECK:         %[[VAL_30:.*]] = urem i32 %[[VAL_29]], 100
-// CHECK:         %[[VAL_31:.*]] = udiv i32 %[[VAL_26]], 30000
-// CHECK:         %[[VAL_32:.*]] = add nuw nsw i32 %[[VAL_20]], 2
-// CHECK:         %[[VAL_33:.*]] = udiv i32 %[[VAL_32]], 1
-// CHECK:         %[[VAL_34:.*]] = urem i32 %[[VAL_33]], 300
-// CHECK:         %[[VAL_35:.*]] = udiv i32 %[[VAL_32]], 300
-// CHECK:         %[[VAL_36:.*]] = urem i32 %[[VAL_35]], 100
-// CHECK:         %[[VAL_37:.*]] = udiv i32 %[[VAL_32]], 30000
-// CHECK:         %[[VAL_38:.*]] = add nuw nsw i32 %[[VAL_20]], 3
-// CHECK:         %[[VAL_39:.*]] = udiv i32 %[[VAL_38]], 1
-// CHECK:         %[[VAL_40:.*]] = urem i32 %[[VAL_39]], 300
-// CHECK:         %[[VAL_41:.*]] = udiv i32 %[[VAL_38]], 300
-// CHECK:         %[[VAL_42:.*]] = urem i32 %[[VAL_41]], 100
-// CHECK:         %[[VAL_43:.*]] = udiv i32 %[[VAL_38]], 30000
-// CHECK:         %[[VAL_44:.*]] = icmp ult i32 %[[VAL_20]], 6000000
-// CHECK:         br i1 %[[VAL_44]], label %[[VAL_45:.*]], label %[[VAL_6]]
-// CHECK:       b.in_bounds-after:                                ; preds = %[[VAL_45]], %[[VAL_11]]
-// CHECK:         br label %[[VAL_5]], !llvm.loop !4
-// CHECK:       loop.loop_exit:                                   ; preds = %[[VAL_5]]
+// CHECK:         br label %[[VAL_1:.*]]
+// CHECK:       loop.loop_header:                                 ; preds = %[[VAL_2:.*]], %[[VAL_3:.*]]
+// CHECK:         %[[VAL_4:.*]] = load i32, ptr %[[VAL_0]], align 4
+// CHECK:         %[[VAL_5:.*]] = icmp uge i32 %[[VAL_4]], 6000000
+// CHECK:         br i1 %[[VAL_5]], label %[[VAL_6:.*]], label %[[VAL_7:.*]]
+// CHECK:       loop.loop_body:                                   ; preds = %[[VAL_1]]
+// CHECK:         %[[VAL_8:.*]] = add nuw nsw i32 %[[VAL_4]], 516096
+// CHECK:         store i32 %[[VAL_8]], ptr %[[VAL_0]], align 4
+// CHECK:         %[[VAL_9:.*]] = icmp eq i32 %[[VAL_4]], 0
+// CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_11:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_12:.*]] = mul nuw nsw i32 %[[VAL_10]], 128
+// CHECK:         %[[VAL_13:.*]] = add nuw nsw i32 %[[VAL_12]], %[[VAL_11]]
+// CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_13]], 129024
+// CHECK:         call void @llvm.assume(i1 %[[VAL_14]])
+// CHECK:         %[[VAL_15:.*]] = mul nuw nsw i32 %[[VAL_13]], 4
+// CHECK:         %[[VAL_16:.*]] = add nuw nsw i32 %[[VAL_15]], %[[VAL_4]]
+// CHECK:         %[[VAL_17:.*]] = udiv i32 %[[VAL_16]], 1
+// CHECK:         %[[VAL_18:.*]] = urem i32 %[[VAL_17]], 300
+// CHECK:         %[[VAL_19:.*]] = udiv i32 %[[VAL_16]], 300
+// CHECK:         %[[VAL_20:.*]] = urem i32 %[[VAL_19]], 100
+// CHECK:         %[[VAL_21:.*]] = udiv i32 %[[VAL_16]], 30000
+// CHECK:         %[[VAL_22:.*]] = add nuw nsw i32 %[[VAL_16]], 1
+// CHECK:         %[[VAL_23:.*]] = udiv i32 %[[VAL_22]], 1
+// CHECK:         %[[VAL_24:.*]] = urem i32 %[[VAL_23]], 300
+// CHECK:         %[[VAL_25:.*]] = udiv i32 %[[VAL_22]], 300
+// CHECK:         %[[VAL_26:.*]] = urem i32 %[[VAL_25]], 100
+// CHECK:         %[[VAL_27:.*]] = udiv i32 %[[VAL_22]], 30000
+// CHECK:         %[[VAL_28:.*]] = add nuw nsw i32 %[[VAL_16]], 2
+// CHECK:         %[[VAL_29:.*]] = udiv i32 %[[VAL_28]], 1
+// CHECK:         %[[VAL_30:.*]] = urem i32 %[[VAL_29]], 300
+// CHECK:         %[[VAL_31:.*]] = udiv i32 %[[VAL_28]], 300
+// CHECK:         %[[VAL_32:.*]] = urem i32 %[[VAL_31]], 100
+// CHECK:         %[[VAL_33:.*]] = udiv i32 %[[VAL_28]], 30000
+// CHECK:         %[[VAL_34:.*]] = add nuw nsw i32 %[[VAL_16]], 3
+// CHECK:         %[[VAL_35:.*]] = udiv i32 %[[VAL_34]], 1
+// CHECK:         %[[VAL_36:.*]] = urem i32 %[[VAL_35]], 300
+// CHECK:         %[[VAL_37:.*]] = udiv i32 %[[VAL_34]], 300
+// CHECK:         %[[VAL_38:.*]] = urem i32 %[[VAL_37]], 100
+// CHECK:         %[[VAL_39:.*]] = udiv i32 %[[VAL_34]], 30000
+// CHECK:         %[[VAL_40:.*]] = icmp ult i32 %[[VAL_16]], 6000000
+// CHECK:         br i1 %[[VAL_40]], label %[[VAL_41:.*]], label %[[VAL_2]]
+// CHECK:       b.in_bounds-after:                                ; preds = %[[VAL_41]], %[[VAL_7]]
+// CHECK:         br label %[[VAL_1]], !llvm.loop !4
+// CHECK:       loop.loop_exit:                                   ; preds = %[[VAL_1]]
 // CHECK:         ret void
-// CHECK:       b.in_bounds-true:                                 ; preds = %[[VAL_11]]
-// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_1]], i32 0, i32 %[[VAL_24]], i32 %[[VAL_25]], i32 %[[VAL_22]]
-// CHECK:         %[[VAL_47:.*]] = load float, ptr %[[VAL_46]], align 4, !invariant.load !6
-// CHECK:         %[[VAL_48:.*]] = getelementptr inbounds float, ptr %[[VAL_3]], i32 %[[VAL_20]]
-// CHECK:         store float %[[VAL_47]], ptr %[[VAL_48]], align 4
-// CHECK:         %[[VAL_49:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_1]], i32 0, i32 %[[VAL_30]], i32 %[[VAL_31]], i32 %[[VAL_28]]
-// CHECK:         %[[VAL_50:.*]] = load float, ptr %[[VAL_49]], align 4, !invariant.load !6
-// CHECK:         %[[VAL_51:.*]] = getelementptr inbounds float, ptr %[[VAL_3]], i32 %[[VAL_26]]
-// CHECK:         store float %[[VAL_50]], ptr %[[VAL_51]], align 4
-// CHECK:         %[[VAL_52:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_1]], i32 0, i32 %[[VAL_36]], i32 %[[VAL_37]], i32 %[[VAL_34]]
-// CHECK:         %[[VAL_53:.*]] = load float, ptr %[[VAL_52]], align 4, !invariant.load !6
-// CHECK:         %[[VAL_54:.*]] = getelementptr inbounds float, ptr %[[VAL_3]], i32 %[[VAL_32]]
-// CHECK:         store float %[[VAL_53]], ptr %[[VAL_54]], align 4
-// CHECK:         %[[VAL_55:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_1]], i32 0, i32 %[[VAL_42]], i32 %[[VAL_43]], i32 %[[VAL_40]]
-// CHECK:         %[[VAL_56:.*]] = load float, ptr %[[VAL_55]], align 4, !invariant.load !6
-// CHECK:         %[[VAL_57:.*]] = getelementptr inbounds float, ptr %[[VAL_3]], i32 %[[VAL_38]]
-// CHECK:         store float %[[VAL_56]], ptr %[[VAL_57]], align 4
-// CHECK:         br label %[[VAL_6]]
+// CHECK:       b.in_bounds-true:                                 ; preds = %[[VAL_7]]
+// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_43:.*]], i32 0, i32 %[[VAL_20]], i32 %[[VAL_21]], i32 %[[VAL_18]]
+// CHECK:         %[[VAL_44:.*]] = load float, ptr %[[VAL_42]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds float, ptr %[[VAL_46:.*]], i32 %[[VAL_16]]
+// CHECK:         store float %[[VAL_44]], ptr %[[VAL_45]], align 4
+// CHECK:         %[[VAL_47:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_43]], i32 0, i32 %[[VAL_26]], i32 %[[VAL_27]], i32 %[[VAL_24]]
+// CHECK:         %[[VAL_48:.*]] = load float, ptr %[[VAL_47]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_49:.*]] = getelementptr inbounds float, ptr %[[VAL_46]], i32 %[[VAL_22]]
+// CHECK:         store float %[[VAL_48]], ptr %[[VAL_49]], align 4
+// CHECK:         %[[VAL_50:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_43]], i32 0, i32 %[[VAL_32]], i32 %[[VAL_33]], i32 %[[VAL_30]]
+// CHECK:         %[[VAL_51:.*]] = load float, ptr %[[VAL_50]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_52:.*]] = getelementptr inbounds float, ptr %[[VAL_46]], i32 %[[VAL_28]]
+// CHECK:         store float %[[VAL_51]], ptr %[[VAL_52]], align 4
+// CHECK:         %[[VAL_53:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_43]], i32 0, i32 %[[VAL_38]], i32 %[[VAL_39]], i32 %[[VAL_36]]
+// CHECK:         %[[VAL_54:.*]] = load float, ptr %[[VAL_53]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_55:.*]] = getelementptr inbounds float, ptr %[[VAL_46]], i32 %[[VAL_34]]
+// CHECK:         store float %[[VAL_54]], ptr %[[VAL_55]], align 4
+// CHECK:         br label %[[VAL_2]]
 
 HloModule Test
 

@@ -18,15 +18,18 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/testing/result_expectations.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/register_ref.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/testing/test_runner.h"
 
@@ -57,18 +60,21 @@ class TfLiteDriver : public TestRunner {
                         bool reference_kernel = false);
   ~TfLiteDriver() override;
 
-  void LoadModel(const string& bin_file_path) override;
-  void LoadModel(const string& bin_file_path, const string& signature) override;
+  void LoadModel(const std::string& bin_file_path) override;
+  void LoadModel(const std::string& bin_file_path,
+                 const std::string& signature) override;
 
-  void ReshapeTensor(const string& name, const string& csv_values) override;
+  void ReshapeTensor(const std::string& name,
+                     const std::string& csv_values) override;
   void ResetTensor(const std::string& name) override;
-  string ReadOutput(const string& name) override;
-  void Invoke(const std::vector<std::pair<string, string>>& inputs) override;
+  std::string ReadOutput(const std::string& name) override;
+  void Invoke(
+      const std::vector<std::pair<std::string, std::string>>& inputs) override;
   bool CheckResults(
-      const std::vector<std::pair<string, string>>& expected_outputs,
-      const std::vector<std::pair<string, string>>& expected_output_shapes)
-      override;
-  std::vector<string> GetOutputNames() override;
+      const std::vector<std::pair<std::string, std::string>>& expected_outputs,
+      const std::vector<std::pair<std::string, std::string>>&
+          expected_output_shapes) override;
+  std::vector<std::string> GetOutputNames() override;
 
   void AllocateTensors() override;
   void SetThreshold(double relative_threshold, double absolute_threshold);
@@ -78,9 +84,10 @@ class TfLiteDriver : public TestRunner {
   Interpreter::TfLiteDelegatePtr delegate_;
 
  private:
-  void SetInput(const string& name, const string& csv_values);
-  void SetExpectation(const string& name, const string& csv_values);
-  void SetShapeExpectation(const string& name, const string& csv_values);
+  void SetInput(const std::string& name, const std::string& csv_values);
+  void SetExpectation(const std::string& name, const std::string& csv_values);
+  void SetShapeExpectation(const std::string& name,
+                           const std::string& csv_values);
   void DeallocateStringTensor(TfLiteTensor* t) {
     if (t) {
       free(t->data.raw);
@@ -95,13 +102,10 @@ class TfLiteDriver : public TestRunner {
 
   void ResetLSTMStateTensors();
   // Formats tensor value to string in csv format.
-  string TensorValueToCsvString(const TfLiteTensor* tensor);
+  std::string TensorValueToCsvString(const TfLiteTensor* tensor);
 
-  class DataExpectation;
-  class ShapeExpectation;
-
-  std::map<string, uint32_t> signature_inputs_;
-  std::map<string, uint32_t> signature_outputs_;
+  std::map<std::string, uint32_t> signature_inputs_;
+  std::map<std::string, uint32_t> signature_outputs_;
   std::unique_ptr<OpResolver> resolver_;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;

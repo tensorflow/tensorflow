@@ -23,7 +23,9 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -34,7 +36,9 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -44,7 +48,7 @@ cuda_py_test(
     srcs = ["np_dtypes_test.py"],
     deps = [
         ":numpy",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -58,7 +62,8 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -72,7 +77,7 @@ cuda_py_test(
     ],
     deps = [
         ":numpy",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -82,6 +87,7 @@ cuda_py_test(
     srcs = ["np_logic_test.py"],
     deps = [
         ":numpy",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -91,7 +97,7 @@ cuda_py_test(
     srcs = ["np_math_ops_test.py"],
     deps = [
         ":numpy",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -102,7 +108,7 @@ cuda_py_test(
     srcs = ["np_random_test.py"],
     deps = [
         ":numpy",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -113,7 +119,7 @@ cuda_py_test(
     srcs = ["np_utils_test.py"],
     deps = [
         ":numpy",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

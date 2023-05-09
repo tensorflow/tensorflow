@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_properties.h"
@@ -38,8 +40,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
-
-const int Graph::kControlSlot = -1;
 
 // Node
 Node::NodeClass Node::GetNodeClassForOp(const std::string& ts) {
@@ -180,6 +180,50 @@ void Node::ClearTypeInfo() {
     MaybeCopyOnWrite();
     props_->node_def.clear_experimental_type();
   }
+}
+
+Status Node::ShrinkTypeInfo(const absl::flat_hash_map<int, int>& index_mapping,
+                            const string& type_attr_name,
+                            bool update_full_type) {
+  std::vector<DataType> dtypes;
+  TF_RETURN_IF_ERROR(GetNodeAttr(def(), type_attr_name, &dtypes));
+
+  std::vector<DataType> new_dtypes;
+  new_dtypes.reserve(index_mapping.size());
+  for (int i = 0; i < dtypes.size(); ++i) {
+    if (index_mapping.contains(i)) {
+      new_dtypes.emplace_back(dtypes[i]);
+    }
+  }
+
+  ClearAttr(type_attr_name);
+  AddAttr(type_attr_name, new_dtypes);
+
+  if (!update_full_type || !def().has_experimental_type()) {
+    return OkStatus();
+  }
+  FullTypeDef ft = def().experimental_type();
+  if (ft.type_id() != TFT_PRODUCT) {
+    return errors::Internal(
+        "In ShrinkTypeInfo, full type information does not start with "
+        "TFT_PRODUCT\n",
+        ft.DebugString());
+  }
+  if (ft.args_size() != dtypes.size()) {
+    return errors::Internal("In ShrinkTypeInfo, ft.args_size() ",
+                            ft.args_size(), " != dtypes.size() ",
+                            dtypes.size());
+  }
+  FullTypeDef new_ft;
+  new_ft.set_type_id(TFT_PRODUCT);
+  for (int i = 0; i < ft.args_size(); ++i) {
+    if (index_mapping.contains(i)) {
+      (*new_ft.add_args()) = ft.args(i);
+    }
+  }
+  MaybeCopyOnWrite();
+  *(mutable_def()->mutable_experimental_type()) = new_ft;
+  return OkStatus();
 }
 
 const std::string& Node::name() const { return props_->node_def.name(); }
@@ -418,7 +462,7 @@ Graph::Graph(const FunctionLibraryDefinition& flib_def)
     versions_->set_min_consumer(12);
   }
   Status s = ops_.AddLibrary(flib_def);
-  CHECK(s.ok()) << s.error_message();
+  CHECK(s.ok()) << s.message();
 }
 
 Graph::~Graph() {
@@ -721,12 +765,43 @@ Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
   return OkStatus();
 }
 
-Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                                 const StackTracesMap& stack_traces) {
+  return AddFunctionLibrary(FunctionDefLibrary(fdef_lib), stack_traces);
+}
+
+Status Graph::AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
+                                 const StackTracesMap& stack_traces) {
   // Need a new-enough consumer to support the functions we add to the graph.
   if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
     versions_->set_min_consumer(12);
   }
-  return ops_.AddLibrary(fdef_lib);
+  return ops_.AddLibrary(std::move(fdef_lib), stack_traces);
+}
+
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  return AddFunctionLibrary(fdef_lib, /*stack_traces=*/{});
+}
+
+Status Graph::AddFunctionLibrary(FunctionDefLibrary&& fdef_lib) {
+  return AddFunctionLibrary(std::move(fdef_lib), /*stack_traces=*/{});
+}
+
+Status Graph::AddFunctionDef(const FunctionDef& fdef,
+                             const StackTracesMap& stack_traces) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddFunctionDef(fdef, stack_traces);
+}
+
+Status Graph::AddGradientDef(const GradientDef& gdef) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddGradientDef(gdef);
 }
 
 namespace {
@@ -743,8 +818,8 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 
 }  // namespace
 
-void Graph::ToGraphDef(GraphDef* graph_def) const {
-  ToGraphDefSubRange(graph_def, 0);
+void Graph::ToGraphDef(GraphDef* graph_def, bool include_flib_def) const {
+  ToGraphDefSubRange(graph_def, /*from_node_id=*/0, include_flib_def);
 }
 
 GraphDef Graph::ToGraphDefDebug() const {
@@ -753,10 +828,14 @@ GraphDef Graph::ToGraphDefDebug() const {
   return ret;
 }
 
-void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
+void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
+                               bool include_flib_def) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
-  *graph_def->mutable_library() = ops_.ToProto();
+
+  if (include_flib_def) {
+    *graph_def->mutable_library() = ops_.ToProto();
+  }
 
   graph_def->mutable_node()->Reserve(std::max(1, num_nodes() - from_node_id));
 
@@ -943,9 +1022,33 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
   return result;
 }
 
+void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
+  for (Node* n : op_nodes()) {
+    if (n->name() == name) {
+      NodeDef& node_def = n->props_->node_def;
+      n->MaybeCopyOnWrite();
+      *(node_def.mutable_experimental_type()) = ft;
+      break;
+    }
+  }
+}
+
+void Graph::NodeType(StringPiece name, const FullTypeDef** result) {
+  *result = nullptr;
+  for (Node* n : op_nodes()) {
+    if (n->name() == name) {
+      NodeDef& node_def = n->props_->node_def;
+      *result = &node_def.experimental_type();
+      break;
+    }
+  }
+}
+
 std::string Edge::DebugString() const {
-  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_->name().c_str(),
-                         src_output_, dst_->name().c_str(), dst_input_);
+  auto src_name = src_ ? src_->name().c_str() : "<NULL>";
+  auto dst_name = dst_ ? dst_->name().c_str() : "<NULL>";
+  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_name, src_output_,
+                         dst_name, dst_input_);
 }
 
 }  // namespace tensorflow

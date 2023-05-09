@@ -415,9 +415,13 @@ bool HloDataflowAnalysis::Phi(
     PrimitiveType ty = shape.element_type();
     bool is_array = shape.IsArray();
     absl::c_for_each(inputs, [&](const InstructionValueSet* input) {
-      DCHECK(ty == input->shape().element_type() &&
-             (!is_array || ShapeUtil::ElementsIn(shape) ==
-                               ShapeUtil::ElementsIn(input->shape())));
+      DCHECK(
+          ty == input->shape().element_type() &&
+          (!is_array ||
+           ShapeUtil::ElementsIn(shape) ==
+               ShapeUtil::ElementsIn(input->shape()) ||
+           ShapeUtil::ArraySize(shape) == ShapeUtil::ArraySize(input->shape())))
+          << shape.ToString() << " vs." << input->shape().ToString();
     });
   }
 
@@ -1029,11 +1033,17 @@ bool HloDataflowAnalysis::UpdateAllGatherDoneValueSet(
     HloInstruction* all_gather_done) {
   CHECK_EQ(all_gather_done->opcode(), HloOpcode::kAllGatherDone);
   bool changed = false;
-  // AllGatherDone forwards the operand value at {1} to its output.
+  // AllGatherDone forwards the operand value at {1} to its output. If the
+  // output is a tuple, then that tuple is defined by all-gather-done, so
+  // only update the value set for tuple leaf elements (arrays).
   for (auto& pair : GetInstructionValueSet(all_gather_done)) {
     const ShapeIndex& output_index = pair.first;
     HloValueSet& value_set = pair.second;
 
+    if (!ShapeUtil::GetSubshape(all_gather_done->shape(), output_index)
+             .IsArray()) {
+      continue;
+    }
     ShapeIndex operand_index = {1};
     for (int64_t i : output_index) {
       operand_index.push_back(i);
@@ -1432,9 +1442,16 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           break;
         case HloOpcode::kAllGatherStart:
           // AllGatherStart produces a tuple of
-          // {aliased operand, destination buffer}.
-          define_value_at(/*index=*/{});
-          define_value_at(/*index=*/{1});
+          // {aliased operands, destination buffers}. If there is more than
+          // one operand, then both aliased operands and destination buffers
+          // will be tuples themselves. all-gather-start will define all tuples
+          // and all tuple leaves (arrays) in tuple sub-index 1 (destination
+          // buffers).
+          define_all_values([&](const ShapeIndex& index) {
+            return ShapeUtil::GetSubshape(instruction->shape(), index)
+                       .IsTuple() ||
+                   index.front() == 1;
+          });
           break;
         case HloOpcode::kAllGatherDone:
           // AllGatherDone's output aliases its input tuple element {1}.

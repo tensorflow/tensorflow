@@ -19,7 +19,7 @@ limitations under the License.
 #include <algorithm>
 
 #include <gmock/gmock.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -2131,7 +2131,7 @@ TEST(uKernels, UnpackInt4OddLength) {
 
 // Compile with --copt="-DGOOGLE_COMMANDLINEFLAGS_FULL_API=1" and
 // --copt="-DDOTPROD_BENCHMARKS"
-// Run with --benchmarks=all
+// Run with --benchmark_filter=all
 void BM_DotprodBatchOneMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);

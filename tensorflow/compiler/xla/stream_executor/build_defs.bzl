@@ -2,7 +2,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 def stream_executor_friends():
-    return ["//tensorflow/..."]
+    return ["//..."]
 
 def tf_additional_cuda_platform_deps():
     return []
@@ -26,3 +26,8 @@ def if_gpu_is_configured(x):
 
 def if_cuda_or_rocm(x):
     return if_gpu_is_configured(x)
+
+# nvlink is not available via the pip wheels, disable it since it will create
+# unnecessary dependency
+def tf_additional_gpu_compilation_copts():
+    return ["-DTF_DISABLE_NVLINK_BY_DEFAULT"]

@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 
+#include <optional>
+
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -116,7 +118,7 @@ inline ShapedType MergeType(ShapedType a, ShapedType b) {
   for (int i = 0, e = rank; i != e; i++) {
     int64_t dim0 = a.getDimSize(i);
     int64_t dim1 = b.getDimSize(i);
-    dims[i] = (dim0 == ShapedType::kDynamicSize) ? dim1 : dim0;
+    dims[i] = (dim0 == ShapedType::kDynamic) ? dim1 : dim0;
   }
   return RankedTensorType::get(dims, a.getElementType());
 }
@@ -148,16 +150,27 @@ class SameOperandsAndResultTypeResolveRef
   }
 
   static LogicalResult inferReturnTypeComponentsFromOperands(
-      MLIRContext*, Optional<Location> location, ValueShapeRange operands,
-      DictionaryAttr attributes, RegionRange regions,
+      MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+      DictionaryAttr attributes, OpaqueProperties properties,
+      RegionRange regions,
       SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
     if (operands.empty())
       return emitOptionalError(
           location,
           "Expected non-empty operands for [CompatibleOperandsAndResultType]");
-    auto result_ty = operands[0].getType().cast<ShapedType>();
-    for (auto ty : operands.getTypes()) {
-      result_ty = detail::MergeType(ty.cast<ShapedType>(), result_ty);
+
+    auto result_ty = llvm::dyn_cast_or_null<ShapedType>(operands[0].getType());
+    if (!result_ty) {
+      return emitOptionalError(location, "Expected shape type for operand 0");
+    }
+    for (auto [index, ty] :
+         llvm::drop_begin(llvm::enumerate(operands.getTypes()), 1)) {
+      auto shape_type = llvm::dyn_cast_or_null<ShapedType>(ty);
+      if (!shape_type) {
+        return emitOptionalError(location, "Expected shape type for operand ",
+                                 index);
+      }
+      result_ty = detail::MergeType(shape_type, result_ty);
     }
     inferredReturnShapes.push_back(result_ty);
     return success();

@@ -33,14 +33,15 @@ constexpr int kVersion = 1;
 
 Status LoadAutotuneResults(absl::string_view data) {
   AutotuneResults results;
-  if (!results.ParseFromString(data)) {
+  // The cast here is necessary for MacOS builds.
+  if (!results.ParseFromString(std::string(data))) {  // NOLINT
     return tsl::errors::InvalidArgument(
         "Failed to parse autotune results string.");
   }
   if (results.version() != kVersion) {
-    return tsl::errors::InvalidArgument(
-        "Version mismatch in autotune results.  Expected %d but was %d",
-        kVersion, results.version());
+    return tsl::errors::InvalidArgument(absl::StrFormat(
+        "Version mismatch in autotune results. Expected %d but was %d",
+        kVersion, results.version()));
   }
 
   TF_RETURN_IF_ERROR(gpu::GpuConvAlgorithmPicker::LoadAutotuneResults(results));

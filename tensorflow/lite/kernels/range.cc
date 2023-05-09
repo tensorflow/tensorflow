@@ -20,7 +20,7 @@ limitations under the License.
 #include <functional>
 #include <type_traits>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -36,6 +36,11 @@ constexpr int kStartTensor = 0;
 constexpr int kLimitTensor = 1;
 constexpr int kDeltaTensor = 2;
 constexpr int kOutputTensor = 0;
+
+struct OpData {
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
+};
 
 template <typename T>
 TfLiteStatus GetSize(TfLiteContext* context, T start, T limit, T delta,
@@ -79,9 +84,44 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* start,
   return context->ResizeTensor(context, output, output_shape_array);
 }
 
+template <typename T>
+void CalculateRange(const TfLiteTensor* start, const TfLiteTensor* delta,
+                    TfLiteTensor* output) {
+  const T start_value = *GetTensorData<T>(start);
+  const T delta_value = *GetTensorData<T>(delta);
+  T* output_data = GetTensorData<T>(output);
+  const int num_elements = NumElements(output);
+  T value = start_value;
+  for (int i = 0; i < num_elements; ++i) {
+    output_data[i] = value;
+    value += delta_value;
+  }
+}
+
+TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* start,
+                      const TfLiteTensor* delta, TfLiteTensor* output) {
+  switch (output->type) {
+    case kTfLiteInt32: {
+      CalculateRange<int32_t>(start, delta, output);
+      break;
+    }
+    case kTfLiteFloat32: {
+      CalculateRange<float>(start, delta, output);
+      break;
+    }
+    default: {
+      TF_LITE_KERNEL_LOG(context, "Unsupported data type: %d", output->type);
+      return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  op_data->noop = false;
 
   const TfLiteTensor* start;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kStartTensor, &start));
@@ -111,27 +151,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = dtype;
 
-  if (IsConstantTensor(start) && IsConstantTensor(limit) &&
-      IsConstantTensor(delta)) {
-    return ResizeOutput(context, start, limit, delta, output);
+  if (IsConstantOrPersistentTensor(start) &&
+      IsConstantOrPersistentTensor(limit) &&
+      IsConstantOrPersistentTensor(delta)) {
+    SetTensorToPersistentRo(output);
+    TF_LITE_ENSURE_OK(context,
+                      ResizeOutput(context, start, limit, delta, output));
+
+    op_data->noop = true;
+    return EvalImpl(context, start, delta, output);
   }
 
   SetTensorToDynamic(output);
   return kTfLiteOk;
-}
-
-template <typename T>
-void EvalImpl(const TfLiteTensor* start, const TfLiteTensor* delta,
-              TfLiteTensor* output) {
-  const T start_value = *GetTensorData<T>(start);
-  const T delta_value = *GetTensorData<T>(delta);
-  T* output_data = GetTensorData<T>(output);
-  const int num_elements = NumElements(output);
-  T value = start_value;
-  for (int i = 0; i < num_elements; ++i) {
-    output_data[i] = value;
-    value += delta_value;
-  }
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -142,6 +174,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* delta;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kDeltaTensor, &delta));
 
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->noop) {
+    return kTfLiteOk;
+  }
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
@@ -150,29 +186,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       ResizeOutput(context, start, limit, delta, output));
   }
+  return EvalImpl(context, start, delta, output);
+}
 
-  switch (output->type) {
-    case kTfLiteInt32: {
-      EvalImpl<int32_t>(start, delta, output);
-      break;
-    }
-    case kTfLiteFloat32: {
-      EvalImpl<float>(start, delta, output);
-      break;
-    }
-    default: {
-      TF_LITE_KERNEL_LOG(context, "Unsupported data type: %d", output->type);
-      return kTfLiteError;
-    }
-  }
-  return kTfLiteOk;
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
 }
 
 }  // namespace
 }  // namespace range
 
 TfLiteRegistration* Register_RANGE() {
-  static TfLiteRegistration r = {nullptr, nullptr, range::Prepare, range::Eval};
+  static TfLiteRegistration r = {range::Init, range::Free, range::Prepare,
+                                 range::Eval};
   return &r;
 }
 

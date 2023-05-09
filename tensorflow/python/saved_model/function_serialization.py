@@ -23,10 +23,14 @@ from tensorflow.python.util import nest
 
 def _serialize_function_spec(function_spec):
   """Serialize a FunctionSpec object into its proto representation."""
-  if function_spec.is_method and not function_spec.fullargspec.args:
-    raise NotImplementedError(
-        "Cannot serialize a method function without a named "
-        "'self' argument.")
+  if (
+      function_spec.fullargspec.args
+      and function_spec.fullargspec.args[0] == "self"
+  ):
+    raise TypeError(
+        "Can not serialize tf.function with unbound 'self' parameter."
+    )
+
   proto = saved_object_graph_pb2.FunctionSpec()
 
   # Intentionally skip encoding annotations of a function because function
@@ -38,7 +42,7 @@ def _serialize_function_spec(function_spec):
       nested_structure_coder.encode_structure(
           function_spec.fullargspec._replace(annotations={})))
 
-  proto.is_method = function_spec.is_method
+  proto.is_method = False
   proto.input_signature.CopyFrom(
       nested_structure_coder.encode_structure(function_spec.input_signature))
 
@@ -122,7 +126,6 @@ def wrap_cached_variables(concrete_function):
   """
   outer_graph = func_graph_module.FuncGraph(
       "{}_no_cache".format(concrete_function.graph.name))
-  captures = concrete_function.graph._captures  # pylint: disable=protected-access
   mapped_captures = None
   remapped_captures = {}
 
@@ -135,8 +138,15 @@ def wrap_cached_variables(concrete_function):
         continue
       cached_variable = cached_variable()
       new_cached_value = cached_variable.read_value()
-      remapped_captures[id(capture)] = captures[id(capture)]
-      captures[id(capture)] = (new_cached_value, placeholder)
+      key = id(capture)
+      external = concrete_function.graph.function_captures.by_val_external[key]
+      internal = concrete_function.graph.function_captures.by_val_internal[key]
+      remapped_captures[key] = [external, internal]
+      concrete_function.graph.function_captures.add_or_replace(
+          key=key,
+          external=new_cached_value,
+          internal=placeholder,
+          is_by_ref=False)
       mapped_captures = True
 
   if not mapped_captures:
@@ -166,5 +176,10 @@ def wrap_cached_variables(concrete_function):
 
   # Return the captures to their original values
   for key, capture in remapped_captures.items():
-    captures[key] = capture
+    external, internal = capture
+    concrete_function.graph._function_captures.add_or_replace(  # pylint: disable=protected-access
+        key=key,
+        external=external,
+        internal=internal,
+        is_by_ref=False)
   return fn

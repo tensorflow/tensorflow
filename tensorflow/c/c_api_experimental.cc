@@ -190,7 +190,7 @@ const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
 }
 
 char* TF_FunctionDebugString(TF_Function* func, size_t* len) {
-  const auto& debug_str = DebugString(func->fdef);
+  const auto& debug_str = DebugString(func->record->fdef());
   *len = debug_str.size();
   char* ret = static_cast<char*>(malloc(*len + 1));
   memcpy(ret, debug_str.c_str(), *len + 1);
@@ -757,4 +757,10 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
 
 void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
   delete lib_handle;
+}
+
+void TF_GraphRemoveFunction(TF_Graph* g, const char* func_name,
+                            TF_Status* status) {
+  tensorflow::mutex_lock l(g->mu);
+  status->status = g->graph.mutable_flib_def()->RemoveFunction(func_name);
 }

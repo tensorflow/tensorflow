@@ -39,12 +39,13 @@ from tensorflow.python.distribute import tpu_replicated_variable
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as tpu_cluster_resolver_lib
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -95,10 +96,12 @@ def validate_run_function(fn):
   # Otherwise we return an error, because we don't support eagerly running
   # run in TPUStrategy.
 
-  if context.executing_eagerly() \
-      and not isinstance(fn, def_function.Function) \
-      and not isinstance(fn, function.ConcreteFunction) \
-      and not (callable(fn) and isinstance(fn.__call__, def_function.Function)):
+  if (context.executing_eagerly()
+      and not isinstance(fn, def_function.Function)
+      and not isinstance(fn, function.ConcreteFunction)
+      and not (
+          callable(fn) and isinstance(fn.__call__, def_function.Function))
+      ):
     raise NotImplementedError(
         "TPUStrategy.run(fn, ...) does not support pure eager "
         "execution. please make sure the function passed into "
@@ -355,7 +358,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
             self,
             tpu_cluster_resolver,
             device_assignment=experimental_device_assignment,
-            use_spmd_for_xla_partitioning=experimental_spmd_xla_partitioning))
+            use_spmd_for_xla_partitioning=experimental_spmd_xla_partitioning,
+            enable_data_reorder=experimental_device_assignment is not None,
+        )
+    )
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended.num_hosts)
@@ -364,10 +370,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    # Packed variable is currently not supported when SPMD is enabled.
-    # TODO(b/202047549): enable Packed variable in SPMD mode.
-    self._enable_packed_variable_in_eager_mode = (
-        not experimental_spmd_xla_partitioning)
+    self._enable_packed_variable_in_eager_mode = True
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run the computation defined by `fn` on each TPU replica.
@@ -690,11 +693,16 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     logging.warning(
         "`tf.distribute.experimental.TPUStrategy` is deprecated, please use "
-        " the non experimental symbol `tf.distribute.TPUStrategy` instead.")
+        "the non-experimental symbol `tf.distribute.TPUStrategy` instead.")
 
     super(TPUStrategy, self).__init__(
         TPUExtended(
-            self, tpu_cluster_resolver, device_assignment=device_assignment))
+            self,
+            tpu_cluster_resolver,
+            device_assignment=device_assignment,
+            enable_data_reorder=device_assignment is not None,
+        )
+    )
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended.num_hosts)
@@ -839,16 +847,19 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
 class TPUExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of TPUStrategy."""
 
-  def __init__(self,
-               container_strategy,
-               tpu_cluster_resolver=None,
-               steps_per_run=None,
-               device_assignment=None,
-               use_spmd_for_xla_partitioning=False):
+  def __init__(
+      self,
+      container_strategy,
+      tpu_cluster_resolver=None,
+      steps_per_run=None,
+      device_assignment=None,
+      use_spmd_for_xla_partitioning=False,
+      enable_data_reorder=False,
+  ):
     super(TPUExtended, self).__init__(container_strategy)
 
     if tpu_cluster_resolver is None:
-      tpu_cluster_resolver = TPUClusterResolver("")
+      tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver("")
 
     if steps_per_run is None:
       # TODO(frankchn): Warn when we are being used by DS/Keras and this is
@@ -905,6 +916,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       self._host_input_worker_devices.setdefault(host_device, [])
       self._host_input_worker_devices[host_device].append(host_device)
 
+    # Create the replica order based on the assigned device order.
+    # This replica order will be used to match the IteratorGetNext ops
+    # with the device assigment.
+    self._replica_order = (
+        self._get_replica_order(self._tpu_devices[:, 0])
+        if enable_data_reorder
+        else None
+    )
+
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
     self.steps_per_run = steps_per_run
@@ -927,6 +947,48 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     # Flag to enable XLA SPMD partitioning.
     self._use_spmd_for_xla_partitioning = use_spmd_for_xla_partitioning
+
+  def _get_replica_order(self, tpu_devices):
+    """Get the replica order based on the tpu device order.
+
+    For example, if the tpu_devices are:
+    '/job:worker/replica:0/task:0/device:TPU:0',
+    '/job:worker/replica:0/task:0/device:TPU:2',
+    '/job:worker/replica:0/task:1/device:TPU:0',
+    '/job:worker/replica:0/task:1/device:TPU:2',
+    '/job:worker/replica:0/task:1/device:TPU:6',
+    '/job:worker/replica:0/task:1/device:TPU:4',
+    '/job:worker/replica:0/task:0/device:TPU:6',
+    '/job:worker/replica:0/task:0/device:TPU:4',
+
+    the returned replica order will be:
+    [0, 1, 7, 6, 2, 3, 5, 4]
+
+    This replica order will be used to reorder the data returned by the
+    iterators,
+    so that they can be placed on the same node as their computation graphs.
+
+    Args:
+      tpu_devices (List[str]): A list of tpu device names in the order of
+        replicas.
+
+    Returns:
+      A list containing the order ids of corresponding TPU devices.
+    """
+    devices_with_ids = []
+    for i, tpu_device in enumerate(tpu_devices):
+      spec = tf_device.DeviceSpec.from_string(tpu_device)
+      devices_with_ids.append((
+          (
+              spec.job,
+              spec.replica,
+              spec.device_type,
+              spec.task,
+              spec.device_index,
+          ),
+          i,
+      ))
+    return [i for _, i in sorted(devices_with_ids)]
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils.validate_colocate(colocate_with_variable, self)
@@ -1003,7 +1065,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         self._get_input_workers(options),
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
-        options=options)
+        options=options,
+        replica_order=self._replica_order,
+    )
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -1027,7 +1091,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         input_workers,
         input_contexts,
         self._container_strategy(),
-        options=options)
+        options=options,
+        replica_order=self._replica_order,
+    )
 
     # We can only check after the dataset_fn is called.
     if options is None or options.experimental_fetch_to_device:

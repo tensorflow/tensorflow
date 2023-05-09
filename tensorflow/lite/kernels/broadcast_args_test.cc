@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 
 namespace tflite {
 namespace {
@@ -29,16 +29,26 @@ template <class ShapeType = int32_t>
 class BroadcastArgsOpModel : public SingleOpModel {
  public:
   BroadcastArgsOpModel(std::initializer_list<ShapeType> input1,
-                       std::initializer_list<ShapeType> input2) {
+                       std::initializer_list<ShapeType> input2,
+                       bool constant_tensor) {
     int input1_length = input1.size();
     int input2_length = input2.size();
-    shape1_ = AddInput({GetTensorType<ShapeType>(), {input1_length}});
-    shape2_ = AddInput({GetTensorType<ShapeType>(), {input2_length}});
+    if (constant_tensor) {
+      shape1_ =
+          AddConstInput({GetTensorType<ShapeType>(), {input1_length}}, input1);
+      shape2_ =
+          AddConstInput({GetTensorType<ShapeType>(), {input2_length}}, input2);
+    } else {
+      shape1_ = AddInput({GetTensorType<ShapeType>(), {input1_length}});
+      shape2_ = AddInput({GetTensorType<ShapeType>(), {input2_length}});
+    }
     output_ = AddOutput(GetTensorType<ShapeType>());
     SetBuiltinOp(BuiltinOperator_BROADCAST_ARGS, BuiltinOptions_NONE, 0);
     BuildInterpreter({{input1_length}, {input2_length}});
-    if (input1.size() > 0) SetInput1(input1);
-    if (input2.size() > 0) SetInput2(input2);
+    if (!constant_tensor) {
+      if (input1.size() > 0) SetInput1(input1);
+      if (input2.size() > 0) SetInput2(input2);
+    }
   }
 
   void SetInput1(std::initializer_list<ShapeType> data) {
@@ -66,39 +76,56 @@ class BroadcastArgsOpTest : public ::testing::Test {};
 using DataTypes = ::testing::Types<int64_t, int32_t>;
 TYPED_TEST_SUITE(BroadcastArgsOpTest, DataTypes);
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
+TYPED_TEST(BroadcastArgsOpTest, ShapeNotBroadcastableConstant) {
+  EXPECT_DEATH(BroadcastArgsOpModel<TypeParam> m({2, 3, 4, 4}, {2, 2},
+                                                 /*constant_tensor=*/true),
+               "");
+}
+
 TYPED_TEST(BroadcastArgsOpTest, ShapeNotBroadcastable) {
-  BroadcastArgsOpModel<TypeParam> m({2, 3, 4, 4}, {2, 2});
+  BroadcastArgsOpModel<TypeParam> m({2, 3, 4, 4}, {2, 2},
+                                    /*constant_tensor=*/false);
   EXPECT_DEATH(ASSERT_EQ(m.Invoke(), kTfLiteOk), "");
 }
 #endif
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsWithScalar) {
-  BroadcastArgsOpModel<TypeParam> m({}, {2, 4});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 4}));
+  for (bool constant_tensor : {true, false}) {
+    BroadcastArgsOpModel<TypeParam> m({}, {2, 4}, constant_tensor);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 4}));
+  }
 }
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsDifferentDims) {
-  BroadcastArgsOpModel<TypeParam> m({1}, {2, 4});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 4}));
+  for (bool constant_tensor : {true, false}) {
+    BroadcastArgsOpModel<TypeParam> m({1}, {2, 4}, constant_tensor);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 4}));
+  }
 }
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsSameDims) {
-  BroadcastArgsOpModel<TypeParam> m({1, 4, 6, 3, 1, 5}, {4, 4, 1, 3, 4, 1});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 4, 6, 3, 4, 5}));
+  for (bool constant_tensor : {true, false}) {
+    BroadcastArgsOpModel<TypeParam> m({1, 4, 6, 3, 1, 5}, {4, 4, 1, 3, 4, 1},
+                                      constant_tensor);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 4, 6, 3, 4, 5}));
+  }
 }
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsComplex) {
-  BroadcastArgsOpModel<TypeParam> m({6, 3, 1, 5}, {4, 4, 1, 3, 4, 1});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 4, 6, 3, 4, 5}));
+  for (bool constant_tensor : {true, false}) {
+    BroadcastArgsOpModel<TypeParam> m({6, 3, 1, 5}, {4, 4, 1, 3, 4, 1},
+                                      constant_tensor);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 4, 6, 3, 4, 5}));
+  }
 }
 
 }  // namespace

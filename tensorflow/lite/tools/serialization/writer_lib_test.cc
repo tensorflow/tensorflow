@@ -26,13 +26,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -558,15 +560,15 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   builder(&new_interpreter);
 
   // Check deserialized model.
-  new_interpreter->ResizeInputTensor(interpreter_->inputs()[0], {1});
-  new_interpreter->ResizeInputTensor(interpreter_->inputs()[1], {1});
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[0], {1});
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[1], {1});
   ASSERT_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
-  FillIntTensor(new_interpreter->tensor(interpreter_->inputs()[0]), {1});
-  FillIntTensor(new_interpreter->tensor(interpreter_->inputs()[1]), {1});
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[0]), {1});
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[1]), {1});
   ASSERT_EQ(new_interpreter->Invoke(), kTfLiteOk);
-  output1 = new_interpreter->tensor(interpreter_->outputs()[0]);
+  output1 = new_interpreter->tensor(new_interpreter->outputs()[0]);
   CheckIntTensor(output1, {1}, {kSeqNumber + 1});
-  output2 = new_interpreter->tensor(interpreter_->outputs()[1]);
+  output2 = new_interpreter->tensor(new_interpreter->outputs()[1]);
   CheckIntTensor(output2, {1}, {kExpectedValue});
 }
 
@@ -627,6 +629,120 @@ TEST_F(WhileTest, TestModelWriterFromSubgraphs) {
 
   EXPECT_FALSE(model_content_1.str().empty());
   EXPECT_EQ(model_content_1.str(), model_content_2.str());
+}
+
+// The test builds a model with two while loops and only serializes one.
+// Loops compute the triangular numbers of different sizes.
+TEST_F(WhileTest, TestUpdateSubgraphIndices) {
+  const int kSeqNumber1 = 4;
+  const int kSeqNumber2 = 5;
+  const int kExpectedValue1 = 15;
+  const int kExpectedValue2 = 21;
+
+  interpreter_ = std::make_unique<Interpreter>();
+  AddSubgraphs(4);
+  builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber1);
+  builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
+  builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(3), kSeqNumber2);
+  builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(4));
+
+  // Build the primary subgraph.
+  // kInput1(0) --> +--------+ --> kUnused1(2)
+  //                | WHILE1 |
+  // kInput2(1) --> +--------+ --> kOutput1(4)
+
+  // kInput1(0) --> +--------+ --> kUnused2(3)
+  //                | WHILE2 |
+  // kInput2(1) --> +--------+ --> kOutput2(5)
+  Subgraph* primary_subgraph = &interpreter_->primary_subgraph();
+
+  const int kInput1 = 0;
+  const int kInput2 = 1;
+  const int kUnused1 = 2;
+  const int kUnused2 = 3;
+  const int kOutput1 = 4;
+  const int kOutput2 = 5;
+  const int kTensorCount = 6;
+
+  int first_new_tensor_index;
+  ASSERT_EQ(primary_subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(primary_subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(primary_subgraph->SetOutputs({kOutput1, kOutput2}), kTfLiteOk);
+  for (int i = 0; i < kTensorCount; ++i) {
+    ASSERT_EQ(primary_subgraph->SetTensorParametersReadWrite(
+                  i, kTfLiteInt32, "", 0, nullptr, {}, false),
+              kTfLiteOk);
+  }
+
+  // Register and add while ops.
+  auto* while_reg = ops::builtin::Register_WHILE();
+  while_reg->builtin_code = kTfLiteBuiltinWhile;
+
+  TfLiteWhileParams* params1 =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params1->cond_subgraph_index = 1;
+  params1->body_subgraph_index = 2;
+
+  TfLiteWhileParams* params2 =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params2->cond_subgraph_index = 3;
+  params2->body_subgraph_index = 4;
+
+  int while1_index, while2_index;
+  primary_subgraph->AddNodeWithParameters({kInput1, kInput2},
+                                          {kUnused1, kOutput1}, {}, nullptr, 0,
+                                          params1, while_reg, &while1_index);
+  primary_subgraph->AddNodeWithParameters({kInput1, kInput2},
+                                          {kUnused2, kOutput2}, {}, nullptr, 0,
+                                          params2, while_reg, &while2_index);
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+
+  // Use custom allocation for second input, to ensure things work well for
+  // non-traditional allocation types.
+  auto alloc =
+      NewCustomAlloc(interpreter_->tensor(interpreter_->inputs()[1])->bytes,
+                     kDefaultTensorAlignment);
+  auto* input_data = reinterpret_cast<int*>(alloc.data);
+  input_data[0] = 1;
+  interpreter_->SetCustomAllocationForTensor(interpreter_->inputs()[1], alloc);
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output1, {1}, {kExpectedValue1});
+  TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
+  CheckIntTensor(output2, {1}, {kExpectedValue2});
+
+  // Now serialize & deserialize model into a new Interpreter.
+  // Only serialize the second while op and related subgraphs.
+  ModelWriter writer({interpreter_->subgraph(0), interpreter_->subgraph(3),
+                      interpreter_->subgraph(4)});
+  writer.SetCustomInputOutput(/*subgraph_index=*/0, {kInput1, kInput2},
+                              {kOutput2}, {while2_index});
+  const std::string test_file = CreateFilePath("test_while.tflite");
+  writer.Write(test_file);
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+
+  // Check deserialized model.
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[0], {1});
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[1], {1});
+  ASSERT_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[0]), {1});
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[1]), {1});
+  ASSERT_EQ(new_interpreter->Invoke(), kTfLiteOk);
+  ASSERT_EQ(new_interpreter->outputs().size(), 1);
+  TfLiteTensor* output = new_interpreter->tensor(new_interpreter->outputs()[0]);
+  CheckIntTensor(output, {1}, {kExpectedValue2});
 }
 
 }  // namespace tflite

@@ -15,37 +15,24 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/dtensor_op_spmd_expander.h"
 
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
-#include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
-#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -119,61 +106,11 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
   return OkStatus();
 }
 
-// Takes relayout which may have kMatch dimensions and uses it to mask input.
-// Here source_layout
-StatusOr<Layout> MergeLayouts(
-    const absl::flat_hash_set<std::string>& used_mesh_dimensions,
-    const Layout& mask_layout, const Layout& target_layout) {
-  std::vector<std::string> sharding_specs(mask_layout.sharding_spec_strs());
-  for (int i = 0; i < target_layout.rank(); ++i) {
-    if (sharding_specs[i] == Layout::kMatch &&
-        !used_mesh_dimensions.contains(target_layout.sharding_spec(i)))
-      sharding_specs[i] = target_layout.sharding_spec(i);
-  }
-  return Layout::GetLayout(sharding_specs, target_layout.mesh());
-}
-
-// Given one side of layouts, compute the other side of the layouts.
-// Note that this implies that we compute the same layout for the
-// operand and output.
-StatusOr<llvm::DenseMap<int, Layout>> ComputeRelayoutLayout(
-    mlir::Operation* op, const llvm::DenseMap<int, Layout>& layouts) {
-  mlir::TF::RelayoutOp relayout = llvm::cast<mlir::TF::RelayoutOp>(op);
-  mlir::StringRef layout_attr = relayout.getLayout();
-  TF_ASSIGN_OR_RETURN(const Layout mask_layout,
-                      Layout::FromString(layout_attr.str()));
-
-  absl::flat_hash_set<std::string> used_dimensions;
-  bool match_present = false;
-  for (const std::string& sharding_spec : mask_layout.sharding_spec_strs()) {
-    if (sharding_spec == Layout::kMatch)
-      match_present = true;
-    else if (Layout::IsShardedDimension(sharding_spec))
-      used_dimensions.insert(sharding_spec);
-  }
-  if (!match_present) {
-    return llvm::DenseMap<int, Layout>({{0, mask_layout}});
-  }
-
-  if (layouts.find(0) != layouts.end()) {
-    TF_ASSIGN_OR_RETURN(
-        Layout new_layout,
-        MergeLayouts(used_dimensions, mask_layout, layouts.lookup(0)));
-    return llvm::DenseMap<int, Layout>({{0, new_layout}});
-  }
-  return llvm::DenseMap<int, Layout>();
-}
-}  // namespace
-
-StatusOr<mlir::Operation*> RelayoutSPMDExpander::ExpandOp(mlir::Operation* op) {
-  mlir::TF::RelayoutOp relayout = mlir::cast<mlir::TF::RelayoutOp>(op);
-  mlir::StringRef layout_attr = relayout.getLayout();
-  TF_ASSIGN_OR_RETURN(const Layout target_layout,
-                      Layout::FromString(layout_attr.str()));
-  TF_ASSIGN_OR_RETURN(const Layout output_layout,
-                      ExtractRequiredSingleLayoutFromOp(op));
-  TF_ASSIGN_OR_RETURN(const Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(relayout.getInput()));
+template <typename RelayoutOp>
+StatusOr<mlir::Operation*> ExpandRelayoutOp(RelayoutOp relayout,
+                                            Layout target_layout,
+                                            Layout input_layout,
+                                            Layout output_layout) {
   bool match_present = false;
   for (const std::string& sharding_spec : target_layout.sharding_spec_strs())
     if (sharding_spec == Layout::kMatch) match_present = true;
@@ -199,11 +136,12 @@ StatusOr<mlir::Operation*> RelayoutSPMDExpander::ExpandOp(mlir::Operation* op) {
       EmitRelayout(relayout.getInput(), input_layout, output_layout);
   if (!value_or_status.ok())
     return errors::InvalidArgument(
-        llvm::formatv("Unsupported layout received for tf.Relayout op. Trying "
+        llvm::formatv("Unsupported layout received for {0} op. Trying "
                       "to set tensor "
-                      "to layout : {0}. Found error {1}",
-                      layout_attr.str(),
-                      value_or_status.status().error_message())
+                      "to layout : {1}. Found error {2}",
+                      relayout->getName().getStringRef(),
+                      target_layout.ToString(),
+                      value_or_status.status().message())
             .str());
   mlir::Value output = value_or_status.value();
   relayout.getOutput().replaceAllUsesWith(output);
@@ -211,16 +149,130 @@ StatusOr<mlir::Operation*> RelayoutSPMDExpander::ExpandOp(mlir::Operation* op) {
   return output.getDefiningOp();
 }
 
+// Takes relayout which may have kMatch dimensions and uses it to mask input.
+// Here source_layout
+StatusOr<Layout> MergeLayouts(
+    const absl::flat_hash_set<std::string>& used_mesh_dimensions,
+    const Layout& mask_layout, const Layout& target_layout) {
+  std::vector<std::string> sharding_specs(mask_layout.sharding_spec_strs());
+  for (int i = 0; i < target_layout.rank(); ++i) {
+    if (sharding_specs[i] == Layout::kMatch &&
+        !used_mesh_dimensions.contains(target_layout.sharding_spec(i)))
+      sharding_specs[i] = target_layout.sharding_spec(i);
+  }
+  return Layout::GetLayout(sharding_specs, target_layout.mesh());
+}
+
+// Computes the layout of Relayout's (or RelayoutLike's) input or output, based
+// on the layout from the corresponding output or input (as `incoming_layout`).
+// Note that this implies that we compute the same layout for the
+// operand and output.
+// `mask_layout` is set to the user-supplied layout attribute on the op.
+StatusOr<llvm::DenseMap<int, Layout>> ComputeRelayoutLayout(
+    const Layout& mask_layout, std::optional<const Layout> incoming_layout) {
+  absl::flat_hash_set<std::string> used_dimensions;
+  bool match_present = false;
+  for (const std::string& sharding_spec : mask_layout.sharding_spec_strs()) {
+    if (sharding_spec == Layout::kMatch)
+      match_present = true;
+    else if (Layout::IsShardedDimension(sharding_spec))
+      used_dimensions.insert(sharding_spec);
+  }
+  if (!match_present) {
+    return llvm::DenseMap<int, Layout>({{0, mask_layout}});
+  }
+
+  if (incoming_layout) {
+    TF_ASSIGN_OR_RETURN(
+        Layout new_layout,
+        MergeLayouts(used_dimensions, mask_layout, *incoming_layout));
+    return llvm::DenseMap<int, Layout>({{0, new_layout}});
+  }
+  return llvm::DenseMap<int, Layout>();
+}
+
+}  // namespace
+
+StatusOr<mlir::Operation*> RelayoutSPMDExpander::ExpandOp(mlir::Operation* op) {
+  auto relayout = mlir::cast<mlir::TF::RelayoutOp>(op);
+  TF_ASSIGN_OR_RETURN(const Layout target_layout,
+                      Layout::FromString(relayout.getLayout().str()));
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
+  TF_ASSIGN_OR_RETURN(const Layout input_layout,
+                      ExtractRequiredLayoutFromOperand(relayout.getInput()));
+
+  return ExpandRelayoutOp<mlir::TF::RelayoutOp>(relayout, target_layout,
+                                                input_layout, output_layout);
+}
+
 StatusOr<llvm::DenseMap<int, Layout>>
 RelayoutSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  return ComputeRelayoutLayout(op, input_layouts);
+  auto relayout = llvm::cast<mlir::TF::RelayoutOp>(op);
+  TF_ASSIGN_OR_RETURN(const Layout mask_layout,
+                      Layout::FromString(relayout.getLayout().str()));
+  std::optional<const Layout> incoming_layout;
+  if (input_layouts.find(0) != input_layouts.end())
+    incoming_layout.emplace(input_layouts.lookup(0));
+
+  return ComputeRelayoutLayout(mask_layout, incoming_layout);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
 RelayoutSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  return ComputeRelayoutLayout(op, output_layouts);
+  auto relayout = llvm::cast<mlir::TF::RelayoutOp>(op);
+  TF_ASSIGN_OR_RETURN(const Layout mask_layout,
+                      Layout::FromString(relayout.getLayout().str()));
+  std::optional<const Layout> incoming_layout;
+  if (output_layouts.find(0) != output_layouts.end())
+    incoming_layout.emplace(output_layouts.lookup(0));
+
+  return ComputeRelayoutLayout(mask_layout, incoming_layout);
+}
+
+StatusOr<mlir::Operation*> RelayoutLikeSPMDExpander::ExpandOp(
+    mlir::Operation* op) {
+  auto relayout_grad = mlir::cast<mlir::TF::RelayoutLikeOp>(op);
+  TF_ASSIGN_OR_RETURN(
+      const Layout target_layout,
+      ExtractRequiredLayoutFromOperand(relayout_grad.getLayoutInput()));
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
+  TF_ASSIGN_OR_RETURN(
+      const Layout input_layout,
+      ExtractRequiredLayoutFromOperand(relayout_grad.getInput()));
+
+  return ExpandRelayoutOp<mlir::TF::RelayoutLikeOp>(
+      relayout_grad, target_layout, input_layout, output_layout);
+}
+
+StatusOr<llvm::DenseMap<int, Layout>>
+RelayoutLikeSPMDExpander::ComputeLayoutForward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
+  // RelayoutLike's output has the same layout as the corresponding Relayout's
+  // input operand.
+  if (input_layouts.find(1) == input_layouts.end())
+    return llvm::DenseMap<int, Layout>();
+  return llvm::DenseMap<int, Layout>({{0, input_layouts.lookup(1)}});
+}
+
+StatusOr<llvm::DenseMap<int, Layout>>
+RelayoutLikeSPMDExpander::ComputeLayoutBackward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
+  if (output_layouts.find(0) == output_layouts.end())
+    return llvm::DenseMap<int, Layout>();
+
+  const Layout output_layout = output_layouts.lookup(0);
+  return llvm::DenseMap<int, Layout>({
+      // Return replicated layout for the input operand since we do not want to
+      // enforce any particular layout on it.
+      {0, Layout::ReplicatedLike(output_layout)},
+      // Set layout for the forward pass's input operand to match the output of
+      // the RelayoutLike op.
+      {1, output_layout},
+  });
 }
 
 StatusOr<mlir::Operation*> DTensorSendSPMDExpander::ExpandOp(

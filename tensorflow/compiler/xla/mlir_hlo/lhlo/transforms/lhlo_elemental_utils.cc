@@ -173,7 +173,7 @@ Value elementalLowerImplForBroadcastInDimOps(OpBuilder* b, Location loc,
         auto zero = b->create<arith::ConstantOp>(
             loc, b->getIndexType(), b->getIntegerAttr(b->getIndexType(), 0));
         inputIndex.push_back(zero);
-      } else if (staticDimSize == ShapedType::kDynamicSize) {
+      } else if (staticDimSize == ShapedType::kDynamic) {
         // we are not sure if this dim is to be broadcasted at compile time
         auto dimSize = b->create<DimOp>(loc, operandMemref, inputDim);
         auto one = b->create<arith::ConstantOp>(
@@ -253,7 +253,7 @@ memref::ReinterpretCastOp createMemRef1DReinterpretCast(OpBuilder& b,
   Value zero = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 0));
   auto memref1dType =
-      MemRefType::get({ShapedType::kDynamicSize}, memrefTy.getElementType(),
+      MemRefType::get({ShapedType::kDynamic}, memrefTy.getElementType(),
                       b.getMultiDimIdentityMap(1), memrefTy.getMemorySpace());
   return b.create<memref::ReinterpretCastOp>(
       loc, memref1dType, memref, zero, ValueRange{size}, ValueRange{stride});

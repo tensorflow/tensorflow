@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -80,14 +81,15 @@ CpuExecutable::CpuExecutable(
 
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
-  llvm::Expected<llvm::JITEvaluatedSymbol> sym =
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
       jit_->FindCompiledSymbol(entry_function_name);
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
-  CHECK(*sym) << "Symbol " << entry_function_name << " not found.";
+  CHECK(sym->getAddress()) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
+  compute_function_ =
+      reinterpret_cast<ComputeFunctionType>(sym->getAddress().getValue());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
   jit_->DoneCompiling();
@@ -266,6 +268,9 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
     std::unique_ptr<BufferAssignment> buffer_assignment,
     XlaFrameworkMapping xla_framework_mapping,
     runtime::JitExecutable::Options opts) {
+  VLOG(1) << "Load serialized Cpu executable from object file: module="
+          << hlo_module->name();
+
   runtime::DialectRegistry dialects;
   opts.compiler.register_dialects(dialects);
   auto threading = mlir::MLIRContext::Threading::DISABLED;
@@ -310,11 +315,18 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
     return InternalError("Failed to load XLA Runtime executable: %s",
                          executable.status().message());
 
+  // Instantiate state for all registered FFI modules.
+  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
+  if (!ffi_modules_state.ok())
+    return InternalError("Failed to instantiate FFI modules state: %s",
+                         ffi_modules_state.status().message());
+
   // Move runtime::Executable ownership to the XlaRuntimeCpuExecutable.
   auto executable_ptr =
       std::make_unique<runtime::Executable>(std::move(executable.value()));
   auto xla_runtime_executable = std::make_unique<XlaRuntimeCpuExecutable>(
-      std::move(executable_ptr), xla_framework_mapping);
+      std::move(executable_ptr), xla_framework_mapping,
+      std::move(*ffi_modules_state));
 
   return std::unique_ptr<Executable>(new CpuExecutable(
       std::move(hlo_module), nullptr, nullptr, std::move(buffer_assignment),
@@ -513,14 +525,24 @@ Status XlaRuntimeCpuExecutable::Execute(
   for (int64_t index : xla_framework_mapping_.inputs) {
     TF_RETURN_IF_ERROR(append_converted_buffer(index));
   }
-  // If we have a tuple (possibly empty) as output, then .output_is_tuple
-  // is set and .result should be ignored.
+
+  int64_t result_index = xla_framework_mapping_.result;
   if (xla_framework_mapping_.output_is_tuple) {
-    for (int64_t index : xla_framework_mapping_.flattened_outputs) {
-      TF_RETURN_IF_ERROR(append_converted_buffer(index));
+    size_t num_outputs = xla_framework_mapping_.flattened_outputs.size();
+    for (size_t i = 0; i < num_outputs; ++i) {
+      int64_t output_index = xla_framework_mapping_.flattened_outputs[i];
+
+      TF_RETURN_IF_ERROR(append_converted_buffer(output_index));
+
+      // Populate the output tuple with a pointer to this result.
+      // TODO(b/249078472): make this work with nested tuples, if needed.
+      assert(result_index != -1);
+      void** results =
+          static_cast<void**>(descriptor_table[result_index].data());
+      results[i] = descriptor_table[output_index].data();
     }
-  } else if (xla_framework_mapping_.result != -1) {
-    TF_RETURN_IF_ERROR(append_converted_buffer(xla_framework_mapping_.result));
+  } else if (result_index != -1) {
+    TF_RETURN_IF_ERROR(append_converted_buffer(result_index));
   }
 
   runtime::Executable::CallFrame call_frame;
@@ -537,11 +559,25 @@ Status XlaRuntimeCpuExecutable::Execute(
   // No results to return; they are returned via out params.
   runtime::NoResultConverter converter;
 
-  runtime::Executable::ExecuteOpts opts;
+  // Collect all emitted diagnostic messages.
+  std::string diagnostic;
+  runtime::DiagnosticEngine diagnostic_engine;
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
+    absl::StrAppend(&diagnostic, d.status().message());
+    return runtime::success();
+  });
 
-  runtime::CustomCall::UserData user_data;
-  user_data.insert(run_options);
+  // Initialize state required for running functions exported from FFI modules.
+  absl::StatusOr<runtime::ffi::FfiStateVector> ffi_state =
+      ffi_modules_state_.state_vector();
+  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
+
+  runtime::CustomCall::UserData user_data(run_options, &ffi_state.value());
+
+  runtime::Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;
+  opts.diagnostic_engine = &diagnostic_engine;
+  opts.custom_call_registry = &dynamic_custom_calls_;
 
   // We don't expect to see any async tasks in the XLA Runtime executable.
   opts.async_task_runner =
@@ -551,8 +587,9 @@ Status XlaRuntimeCpuExecutable::Execute(
   GetExecutable().Execute(call_frame, opts);
   if (auto status = GetExecutable().ReturnResults(converter, &call_frame);
       !status.ok()) {
-    return InternalError("Failed to execute XLA Runtime executable: %s.",
-                         status.message());
+    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
+                         status.message(), diagnostic.empty() ? "" : ": ",
+                         diagnostic);
   }
   return OkStatus();
 }

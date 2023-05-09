@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -62,7 +62,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/util/ptr_util.h"
 
 namespace xla {
 namespace {
@@ -240,7 +239,7 @@ Service::ResolveAndValidateArguments(
     if (!buffer_status.ok()) {
       return tsl::errors::CreateWithUpdatedMessage(
           buffer_status.status(),
-          StrCat(buffer_status.status().error_message(), ", ",
+          StrCat(buffer_status.status().message(), ", ",
                  "failed to resolve allocation for parameter ", i));
     }
     auto replicated_buffers = buffer_status.value();
@@ -467,7 +466,7 @@ Service::ExecuteParallelAndRegisterResult(
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError("failed to complete execution for stream %d: %s", i,
-                           block_status.error_message());
+                           block_status.message());
     }
   }
 

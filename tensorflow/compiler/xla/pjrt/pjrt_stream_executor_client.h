@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
+#include <array>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -200,13 +203,18 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return std::optional<std::string>();
   }
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
+  virtual StatusOr<std::string> SerializeExecutable(
+      const PjRtLoadedExecutable& executable) const;
 
+  // For PjRtStreamExecutorClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override;
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   // Creates a buffer on the device without initializing or copying any data.
   // An optional `definition_event` may be speficied that can be used to
@@ -223,6 +231,13 @@ class PjRtStreamExecutorClient : public PjRtClient {
                                     PjRtDevice* device) override {
     return Unimplemented("Async transfer to buffers not implemented");
   };
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -302,14 +317,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   virtual void CopyToRemoteDeviceScattered(
-      PjRtBuffer* buffer,
-      absl::Span<const std::pair<std::string, PjRtBuffer::RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
+      PjRtBuffer* buffer, std::vector<std::string> serialized_descriptors,
+      std::vector<PjRtBuffer::RemoteSendCallback> callbacks,
       const PjRtBuffer::ScatterDetails& scatter_details) const {
-    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
-      d_and_cb.second(
-          Unimplemented("Scattered cross host sends not implemented."),
-          /*sends_were_enqueued=*/false);
+    for (const auto& cb : callbacks) {
+      cb(Unimplemented("Scattered cross host sends not implemented."),
+         /*sends_were_enqueued=*/false);
     }
   }
 
@@ -612,12 +625,13 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
-                          RemoteSendCallback on_done) override;
+  void CopyToRemoteDevice(
+      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+      RemoteSendCallback on_done) override;
 
   void CopyToRemoteDeviceScattered(
-      absl::Span<const std::pair<std::string, RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
+      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) override;
 
   PjRtFuture<Status> GetReadyFuture() override;
@@ -707,6 +721,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
       std::vector<std::unique_ptr<LocalExecutable>> executables,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
+      CompileOptions compile_options,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices,
       PjRtStreamExecutorClient* client);
@@ -790,6 +805,10 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
 
   bool IsDeleted() override { return executables_.empty(); }
 
+  StatusOr<std::string> SerializeExecutable() const override {
+    return client_->SerializeExecutable(*this);
+  }
+
   bool IsReturnedFutureSupported() const override { return true; }
 
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
@@ -857,6 +876,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   // and thus must be donated when executing the computation.
   std::vector<std::vector<int>> parameters_that_must_be_donated_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
+  CompileOptions compile_options_;
 
   // True if the executables were compiled expecting arguments in a single
   // tuple.

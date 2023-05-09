@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -98,7 +98,7 @@ PYBIND11_MODULE(_pywrap_tf_optimizer, m) {
             tensorflow::grappler::MetaOptimizer optimizer(cpu_device,
                                                           config_proto);
 
-            MaybeRaiseRegisteredFromStatusWithGIL(
+            tsl::MaybeRaiseRegisteredFromStatusWithGIL(
                 optimizer.Optimize(cluster, *grappler_item, &out_graph));
             if (strip_default_attributes) {
               tensorflow::StripDefaultAttributes(

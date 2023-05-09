@@ -32,7 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -249,7 +249,7 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertEqual([3], dataset_ops.get_legacy_output_shapes(dataset))
 
-    dataset = dataset.map(lambda x: array_ops.stack([x, x]))
+    dataset = dataset.map(lambda x: array_ops_stack.stack([x, x]))
     self.assertEqual(dtypes.int64,
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertEqual([2, 3], dataset_ops.get_legacy_output_shapes(dataset))

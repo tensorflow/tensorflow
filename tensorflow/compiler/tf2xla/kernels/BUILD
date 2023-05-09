@@ -8,8 +8,10 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
+    "tf_cc_test",
     "tf_cuda_library",
 )
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -171,27 +173,15 @@ tf_kernel_library(
         ":case_op",
         ":conv_op_helpers",
         ":if_op",
+        ":rng_converter_utils",
         ":tensor_list_utils",
         ":while_op",
         ":xla_call_module_op",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@stablehlo//:chlo_ops",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
-        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -236,6 +226,8 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/client/lib:tridiagonal",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -245,11 +237,22 @@ tf_kernel_library(
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:chlo_ops",
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ),
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_cuda_library(
@@ -340,8 +343,9 @@ cc_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 cc_library(
@@ -376,14 +380,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_call_module_loader",
+    srcs = ["xla_call_module_loader.cc"],
+    hdrs = ["xla_call_module_loader.h"],
+    deps = [
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:regexp",
+        "//tensorflow/tsl/platform:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:vhlo_ops",
+    ],
+)
+
 tf_kernel_library(
     name = "xla_call_module_op",
     srcs = ["xla_call_module_op.cc"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        ":xla_call_module_loader",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -397,22 +425,14 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/platform:regexp",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@stablehlo//:chlo_ops",
-        "@stablehlo//:stablehlo_ops",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -507,4 +527,27 @@ tf_proto_library(
     srcs = ["callback.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
+)
+
+cc_library(
+    name = "rng_converter_utils",
+    srcs = ["rng_converter_utils.cc"],
+    hdrs = ["rng_converter_utils.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "rng_converter_utils_test",
+    srcs = ["rng_converter_utils_test.cc"],
+    deps = [
+        ":rng_converter_utils",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -26,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -37,9 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -52,15 +49,18 @@ class LiftQuantizableSpotsAsFunctionsPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       LiftQuantizableSpotsAsFunctionsPass)
 
-  LiftQuantizableSpotsAsFunctionsPass() {}
+  LiftQuantizableSpotsAsFunctionsPass() = default;
 
-  explicit LiftQuantizableSpotsAsFunctionsPass(OpSet op_set) {
+  explicit LiftQuantizableSpotsAsFunctionsPass(OpSet op_set,
+                                               bool enable_two_input_tensors) {
     op_set_ = op_set;
+    enable_two_input_tensors_ = enable_two_input_tensors;
   }
 
   LiftQuantizableSpotsAsFunctionsPass(
       const LiftQuantizableSpotsAsFunctionsPass& other) {
     op_set_ = other.op_set_;
+    enable_two_input_tensors_ = other.enable_two_input_tensors_;
   }
 
   StringRef getArgument() const final {
@@ -91,13 +91,18 @@ class LiftQuantizableSpotsAsFunctionsPass
           clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
           clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
                      "Uses TF Uniform Quantized ops"))};
+
+  bool enable_two_input_tensors_{false};
 };
 
 class CheckQuantizableOps
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
-  explicit CheckQuantizableOps(MLIRContext* context, OpSet op_set)
-      : OpRewritePattern<TF::PartitionedCallOp>(context), op_set_(op_set) {}
+  explicit CheckQuantizableOps(MLIRContext* context, OpSet op_set,
+                               bool enable_two_input_tensors)
+      : OpRewritePattern<TF::PartitionedCallOp>(context),
+        op_set_(op_set),
+        enable_two_input_tensors_(enable_two_input_tensors) {}
 
  private:
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
@@ -109,45 +114,65 @@ class CheckQuantizableOps
       return failure();
     }
 
-    tensorflow::Status check_status;
-    switch (op_set_) {
-      case OpSet::XLA:
-        check_status = checkQuantizableOpsForXla(call_op, function_name);
-        break;
-      default:
-        check_status = tensorflow::OkStatus();
-        break;
+    absl::Status check_status;
+    // TODO(b/270906404): Support weight-only gather for uniform quantized opset
+    // in PTQ mode
+    if (op_set_ == OpSet::UNIFORM_QUANTIZED &&
+        function_name.contains("gather")) {
+      check_status.Update(absl::InternalError("Weight-only op is skipped."));
+    }
+
+    if (op_set_ == OpSet::XLA) {
+      check_status.Update(checkQuantizableOpsForXla(call_op, function_name,
+                                                    enable_two_input_tensors_));
+    }
+
+    // Only the composite functions with f32 inputs are quantizable.
+    if (call_op.getResults().size() == 1 && !call_op->getResult(0)
+                                                 .getType()
+                                                 .cast<ShapedType>()
+                                                 .getElementType()
+                                                 .isF32()) {
+      check_status.Update(absl::InternalError(
+          "Composite functions for quantization should be f32 type."));
     }
 
     // The OK status means this op is quantizable. Return failure since the
     // pattern doesn't rewrite anything yet.
     if (check_status.ok()) return failure();
     call_op->removeAttr(kQuantTraitAttrName);
-    removeAttrMapAttribute(call_op, function_name,
-                           check_status.error_message());
+    removeAttrMapAttribute(call_op, function_name, check_status.message());
     return success();
   }
 
-  tensorflow::Status checkQuantizableOpsForXla(TF::PartitionedCallOp call_op,
-                                               StringRef function_name) const {
+  absl::Status checkQuantizableOpsForXla(TF::PartitionedCallOp call_op,
+                                         StringRef function_name,
+                                         bool enable_two_input_tensors) const {
     // Disable quantization for the DepthwiseConv since it has no benefits in
     // the XLA opset.
     if (function_name.contains("depthwise_conv2d")) {
-      return tensorflow::errors::Unknown(
+      return absl::InternalError(
           "DepthwiseConv2D doesn't get any benefit of quantization in XLA.");
     } else if (function_name.contains("conv2d")) {
       // For Conv2D, the channel dimension must be static to calculate the
       // feature group count.
       if (!HasStaticShapeAtDims(call_op->getOperand(0), /*dims=*/3)) {
-        return tensorflow::errors::Unknown(
+        return absl::InternalError(
             "The channel dimension of Conv2D is required to be static.");
       }
     } else if (function_name.contains("conv3d")) {
       // For Conv3D, the channel dimension must be static to calculate the
       // feature group count.
       if (!HasStaticShapeAtDims(call_op->getOperand(0), /*dims=*/4)) {
-        return tensorflow::errors::Unknown(
+        return absl::InternalError(
             "The channel dimension of Conv3D is required to be static.");
+      }
+    } else if (function_name.contains("batch_matmul")) {
+      // For BatchMatMul, the input must be ranked.
+      auto shaped_type =
+          call_op->getOperand(0).getType().dyn_cast<ShapedType>();
+      if (!shaped_type || !shaped_type.hasRank()) {
+        return absl::InternalError("The input of BatchMatMul must have rank.");
       }
     }
 
@@ -155,12 +180,30 @@ class CheckQuantizableOps
     for (auto iter : spec->coeff_op_quant_dim) {
       Operation* preceding_op = call_op.getOperand(iter.first).getDefiningOp();
       // The XLA opset only supports constant filter/weight at the moment.
-      if (!preceding_op || !preceding_op->hasTrait<OpTrait::ConstantLike>()) {
-        return tensorflow::errors::Unknown(
-            "Non-constant weights are not supported at the moment.");
+      bool is_weight_constant =
+          preceding_op && preceding_op->hasTrait<OpTrait::ConstantLike>();
+
+      // There might be q/dq ops after the filter/weight.
+      if (auto dq_op = llvm::dyn_cast_or_null<quantfork::DequantizeCastOp>(
+              preceding_op)) {
+        if (auto q_op = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(
+                dq_op.getArg().getDefiningOp())) {
+          Operation* q_op_input = q_op.getArg().getDefiningOp();
+          is_weight_constant =
+              q_op_input && q_op_input->hasTrait<OpTrait::ConstantLike>();
+        }
+      }
+
+      if (!is_weight_constant) {
+        if (!enable_two_input_tensors || (!function_name.contains("matmul") &&
+                                          !function_name.contains("einsum"))) {
+          return absl::InternalError(
+              "Non-constant weights are not supported at the moment,"
+              " except matmul and einsum.");
+        }
       }
     }
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   void removeAttrMapAttribute(TF::PartitionedCallOp call_op,
@@ -189,6 +232,7 @@ class CheckQuantizableOps
   }
 
   OpSet op_set_;
+  bool enable_two_input_tensors_;
 };
 
 static PassRegistration<LiftQuantizableSpotsAsFunctionsPass> pass;
@@ -201,7 +245,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   ModuleOp module = getOperation();
 
   populateWithGenerated(patterns);
-  patterns.add<CheckQuantizableOps>(ctx, op_set_);
+  patterns.add<CheckQuantizableOps>(ctx, op_set_, enable_two_input_tensors_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
   for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
@@ -214,8 +258,10 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset) {
-  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(target_opset);
+CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
+                                          bool enable_two_input_tensors) {
+  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(
+      target_opset, enable_two_input_tensors);
 }
 
 }  // namespace quant

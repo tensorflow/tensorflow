@@ -206,6 +206,9 @@ class HloDataflowAnalysis {
   static std::vector<std::pair<HloOperandIndex, ShapeIndex>>
   GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
+  // Verifies various invariants of the dataflow analysis.
+  Status Verify() const;
+
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
@@ -307,9 +310,6 @@ class HloDataflowAnalysis {
   void UpdatePositionsOfValuesAt(
       HloInstruction* instruction, const InstructionValueSet& new_value_set,
       const InstructionValueSet* prev_value_set = nullptr);
-
-  // Verifies various invariants of the dataflow analysis.
-  Status Verify() const;
 
   const HloModule& module_;
   const bool ssa_form_;

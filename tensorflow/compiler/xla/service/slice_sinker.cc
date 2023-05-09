@@ -122,7 +122,7 @@ bool IsSimilarOperationOnSlices(const HloInstruction* operation_on_slices,
 //
 // to
 //   p = f32[20] parameter(0)
-//   x = f32[9] slice(p), slice=[0:8]
+//   x = f32[9] slice(p), slice=[0:9]
 //   xx = add(x,x)
 //   aa = f32[8] slice(xx), slice=[0:8]
 //   bb = f32[7] slice(xx), slice=[2:9]
@@ -233,7 +233,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
 //     from the same bigger tensors.
 // (4) The accumulated size of the group of operations is not less than the size
 //     of such a bigger tensor. This is a heuristic to ensure that the
-// transformation never causes us to do more elementwise operations.
+//     transformation never causes us to do more elementwise operations.
 //
 // This pass currently doesn't transform non-elementwise instructions. We may
 // extend this pass to transform non-elementwise instructions, such as dot,

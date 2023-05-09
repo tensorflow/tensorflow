@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 
 namespace mlir {
 namespace kernel_gen {
@@ -49,16 +50,18 @@ Value CreateOrFindGlobalStringConstant(Location loc, StringRef global_name,
   Operation* global_constant = SymbolTable::lookupNearestSymbolFrom(
       module, b->getStringAttr(global_name));
   if (global_constant) {
-    Value global_ptr = b->create<LLVM::AddressOfOp>(
-        loc, cast<LLVM::GlobalOp>(global_constant));
+    auto global_op = cast<LLVM::GlobalOp>(global_constant);
+    StringRef symbol_name = global_op.getName();
+    Type symbol_type = global_op.getType();
+    Type ptr_type = LLVM::LLVMPointerType::get(b->getContext());
+    Value global_ptr = b->create<LLVM::AddressOfOp>(loc, ptr_type, symbol_name);
     Value c0 =
         b->create<LLVM::ConstantOp>(loc, b->getI64Type(), b->getIndexAttr(0));
-    return b->create<LLVM::GEPOp>(
-        loc, LLVM::LLVMPointerType::get(b->getIntegerType(8)), global_ptr,
-        ValueRange{c0, c0});
+    return b->create<LLVM::GEPOp>(loc, ptr_type, symbol_type, global_ptr,
+                                  ValueRange{c0, c0});
   }
   return LLVM::createGlobalString(loc, *b, global_name, content,
-                                  LLVM::Linkage::Internal);
+                                  LLVM::Linkage::Internal, true);
 }
 
 }  // namespace transforms

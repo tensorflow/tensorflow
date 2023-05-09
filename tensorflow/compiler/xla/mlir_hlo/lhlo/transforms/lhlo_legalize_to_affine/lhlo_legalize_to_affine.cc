@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
+#include <optional>
 #include <utility>
 
 #include "lhlo/IR/lhlo_ops.h"
@@ -41,8 +42,8 @@ static void buildBoundedAffineLoopNest(
     function_ref<void(OpBuilder&, Location, ValueRange)> bodyBuilder) {
   SmallVector<int64_t, 3> lowerBounds(upperBounds.size(), /*Value=*/0);
   SmallVector<int64_t, 3> steps(upperBounds.size(), /*Value=*/1);
-  buildAffineLoopNest(builder, location, lowerBounds, upperBounds, steps,
-                      bodyBuilder);
+  affine::buildAffineLoopNest(builder, location, lowerBounds, upperBounds,
+                              steps, bodyBuilder);
 }
 
 struct DotOpConverter : public OpRewritePattern<DotOp> {
@@ -82,16 +83,16 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
       SmallVector<Value, 2> lhsIndices{ivs[0], ivs[2]},
           rhsIndices{ivs[2], ivs[1]}, resultIndices{ivs[0], ivs[1]};
 
-      auto l = builder.create<AffineLoadOp>(loc, lhs, lhsIndices);
-      auto r = builder.create<AffineLoadOp>(loc, rhs, rhsIndices);
-      auto result =
-          rewriter.create<AffineLoadOp>(loc, op.getOutput(), resultIndices);
+      auto l = builder.create<affine::AffineLoadOp>(loc, lhs, lhsIndices);
+      auto r = builder.create<affine::AffineLoadOp>(loc, rhs, rhsIndices);
+      auto result = rewriter.create<affine::AffineLoadOp>(loc, op.getOutput(),
+                                                          resultIndices);
       Value opResult = lmhlo::LhloOpToStdScalarOp::map<DotOp>(
           op, elementType, {l, r, result}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
-      builder.create<AffineStoreOp>(loc, opResult, op.getOutput(),
-                                    resultIndices);
+      builder.create<affine::AffineStoreOp>(loc, opResult, op.getOutput(),
+                                            resultIndices);
     };
 
     buildBoundedAffineLoopNest(rewriter, op.getLoc(),
@@ -160,22 +161,22 @@ struct ConcatOpConverter : public OpRewritePattern<ConcatenateOp> {
       // dimension.
       OpBuilder::InsertionGuard guard(rewriter);
       SmallVector<Value, 3> indices;
-      AffineForOp forOp;
+      affine::AffineForOp forOp;
       for (unsigned i = 0; i < outputRank; i++) {
         if (i == concatDim) {
-          forOp = rewriter.create<AffineForOp>(loc, prevBound,
-                                               prevBound + operandShape[i]);
+          forOp = rewriter.create<affine::AffineForOp>(
+              loc, prevBound, prevBound + operandShape[i]);
           prevBound += operandShape[i];
           indices.push_back(forOp.getInductionVar());
         } else {
-          forOp = rewriter.create<AffineForOp>(loc, 0, outputShape[i]);
+          forOp = rewriter.create<affine::AffineForOp>(loc, 0, outputShape[i]);
           indices.push_back(forOp.getInductionVar());
         }
         rewriter.setInsertionPointToStart(forOp.getBody());
       }
       Value storeVal =
-          rewriter.create<AffineLoadOp>(loc, operand, map, indices);
-      rewriter.create<AffineStoreOp>(loc, storeVal, output, indices);
+          rewriter.create<affine::AffineLoadOp>(loc, operand, map, indices);
+      rewriter.create<affine::AffineStoreOp>(loc, storeVal, output, indices);
     }
     rewriter.eraseOp(op);
     return success();
@@ -210,10 +211,10 @@ static void fillBuffer(Location loc, Value buffer, Value fillValue,
   AffineMap idSymMap = builder.getSymbolIdentityMap();
   AffineMap lbMap = builder.getConstantAffineMap(0);
   SmallVector<Value, 4> ivs(rank);
-  AffineForOp forOp;
+  affine::AffineForOp forOp;
   for (unsigned i = 0; i < rank; ++i) {
-    forOp = builder.create<AffineForOp>(loc, llvm::None, lbMap, dimSizes[i],
-                                        idSymMap);
+    forOp = builder.create<affine::AffineForOp>(loc, std::nullopt, lbMap,
+                                                dimSizes[i], idSymMap);
     builder.setInsertionPointToStart(forOp.getBody());
     ivs[i] = forOp.getInductionVar();
   }
@@ -222,10 +223,10 @@ static void fillBuffer(Location loc, Value buffer, Value fillValue,
   assert(((fillMemRefType && fillMemRefType.getRank() == 0) ||
           fillValueType.isIntOrFloat()) &&
          "init value has to be a 0-d memref or int or fp");
-  Value initVal = fillMemRefType ? builder.create<AffineLoadOp>(
-                                       loc, fillValue, /*indices=*/llvm::None)
+  Value initVal = fillMemRefType ? builder.create<affine::AffineLoadOp>(
+                                       loc, fillValue, /*indices=*/std::nullopt)
                                  : fillValue;
-  builder.create<AffineStoreOp>(loc, initVal, buffer, ivs);
+  builder.create<affine::AffineStoreOp>(loc, initVal, buffer, ivs);
 }
 
 /// Converts GatherOp to Affine nest form.
@@ -332,8 +333,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
       // ith dimension of start_indices doesn't form a batch if it is equal to
       // index_vector_dim.
       if (i == indexVectorDim) continue;
-      AffineForOp forOp =
-          rewriter.create<AffineForOp>(loc, 0, startIndicesShape[i]);
+      affine::AffineForOp forOp =
+          rewriter.create<affine::AffineForOp>(loc, 0, startIndicesShape[i]);
       batchInductionVars.push_back(forOp.getInductionVar());
       outputInductionVars.push_back(forOp.getInductionVar());
       rewriter.setInsertionPointToStart(forOp.getBody());
@@ -342,8 +343,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     // Create loops to iterate over each offset dimension within the output
     // tensor.
     for (unsigned i = 0, k = 0, e = offsetDims.size(); i < e; i++) {
-      AffineForOp forOp =
-          rewriter.create<AffineForOp>(loc, 0, outputShape[offsetDims[i]]);
+      affine::AffineForOp forOp = rewriter.create<affine::AffineForOp>(
+          loc, 0, outputShape[offsetDims[i]]);
       rewriter.setInsertionPointToStart(forOp.getBody());
       // We try to fetch the first non-collapsed dimension.
       while (k < collapsedSliceDims.size() && collapsedSliceDims[k] == i) k++;
@@ -363,8 +364,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
       // those dimensions of operand tensor which are present in
       // start_index_map.
       if (k < startIndexMap.size() && i == startIndexMap[k++]) {
-        AffineForOp forOp =
-            rewriter.create<AffineForOp>(loc, 0, operandShape[i]);
+        affine::AffineForOp forOp =
+            rewriter.create<affine::AffineForOp>(loc, 0, operandShape[i]);
         operandIndex.push_back(forOp.getInductionVar());
         rewriter.setInsertionPointToStart(forOp.getBody());
       } else {
@@ -379,8 +380,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
       for (unsigned i = 0; i < startIndicesNumbers; i++) {
         batchInductionVars.insert(batchInductionVars.begin() + indexVectorDim,
                                   startIndicesIndex[i]);
-        Value startIndex = rewriter.create<AffineLoadOp>(loc, startIndices,
-                                                         batchInductionVars);
+        Value startIndex = rewriter.create<affine::AffineLoadOp>(
+            loc, startIndices, batchInductionVars);
         startIndex = rewriter.create<arith::IndexCastOp>(
             loc, rewriter.getIndexType(), startIndex);
         sIn[startIndexMap[i]] = startIndex;
@@ -389,8 +390,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     } else {
       // Since index_vector_dim is equal to start_indicesRank we can directly
       // fetch the start_index from batch_induction_vars.
-      Value startIndex =
-          rewriter.create<AffineLoadOp>(loc, startIndices, batchInductionVars);
+      Value startIndex = rewriter.create<affine::AffineLoadOp>(
+          loc, startIndices, batchInductionVars);
       startIndex = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getIndexType(), startIndex);
       sIn[0] = startIndex;
@@ -398,7 +399,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
 
     // We load value at a particular operand index and populate the output
     // tensor if the index constraints match.
-    Value loadValue = rewriter.create<AffineLoadOp>(loc, operand, operandIndex);
+    Value loadValue =
+        rewriter.create<affine::AffineLoadOp>(loc, operand, operandIndex);
     SmallVector<Value, 4> predicates;
     // Adding offsets to the corresponding starting index and comparing it with
     // the corresponding operand index.
@@ -444,7 +446,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
         loc, resultPredicate, loadValue, zeroLoadValue);
     // We load value at output array.
     Value outputValue =
-        rewriter.create<AffineLoadOp>(loc, output, outputInductionVars);
+        rewriter.create<affine::AffineLoadOp>(loc, output, outputInductionVars);
 
     // The selected value is added to the previous value stored in output array.
     if (elementType.isa<FloatType>())
@@ -453,8 +455,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     else
       outputValue = rewriter.create<arith::AddIOp>(loc, elementType, selectLoad,
                                                    outputValue);
-    rewriter.create<AffineStoreOp>(loc, outputValue, output,
-                                   outputInductionVars);
+    rewriter.create<affine::AffineStoreOp>(loc, outputValue, output,
+                                           outputInductionVars);
     rewriter.eraseOp(op);
     return success();
   }
@@ -534,27 +536,30 @@ struct PadOpConverter : public OpRewritePattern<PadOp> {
     // Set padding_value to output.
     {
       OpBuilder::InsertionGuard regionGuard(rewriter);
-      Value scalarPaddingValue = rewriter.create<AffineLoadOp>(
+      Value scalarPaddingValue = rewriter.create<affine::AffineLoadOp>(
           loc, paddingValue, SmallVector<Value, 4>());
-      AffineForOp initForOp;
+      affine::AffineForOp initForOp;
       for (unsigned i = 0; i < rank; i++) {
-        initForOp = rewriter.create<AffineForOp>(loc, 0, outputShape[i]);
+        initForOp =
+            rewriter.create<affine::AffineForOp>(loc, 0, outputShape[i]);
         indices.push_back(initForOp.getInductionVar());
         rewriter.setInsertionPointToStart(initForOp.getBody());
       }
-      rewriter.create<AffineStoreOp>(loc, scalarPaddingValue, output, indices);
+      rewriter.create<affine::AffineStoreOp>(loc, scalarPaddingValue, output,
+                                             indices);
     }
 
     // Store `operand` into `output`, loop upper bounds from `operand` shape.
     indices.clear();
-    AffineForOp padForOp;
+    affine::AffineForOp padForOp;
     for (unsigned i = 0; i < rank; i++) {
-      padForOp = rewriter.create<AffineForOp>(loc, 0, operandShape[i]);
+      padForOp = rewriter.create<affine::AffineForOp>(loc, 0, operandShape[i]);
       indices.push_back(padForOp.getInductionVar());
       rewriter.setInsertionPointToStart(padForOp.getBody());
     }
-    Value storeVal = rewriter.create<AffineLoadOp>(loc, operand, indices);
-    rewriter.create<AffineStoreOp>(loc, storeVal, output, map, indices);
+    Value storeVal =
+        rewriter.create<affine::AffineLoadOp>(loc, operand, indices);
+    rewriter.create<affine::AffineStoreOp>(loc, storeVal, output, map, indices);
     rewriter.eraseOp(op);
     return success();
   }
@@ -579,13 +584,14 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
     LogicalResult mapStatus = success();
     auto bodyBuilder = [&](OpBuilder& builder, Location loc,
                            ValueRange inductionVars) {
-      auto l = builder.create<AffineLoadOp>(loc, lhs, inductionVars);
-      auto r = builder.create<AffineLoadOp>(loc, rhs, inductionVars);
+      auto l = builder.create<affine::AffineLoadOp>(loc, lhs, inductionVars);
+      auto r = builder.create<affine::AffineLoadOp>(loc, rhs, inductionVars);
       Value opResult = lmhlo::LhloOpToStdScalarOp::map<LhloOpTy>(
           op, elementType, {l, r}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
-      rewriter.create<AffineStoreOp>(loc, opResult, op.getOut(), inductionVars);
+      rewriter.create<affine::AffineStoreOp>(loc, opResult, op.getOut(),
+                                             inductionVars);
     };
 
     buildBoundedAffineLoopNest(rewriter, op.getLoc(), lhsType.getShape(),
@@ -613,13 +619,14 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
     LogicalResult mapStatus = success();
     auto bodyBuilder = [&](OpBuilder& builder, Location loc,
                            ValueRange inductionVars) {
-      Value loadInput = builder.create<AffineLoadOp>(loc, input, inductionVars);
+      Value loadInput =
+          builder.create<affine::AffineLoadOp>(loc, input, inductionVars);
       Value opResult = lmhlo::LhloOpToStdScalarOp::map<LhloOpTy>(
           op, elementType, {loadInput}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
-      rewriter.create<AffineStoreOp>(loc, opResult, op.getOutput(),
-                                     inductionVars);
+      rewriter.create<affine::AffineStoreOp>(loc, opResult, op.getOutput(),
+                                             inductionVars);
     };
     buildBoundedAffineLoopNest(rewriter, op.getLoc(), shape, bodyBuilder);
     if (failed(mapStatus)) return failure();
@@ -650,7 +657,7 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
 struct LhloLegalizeToAffinePass
     : public impl::LhloLegalizeToAffinePassBase<LhloLegalizeToAffinePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, math::MathDialect>();
+    registry.insert<affine::AffineDialect, math::MathDialect>();
   }
   void runOnOperation() override {
     auto func = getOperation();

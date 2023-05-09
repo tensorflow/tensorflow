@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 #include <unordered_map>
+#include <vector>
 
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -399,6 +401,137 @@ int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx) {
   }
 }
 
+int64_t MemoryCheckpoint::IdRegistry::Add(const std::string& prefix,
+                                          const std::string& key) {
+  mutex_lock l(mu_);
+  auto pair = std::make_pair(prefix, key);
+  if (string_to_int_.contains(pair)) {
+    return string_to_int_[pair];
+  }
+  int64_t id = next_id_++;
+  int_to_string_[id] = pair;
+  string_to_int_[pair] = id;
+  return id;
+}
+
+std::vector<int64_t> MemoryCheckpoint::IdRegistry::GetMatchingIds(
+    const std::string& prefix_to_match) {
+  mutex_lock l(mu_);
+  std::vector<int64_t> ids;
+  for (const auto& [pair, id] : string_to_int_) {
+    auto [prefix, key] = pair;
+    if (prefix.compare(0, prefix_to_match.length(), prefix_to_match) == 0) {
+      ids.push_back(id);
+    }
+  }
+  return ids;
+}
+
+std::pair<std::string, std::string> MemoryCheckpoint::IdRegistry::Get(
+    int64_t id) {
+  mutex_lock l(mu_);
+  auto result = int_to_string_.find(id);
+  DCHECK(result != int_to_string_.end())
+      << "Failed find id " << id << " in IdRegistry. "
+      << "Max id is: " << next_id_ - 1;
+  return result->second;
+}
+
+void MemoryCheckpoint::IdRegistry::RemoveIds(const std::vector<int64_t>& ids) {
+  mutex_lock l(mu_);
+  for (const auto& id : ids) {
+    string_to_int_.erase(int_to_string_[id]);
+    int_to_string_.erase(id);
+  }
+}
+
+std::string MemoryCheckpoint::DebugString() const {
+  std::string result = absl::StrCat("status=", status_.ToString(),
+                                    ", "
+                                    "root=",
+                                    (is_root_ ? "true" : "false"), "\n");
+  absl::StrAppend(&result, "number of integers: ", int_values_.size(), "\n");
+  for (const auto& [k, v] : int_values_) {
+    absl::StrAppend(&result, "  ", id_registry_->Get(k).first, ":",
+                    id_registry_->Get(k).second, ": ", v, "\n");
+  }
+  absl::StrAppend(&result, "number of strings: ", str_values_.size(), "\n");
+  for (const auto& [k, v] : str_values_) {
+    absl::StrAppend(&result, "  ", id_registry_->Get(k).first, ":",
+                    id_registry_->Get(k).second, ": ", v, "\n");
+  }
+  absl::StrAppend(&result, "number of tensors: ", tensor_values_.size(), "\n");
+
+  absl::StrAppend(
+      &result, "number of expired prefixes: ", expired_prefixes_.size(), "\n");
+  return result;
+}
+
+void MemoryCheckpoint::Merge(MemoryCheckpoint* other) {
+  if (!status_.ok()) {
+    return;
+  }
+
+  if (!other->status_.ok()) {
+    status_ = other->status_;
+    int_values_.clear();
+    str_values_.clear();
+    tensor_values_.clear();
+  }
+
+  for (const auto& [k, v] : other->int_values_) {
+    int_values_[k] = v;
+  }
+  for (const auto& [k, v] : other->str_values_) {
+    str_values_[k] = v;
+  }
+  for (const auto& [k, v] : other->tensor_values_) {
+    tensor_values_[k] = v;
+  }
+
+  // Get the expired prefixes from `other`. Since the info only needs to be
+  // propagated once downstream, we also clean the `expired_prefixes_` of
+  // `other` here.
+  for (const auto& prefix : other->expired_prefixes_) {
+    Purge(prefix);
+  }
+
+  other->expired_prefixes_.clear();
+  VLOG(5) << "MemoryCheckpoint::Merge " << DebugString();
+}
+
+void MemoryCheckpoint::Purge(const std::string& prefix) {
+  std::vector<int64_t> ids = id_registry_->GetMatchingIds(prefix);
+  for (const auto& id : ids) {
+    int_values_.erase(id);
+    str_values_.erase(id);
+    tensor_values_.erase(id);
+  }
+  if (!is_root_) {
+    expired_prefixes_.insert(prefix);
+  } else {
+    // We no longer need the mapping after change has been propagated all the
+    // way to root.
+    id_registry_->RemoveIds(ids);
+  }
+}
+
+Status MemoryCheckpoint::Save(IteratorStateWriter* writer) const {
+  for (const auto& [id, value] : int_values_) {
+    auto [prefix, key] = id_registry_->Get(id);
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix, key, value));
+  }
+  for (const auto& [id, value] : str_values_) {
+    auto [prefix, key] = id_registry_->Get(id);
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix, key, value));
+  }
+  for (const auto& [id, value] : tensor_values_) {
+    auto [prefix, key] = id_registry_->Get(id);
+    TF_RETURN_IF_ERROR(writer->WriteTensor(prefix, key, value));
+  }
+  return OkStatus();
+}
+
 Status IteratorBase::InitializeBase(IteratorContext* ctx,
                                     const IteratorBase* parent) {
   parent_ = parent;
@@ -438,36 +571,46 @@ Status GetCompressedElementFromVariantTensor(
 
 int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64_t allocated_bytes = 0;
-  DatasetBase* dataset;
-  const CompressedElement* compressed_element;
   for (auto& tensor : element) {
-    if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
-      allocated_bytes += dataset->AllocatedBytes();
-    } else if (GetCompressedElementFromVariantTensor(tensor,
-                                                     &compressed_element)
-                   .ok()) {
-      allocated_bytes += compressed_element->ByteSizeLong();
-    } else {
-      allocated_bytes += tensor.AllocatedBytes();
+    if (tensor.dtype() == DT_VARIANT) {
+      // Special case certain variants where AllocatedBytes() doesn't give an
+      // accurate byte count.
+      DatasetBase* dataset;
+      if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+        allocated_bytes += dataset->AllocatedBytes();
+        continue;
+      }
+      const CompressedElement* compressed_element;
+      if (GetCompressedElementFromVariantTensor(tensor, &compressed_element)
+              .ok()) {
+        allocated_bytes += compressed_element->ByteSizeLong();
+        continue;
+      }
     }
+    allocated_bytes += tensor.AllocatedBytes();
   }
   return allocated_bytes;
 }
 
 int64_t GetTotalBytes(const std::vector<Tensor>& element) {
   int64_t total_bytes = 0;
-  DatasetBase* dataset;
-  const CompressedElement* compressed_element;
   for (auto& tensor : element) {
-    if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
-      total_bytes += dataset->TotalBytes();
-    } else if (GetCompressedElementFromVariantTensor(tensor,
-                                                     &compressed_element)
-                   .ok()) {
-      total_bytes += compressed_element->ByteSizeLong();
-    } else {
-      total_bytes += tensor.TotalBytes();
+    if (tensor.dtype() == DT_VARIANT) {
+      // Special case certain variants where TotalBytes() doesn't give an
+      // accurate byte count.
+      DatasetBase* dataset;
+      if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+        total_bytes += dataset->TotalBytes();
+        continue;
+      }
+      const CompressedElement* compressed_element;
+      if (GetCompressedElementFromVariantTensor(tensor, &compressed_element)
+              .ok()) {
+        total_bytes += compressed_element->ByteSizeLong();
+        continue;
+      }
     }
+    total_bytes += tensor.TotalBytes();
   }
   return total_bytes;
 }
@@ -478,6 +621,22 @@ std::string FullName(const std::string& prefix, const std::string& name) {
   }
 
   return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
+}
+
+Status ExtractIteratorPrefix(StringPiece key, string* prefix) {
+  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
+    return errors::InvalidArgument("Key: ", key,
+                                   " was not generated using full_name.");
+  }
+  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
+  if (split_keys.size() != 2) {
+    return errors::InvalidArgument("Key: ", key,
+                                   " was not generated using full_name.");
+  }
+  string real_key = split_keys[1];
+  const int pos = real_key.rfind(kColon);
+  *prefix = real_key.substr(0, pos);
+  return OkStatus();
 }
 
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
@@ -604,11 +763,11 @@ void MergeOptions(const protobuf::MessageLite& source,
 void DatasetBase::Initialize(const Metadata& metadata) {
   Status s = ComputeNumSources();
   if (!s.ok()) {
-    LOG(ERROR) << s;
+    LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   s = MergeOptionsFromInputs();
   if (!s.ok()) {
-    LOG(ERROR) << s;
+    LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   metadata_ = metadata;
   if (metadata_.name() == "") {
@@ -622,9 +781,7 @@ Status DatasetBase::ComputeNumSources() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
-    return errors::Unimplemented(
-        "Cannot compute input sources for dataset of type ", type_string(),
-        ", because the dataset does not implement `InputDatasets`.");
+    return s;
   }
   if (num_sources_ >= 0) {
     // Already computed.
@@ -686,9 +843,7 @@ Status DatasetBase::MergeOptionsFromInputs() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
-    return errors::Unimplemented(
-        "Cannot merge options for dataset of type ", type_string(),
-        ", because the dataset does not implement `InputDatasets`.");
+    return s;
   }
   if (inputs.empty()) {
     return OkStatus();
@@ -757,7 +912,8 @@ Status DatasetBase::MakeSplitProviders(
 int64_t DatasetBase::Cardinality() const {
   mutex_lock l(cardinality_mu_);
   if (cardinality_ == kUnknownCardinality) {
-    cardinality_ = CardinalityInternal();
+    CardinalityOptions options;
+    cardinality_ = CardinalityInternal(options);
   }
   return cardinality_;
 }
@@ -772,8 +928,11 @@ int64_t DatasetBase::Cardinality(CardinalityOptions options) const {
 
 Status DatasetBase::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
-  return errors::Unimplemented("InputDatasets not implemented for ",
-                               type_string());
+  return errors::Unimplemented(
+      "Cannot compute input sources for dataset of type ", type_string(),
+      ", because the dataset does not implement `InputDatasets`. To fix this, "
+      "your dataset should override the `InputDatasets` method. If it is a "
+      "source dataset, it should return empty inputs.");
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
@@ -864,6 +1023,9 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.NumElements() == 0) {
+    return errors::InvalidArgument("Empty resouce handle");
+  }
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
   if (ctx->device_name() != handle.device()) {
     return errors::InvalidArgument("Trying to access resource ", handle.name(),
@@ -914,6 +1076,17 @@ string DatasetBaseIterator::BuildTraceMeName() {
   for (const auto& pair : metadata) {
     strings::StrAppend(&result, ",", pair.first, "=", pair.second);
   }
+  if (model_node() != nullptr) {
+    if (model_node()->buffered_elements() > 0) {
+      strings::StrAppend(
+          &result, ",buffered_elements=",
+          static_cast<long long>(model_node()->buffered_elements()));
+      strings::StrAppend(
+          &result, ",buffered_bytes_MB=",
+          static_cast<long long>(
+              static_cast<double>(model_node()->buffered_bytes()) * 1e-6));
+    }
+  }
   strings::StrAppend(&result, "#");
   return result;
 }
@@ -921,15 +1094,23 @@ string DatasetBaseIterator::BuildTraceMeName() {
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
                                     bool* end_of_sequence) {
+  activity_watcher::ActivityScope activity_scope([&]() {
+    activity_watcher::Activity::Attributes attributes;
+    attributes["iterator_prefix"] = prefix();
+    return std::make_unique<activity_watcher::Activity>(
+        "Iterator::GetNext", activity_watcher::ActivityCategory::kDatasetOp,
+        std::move(attributes));
+  });
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
-    auto output = node_->output();
-    if (output) {
-      output->record_stop(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
   }
@@ -953,9 +1134,8 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
-    auto output = node_->output();
-    if (output) {
-      output->record_start(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_start(now_nanos);
     }
   }
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
@@ -963,7 +1143,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " GetNext exit";
@@ -976,10 +1156,12 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
@@ -989,7 +1171,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_start(now_nanos);
     }
   }
@@ -998,7 +1180,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " Skip exit";

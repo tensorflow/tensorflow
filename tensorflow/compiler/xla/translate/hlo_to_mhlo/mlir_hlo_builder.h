@@ -20,19 +20,23 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -43,7 +47,7 @@ namespace xla {
 // method or constructed using MakeXlaOp method in this builder.
 //
 // TODO(hinsu): Support more ops and utility functions to set special attributes
-// like OpMetadata and Sharding.
+// like OpMetadata.
 class MlirHloBuilder : public XlaBuilder {
  public:
   // Constructs builder for the given function. New operations are added to the
@@ -119,6 +123,11 @@ class MlirHloBuilder : public XlaBuilder {
   OpTy create(Args&&... args) {
     return builder_.create<OpTy>(loc_, std::forward<Args>(args)...);
   }
+
+  // Sets the FrontendAttributes that will be added to all instructions until
+  // cleared.
+  void SetFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) override;
 
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
@@ -289,6 +298,7 @@ class MlirHloBuilder : public XlaBuilder {
       const HloModuleProto& computation);
 
   mlir::OpBuilder builder_;
+  mlir::DictionaryAttr frontend_attributes_;
   mlir::Location loc_;
   bool build_functions_;
 

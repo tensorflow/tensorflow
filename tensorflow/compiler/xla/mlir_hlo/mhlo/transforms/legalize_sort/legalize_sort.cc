@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
@@ -66,7 +66,7 @@ Value emitComparison(ImplicitLocOpBuilder& b, SmallVector<Value>& lhs,
   assert(block.getTerminator()->getOperands().size() == 1 &&
          "Comparator must return a single value");
 
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (auto [idx, arg] : llvm::enumerate(comparator.getArguments())) {
     Value value = idx % 2 == 0 ? lhs[idx / 2] : rhs[idx / 2];
     Type type = RankedTensorType::get({}, value.getType());
@@ -416,8 +416,8 @@ struct Slicer {
 
   MemRefType toSlicedType(MemRefType sourceType) {
     return memref::SubViewOp::inferRankReducedResultType(
-               {ShapedType::kDynamicSize} /*1D output*/, sourceType, offsets,
-               sizes, strides)
+               {ShapedType::kDynamic} /*1D output*/, sourceType, offsets, sizes,
+               strides)
         .cast<MemRefType>();
   }
 
@@ -541,7 +541,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     SmallVector<Value> outputTensors;
     for (auto [out0, out1] : llvm::zip(outputMemrefs, scratchMemrefs)) {
       outputTensors.push_back(b.create<bufferization::ToTensorOp>(
-          b.create<SelectOp>(parity, out1, out0)));
+          b.create<SelectOp>(parity, out1, out0), /*restrict=*/true));
     }
 
     rewriter.replaceOp(op, outputTensors);

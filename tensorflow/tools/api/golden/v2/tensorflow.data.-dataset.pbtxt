@@ -140,7 +140,7 @@ tf_class {
   }
   member_method {
     name: "sample_from_datasets"
-    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\', \'rerandomize_each_iteration\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "save"
@@ -196,6 +196,6 @@ tf_class {
   }
   member_method {
     name: "zip"
-    argspec: "args=[\'datasets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'datasets\', \'name\'], varargs=args, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }

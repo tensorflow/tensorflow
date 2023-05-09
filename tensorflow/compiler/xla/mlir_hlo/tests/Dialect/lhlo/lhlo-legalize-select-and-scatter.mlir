@@ -35,15 +35,15 @@ func.func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK: ^bb0(%[[ARG_BUF:.*]]: memref<112x112xf32>, %[[SRC_BUF:.*]]: memref<56x56xf32>, %[[INIT_BUF:.*]]: memref<f32>, %[[RESULT_BUF:.*]]: memref<112x112xf32>):
 
 // Constants.
-// CHECK-DAG: %[[C0_F32:.*]] = "arith.constant"() {value = 0.000000e+00 : f32}
-// CHECK-DAG: %[[C0:.*]] = "arith.constant"() {value = 0 : index}
-// CHECK-DAG: %[[C1:.*]] = "arith.constant"() {value = 1 : index}
-// CHECK-DAG: %[[C2:.*]] = "arith.constant"() {value = 2 : index}
-// CHECK-DAG: %[[C3:.*]] = "arith.constant"() {value = 3 : index}
-// CHECK-DAG: %[[C56:.*]] = "arith.constant"() {value = 56 : index}
-// CHECK-DAG: %[[C112:.*]] = "arith.constant"() {value = 112 : index}
-// CHECK-DAG: %[[CFALSE:.*]] = "arith.constant"() {value = false}
-// CHECK-DAG: %[[CTRUE:.*]] = "arith.constant"() {value = true}
+// CHECK-DAG: %[[C0_F32:.*]] = "arith.constant"() <{value = 0.000000e+00 : f32}>
+// CHECK-DAG: %[[C0:.*]] = "arith.constant"() <{value = 0 : index}>
+// CHECK-DAG: %[[C1:.*]] = "arith.constant"() <{value = 1 : index}>
+// CHECK-DAG: %[[C2:.*]] = "arith.constant"() <{value = 2 : index}>
+// CHECK-DAG: %[[C3:.*]] = "arith.constant"() <{value = 3 : index}>
+// CHECK-DAG: %[[C56:.*]] = "arith.constant"() <{value = 56 : index}>
+// CHECK-DAG: %[[C112:.*]] = "arith.constant"() <{value = 112 : index}>
+// CHECK-DAG: %[[CFALSE:.*]] = "arith.constant"() <{value = false}>
+// CHECK-DAG: %[[CTRUE:.*]] = "arith.constant"() <{value = true}>
 
 // Parallel loop to initialize the output buffer.
 // CHECK: %[[INIT:.*]] = "memref.load"(%[[INIT_BUF]]) : (memref<f32>) -> f32
@@ -131,7 +131,7 @@ func.func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK: }
 
 // Use selected ivs to load element from the SRC buffer.
-// CHECK: %[[SRC_ELEM:.*]] = "memref.load"(%[[SRC_BUF]], %[[II]], %[[JJ]]) : (memref<56x56xf32>, index, index) -> f32
+// CHECK: %[[SRC_ELEM:.*]] = "memref.load"(%[[SRC_BUF]], %[[II]], %[[JJ]]) {nontemporal = false} : (memref<56x56xf32>, index, index) -> f32
 
 // Update of RESULT[SELECTED_I, SELECTED_J] should be done atomically, because
 // it may happen that several other threads select the same IVs if the windows

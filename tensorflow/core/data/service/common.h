@@ -16,10 +16,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_COMMON_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
@@ -30,12 +32,30 @@ namespace data {
 
 // Increment this when making backwards-incompatible changes to communication
 // between tf.data clients and servers.
-constexpr int kDataServiceVersion = 6;
+constexpr int kDataServiceVersion = 7;
 
 // If the user starts a colocated tf.data worker on each TF host, the worker
 // will be applied a "COLOCATED" tag. This is used to avoid reading from tf.data
 // workers on other TF hosts when the host runs a local tf.data service worker.
 constexpr absl::string_view kColocatedWorkerTag = "COLOCATED";
+
+// Container to hold the result of a `GetNext` call.
+struct GetNextResult final {
+  explicit GetNextResult() = default;
+  GetNextResult(const GetNextResult&) = delete;
+  GetNextResult& operator=(const GetNextResult&) = delete;
+  GetNextResult(GetNextResult&&) = default;
+  GetNextResult& operator=(GetNextResult&&) = delete;
+
+  static GetNextResult EndOfSequence() {
+    GetNextResult result;
+    result.end_of_sequence = true;
+    return result;
+  }
+
+  std::vector<Tensor> tensors;
+  bool end_of_sequence = false;
+};
 
 // Returns true if `processing_mode` specifies no sharding policy.
 bool IsNoShard(const ProcessingModeDef& processing_mode);
@@ -84,7 +104,7 @@ class DataServiceClientBase {
   // first RPC will perform any necessary initialization. However, it can be
   // useful to call `Initialize()` proactively so that any errors that happen
   // during initialization can be surfaced earlier.
-  Status Initialize() { return EnsureInitialized(); }
+  virtual Status Initialize() { return EnsureInitialized(); }
 
  protected:
   // Initializes the client if it isn't already initialized.

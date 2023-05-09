@@ -32,12 +32,14 @@ enum PrimitiveType {
   PRED = 1;
 
   // Signed integral values of fixed width.
+  S4 = 21;
   S8 = 2;
   S16 = 3;
   S32 = 4;
   S64 = 5;
 
   // Unsigned integral values of fixed width.
+  U4 = 22;
   U8 = 6;
   U16 = 7;
   U32 = 8;
@@ -56,6 +58,29 @@ enum PrimitiveType {
   BF16 = 16;
 
   F64 = 12;
+
+  // FP8 dtypes, as described in this paper: https://arxiv.org/abs/2209.05433
+  //
+  // F8E5M2 has 5 exponent bits and 2 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
+  // F8E4M3FN has 4 exponent bits and 3 mantissa bits. The "FN" means only
+  // Finite and NaN values are supported. Unlike IEEE types, infinities are not
+  // supported.  NaN is represented when the exponent and mantissa bits are all
+  // 1s. All other values are finite.
+  //
+  // F8E4M3B11FNUZ has 4 exponent bits and 3 mantissa bits and a bias of 11. The
+  // "FNUZ" means only Finite and NaN values are supported; zero is unsigned.
+  // Unlike IEEE types, infinities are not supported.  NaN is represented when
+  // the exponent and mantissa bits are all 0s with a sign bit of 1. All other
+  // values are finite.
+  //
+  // Support for these dtypes is under development. They do not yet work
+  // properly in most cases.
+  // TODO(b/259609697): Fully support FP8.
+  F8E5M2 = 19;
+  F8E4M3FN = 20;
+  F8E4M3B11FNUZ = 23;
 
   // Complex values of fixed width.
   C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
@@ -82,7 +107,7 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 19
+  // Next = 24
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
@@ -122,6 +147,10 @@ enum DimLevelType {
   // The corresponding dimension contains a single coordinate, no sibling
   // elements for each parent.
   DIM_SINGLETON = 2;
+  // The corresponding dimension is Compressed, but with potential trailing
+  // zeros, thus an extra upper bound (high) is used to exclude those zeros.
+  // E.g., indices = [1, 2, 0, 0, 3, 4, 0, 0], position = [(0, 2), (4, 6)].
+  DIM_COMPRESSED_WITH_HI = 3;
 }
 
 // Describes a tile used in tiling-based layout. Refer to
@@ -188,6 +217,11 @@ message LayoutProto {
   // The layout(s) contained within the physical shape should not also contain
   // a physical shape.
   ShapeProto physical_shape = 10;
+
+  // The dynamic shape metadata size in bytes in front of the shape data. The
+  // field may be non-zero for a static shape whose associated buffer is for a
+  // dynamic shape, e.g. a result of SliceToDynamic.
+  int64 dynamic_shape_metadata_prefix_bytes = 15;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
@@ -352,6 +386,14 @@ message OpMetadata {
   ProfileInfo profile_info = 10;
 
   reserved 11;
+
+  // Deduplicated HLO name for this op. In some cases, we can have multiple
+  // instructions (e.g. fusions) that are considered duplicates. We want to
+  // group them together under the same name so that we can group them together
+  // during analysis (e.g. HLO Op Profile tool in Xprof).
+  // E.g. If we have fusion.1, fusion.2, and fusion.3 marked as duplicates,
+  // fusion.2 and fusion.3 will have deduplicated_name = fusion.1
+  string deduplicated_name = 12;
 }
 
 // Profile data from the execution of a computation.
@@ -457,6 +499,8 @@ message DeviceAssignmentProto {
 message LiteralProto {
   ShapeProto shape = 1;
   repeated bool preds = 2;
+  bytes s4s = 21;
+  bytes u4s = 22;
   bytes s8s = 15;
   bytes u8s = 3;
   repeated int32 s32s = 4;
@@ -473,8 +517,11 @@ message LiteralProto {
   bytes bf16s = 13;
   bytes u16s = 16;
   bytes s16s = 17;
+  bytes f8e5m2s = 19;
+  bytes f8e4m3fns = 20;
+  bytes f8e4m3b11fnuzs = 23;
   repeated int64 sparse_indices = 14;
-  // Next = 19
+  // Next = 24
 }
 
 message WindowDimension {

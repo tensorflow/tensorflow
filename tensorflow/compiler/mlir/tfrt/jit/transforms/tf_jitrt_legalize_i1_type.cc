@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include "mlir/Transforms/DialectConversion.h"
@@ -27,7 +28,6 @@ namespace tensorflow {
 using llvm::APInt;
 using llvm::ArrayRef;
 using llvm::dyn_cast;
-using llvm::Optional;
 using llvm::SmallVector;
 using mlir::ConversionPattern;
 using mlir::ConversionPatternRewriter;
@@ -53,13 +53,13 @@ using mlir::func::FuncOp;
 #define GEN_PASS_DEF_JITRTLEGALIZEI1TYPES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
-static Optional<Type> PromoteI1ToI8(Type input_type) {
+static std::optional<Type> PromoteI1ToI8(Type input_type) {
   if (auto integer_type = input_type.dyn_cast<IntegerType>()) {
     if (integer_type.getWidth() == 1)
       return integer_type.scaleElementBitwidth(8);
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 /// TypeConverter that turns 'i1' tensors into 'i8' tensors.
@@ -71,7 +71,7 @@ class I1TypeConverter : public mlir::TypeConverter {
     // Catch-all type conversion.
     addConversion([](Type type) { return type; });
 
-    addConversion([](RankedTensorType tensor_type) -> Optional<Type> {
+    addConversion([](RankedTensorType tensor_type) -> std::optional<Type> {
       auto maybe_promoted_i8_type = PromoteI1ToI8(tensor_type.getElementType());
       if (!maybe_promoted_i8_type) return tensor_type;
       return RankedTensorType::get(tensor_type.getShape(),

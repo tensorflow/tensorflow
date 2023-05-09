@@ -24,26 +24,27 @@ limitations under the License.
 class StatusHelper {
  public:
   StatusHelper()
-      : c_status(tensorflow::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
+      : c_status(stream_executor::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
 
   ~StatusHelper() {
-    tensorflow::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
+    stream_executor::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
   }
 
   static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
       TF_Status* const c_status) {
-    if (tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
+    if (stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
       return ::tsl::OkStatus();
     } else {
       return tsl::Status(  // TENSORFLOW_STATUS_OK
-          tsl::error::Code(
-              tensorflow::tpu::ExecutorApiFn()->TpuStatus_CodeFn(c_status)),
-          tensorflow::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
+          absl::StatusCode(
+              stream_executor::tpu::ExecutorApiFn()->TpuStatus_CodeFn(
+                  c_status)),
+          stream_executor::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
     }
   }
 
   bool ok() const {
-    return tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status);
+    return stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status);
   }
 
   tsl::Status status() const {  // TENSORFLOW_STATUS_OK

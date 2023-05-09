@@ -3,7 +3,7 @@ load("//tensorflow/lite/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION", "strip_common_in
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 package(
-    default_applicable_licenses = ["//tensorflow:license"],  # copybara:comment
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 

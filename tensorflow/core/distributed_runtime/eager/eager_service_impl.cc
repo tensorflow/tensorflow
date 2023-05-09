@@ -35,10 +35,12 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+#include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -233,21 +235,27 @@ Status ResetAgentAndConnectToCoordinationService(
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
+  bool update_collective_executor_mgr = false;
   {
     mutex_lock l(contexts_mu_);
-    auto context_it = contexts_.find(request->context_id());
-    if (context_it != contexts_.end()) {
-      if (request->context_view_id() <
-          context_it->second->Context()->GetContextViewId()) {
-        return errors::InvalidArgument("EagerService:CreateContext failed. ",
-                                       "Context id: <", request->context_id(),
-                                       "> already exists.");
-      } else {
-        // For existing context with a stale context_view_id, close the old one
-        // and recreate with new view id. This is likely due to the worker
-        // disconnected and then reconnected after one or more cluster updates.
-        context_it->second->Unref();
-        contexts_.erase(context_it);
+    if (contexts_.empty()) {
+      update_collective_executor_mgr = true;
+    } else {
+      auto context_it = contexts_.find(request->context_id());
+      if (context_it != contexts_.end()) {
+        if (request->context_view_id() <
+            context_it->second->Context()->GetContextViewId()) {
+          return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                         "Context id: <", request->context_id(),
+                                         "> already exists.");
+        } else {
+          // For existing context with a stale context_view_id, close the old
+          // one and recreate with new view id. This is likely due to the worker
+          // disconnected and then reconnected after one or more cluster
+          // updates.
+          context_it->second->Unref();
+          contexts_.erase(context_it);
+        }
       }
     }
   }
@@ -257,7 +265,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
 
-  auto* r = env_->rendezvous_mgr->Find(request->context_id());
+  tsl::core::RefCountPtr<RemoteRendezvous> r =
+      env_->rendezvous_mgr->Find(request->context_id());
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
   if (VLOG_IS_ON(2)) {
@@ -276,7 +285,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     auto s = env_->session_mgr->DeleteSession(session_name);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to destroy worker session '" << session_name
-                   << "' due to " << s.error_message();
+                   << "' due to " << s.message();
     }
   };
 
@@ -291,9 +300,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   // Set the rendezvous as context-global instance for eager op-by-op execution.
   r->SetRemoteEagerContextDefault();
 
-  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
-      [worker_session, this](const int64_t step_id) {
-        auto* r = env_->rendezvous_mgr->Find(step_id);
+  std::function<tsl::core::RefCountPtr<Rendezvous>(const int64_t)>
+      rendezvous_creator = [worker_session, this](const int64_t step_id) {
+        tsl::core::RefCountPtr<RemoteRendezvous> r =
+            env_->rendezvous_mgr->Find(step_id);
         r->Initialize(worker_session.get()).IgnoreError();
         return r;
       };
@@ -303,10 +313,24 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
             << port::Hostname() << " " << worker_session->worker_name();
   SessionOptions opts;
   opts.config = request->server_def().default_session_config();
+
+  LOG(INFO) << "SessionOptions: " << opts.config.DebugString();
+
+  if (update_collective_executor_mgr) {
+    // Replace the collective execution manager in worker env. This ensures
+    // this newly create EagerContext and the worker service agrees about the
+    // leader and type (RPC / local) of the collectives.
+    // Other EagerContexts are broken if they disagree with the worker service.
+    env_->collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
+        opts.config, device_mgr, MaybeCreateNcclCommunicator(opts.config),
+        worker_session->worker_cache(), worker_session->worker_name());
+  }
+
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, worker_session->cluster_flr(),
-      env_->collective_executor_mgr.get());
+      request->async(), device_mgr, false, std::move(r),
+      worker_session->cluster_flr(), env_->collective_executor_mgr.get());
+
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -356,7 +380,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     preemption_notifier->WillBePreemptedAtAsync(
         [coord_agent](StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
-            const auto& coord_task = coord_agent->GetOwnTask().value();
+            const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
                 "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
                 absl::StrCat("/job:", coord_task.job_name(),
@@ -547,7 +571,7 @@ void EagerServiceImpl::RunComponentFunction(
     delete num_retvals;
     delete op;
     done(errors::Internal("Error setting is_component_function attribute: ",
-                          s.error_message()));
+                          s.message()));
     return;
   }
 
@@ -600,10 +624,7 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
   TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
       operation, eager_context, eager_executor, &op, &num_retvals));
 
-  // Shard the CancellationManager so that it won't become a bottleneck in
-  // rendezvous.
-  auto cm =
-      std::make_shared<CancellationManager>(env_->experimental_num_shards);
+  auto cm = std::make_shared<CancellationManager>();
   if (call_opts) {
     op.SetCancellationManager(cm.get());
     call_opts->SetCancelCallback([cm] { cm->StartCancel(); });
@@ -668,6 +689,8 @@ Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
       s = SendPackedHandle(item.send_packed_handle(), context->Context());
     } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
+    } else if (item.has_remove_function()) {
+      s = RemoveFunction(item.remove_function(), context->Context());
     } else if (item.has_cleanup_function()) {
       s = CleanupFunction(item.cleanup_function());
     } else {
@@ -749,6 +772,11 @@ Status EagerServiceImpl::RegisterFunction(
   return eager_context->AddFunctionDef(
       register_function.function_def(), register_function.library(),
       register_function.is_component_function());
+}
+
+Status EagerServiceImpl::RemoveFunction(const RemoveFunctionOp& remove_function,
+                                        EagerContext* eager_context) {
+  return eager_context->RemoveFunction(remove_function.function_name());
 }
 
 Status EagerServiceImpl::CleanupFunction(

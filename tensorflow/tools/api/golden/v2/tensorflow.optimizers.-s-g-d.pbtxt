@@ -18,6 +18,10 @@ tf_class {
     name: "lr"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'learning_rate\', \'momentum\', \'nesterov\', \'weight_decay\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.01\', \'0.0\', \'False\', \'None\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'SGD\'], "
@@ -63,8 +67,16 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "minimize"
     argspec: "args=[\'self\', \'loss\', \'var_list\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "save_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"
@@ -73,9 +85,5 @@ tf_class {
   member_method {
     name: "update_step"
     argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "variables"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

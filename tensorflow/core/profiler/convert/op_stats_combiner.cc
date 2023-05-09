@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/topology.pb.h"
@@ -90,7 +91,6 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     dst->set_replica_count(std::max(src.replica_count(), dst->replica_count()));
     dst->set_num_cores_per_replica(
         std::max(src.num_cores_per_replica(), dst->num_cores_per_replica()));
-    *dst->mutable_topology() = src.topology();
     *dst->mutable_system_topology() = src.system_topology();
   } else if (dst->device_type().empty()) {
     dst->set_device_type(src.device_type());
@@ -106,8 +106,13 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
 // Combines the src PerfEnv into the dst PerfEnv.
 void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
   dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
-  dst->set_peak_hbm_bw_giga_bytes_per_second(
-      src.peak_hbm_bw_giga_bytes_per_second());
+  if (src.peak_bws_giga_bytes_per_second_size() > 0) {
+    for (int i = MemBwType::MEM_BW_TYPE_FIRST; i <= MemBwType::MEM_BW_TYPE_MAX;
+         ++i) {
+      dst->add_peak_bws_giga_bytes_per_second(
+          src.peak_bws_giga_bytes_per_second(i));
+    }
+  }
   dst->set_ridge_point(src.ridge_point());
 }
 

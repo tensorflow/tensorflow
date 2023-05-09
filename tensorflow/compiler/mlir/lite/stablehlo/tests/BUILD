@@ -12,6 +12,9 @@ package(
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir/lite/stablehlo:run_lit.sh",
+    size_override = {
+        "legalize-skip-quantization-ops.mlir": "medium",
+    },
     test_file_exts = [
         "mlir",
         "cc",
@@ -25,8 +28,8 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
+        "//tensorflow/compiler/mlir/lite/stablehlo:odml-to-stablehlo-opt",
         "//tensorflow/compiler/mlir/lite/stablehlo:odml_to_stablehlo",
-        "//tensorflow/compiler/mlir/lite/stablehlo:tf-mhlo-tfl-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//mlir:run_lit.sh",
     ],

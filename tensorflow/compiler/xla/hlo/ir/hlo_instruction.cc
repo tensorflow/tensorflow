@@ -19,11 +19,14 @@ limitations under the License.
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <list>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -43,10 +46,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -234,8 +238,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kCopyStart: {
-      instruction = CreateCopyStart(shape, operands(0),
-                                    proto.is_cross_program_prefetch());
+      std::optional<int> cross_program_prefetch_index;
+      if (proto.optional_cross_program_prefetch_index_case() ==
+          HloInstructionProto::kCrossProgramPrefetchIndex) {
+        cross_program_prefetch_index =
+            std::make_optional(proto.cross_program_prefetch_index());
+
+        // Silently upgrade HLO protos using the old field.
+      } else if (proto.is_cross_program_prefetch()) {
+        cross_program_prefetch_index = 0;
+      }
+
+      instruction =
+          CreateCopyStart(shape, operands(0), cross_program_prefetch_index);
       break;
     }
     case HloOpcode::kCompare: {
@@ -593,7 +608,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               shape, operands(0), source_target_pairs, channel_id);
         } else {
           LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
-                     << "but got " << HloOpcodeString(opcode);
+                     << "but got " << opcode;
         }
       } else {
         std::vector<std::vector<int64_t>> slice_sizes;
@@ -678,7 +693,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               source_target_pairs, slice_sizes, channel_id);
         } else {
           LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
-                     << "but got " << HloOpcodeString(opcode);
+                     << "but got " << opcode;
         }
       }
       break;
@@ -1026,7 +1041,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
-    int64_t parameter_number, const Shape& shape, const std::string& name) {
+    int64_t parameter_number, const Shape& shape, absl::string_view name) {
   return std::make_unique<HloParameterInstruction>(parameter_number, shape,
                                                    name);
 }
@@ -1121,10 +1136,10 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
+    case HloOpcode::kTan:
       break;
     default:
-      LOG(FATAL) << "Invalid unary instruction opcode "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "Invalid unary instruction opcode " << opcode;
   }
   return CreateNary(shape, opcode, {operand});
 }
@@ -1154,8 +1169,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kStochasticConvert:
       break;
     default:
-      LOG(FATAL) << "Invalid binary instruction opcode "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "Invalid binary instruction opcode " << opcode;
   }
   return CreateNary(shape, opcode, {lhs, rhs});
 }
@@ -1170,8 +1184,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kSelect:
       break;
     default:
-      LOG(FATAL) << "Invalid ternary instruction opcode "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "Invalid ternary instruction opcode " << opcode;
   }
   return CreateNary(shape, opcode, {lhs, rhs, ehs});
 }
@@ -1235,9 +1248,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
     const Shape& shape, HloInstruction* operand,
-    bool is_cross_program_prefetch) {
+    std::optional<int> cross_program_prefetch) {
   return std::make_unique<HloCopyStartInstruction>(shape, operand,
-                                                   is_cross_program_prefetch);
+                                                   cross_program_prefetch);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
@@ -1727,7 +1740,7 @@ HloInstruction::CreateBroadcastSequence(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {});
     broadcast->set_metadata(operand->metadata());
     if (operand->has_sharding()) {
-      broadcast->set_sharding(operand->sharding());
+      broadcast->copy_sharding(operand);
     }
     broadcast->set_frontend_attributes(operand->frontend_attributes());
     return broadcast;
@@ -1753,7 +1766,7 @@ HloInstruction::CreateBroadcastSequence(
       operand));
   reshaped_operand->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
-    reshaped_operand->set_sharding(operand->sharding());
+    reshaped_operand->copy_sharding(operand);
   }
   reshaped_operand->set_frontend_attributes(operand->frontend_attributes());
   // Broadcast 'reshape' up to the larger size.
@@ -1761,7 +1774,7 @@ HloInstruction::CreateBroadcastSequence(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
   broadcast->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
-    broadcast->set_sharding(operand->sharding());
+    broadcast->copy_sharding(operand);
   }
   broadcast->set_frontend_attributes(operand->frontend_attributes());
   return broadcast;
@@ -2122,6 +2135,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -2260,7 +2274,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
-    clone->name_ = name();
+    clone->name_.assign(name().begin(), name().end());
   } else {
     // If an instruction is cloned multiple times avoid names like
     // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
@@ -2270,14 +2284,14 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
     size_t index = name().rfind(dot_suffix);
     if (index == std::string::npos) {
       // Existing name does not include ".suffix".
-      clone->name_ = name() + dot_suffix;
+      clone->name_ = absl::StrCat(name(), dot_suffix);
     } else {
       // Existing name includes ".suffix". Determine if substring after
       // ".suffix" is numeric and should be replaced with an incremented number.
-      std::string after_suffix = name().substr(index + dot_suffix.size());
+      auto after_suffix = name().substr(index + dot_suffix.size());
       if (after_suffix.empty()) {
         // Existing name ends in ".suffix". New name should end in ".suffix2".
-        clone->name_ = name() + "2";
+        clone->name_ = absl::StrCat(name(), "2");
       } else {
         // If names ends with .suffix[0-9]+ then replace with a suffix with the
         // numeric value incremented.
@@ -2287,7 +2301,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
               StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
         } else {
           // Substring after ".suffix" is non-numeric.
-          clone->name_ = name() + dot_suffix;
+          clone->name_ = absl::StrCat(name(), dot_suffix);
         }
       }
     }
@@ -2387,6 +2401,21 @@ Status HloInstruction::DropAllControlDeps() {
   return OkStatus();
 }
 
+Status HloInstruction::SafelyDropAllControlDependencies() {
+  // Add all pairs of transitive dependencies from predecessors to successors.
+  for (HloInstruction* predecessor : control_predecessors_) {
+    for (HloInstruction* successor : control_successors_) {
+      TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(successor));
+    }
+  }
+  TF_RETURN_IF_ERROR(DropAllControlDeps());
+  return OkStatus();
+}
+
+bool HloInstruction::HasControlDependencies() const {
+  return !control_predecessors_.empty() || !control_successors_.empty();
+}
+
 Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
   for (auto* ctrl_pred : inst->control_predecessors()) {
     TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(this));
@@ -2405,20 +2434,25 @@ bool HloInstruction::IdenticalInternal(
         eq_operands,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations,
-    bool layout_sensitive, bool ignore_channel_id_values,
+    bool layout_sensitive, bool sharding_sensitive,
+    bool ignore_channel_id_values,
     bool ignore_commutative_operand_order) const {
   // An instruction is always identical to itself.
   if (this == &other) {
     return true;
   }
 
-  // Identical instruction must have the same opcode, shape, and identical
-  // operands.
+  // Identical instruction must have the same opcode, shape, shardings and
+  // identical operands.
   if (opcode() != other.opcode()) {
     return false;
   }
   if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
                          : ShapeUtil::Compatible(shape(), other.shape()))) {
+    return false;
+  }
+  if (sharding_sensitive && has_sharding() && other.has_sharding() &&
+      sharding() != other.sharding()) {
     return false;
   }
   if (operands().size() != other.operands().size()) {
@@ -2579,6 +2613,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
       return true;
@@ -2839,23 +2874,20 @@ bool HloInstruction::IsEffectiveBitcast() const {
 HloComputation* HloInstruction::to_apply() const {
   if (has_to_apply()) {
     CHECK_EQ(called_computations_.size(), 1)
-        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+        << "Expected a to_apply computation for " << opcode();
     return called_computations_[0];
   }
-  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << opcode();
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   if (has_to_apply()) {
     CHECK_EQ(called_computations_.size(), 1)
-        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+        << "Expected a to_apply computation for " << opcode();
     called_computations_[0] = computation;
     return;
   }
-  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << opcode();
 }
 
 bool HloInstruction::has_to_apply() const {
@@ -2890,17 +2922,11 @@ HloComputation* HloInstruction::while_body() const {
 }
 
 void HloInstruction::set_while_condition(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kConditionComputationIndex] = computation;
 }
 
 void HloInstruction::set_while_body(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kBodyComputationIndex] = computation;
 }
@@ -2942,9 +2968,6 @@ HloComputation* HloInstruction::branch_computation(int b) const {
 
 void HloInstruction::set_branch_computation(int b,
                                             HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kConditional, opcode_);
   called_computations_[b] = computation;
 }
@@ -2957,7 +2980,7 @@ std::string HloInstruction::SignatureString() const {
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
-std::string PrintName(const std::string& name, bool print_ids) {
+absl::string_view PrintName(absl::string_view name, bool print_ids) {
   if (print_ids) {
     return name;
   } else {
@@ -2970,10 +2993,12 @@ namespace {
 
 using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
 
-std::string PrintNameInternal(const std::string& name,
-                              const HloPrintOptions& options) {
-  return StrCat(options.print_percent() ? "%" : "",
-                PrintName(name, options.print_ids()));
+void PrintNameInternal(Printer* printer, absl::string_view name,
+                       const HloPrintOptions& options) {
+  if (options.print_percent()) {
+    printer->Append("%");
+  }
+  printer->Append(PrintName(name, options.print_ids()));
 }
 
 void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
@@ -2998,7 +3023,7 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
                   << absl::StrJoin(
                          dfs, "\n  ",
                          [](std::string* out, const HloInstruction* instr) {
-                           out->append(instr->name());
+                           absl::StrAppend(out, instr->name());
                          });
         return;
       }
@@ -3017,9 +3042,20 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
 
 }  // namespace
 
-std::string HloInstruction::ToString(const HloPrintOptions& options) const {
+void HloInstruction::Print(Printer* printer,
+                           const HloPrintOptions& options) const {
   CanonicalNameMap new_map;
-  return ToStringWithCanonicalNameMap(options, &new_map);
+  PrintWithCanonicalNameMap(printer, options, &new_map);
+}
+
+std::string HloInstruction::ToString(const HloPrintOptions& options) const {
+  StringPrinter printer;
+  Print(&printer, options);
+  return std::move(printer).ToString();
+}
+
+std::string HloInstruction::ToString() const {
+  return ToString(HloPrintOptions::Default());
 }
 
 bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
@@ -3052,6 +3088,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       return true;
 
@@ -3073,6 +3110,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       return true;
 
     // Ternary elementwise operations.
@@ -3106,35 +3144,36 @@ bool HloInstruction::IsCrossReplicaAllReduce() const {
   return opcode() == HloOpcode::kAllReduce && !channel_id();
 }
 
-std::string HloInstruction::ToStringWithCanonicalNameMap(
-    const HloPrintOptions& options,
+void HloInstruction::PrintWithCanonicalNameMap(
+    Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  std::string result = "";
-
   // Logic to print the instruction name (e.g. "%foo = ").
   if (options.canonicalize_instruction_names()) {
     if (options.is_in_nested_computation()) {
       // If we are canonicalizing instruction names and this is a top-level
       // HloInstruction::ToString() call, don't print an instruction name.
       DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-      StrAppend(&result, canonical_name_map->LookupOrInsert(name()), " = ");
+      printer->Append(canonical_name_map->LookupOrInsert(unique_id()));
+      printer->Append(" = ");
     }
   } else {
-    StrAppend(&result, PrintNameInternal(name(), options), " = ");
+    PrintNameInternal(printer, name(), options);
+    printer->Append(" = ");
   }
 
   if (options.print_result_shape()) {
     // Print shape.
     if (options.include_layout_in_shapes()) {
-      StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ");
+      ShapeUtil::PrintHumanStringWithLayout(printer, shape());
     } else {
-      StrAppend(&result, ShapeUtil::HumanString(shape()), " ");
+      ShapeUtil::PrintHumanString(printer, shape());
     }
+    printer->Append(" ");
   }
 
   // Print opcode, operand(s).
   if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
-    std::string suffix = [&]() {
+    absl::string_view suffix = [&]() {
       switch (opcode()) {
         case HloOpcode::kAsyncStart:
           return "-start";
@@ -3142,91 +3181,96 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
           return "-update";
         default:
           CHECK(opcode() == HloOpcode::kAsyncDone)
-              << "Unexpected async opcode: " << HloOpcodeString(opcode());
+              << "Unexpected async opcode: " << opcode();
           return "-done";
       }
     }();
-    StrAppend(&result, HloOpcodeString(async_wrapped_opcode()), suffix);
+    printer->Append(HloOpcodeString(async_wrapped_opcode()));
+    printer->Append(suffix);
   } else {
-    StrAppend(&result, HloOpcodeString(opcode()));
+    printer->Append(HloOpcodeString(opcode()));
   }
-  StrAppend(&result, "(",
-            OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
-            ")");
+  printer->Append("(");
+  PrintOperandsWithCanonicalNameMap(printer, options, canonical_name_map);
+  printer->Append(")");
 
   // Print additional attributes. If an instruction contains a subcomputation,
   // the subcomputation is also printed here.
-  for (const std::string& extra : ExtraAttributesToString(options)) {
-    StrAppend(&result, ", ", extra);
-  }
+  AttributePrinter attr_printer([printer]() {
+    printer->Append(", ");
+    return printer;
+  });
+  PrintExtraAttributes(attr_printer, options);
 
   if (options.print_metadata() &&
       (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
        !metadata_.source_file().empty())) {
-    StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
+    printer->Append(", metadata={");
+    printer->Append(xla::OpMetadataToString(metadata_));
+    printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    StrAppend(&result, ", backend_config=\"",
-              CEscape(backend_config_.GetRawString()), "\"");
+    printer->Append(", backend_config=\"");
+    printer->Append(CEscape(backend_config_.GetRawString()));
+    printer->Append("\"");
   }
-  return result;
 }
 
-std::string HloInstruction::OperandsToString(
-    const HloPrintOptions& options) const {
-  CanonicalNameMap new_map;
-  return OperandsToStringWithCanonicalNameMap(options, &new_map);
-}
-
-std::string HloInstruction::OperandsToStringWithCanonicalNameMap(
-    const HloPrintOptions& options,
+void HloInstruction::PrintOperandsWithCanonicalNameMap(
+    Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  std::string operands;
+  if (operands_.empty()) return;
   absl::Span<HloInstruction* const> slice(operands_);
-  const int64_t kMaxOperandsToShowIfCompact = 4;
+  constexpr int64_t kMaxOperandsToShowIfCompact = 4;
   if (options.compact_operands() &&
       slice.size() > kMaxOperandsToShowIfCompact) {
     slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
   }
-  for (int64_t i = 0; i < slice.size(); ++i) {
-    HloInstruction* operand = slice[i];
-    if (i != 0) {
-      StrAppend(&operands, ", ");
-      if (options.print_operand_index_annotation_interval() != 0 &&
-          i % options.print_operand_index_annotation_interval() == 0) {
-        StrAppend(&operands, absl::StrFormat("/*index=%lld*/", i));
-      }
-    }
+  auto print_one = [&](const HloInstruction* operand) {
     // If operand is already been deleted, put `null` to the string output.
     if (operand == nullptr) {
-      StrAppend(&operands, "null ");
-      continue;
+      printer->Append("null ");
+      return;
     }
-    std::vector<std::string> str;
+    bool add_space = false;
     if (options.print_operand_shape()) {
       if (options.include_layout_in_shapes()) {
-        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+        ShapeUtil::PrintHumanStringWithLayout(printer, operand->shape());
       } else {
-        str.push_back(ShapeUtil::HumanString(operand->shape()));
+        ShapeUtil::PrintHumanString(printer, operand->shape());
       }
+      add_space = true;
     }
     if (options.canonicalize_instruction_names()) {
       if (options.is_in_nested_computation()) {
         // In a top-level HloInstruction::ToString() call, the operand name is
         // not part of the canonical string.
         DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-        str.push_back(canonical_name_map->LookupOrInsert(operand->name()));
+        if (add_space) printer->Append(" ");
+        printer->Append(
+            canonical_name_map->LookupOrInsert(operand->unique_id()));
       }
     } else if (options.print_operand_names()) {
-      str.push_back(PrintNameInternal(operand->name(), options));
+      if (add_space) printer->Append(" ");
+      PrintNameInternal(printer, operand->name(), options);
     }
-    StrAppend(&operands, StrJoin(str, " "));
+  };
+  print_one(slice[0]);
+  for (int64_t i = 1; i < slice.size(); ++i) {
+    if (options.print_operand_index_annotation_interval() != 0 &&
+        i % options.print_operand_index_annotation_interval() == 0) {
+      printer->Append(absl::StrFormat(", /*index=%lld*/", i));
+    } else {
+      printer->Append(", ");
+    }
+    print_one(slice[i]);
   }
   const int64_t remaining = operands_.size() - slice.size();
-  if (slice.size() != operands_.size()) {
-    StrAppend(&operands, ", ...(+", remaining, ")");
+  if (remaining > 0) {
+    printer->Append(", ...(+");
+    printer->Append(remaining);
+    printer->Append(")");
   }
-  return operands;
 }
 
 namespace {
@@ -3244,42 +3288,52 @@ bool IsSequentialCall(HloOpcode opcode) {
 
 }  // namespace
 
-std::vector<std::string> HloInstruction::ExtraAttributesToString(
-    const HloPrintOptions& options) const {
-  std::vector<std::string> extra = options.print_extra_attributes()
-                                       ? ExtraAttributesToStringImpl(options)
-                                       : std::vector<std::string>();
+void HloInstruction::PrintExtraAttributes(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  if (options.print_extra_attributes()) {
+    PrintExtraAttributesImpl(printer, options);
+  }
 
   const auto subcomputation_mode = options.print_subcomputation_mode();
   if (subcomputation_mode ==
       HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
-      extra.push_back(StrCat(
-          "condition=", PrintNameInternal(while_condition()->name(), options)));
-      extra.push_back(
-          StrCat("body=", PrintNameInternal(while_body()->name(), options)));
+      printer.Next([this, &options](Printer* printer) {
+        printer->Append("condition=");
+        PrintNameInternal(printer, while_condition()->name(), options);
+      });
+      printer.Next([this, &options](Printer* printer) {
+        printer->Append("body=");
+        PrintNameInternal(printer, while_body()->name(), options);
+      });
     } else if (opcode() == HloOpcode::kSelectAndScatter) {
-      extra.push_back(
-          StrCat("select=", PrintNameInternal(select()->name(), options)));
-      extra.push_back(
-          StrCat("scatter=", PrintNameInternal(scatter()->name(), options)));
+      printer.Next([this, &options](Printer* printer) {
+        printer->Append("select=");
+        PrintNameInternal(printer, select()->name(), options);
+      });
+      printer.Next([this, &options](Printer* printer) {
+        printer->Append("scatter=");
+        PrintNameInternal(printer, scatter()->name(), options);
+      });
     } else if (opcode() == HloOpcode::kConditional) {
       if (operand(0)->shape().element_type() == PRED) {
-        extra.push_back(
-            StrCat("true_computation=",
-                   PrintNameInternal(true_computation()->name(), options)));
-        extra.push_back(
-            StrCat("false_computation=",
-                   PrintNameInternal(false_computation()->name(), options)));
+        printer.Next([this, &options](Printer* printer) {
+          printer->Append("true_computation=");
+          PrintNameInternal(printer, true_computation()->name(), options);
+        });
+        printer.Next([this, &options](Printer* printer) {
+          printer->Append("false_computation=");
+          PrintNameInternal(printer, false_computation()->name(), options);
+        });
       } else {
-        extra.push_back(StrCat(
-            "branch_computations={",
-            StrJoin(branch_computations(), ", ",
-                    [&](std::string* out, const HloComputation* computation) {
-                      StrAppend(
-                          out, PrintNameInternal(computation->name(), options));
-                    }),
-            "}"));
+        printer.Next([this, &options](Printer* printer) {
+          printer->Append("branch_computations={");
+          AppendJoin(printer, branch_computations(), ", ",
+                     [&](Printer* printer, const HloComputation* computation) {
+                       PrintNameInternal(printer, computation->name(), options);
+                     });
+          printer->Append("}");
+        });
       }
     } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
                opcode() == HloOpcode::kReduceWindow ||
@@ -3290,34 +3344,38 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
       if (!called_computations().empty()) {
-        extra.push_back(StrCat("to_apply=",
-                               PrintNameInternal(to_apply()->name(), options)));
+        printer.Next([this, &options](Printer* printer) {
+          printer->Append("to_apply=");
+          PrintNameInternal(printer, to_apply()->name(), options);
+        });
       }
     } else if (opcode() == HloOpcode::kCustomCall) {
       if (!called_computations().empty()) {
-        extra.push_back(StrCat(
-            "called_computations={",
-            StrJoin(called_computations(), ", ",
-                    [&](std::string* out, const HloComputation* computation) {
-                      StrAppend(
-                          out, PrintNameInternal(computation->name(), options));
-                    }),
-            "}"));
+        printer.Next([this, &options](Printer* printer) {
+          printer->Append("called_computations={");
+          AppendJoin(printer, called_computations(), ", ",
+                     [&](Printer* printer, const HloComputation* computation) {
+                       PrintNameInternal(printer, computation->name(), options);
+                     });
+          printer->Append("}");
+        });
       }
     } else if (HloOpcodeIsAsync(opcode())) {
       if (!options.syntax_sugar_async_ops()) {
-        extra.push_back(StrCat(
-            "calls=",
-            PrintNameInternal(async_wrapped_computation()->name(), options)));
+        printer.Next([this, &options](Printer* printer) {
+          printer->Append("calls=");
+          PrintNameInternal(printer, async_wrapped_computation()->name(),
+                            options);
+        });
       }
     } else if (!called_computations().empty()) {
-      extra.push_back(StrCat(
-          "calls=",
-          StrJoin(called_computations(), ", ",
-                  [&](std::string* out, const HloComputation* computation) {
-                    StrAppend(out,
-                              PrintNameInternal(computation->name(), options));
-                  })));
+      printer.Next([this, &options](Printer* printer) {
+        printer->Append("calls=");
+        AppendJoin(printer, called_computations(), ", ",
+                   [&](Printer* printer, const HloComputation* computation) {
+                     PrintNameInternal(printer, computation->name(), options);
+                   });
+      });
     }
   } else if ((subcomputation_mode ==
               HloPrintOptions::PrintSubcomputationMode::kFullBodies) ||
@@ -3328,28 +3386,45 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
     new_options.set_is_in_nested_computation(true);
     switch (opcode()) {
       case HloOpcode::kWhile:
-        extra.push_back(
-            StrCat("condition=\n", while_condition()->ToString(new_options)));
-        extra.push_back(StrCat("body=\n", while_body()->ToString(new_options)));
+        printer.Next([this, &new_options](Printer* printer) {
+          printer->Append("condition=\n");
+          while_condition()->Print(printer, new_options);
+        });
+        printer.Next([this, &new_options](Printer* printer) {
+          printer->Append("body=\n");
+          while_body()->Print(printer, new_options);
+        });
         break;
       case HloOpcode::kSelectAndScatter:
-        extra.push_back(StrCat("select=\n", select()->ToString(new_options)));
-        extra.push_back(StrCat("scatter=\n", scatter()->ToString(new_options)));
+        printer.Next([this, &new_options](Printer* printer) {
+          printer->Append("select=\n");
+          select()->Print(printer, new_options);
+        });
+        printer.Next([this, &new_options](Printer* printer) {
+          printer->Append("scatter=\n");
+          scatter()->Print(printer, new_options);
+        });
         break;
       case HloOpcode::kConditional:
         if (operand(0)->shape().element_type() == PRED) {
-          extra.push_back(StrCat("true_computation=\n",
-                                 true_computation()->ToString(new_options)));
-          extra.push_back(StrCat("false_computation=\n",
-                                 false_computation()->ToString(new_options)));
+          printer.Next([this, &new_options](Printer* printer) {
+            printer->Append("true_computation=\n");
+            true_computation()->Print(printer, new_options);
+          });
+          printer.Next([this, &new_options](Printer* printer) {
+            printer->Append("false_computation=\n");
+            false_computation()->Print(printer, new_options);
+          });
         } else {
-          extra.push_back(StrCat(
-              "branch_computations={\n",
-              StrJoin(branch_computations(), ",\n",
-                      [&](std::string* out, const HloComputation* computation) {
-                        StrAppend(out, computation->ToString(new_options));
-                      }),
-              "\n}"));
+          printer.Next([this, &new_options](Printer* printer) {
+            printer->Append("branch_computations={\n");
+            AppendJoin(
+                printer, branch_computations(), ",\n",
+                [&](Printer* printer, const HloComputation* computation) {
+                  computation->Print(printer, new_options);
+                });
+            printer->Append("\n}");
+          });
         }
         break;
       case HloOpcode::kCall:
@@ -3361,43 +3436,76 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
         if (!called_computations().empty()) {
-          extra.push_back(
-              StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+          printer.Next([this, &new_options](Printer* printer) {
+            printer->Append("to_apply=\n");
+            to_apply()->Print(printer, new_options);
+          });
         }
         break;
       default:
         if (!called_computations().empty()) {
-          extra.push_back(StrCat(
-              "calls=\n",
-              StrJoin(called_computations(), ", ",
-                      [&](std::string* out, const HloComputation* computation) {
-                        StrAppend(out, computation->ToString(new_options));
-                      })));
+          printer.Next([this, &new_options](Printer* printer) {
+            printer->Append("calls=\n");
+            AppendJoin(
+                printer, called_computations(), ", ",
+                [&](Printer* printer, const HloComputation* computation) {
+                  computation->Print(printer, new_options);
+                });
+          });
         }
         break;
     }
   }
 
   if (has_sharding()) {
-    extra.push_back(
-        StrCat("sharding=", sharding().ToString(options.print_metadata())));
+    printer.Next([this, &options](Printer* printer) {
+      printer->Append("sharding=");
+      sharding().Print(printer, options.print_metadata());
+    });
   }
   if (!frontend_attributes_.map().empty()) {
-    extra.push_back(StrCat("frontend_attributes=",
-                           FrontendAttributesToString(frontend_attributes_)));
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "frontend_attributes=",
+                FrontendAttributesToString(frontend_attributes_));
+    });
   }
 
   if (options.print_control_dependencies() && !control_predecessors_.empty()) {
-    extra.push_back(StrCat("control-predecessors={",
-                           StrJoin(control_predecessors_, ", ",
-                                   [&](std::string* out, HloInstruction* pre) {
-                                     StrAppend(out, PrintNameInternal(
-                                                        pre->name(), options));
-                                   }),
-                           "}"));
+    printer.Next([this, &options](Printer* printer) {
+      printer->Append("control-predecessors={");
+      AppendJoin(printer, control_predecessors_, ", ",
+                 [&](Printer* printer, HloInstruction* pre) {
+                   PrintNameInternal(printer, pre->name(), options);
+                 });
+      printer->Append("}");
+    });
   }
+}
 
-  return extra;
+std::vector<std::string> HloInstruction::ExtraAttributesToString(
+    const HloPrintOptions& options) const {
+  class MultiStringPrinter : public Printer {
+   public:
+    void Append(const absl::AlphaNum& a) override {
+      if (strings_.empty()) {
+        strings_.push_back({});
+      }
+      absl::StrAppend(&strings_.back(), a);
+    }
+
+    void Next() { strings_.push_back({}); }
+
+    std::vector<std::string> ConsumeStrings() && { return std::move(strings_); }
+
+   private:
+    std::vector<std::string> strings_;
+  } multi_string_printer;
+  AttributePrinter attr_printer(/*next_printer=*/[&multi_string_printer] {
+    multi_string_printer.Next();
+    return &multi_string_printer;
+  });
+  PrintExtraAttributes(attr_printer, options);
+  return std::move(multi_string_printer).ConsumeStrings();
 }
 
 std::string HloInstruction::ToShortString() const {
@@ -3416,7 +3524,7 @@ HloInstructionProto HloInstruction::ToProto() const {
          "instruction is inside a module before dumping it.";
   proto.set_id(unique_id_);
   proto.set_name(name_);
-  proto.set_opcode(HloOpcodeString(opcode_));
+  *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape_.ToProto();
   for (const HloInstruction* operand : operands_) {
     proto.add_operand_ids(operand->unique_id());
@@ -3453,7 +3561,7 @@ std::string HloInstruction::ToCategory() const {
     return "non-fusion elementwise";
   }
 
-  return HloOpcodeString(opcode());
+  return std::string(HloOpcodeString(opcode()));
 }
 
 bool HloInstruction::IsFused() const {
@@ -3650,6 +3758,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleLog(this);
     case HloOpcode::kLog1p:
       return visitor->HandleLog1p(this);
+    case HloOpcode::kTan:
+      return visitor->HandleTan(this);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this);
     case HloOpcode::kCos:
@@ -4073,7 +4183,7 @@ HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
                                                       shape_);
 }
 
-std::string ToString(HloInstruction::FusionKind kind) {
+absl::string_view ToString(HloInstruction::FusionKind kind) {
   switch (kind) {
     case HloInstruction::FusionKind::kLoop:
       return "kLoop";
@@ -4087,7 +4197,7 @@ std::string ToString(HloInstruction::FusionKind kind) {
 }
 
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
-    const std::string& kind_name) {
+    absl::string_view kind_name) {
   if (kind_name == "kLoop") {
     return HloInstruction::FusionKind::kLoop;
   }
@@ -4470,7 +4580,6 @@ HloModule* HloInstruction::GetModule() const {
 }
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
-  std::string parent_str = parent() == nullptr ? "noparent" : parent()->name();
   name_ = name_uniquer->GetUniqueName(name_);
 }
 
@@ -4657,7 +4766,8 @@ HloInstruction* HloInstruction::fused_parameter(
   return Cast<HloFusionInstruction>(this)->fused_parameter(parameter_number);
 }
 
-const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+const HloInstruction::InstructionVector& HloInstruction::fused_parameters()
+    const {
   return Cast<HloFusionInstruction>(this)->fused_parameters();
 }
 
@@ -4930,8 +5040,8 @@ void HloInstruction::set_called_computations_execution_thread(
       async_execution_thread, skip_async_execution_thread_overwrite);
 }
 
-bool HloInstruction::is_cross_program_prefetch() const {
-  return Cast<HloCopyStartInstruction>(this)->is_cross_program_prefetch();
+std::optional<int> HloInstruction::cross_program_prefetch_index() const {
+  return Cast<HloCopyStartInstruction>(this)->cross_program_prefetch_index();
 }
 
 ComparisonDirection HloInstruction::comparison_direction() const {
@@ -4951,8 +5061,8 @@ const CholeskyOptions& HloInstruction::cholesky_options() const {
 }
 
 const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-HloInstruction::custom_call_output_operand_aliasing() const {
-  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
+HloInstruction::output_operand_aliasing() const {
+  return Cast<HloCallableInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

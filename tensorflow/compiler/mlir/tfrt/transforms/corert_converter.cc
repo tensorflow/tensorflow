@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 
+#include <optional>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -26,12 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/attr_lowering_utils.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -42,15 +44,15 @@ CoreRTConverter::CoreRTConverter(
   addConversion([](tfrt::compiler::ChainType type) { return type; });
   addConversion([](tfrt::corert::OpHandlerType type) { return type; });
   addConversion([](tfrt::corert::TensorHandleType type) { return type; });
-  addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::TensorType type) -> std::optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
     if (type.getElementType().isa<mlir::TF::TensorFlowRefType>())
-      return llvm::None;
+      return std::nullopt;
     return tensor_handle_type();
   });
-  addConversion([=](mlir::Type type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::Type type) -> std::optional<mlir::Type> {
     if (type == builder_.getI1Type()) return type;
-    return llvm::None;
+    return std::nullopt;
   });
 }
 
@@ -65,7 +67,8 @@ void CoreRTConverter::MaterializeDerivedAttributes(mlir::Operation *op) {
 
 mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     const mlir::SymbolTable &symbol_table, ArrayRef<NamedAttribute> attrs,
-    llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys) {
+    llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys,
+    bool use_mlir_func_name) {
   llvm::SmallVector<mlir::Attribute, 4> attr_array;
   for (auto key_and_value : attrs) {
     auto attr_key = key_and_value.getName();
@@ -73,11 +76,13 @@ mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     if (!IsUnusedTfrtAttribute(attr_key) &&
         attr_value.isa<mlir::FlatSymbolRefAttr, mlir::SymbolRefAttr>()) {
       auto func_attr = attr_value.dyn_cast<mlir::FlatSymbolRefAttr>();
-      auto converted = ConvertSymbolAttrToStringAttr(symbol_table, func_attr);
+      auto converted = CanonicalizeTensorflowFunctionName(
+          symbol_table, func_attr.getValue().str(), use_mlir_func_name);
       if (!converted) return {};
 
       mlir::StringAttr key = builder_.getStringAttr(attr_key.strref());
-      attr_array.push_back(builder_.getArrayAttr({key, converted}));
+      attr_array.push_back(
+          builder_.getArrayAttr({key, builder_.getStringAttr(*converted)}));
 
       // Remove the attribute to avoid being converted again.
       func_attr_keys->push_back(attr_key);
@@ -87,12 +92,12 @@ mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
 }
 
 // TODO(chky): Add support for multiple device instances.
-llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
+std::optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
     llvm::StringRef device_name) const {
   std::string tf_device_name = device_name.str();
 
   if (tf_device_name.empty()) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   ParseDeviceNameResult result;
@@ -101,10 +106,10 @@ llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
   // Parse the device name in format of the current tensorflow.
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(result.device_name, &parsed_name)) {
-    return llvm::None;
+    return std::nullopt;
   }
   if (!parsed_name.has_type) {
-    return llvm::None;
+    return std::nullopt;
   }
   result.device_type = parsed_name.type;
 
@@ -113,11 +118,11 @@ llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
   return result;
 }
 
-llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
+std::optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
     mlir::Operation *op) const {
   auto device_attr = op->getAttr("device");
   if (!device_attr) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto parsed_device_name =
@@ -213,37 +218,6 @@ mlir::Value CoreRTConverter::GetTaskHandle(
   }
 
   return mlir::Value();
-}
-
-mlir::StringAttr CoreRTConverter::ConvertSymbolAttrToStringAttr(
-    const mlir::SymbolTable &symbol_table,
-    mlir::FlatSymbolRefAttr symbol_attr) {
-  // Currently in TF graph to MLIR importing, a "0" is appended to the original
-  // function name. The renaming is for TF/XLA v1 bridge use cases. Refer to
-  // b/142268695, b/141617294 for more context.
-  //
-  // TFRT currently uses the original function library. Hence, we retrieve the
-  // original function name from the function attributes. Longer term, we
-  // probably want to export the MLIR functions.
-  func::FuncOp callee =
-      symbol_table.lookup<func::FuncOp>(symbol_attr.getValue());
-  if (!callee) return mlir::StringAttr();
-
-  mlir::StringAttr original_func_name =
-      callee->getAttrOfType<mlir::StringAttr>("tf._original_func_name");
-  std::string func_name;
-  if (!original_func_name) {
-    // If there is no function attribute "tf._original_func_name" in the callee,
-    // we use the workaround to recover the original function name by removing
-    // the last char of the MLIR function name.
-    // TODO(b/259138201): Remove this workwaround after we make sure
-    // "tf._original_func_name" is present in callees in all code paths.
-    func_name = symbol_attr.getValue().drop_back().str();
-  } else {
-    func_name = original_func_name.str();
-  }
-
-  return mlir::StringAttr::get(builder_.getContext(), func_name);
 }
 
 }  // namespace tensorflow

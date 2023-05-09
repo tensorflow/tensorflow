@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
@@ -44,14 +47,16 @@ class GpuDummyCompiler : public GpuCompiler {
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, GpuVersion gpu_version,
+      se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
   }
 
   Status OptimizeHloPostLayoutAssignment(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) {
+      HloModule* hlo_module, se::StreamExecutor* stream_executor,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults* autotune_results) override {
     return OkStatus();
   }
 
@@ -61,7 +66,8 @@ class GpuDummyCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module) {
+      GpuVersion gpu_version, bool relocatable,
+      const HloModule* debug_module) override {
     std::vector<uint8_t> compiled_results;
     return std::pair<std::string, std::vector<uint8_t>>(
         "", std::move(compiled_results));

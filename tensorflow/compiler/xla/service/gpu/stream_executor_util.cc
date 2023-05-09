@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <random>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
-#include "tensorflow/tsl/util/determinism.h"
 #include "tensorflow/tsl/util/env_var.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
@@ -121,7 +121,6 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                            dnums.kernel_spatial_dimensions().end());
       break;
     case FilterLayout::kOutputInputYX4:   // OIHW_VECT_C
-    case FilterLayout::kOutputInputYX32:  // OIHW_VECT_C
       filter_layout.push_back(dnums.kernel_output_feature_dimension());
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       filter_layout.insert(filter_layout.end(),
@@ -318,7 +317,8 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
 
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec) {
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
+    uint32_t shared_mem_bytes) {
   se::MultiKernelLoaderSpec loader_spec(num_args);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
@@ -329,15 +329,21 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 
   auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
+  se::KernelMetadata m;
+  m.set_shared_memory_bytes(shared_mem_bytes);
+  kernel_base->set_metadata(m);
   return std::move(kernel_base);
 }
 
 template <int n>
 static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
-    absl::Span<const se::DeviceMemoryBase> args) {
+    absl::Span<const se::DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
   auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
+  }
+  if (shared_mem_bytes > 0) {
+    kernel_args->add_shared_bytes(shared_mem_bytes);
   }
   return kernel_args;
 }
@@ -345,6 +351,8 @@ static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
+  int shared_mem_bytes = 0;
+  kernel.metadata().shared_memory_bytes(&shared_mem_bytes);
   static constexpr int kKernelArgsLimit = 1024;
   std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
   // The KernelArgsArray structure requires at a minimum 48 * args.size()
@@ -352,11 +360,11 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   // specializations for smaller sizes. 64 arguments are likely to fit in a
   // 4KiB page.
   if (args.size() <= 64) {
-    kernel_args = MakeKernelArgs<64>(args);
+    kernel_args = MakeKernelArgs<64>(args, shared_mem_bytes);
   } else if (args.size() <= 256) {
-    kernel_args = MakeKernelArgs<256>(args);
+    kernel_args = MakeKernelArgs<256>(args, shared_mem_bytes);
   } else {
-    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args);
+    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
   }
 
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
@@ -396,8 +404,9 @@ static void InitializeTypedBuffer(se::Stream* stream,
       // Only double gets random values in double.  Other data types get random
       // values in float then cast them to the target data types.
       using RandomFloatingPointType =
-          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
-                                    T>::type;
+          typename std::conditional<std::is_same<T, Eigen::half>::value ||
+                                        std::is_same<T, Eigen::bfloat16>::value,
+                                    float, T>::type;
       using RandomType =
           typename std::conditional<std::is_integral<T>::value, float,
                                     RandomFloatingPointType>::type;
@@ -405,7 +414,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
       auto upper_bound =
           RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
       auto rand_val = UniformDistribution(RandomType(0), upper_bound, &gen);
-      // For float or double, it is between [0,1].
+      // For bf16, float or double, it is between [0,1].
       // For fp16, it ranges between [0, 0.1].
       // For integer types, element is either 0 or 1 for less overflows
       // especially for int8_t.
@@ -439,11 +448,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64_t* rng_state, se::DeviceMemoryBase buffer) {
   switch (buffer_type) {
     case xla::F16:
-    case xla::BF16:
-      // Using F16 for BF16 initialization: it's fine since we only need some
-      // random number there, and random generator is not working for BF16 (not
-      // all required overloads are there).
       return InitializeTypedBuffer<Eigen::half>(stream, buffer, rng_state);
+    case xla::BF16:
+      return InitializeTypedBuffer<Eigen::bfloat16>(stream, buffer, rng_state);
     case xla::F32:
     case xla::C64:
       return InitializeTypedBuffer<float>(stream, buffer, rng_state);
@@ -455,6 +462,8 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       // semantics and cannot be used as a buffer.
     case xla::S8:
       return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
+    case xla::S16:
+      return InitializeTypedBuffer<int16_t>(stream, buffer, rng_state);
     case xla::S32:
       return InitializeTypedBuffer<int32_t>(stream, buffer, rng_state);
     default:
@@ -510,13 +519,14 @@ bool RequireDeterminism(const HloModuleConfig& config) {
                                         &cudnn_deterministic));
     return cudnn_deterministic;
   }();
-  return tsl::OpDeterminismRequired() || require_cudnn_determinism ||
+  return require_cudnn_determinism ||
          config.debug_options().xla_gpu_deterministic_ops();
 }
 
 StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
-    const HloInstruction& instr) {
+    std::optional<std::string_view> instr_str,
+    HloModuleConfig hlo_module_config) {
   std::vector<AutotuneResult> filtered_results;
 
   // For now, we ignore WRONG_RESULT failures because false-positives are
@@ -532,8 +542,14 @@ StatusOr<AutotuneResult> PickBestResult(
 
   if (filtered_results.empty()) {
     std::ostringstream msg;
-    msg << "All algorithms tried for " << instr.ToString()
-        << " failed. Falling back to default algorithm.  Per-algorithm errors:";
+    if (instr_str.has_value()) {
+      msg << "All algorithms tried for " << instr_str.value()
+          << " failed. Falling back to default algorithm.  Per-algorithm "
+             "errors:";
+    } else {
+      msg << "All algorithms failed. Falling back to the default algorithm. "
+          << "Per-algorithm errors:";
+    }
     for (const auto& result : profile_results) {
       msg << "\n  " << result.failure().msg();
     }
@@ -541,7 +557,7 @@ StatusOr<AutotuneResult> PickBestResult(
   }
 
   auto selected_result = filtered_results.begin();
-  if (!RequireDeterminism(instr.GetModule()->config())) {
+  if (!RequireDeterminism(hlo_module_config)) {
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {

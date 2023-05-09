@@ -55,9 +55,7 @@ using ::testing::ElementsAre;
 using ::testing::EqualsProto;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
-using ::testing::NotNull;
 using ::testing::Pair;
-using ::testing::SizeIs;
 using ::testing::proto::IgnoringFieldPaths;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
@@ -298,8 +296,7 @@ TEST_F(PruneGraphDefTest, EliminateRefVariablesFromV1ControlFlowFailed) {
 
   const auto status = EliminateRefVariablesFromV1ControlFlow(graphdef);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("requires its input to be refs"));
+  EXPECT_THAT(status.ToString(), HasSubstr("requires its input to be refs"));
 }
 
 TEST_F(PruneGraphDefTest, KeepLoopStructureComplete) {
@@ -722,8 +719,13 @@ TEST_F(ExtendGraphTest, ExtendGraph) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
-                          tensorflow::tfrt_stub::FallbackState::Create({}, {}));
+  SessionOptions session_options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  session_options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(session_options, {}));
 
   TfrtGraphExecutionState::Options options;
   options.run_placer_grappler_on_functions = false;

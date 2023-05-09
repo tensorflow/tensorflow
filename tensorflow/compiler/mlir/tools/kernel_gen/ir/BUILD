@@ -83,6 +83,7 @@ cc_library(
         ":tf_framework_ops_inc_gen",
         ":tf_status_inc_gen",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:AllocationOpInterface",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",

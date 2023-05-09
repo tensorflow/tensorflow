@@ -21,14 +21,13 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
 StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,

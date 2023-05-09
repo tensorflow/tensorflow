@@ -22,6 +22,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import scan_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,7 +32,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -139,7 +140,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def scan_fn(ta, x):
       updated = ta.write(ta.size(), x)
-      next_iter = control_flow_ops.cond(
+      next_iter = cond.cond(
           math_ops.equal(x % 3, 0), empty, lambda: updated)
       return (next_iter, updated.stack())
 
@@ -175,7 +176,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       updated = ta.write(ta.size(), x)
       # Here, capture empty_ta from outside the function.  However, it may be
       # either a TF1-style TensorArray or an Eager-style TensorArray.
-      next_iter = control_flow_ops.cond(
+      next_iter = cond.cond(
           math_ops.equal(x % 3, 0), lambda: empty_ta, lambda: updated)
       return (next_iter, updated.stack())
 
@@ -282,7 +283,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     data = variables.Variable(initial_value=array_ops.zeros((1, 1000, 1000)))
     dataset = dataset_ops.Dataset.from_tensor_slices(data)
-    dataset = dataset_ops._ScanDataset(
+    dataset = scan_op._ScanDataset(
         dataset, np.int64(1), scan_fn, use_default_device=use_default_device)
     get_next = self.getNext(dataset)
 

@@ -21,20 +21,10 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 
 namespace tensorflow {
 namespace profiler {
-
-// Tool options for HloProtoToToolData conversion.
-struct HloToolOptions {
-  std::optional<std::string> module_name;
-  std::optional<std::string> type;
-  std::optional<std::string> node_name;
-  std::optional<std::string> format;
-  int graph_width;
-  bool show_metadata;
-  bool merge_fusion;
-};
 
 using ToolOptions =
     absl::flat_hash_map<std::string, std::variant<int, std::string>>;
@@ -64,18 +54,15 @@ T GetParamWithDefault(const ToolOptions& options, const std::string& key,
   return default_param;
 }
 
-inline HloToolOptions ToolOptionsToHloToolOptions(const ToolOptions& options) {
-  HloToolOptions hlo_options;
-  hlo_options.module_name = GetParam<std::string>(options, "module_name");
-  hlo_options.type = GetParam<std::string>(options, "type");
-  hlo_options.node_name = GetParam<std::string>(options, "node_name");
-  hlo_options.format = GetParam<std::string>(options, "format");
-  hlo_options.graph_width = GetParamWithDefault<int>(options, "graph_width", 3);
-  hlo_options.show_metadata =
-      GetParamWithDefault<int>(options, "show_metadata", 0);
-  hlo_options.merge_fusion =
-      GetParamWithDefault<int>(options, "merge_fusion", 0);
-  return hlo_options;
+inline std::string DebugString(const ToolOptions& options) {
+  std::string output;
+  for (const auto& [k, v] : options) {
+    absl::StrAppend(
+        &output, k, ":",
+        std::visit([](const auto& value) { return absl::StrCat(value); }, v),
+        ";");
+  }
+  return absl::StrCat("{", output, "}");
 }
 
 }  // namespace profiler

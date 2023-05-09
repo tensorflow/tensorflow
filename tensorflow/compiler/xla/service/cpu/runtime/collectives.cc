@@ -74,7 +74,13 @@ static std::string ReplicaGroupsToString(
     llvm::ArrayRef<int64_t> inner_data(start, start + stride);
 
     absl::StrAppend(&result, "{");
-    absl::StrAppend(&result, absl::StrJoin(inner_data, ", "));
+    absl::StrAppend(
+        &result,
+        // The replica groups can have different sizes. Smaller groups are
+        // padded with -1.
+        absl::StrJoin(llvm::make_filter_range(
+                          inner_data, [](int64_t id) { return id >= 0; }),
+                      ", "));
     absl::StrAppend(&result, "}");
   }
   absl::StrAppend(&result, "}");
@@ -228,6 +234,73 @@ static bool AllReduce(xla::runtime::ExecutionContext* ctx, void** args,
 // -------------------------------------------------------------------------- //
 
 namespace {
+struct XlaTupleAllToAll {
+  absl::Status operator()(const ExecutableRunOptions* run_options,
+                          CustomCall::RemainingArgs buffers,
+                          CustomCall::TensorRef<int64_t> replica_groups,
+                          int32_t channel_id_present, int64_t op_id) const;
+  static XlaTupleAllToAll Handler() { return XlaTupleAllToAll(); }
+};
+}  // namespace
+
+absl::Status XlaTupleAllToAll::operator()(
+    const ExecutableRunOptions* run_options, CustomCall::RemainingArgs buffers,
+    CustomCall::TensorRef<int64_t> replica_groups, int32_t channel_id_present,
+    int64_t op_id) const {
+  if (replica_groups.shape.size() != 2) {
+    return absl::InvalidArgumentError("replica_groups must be a 2d tensor.");
+  }
+
+  if (buffers.size() % 2) {
+    return absl::InvalidArgumentError(
+        "number of input buffers and output buffers must be equal.");
+  }
+
+  std::string replica_groups_str = ReplicaGroupsToString(replica_groups);
+  int64_t num_buffers = static_cast<int64_t>(buffers.size()) / 2;
+
+  llvm::SmallVector<void*> input_buffers, output_buffers;
+  for (int i = 0; i < num_buffers; ++i) {
+    auto input = buffers.get<MemrefView>(i);
+    auto output = buffers.get<MemrefView>(i + num_buffers);
+    if (!succeeded(input) || !succeeded(output)) {
+      return absl::InvalidArgumentError("all arguments must be memrefs.");
+    }
+
+    input_buffers.push_back(input->data);
+    output_buffers.push_back(output->data);
+  }
+
+  auto first_input = *buffers.get<MemrefView>(0);
+  size_t buffer_size = ShapeUtil::ByteSizeOfElements(
+      ShapeUtil::MakeShape(first_input.dtype, first_input.sizes));
+
+  __xla_cpu_runtime_AllToAll(
+      run_options, channel_id_present, op_id, replica_groups_str.c_str(),
+      static_cast<int32_t>(replica_groups_str.size()),
+      static_cast<int32_t>(num_buffers), static_cast<int64_t>(buffer_size),
+      input_buffers.data(), output_buffers.data());
+
+  return absl::OkStatus();
+}
+
+static bool TupleAllToAll(xla::runtime::ExecutionContext* ctx, void** args,
+                          void** attrs, void** rets) {
+  static auto* handler =
+      CustomCall::Bind("xla.cpu.all_reduce")
+          .UserData<const ExecutableRunOptions*>()
+          .RemainingArgs()
+          .Attr<CustomCall::TensorRef<int64_t>>("replica_groups")
+          .Attr<int32_t>("channel_id_present")
+          .Attr<int64_t>("op_id")
+          .To<RuntimeChecks()>(XlaTupleAllToAll::Handler())
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
 struct XlaCollectivePermute {
   absl::Status operator()(const ExecutableRunOptions* run_options,
                           MemrefView input, MemrefView output,
@@ -277,6 +350,7 @@ static bool CollectivePermute(xla::runtime::ExecutionContext* ctx, void** args,
 void PopulateXlaCpuCollectivesCall(
     xla::runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.cpu.all_reduce", &xla::cpu::AllReduce);
+  registry.Register("xla.cpu.tuple_all_to_all", &xla::cpu::TupleAllToAll);
   registry.Register("xla.cpu.collective_permute", &xla::cpu::CollectivePermute);
   registry.Register("xla.cpu.partition_id", &xla::cpu::PartitionId);
   registry.Register("xla.cpu.replica_id", &xla::cpu::ReplicaId);

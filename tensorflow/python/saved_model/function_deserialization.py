@@ -17,6 +17,7 @@
 import collections
 import pprint
 import re
+
 from absl import logging
 
 from tensorflow.core.protobuf import saved_object_graph_pb2
@@ -29,6 +30,7 @@ from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import resource_variable_ops
@@ -126,7 +128,9 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       function_spec_proto.fullargspec)
 
   # Convert a method function into a non method.
-  if function_spec_proto.is_method:
+  if function_spec_proto.is_method or (
+      typeless_fullargspec.args and typeless_fullargspec.args[0] == "self"
+  ):
     if not typeless_fullargspec.args:
       raise NotImplementedError(
           "Cannot deserialize a method function without a named "
@@ -153,9 +157,8 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
   }.get(function_spec_proto.jit_compile)
 
-  return function_spec_lib.FunctionSpec(
+  return function_spec_lib.FunctionSpec.from_fullargspec_and_signature(
       fullargspec=fullargspec,
-      is_bound_method=False,
       input_signature=input_signature,
       jit_compile=jit_compile)
 
@@ -216,6 +219,9 @@ class RestoredFunction(def_function.Function):
     # eager call path altogether if a user has enabled eager function execution
     # via `tf.config.run_functions_eagerly`.
     return False
+
+  def _list_all_concrete_functions(self):
+    return self.concrete_functions
 
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
@@ -463,9 +469,24 @@ def _gen_gradient_func(func):
     # expects tensors. Replacing with zeros is correct since the `None` values
     # occur when the gradient is unconnected, and thus the gradient is
     # "statically proven to be zero." See `tf.UnconnectedGradients` for details.
+
+    def none_to_zero(x, t):
+      if x is not None:
+        return x
+
+      shape, dtype = default_gradient.shape_and_dtype(t)
+
+      if shape.is_fully_defined():
+        return default_gradient.zeros_like(t)
+
+      dims = []
+      if shape.rank is not None:
+        dims = [1 if d is None else d for d in shape.as_list()]
+
+      return array_ops.zeros(dims, dtype)
+
     result_grads = [
-        x if x is not None else default_gradient.zeros_like(t)
-        for (x, t) in zip(result_grads, func.graph.inputs)
+        none_to_zero(x, t) for (x, t) in zip(result_grads, func.graph.inputs)
     ]
 
     return func(*result_grads)

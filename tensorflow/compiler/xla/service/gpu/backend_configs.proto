@@ -38,6 +38,16 @@ message CudnnConvBackendConfig {
   // The scaling factor multiplied with the side input. If no side input buffer
   // is provided, this field must be 0.
   double side_input_scale = 5;
+
+  // If the filter (and bias, if present) have been reordered, set this flag.
+  // It's placed into a `oneof` block to skip the serialization when not set.
+  oneof filter_and_bias_reordering_oneof {
+    // cuDNN int8x32 vectorized convolutions (NCHW_VECT_C data layout) can be
+    // optimized by reordering the filter and bias (if present). The logical
+    // layout stays the same, but the data is shuffled in a way that is
+    // compatible with NVidia's IMMA instruction (sm75+).
+    bool reordered_int8_nchw_vect = 7;
+  }
 }
 
 // Backend config for the GEMM operation running through cuBLAS.
@@ -63,9 +73,11 @@ message GemmBackendConfig {
     DEFAULT = 0;
     BIAS = 1;
     RELU = 2;
-    BIASRELU = 3;
+    BIAS_RELU = 3;
     GELU = 4;
-    BIASGELU = 5;
+    GELU_AUX = 5;
+    BIAS_GELU = 6;
+    BIAS_GELU_AUX = 7;
   }
 
   Epilogue epilogue = 13;
@@ -75,4 +87,12 @@ message GemmBackendConfig {
 message BitcastBackendConfig {
   LayoutProto source_layout = 1;
   LayoutProto result_layout = 2;
+}
+
+// Backend config for async collective operations. Note that for is_sync will
+// be false by default, so even if a backend config is not explicitly attached
+// to the HLOInstruction, getting the backend_config will yield a default valued
+// proto which will have is_sync = false.
+message CollectiveBackendConfig {
+  bool is_sync = 1;
 }

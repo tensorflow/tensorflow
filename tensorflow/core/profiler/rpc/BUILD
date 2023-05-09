@@ -31,7 +31,6 @@ exports_files(
 # Linked to pywrap_tensorflow.
 cc_library(
     name = "profiler_service_impl",
-    srcs = ["profiler_service_impl.cc"],
     hdrs = ["profiler_service_impl.h"],
     copts = tf_profiler_copts(),
     visibility = tf_external_workspace_visible(
@@ -42,20 +41,21 @@ cc_library(
         ],
     ),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core/profiler/utils:math_utils",
-        "//tensorflow/core/profiler/rpc/client:save_profile",
-        "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/core/profiler/utils:file_system_utils",
+        "//tensorflow/core/profiler/utils:math_utils",
+        "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_utils",
-        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/rpc:profiler_service_impl",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -67,10 +67,10 @@ tf_profiler_pybind_cc_library_wrapper(
 
 cc_library(
     name = "profiler_server_impl",
-    srcs = ["profiler_server.cc"],
     hdrs = ["profiler_server.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python:__pkg__",
@@ -79,9 +79,10 @@ cc_library(
     ],
     deps = [
         ":profiler_service_impl",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

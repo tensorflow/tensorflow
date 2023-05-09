@@ -101,6 +101,7 @@ class AsyncTokenType : public llvm::RTTIExtends<AsyncTokenType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
 
+  absl::StatusOr<ArgumentAbi> AsArgument() const final;
   absl::StatusOr<ResultAbi> AsResult() const final;
 
   std::string ToString() const final;
@@ -119,6 +120,7 @@ class AsyncValueType : public llvm::RTTIExtends<AsyncValueType, Type> {
 
   const Type& value_type() const { return *value_type_; }
 
+  absl::StatusOr<ArgumentAbi> AsArgument() const final;
   absl::StatusOr<ResultAbi> AsResult() const final;
 
   std::string ToString() const final;
@@ -175,9 +177,9 @@ class TupleType : public llvm::RTTIExtends<TupleType, Type> {
 class RankedTensorType : public llvm::RTTIExtends<RankedTensorType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = std::numeric_limits<int64_t>::min();
+  static constexpr int64_t kDynamic = std::numeric_limits<int64_t>::min();
 
-  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamic; }
 
   RankedTensorType(absl::Span<const int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
@@ -219,14 +221,15 @@ class UnrankedTensorType : public llvm::RTTIExtends<UnrankedTensorType, Type> {
 class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = std::numeric_limits<int64_t>::min();
+  static constexpr int64_t kDynamic = std::numeric_limits<int64_t>::min();
 
-  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamic; }
 
   MemrefType(absl::Span<const int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
 
   absl::Span<const int64_t> sizes() const { return sizes_; }
+  int64_t size(size_t dim) const { return sizes_[dim]; }
   unsigned rank() const { return sizes_.size(); }
   PrimitiveType element_type() const { return element_type_; }
 
@@ -290,6 +293,8 @@ class OpaqueOperandType : public llvm::RTTIExtends<OpaqueOperandType, Type> {
 // Compiled function signature type corresponding to the mlir::FunctionType.
 //===----------------------------------------------------------------------===//
 
+// TODO(ezhulenev): Make function type copyable (replace std::unique_ptr with
+// std::shared ptr).
 class FunctionType {
  public:
   const Type* operand(unsigned index) const { return operands_[index].get(); }
@@ -301,6 +306,14 @@ class FunctionType {
   FunctionType(std::vector<std::unique_ptr<Type>> operands,
                std::vector<std::unique_ptr<Type>> results)
       : operands_(std::move(operands)), results_(std::move(results)) {}
+
+  void insert_operand(unsigned index, std::unique_ptr<Type> operand) {
+    operands_.insert(operands_.begin() + index, std::move(operand));
+  }
+
+  void insert_result(unsigned index, std::unique_ptr<Type> result) {
+    results_.insert(results_.begin() + index, std::move(result));
+  }
 
  private:
   std::vector<std::unique_ptr<Type>> operands_;

@@ -51,6 +51,7 @@ cc_library_with_tflite(
     ],
     deps = [
         "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",

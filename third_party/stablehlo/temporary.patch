@@ -1,566 +1,2609 @@
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
---- stablehlo/stablehlo/dialect/StablehloAttrs.td
-+++ stablehlo/stablehlo/dialect/StablehloAttrs.td
-@@ -20,7 +20,10 @@
- include "mlir/IR/OpBase.td"
- include "mlir/IR/TensorEncoding.td"
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -294,7 +294,8 @@
+   static LogicalResult inferReturnTypes(
+       MLIRContext * /*context*/, std::optional<Location> location,
+       ValueRange operands, DictionaryAttr /*attributes*/,
+-      RegionRange /*regions*/, SmallVectorImpl<Type> &inferredReturnTypes) {
++      OpaqueProperties /*properties*/, RegionRange /*regions*/,
++      SmallVectorImpl<Type> &inferredReturnTypes) {
+     // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+     // support quantization or sparsity.
+     if (operands.empty())
+@@ -314,11 +315,13 @@
+   // (see examples in StablehloOps.cpp).
+   static LogicalResult inferReturnTypeComponentsFromOperands(
+       MLIRContext *context, std::optional<Location> location,
+-      ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++      ValueShapeRange operands, DictionaryAttr attributes,
++      OpaqueProperties properties, RegionRange regions,
+       SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+     SmallVector<Type> inferredReturnTypes;
+     if (failed(inferReturnTypes(context, location, operands.getValues(),
+-                                attributes, regions, inferredReturnTypes)))
++                                attributes, properties, regions,
++                                inferredReturnTypes)))
+       return failure();
+     if (inferredReturnTypes.size() != 1) return failure();
+     auto inferredReturnType = inferredReturnTypes[0].dyn_cast<ShapedType>();
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -33,8 +33,8 @@
+ def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
+ def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
  
--def StableHLO_Dim : ArrayRefParameter<"int64_t", "Dimension">;
-+def StableHLO_Dim : ArrayRefParameter<"int64_t", "Dimension"> {
-+  let parser = "mlir::stablehlo::parseIntArray($_parser)";
-+  let printer = "mlir::stablehlo::printIntArray($_printer, $_self)";
-+}
+-def HLO_Float : AnyTypeOf<[F8E4M3FN, F8E5M2, F8E4M3FNUZ, F8E5M2FNUZ,
+-                           F8E4M3B11FNUZ, F16, F32, F64, BF16]>;
++def HLO_Float : AnyTypeOf<[F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ, F8E5M2,
++                           F8E5M2FNUZ, F16, F32, F64, BF16]>;
+ def HLO_Float32Or64 : AnyTypeOf<[F32, F64]>;
  
- def StableHLO_ScatterDimensionNumbers : AttrDef<StableHLO_Dialect, "ScatterDimensionNumbers"> {
-   let cppNamespace = "::mlir::stablehlo";
-@@ -172,7 +175,7 @@
+ def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -43,15 +43,15 @@
  
-     See `HLO_BoundedAttrInterface` for documentation for `bounds`.
-   }];
--  let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
-+  let hasCustomAssemblyFormat = 1;
+ // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+ // support quantization or sparsity.
+-#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
+-  LogicalResult Op::inferReturnTypeComponents(                                \
+-      MLIRContext* context, std::optional<Location> location,                 \
+-      ValueShapeRange operands, DictionaryAttr attributes,                    \
+-      RegionRange regions,                                                    \
+-      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
+-    return inferReturnTypeComponentsFromOperands(context, location, operands, \
+-                                                 attributes, regions,         \
+-                                                 inferredReturnShapes);       \
++#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                \
++  LogicalResult Op::inferReturnTypeComponents(                        \
++      MLIRContext* context, std::optional<Location> location,         \
++      ValueShapeRange operands, DictionaryAttr attributes,            \
++      OpaqueProperties properties, RegionRange regions,               \
++      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {  \
++    return inferReturnTypeComponentsFromOperands(                     \
++        context, location, operands, attributes, properties, regions, \
++        inferredReturnShapes);                                        \
+   }
+ 
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcosOp)
+@@ -188,7 +188,7 @@
+ LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+     ValueShapeRange operands, DictionaryAttr attributes,
+-    RegionRange /*regions*/,
++    OpaqueProperties /*properties*/, RegionRange /*regions*/,
+     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+   ShapedType lhsType = operands[0].getType().cast<ShapedType>();
+   Type elementType = ComplexType::get(lhsType.getElementType());
+@@ -221,7 +221,7 @@
+ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+     ValueShapeRange operands, DictionaryAttr attributes,
+-    RegionRange /*regions*/,
++    OpaqueProperties /*properties*/, RegionRange /*regions*/,
+     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+   Type elementType = IntegerType::get(context, 1);
+   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
+@@ -248,7 +248,8 @@
+ 
+ LogicalResult IsInfOp::inferReturnTypes(
+     MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
+-    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
++    DictionaryAttr, OpaqueProperties, RegionRange,
++    SmallVectorImpl<Type>& inferredReturnTypes) {
+   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+   return success();
  }
+@@ -259,7 +260,8 @@
  
- // A layout attribute (1D tensor of index type)
+ LogicalResult IsNegInfOp::inferReturnTypes(
+     MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
+-    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
++    DictionaryAttr, OpaqueProperties, RegionRange,
++    SmallVectorImpl<Type>& inferredReturnTypes) {
+   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+   return success();
+ }
+@@ -270,7 +272,8 @@
+ 
+ LogicalResult IsPosInfOp::inferReturnTypes(
+     MLIRContext* /*ctx*/, std::optional<Location>, ValueRange operands,
+-    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
++    DictionaryAttr, OpaqueProperties, RegionRange,
++    SmallVectorImpl<Type>& inferredReturnTypes) {
+   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
+   return success();
+ }
+@@ -283,7 +286,7 @@
+   LogicalResult Op::inferReturnTypeComponents(                             \
+       MLIRContext* context, std::optional<Location> location,              \
+       ValueShapeRange operands, DictionaryAttr attributes,                 \
+-      RegionRange regions,                                                 \
++      OpaqueProperties /*properties*/, RegionRange regions,                \
+       SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {        \
+     return InferBroadcastBinaryOpReturnTypeComponents(                     \
+         context, location, operands, attributes, /*element_type=*/nullptr, \
+@@ -342,7 +345,7 @@
+ 
+ LogicalResult ConstantLikeOp::inferReturnTypeComponents(
+     MLIRContext* /*context*/, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes,
++    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+     RegionRange /*regions*/,
+     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+   ConstantLikeOp::Adaptor op(operands, attributes);
+@@ -376,7 +379,7 @@
+ 
+ LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr, RegionRange,
++    DictionaryAttr, OpaqueProperties, RegionRange,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+   BroadcastSelectOp::Adaptor op(operands.getValues());
+   auto predType = op.getPred().getType().cast<ShapedType>();
+@@ -447,10 +450,11 @@
+ 
+ LogicalResult TopKOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+   Builder builder(context);
+-  TopKOp::Adaptor adaptor(operands, attributes, regions);
++  TopKOp::Adaptor adaptor(operands, attributes, {}, regions);
+   Value operand = adaptor.getOperand();
+   uint64_t k = adaptor.getK();
+ 
+@@ -483,7 +487,7 @@
+ 
+ LogicalResult ConstantOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location>, ValueRange,
+-    DictionaryAttr attributes, RegionRange,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange,
+     SmallVectorImpl<Type>& inferredReturnTypes) {
+   Type type = attributes.get("value").cast<TypedAttr>().getType();
+   inferredReturnTypes.push_back(type);
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -182,6 +182,57 @@
-     llvm::function_ref<mlir::InFlightDiagnostic()> emitError) const {
-   return hlo::verifyBounds(
-       getBounds(), RankedTensorType::get(bounds, elementType), emitError);
-+}
-+
-+namespace {
-+
-+void printCommaSeparatedDynamicShapes(AsmPrinter& printer,
-+                                      llvm::ArrayRef<int64_t> shape) {
-+  printer << '[';
-+  auto printIntOrQuestion = [&](int64_t value) {
-+    if (ShapedType::isDynamic(value))
-+      printer << '?';
-+    else
-+      printer << value;
-+  };
-+  llvm::interleaveComma(shape, printer, printIntOrQuestion);
-+  printer << ']';
-+}
-+
-+ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
-+                                             SmallVectorImpl<int64_t>& shape) {
-+  auto parseElt = [&]() -> ParseResult {
-+    if (!parser.parseOptionalQuestion()) {
-+      shape.push_back(ShapedType::kDynamicSize);
-+      return success();
-+    }
-+    return parser.parseInteger(shape.emplace_back());
-+  };
-+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseElt);
-+}
-+
-+}  // namespace
-+
-+void TypeExtensionsAttr::print(AsmPrinter& printer) const {
-+  printer << "<bounds = ";
-+  printCommaSeparatedDynamicShapes(printer, getBounds());
-+  printer << ">";
-+}
-+
-+Attribute TypeExtensionsAttr::parse(AsmParser& parser, mlir::Type) {
-+  if (parser.parseLess() || parser.parseKeyword("bounds") ||
-+      parser.parseEqual())
-+    return {};
-+
-+  SmallVector<int64_t> resultBounds;
-+  if (parseCommaSeparatedDynamicShapes(parser, resultBounds)) {
-+    parser.emitError(parser.getCurrentLocation(),
-+                     "failed to parse TypeExtensions parameter 'bounds' which "
-+                     "is to be a `::llvm::ArrayRef<int64_t>`");
-+    return {};
-+  }
-+  if (parser.parseGreater()) return {};
-+  return TypeExtensionsAttr::get(parser.getContext(), resultBounds);
+@@ -149,15 +149,15 @@
+ 
+ // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+ // support quantization or sparsity.
+-#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
+-  LogicalResult Op::inferReturnTypeComponents(                                \
+-      MLIRContext* context, std::optional<Location> location,                 \
+-      ValueShapeRange operands, DictionaryAttr attributes,                    \
+-      RegionRange regions,                                                    \
+-      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
+-    return inferReturnTypeComponentsFromOperands(context, location, operands, \
+-                                                 attributes, regions,         \
+-                                                 inferredReturnShapes);       \
++#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                \
++  LogicalResult Op::inferReturnTypeComponents(                        \
++      MLIRContext* context, std::optional<Location> location,         \
++      ValueShapeRange operands, DictionaryAttr attributes,            \
++      OpaqueProperties properties, RegionRange regions,               \
++      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {  \
++    return inferReturnTypeComponentsFromOperands(                     \
++        context, location, operands, attributes, properties, regions, \
++        inferredReturnShapes);                                        \
+   }
+ 
+ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AddOp)
+@@ -206,7 +206,7 @@
+ 
+ LogicalResult AfterAllOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<Type>& inferredReturnTypes) {
+   return hlo::inferAfterAllOp(getStablehloDialect(context), location,
+                               inferredReturnTypes);
+@@ -250,7 +250,7 @@
+ 
+ LogicalResult ConstantOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange,
+     SmallVectorImpl<Type>& inferredReturnTypes) {
+   ConstantOpAdaptor adaptor(operands, attributes);
+   return hlo::inferConstantOp(location, adaptor.getValue(),
+@@ -317,7 +317,7 @@
+ 
+ LogicalResult CreateTokenOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<Type>& inferredReturnTypes) {
+   return hlo::inferCreateTokenOp(getStablehloDialect(context), location,
+                                  inferredReturnTypes);
+@@ -484,9 +484,9 @@
+ 
+ LogicalResult CholeskyOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  CholeskyOp::Adaptor adaptor(operands, attributes, regions);
++  CholeskyOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferCholeskyOp(location, adaptor.getA(), inferredReturnShapes);
  }
  
+@@ -585,9 +585,9 @@
+ 
+ LogicalResult FftOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  FftOp::Adaptor adaptor(operands, attributes, regions);
++  FftOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferFftOp(location, adaptor.getOperand(),
+                          adaptor.getFftType() == FftType::RFFT,
+                          adaptor.getFftType() == FftType::IRFFT,
+@@ -690,9 +690,10 @@
+ 
+ LogicalResult GatherOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  GatherOp::Adaptor adaptor(operands, attributes, regions);
++  GatherOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferGatherOp(
+       location, adaptor.getOperand(), adaptor.getStartIndices(),
+       adaptor.getDimensionNumbers().getOffsetDims(),
+@@ -714,9 +715,10 @@
+ 
+ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  DynamicGatherOp::Adaptor adaptor(operands, attributes, regions);
++  DynamicGatherOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferDynamicGatherOp(
+       location, adaptor.getOperand(), adaptor.getStartIndices(),
+       adaptor.getSliceSizes(), adaptor.getDimensionNumbers().getOffsetDims(),
+@@ -731,9 +733,9 @@
+ 
+ LogicalResult GetDimensionSizeOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  GetDimensionSizeOp::Adaptor adaptor(operands, attributes, regions);
++  GetDimensionSizeOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferGetDimensionSizeOp(location, adaptor.getOperand().getType(),
+                                       adaptor.getDimension(),
+                                       inferredReturnShapes);
+@@ -779,9 +781,9 @@
+ 
+ LogicalResult DynamicUpdateSliceOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  DynamicUpdateSliceOp::Adaptor adaptor(operands, attributes, regions);
++  DynamicUpdateSliceOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferDynamicUpdateSliceOp(
+       location, adaptor.getOperand(), adaptor.getUpdate(),
+       adaptor.getStartIndices(), inferredReturnShapes);
+@@ -793,9 +795,9 @@
+ 
+ LogicalResult AbsOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  AbsOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  AbsOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferAbsOp(location, adaptor.getOperand(), inferredReturnTypes);
+ }
+ 
+@@ -849,9 +851,10 @@
+ 
+ LogicalResult AllToAllOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  AllToAllOp::Adaptor adaptor(operands, attributes, regions);
++  AllToAllOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferAllToAllOp(
+       location, adaptor.getOperand(), adaptor.getSplitDimension(),
+       adaptor.getConcatDimension(), adaptor.getSplitCount(),
+@@ -893,9 +896,10 @@
+ 
+ LogicalResult BatchNormGradOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes,
++    OpaqueProperties /*properties*/, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  BatchNormGradOp::Adaptor adaptor(operands, attributes, regions);
++  BatchNormGradOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferBatchNormGradOp(
+       location, adaptor.getOperand(), adaptor.getScale(), adaptor.getMean(),
+       adaptor.getVariance(), adaptor.getGradOutput(), adaptor.getFeatureIndex(),
+@@ -908,9 +912,10 @@
+ 
+ LogicalResult BatchNormTrainingOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes,
++    OpaqueProperties /*properties*/, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  BatchNormTrainingOp::Adaptor adaptor(operands, attributes, regions);
++  BatchNormTrainingOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferBatchNormTrainingOp(
+       location, adaptor.getOperand(), adaptor.getScale(), adaptor.getOffset(),
+       adaptor.getFeatureIndex(), inferredReturnShapes);
+@@ -922,9 +927,10 @@
+ 
+ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes,
++    OpaqueProperties /*properties*/, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  BatchNormInferenceOp::Adaptor adaptor(operands, attributes, regions);
++  BatchNormInferenceOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferBatchNormInferenceOp(
+       location, adaptor.getOperand(), adaptor.getScale(), adaptor.getOffset(),
+       adaptor.getMean(), adaptor.getVariance(), adaptor.getFeatureIndex(),
+@@ -967,9 +973,10 @@
+ 
+ LogicalResult BroadcastOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  BroadcastOp::Adaptor adaptor(operands, attributes, regions);
++  BroadcastOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferBroadcastOp(location, adaptor.getOperand(),
+                                adaptor.getBroadcastSizes(),
+                                inferredReturnShapes);
+@@ -1042,9 +1049,10 @@
+ 
+ LogicalResult ClampOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  ClampOp::Adaptor adaptor(operands, attributes, regions);
++  ClampOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferClampOp(location, adaptor.getMin(), adaptor.getOperand(),
+                            adaptor.getMax(), inferredReturnShapes);
+ }
+@@ -1063,9 +1071,9 @@
+ 
+ LogicalResult ComplexOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  ComplexOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  ComplexOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferComplexOp(location, adaptor.getLhs(), inferredReturnTypes);
+ }
+ 
+@@ -1075,9 +1083,9 @@
+ 
+ LogicalResult ImagOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  ImagOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  ImagOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferImagOp(location, adaptor.getOperand(), inferredReturnTypes);
+ }
+ 
+@@ -1087,9 +1095,9 @@
+ 
+ LogicalResult IsFiniteOp::inferReturnTypes(
+     MLIRContext* ctx, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  IsFiniteOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  IsFiniteOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferIsFiniteOp(ctx, location, adaptor.getX(),
+                               inferredReturnTypes);
+ }
+@@ -1100,9 +1108,9 @@
+ 
+ LogicalResult RealOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  RealOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  RealOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferRealOp(location, adaptor.getOperand(), inferredReturnTypes);
+ }
+ 
+@@ -1112,9 +1120,9 @@
+ 
+ LogicalResult ConcatenateOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  ConcatenateOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  ConcatenateOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferConcatenateOp(location, adaptor.getInputs().getTypes(),
+                                  adaptor.getDimension(), inferredReturnTypes);
+ }
+@@ -1196,9 +1204,10 @@
+ 
+ LogicalResult DynamicSliceOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  DynamicSliceOp::Adaptor adaptor(operands, attributes, regions);
++  DynamicSliceOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferDynamicSliceOp(location, adaptor.getOperand().getType(),
+                                   adaptor.getStartIndices().getTypes(),
+                                   adaptor.getSliceSizes(),
+@@ -1276,9 +1285,10 @@
+ 
+ LogicalResult MapOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  MapOp::Adaptor adaptor(operands, attributes, regions);
++  MapOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferMapOp(location, adaptor.getInputs(), adaptor.getDimensions(),
+                          adaptor.getComputation(), inferredReturnShapes);
+ }
+@@ -1296,8 +1306,8 @@
+ 
+ LogicalResult OutfeedOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   return hlo::inferOutfeedOp(getStablehloDialect(context), location,
+                              inferredReturnTypes);
+ }
+@@ -1308,7 +1318,8 @@
+ 
+ LogicalResult SendOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
++    DictionaryAttr, OpaqueProperties, RegionRange,
++    SmallVectorImpl<Type>& inferredReturnTypes) {
+   return hlo::inferSendOp(getStablehloDialect(context), location,
+                           inferredReturnTypes);
+ }
+@@ -1328,9 +1339,10 @@
+ 
+ LogicalResult ReduceWindowOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  ReduceWindowOp::Adaptor adaptor(operands, attributes, regions);
++  ReduceWindowOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferReduceWindowOp(
+       location, adaptor.getInputs(), adaptor.getInitValues(),
+       adaptor.getWindowDimensions(), adaptor.getWindowStrides(),
+@@ -1400,7 +1412,7 @@
+   if (mlir::succeeded(ReduceWindowOp::inferReturnTypes(
+           odsBuilder.getContext(), odsState.location, odsState.operands,
+           odsState.attributes.getDictionary(odsState.getContext()),
+-          odsState.regions, inferredReturnTypes)))
++          odsState.getRawProperties(), odsState.regions, inferredReturnTypes)))
+     odsState.addTypes(inferredReturnTypes);
+   else
+     llvm::report_fatal_error("Failed to infer result type(s).");
+@@ -1731,9 +1743,10 @@
+ 
+ LogicalResult ReduceOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  ReduceOp::Adaptor adaptor(operands, attributes, regions);
++  ReduceOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferReduceOp(location, adaptor.getInputs().getTypes(),
+                             adaptor.getInitValues().getTypes(),
+                             adaptor.getDimensions(), inferredReturnShapes);
+@@ -1789,7 +1802,7 @@
  //===----------------------------------------------------------------------===//
-@@ -4509,6 +4560,21 @@
-   return success();
+ LogicalResult OptimizationBarrierOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange,
+     SmallVectorImpl<Type>& inferredReturnTypes) {
+   OptimizationBarrierOp::Adaptor adaptor(operands, attributes);
+   return hlo::inferOptimizationBarrierOp(location, adaptor.getOperand(),
+@@ -1805,9 +1818,10 @@
+ 
+ LogicalResult ReverseOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes,
++    OpaqueProperties /*properties*/, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  ReverseOp::Adaptor adaptor(operands, attributes, regions);
++  ReverseOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferReverseOp(location, adaptor.getOperand().getType(),
+                              inferredReturnShapes);
+ }
+@@ -1828,9 +1842,10 @@
+ 
+ LogicalResult RngOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes,
++    OpaqueProperties /*properties*/, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  RngOp::Adaptor adaptor(operands, attributes, regions);
++  RngOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferRngOp(
+       location, adaptor.getA(), adaptor.getB(), adaptor.getShape(),
+       adaptor.getRngDistribution() == RngDistribution::UNIFORM,
+@@ -1852,7 +1867,7 @@
+ 
+ LogicalResult SelectOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+   SelectOp::Adaptor op(operands, attributes);
+   return hlo::inferSelectOp(location, op.getPred(), op.getOnTrue(),
+@@ -1873,9 +1888,10 @@
+ 
+ LogicalResult SetDimensionSizeOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes,
++    OpaqueProperties /*properties*/, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  SetDimensionSizeOp::Adaptor adaptor(operands, attributes, regions);
++  SetDimensionSizeOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferSetDimensionSizeOp(
+       getStablehloDialect(context), location, adaptor.getOperand().getType(),
+       adaptor.getSize(), adaptor.getDimension(), inferredReturnShapes);
+@@ -1887,9 +1903,9 @@
+ 
+ LogicalResult PadOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  PadOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  PadOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferPadOp(location, adaptor.getOperand().getType(),
+                          adaptor.getPaddingValue().getType(),
+                          adaptor.getEdgePaddingLow(),
+@@ -2047,7 +2063,8 @@
+ 
+ LogicalResult ReplicaIdOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
++    DictionaryAttr, OpaqueProperties, RegionRange,
++    SmallVectorImpl<Type>& inferredReturnTypes) {
+   return hlo::inferReplicaIdOp(context, location, inferredReturnTypes);
  }
  
-+FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser& parser) {
-+  SmallVector<int64_t> ints;
-+  auto parse =
-+      parser.parseCommaSeparatedList({}, [&] {
-+        ints.emplace_back();
-+        return parser.parseInteger(ints.back());
-+      });
-+  if (!failed(parse)) return ints;
-+  return {{}};
-+}
-+
-+void printIntArray(AsmPrinter& printer, ArrayRef<int64_t> ints) {
-+  llvm::interleaveComma(ints, printer);
-+}
-+
- /// Parse a custom attribute that resembles a struct of the form
- /// <
- ///   foo = something_parsed_by_custom_parser,
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
---- stablehlo/stablehlo/dialect/StablehloOps.h
-+++ stablehlo/stablehlo/dialect/StablehloOps.h
-@@ -183,6 +183,9 @@
-                                   DenseIntElementsAttr &rhsDilation,
-                                   DenseElementsAttr &windowReversal);
+@@ -2057,7 +2074,7 @@
  
-+// Print and parse IntArrays
-+FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser &parser);
-+void printIntArray(AsmPrinter &printer, ArrayRef<int64_t> ints);
- }  // end namespace stablehlo
- }  // end namespace mlir
+ LogicalResult PartitionIdOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueRange /*operands*/, DictionaryAttr, RegionRange,
++    ValueRange /*operands*/, DictionaryAttr, OpaqueProperties, RegionRange,
+     SmallVectorImpl<Type>& inferredReturnTypes) {
+   return hlo::inferPartitionIdOp(context, location, inferredReturnTypes);
+ }
+@@ -2068,9 +2085,9 @@
  
+ LogicalResult IfOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  IfOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  IfOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferIfOp(location, adaptor.getPred(), adaptor.getRegions(),
+                         inferredReturnTypes);
+ }
+@@ -2081,9 +2098,9 @@
+ 
+ LogicalResult CaseOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  CaseOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  CaseOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferCaseOp(location, adaptor.getIndex(), adaptor.getRegions(),
+                           inferredReturnTypes);
+ }
+@@ -2094,8 +2111,8 @@
+ 
+ LogicalResult SliceOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   SliceOpAdaptor adaptor(operands, attributes);
+   return hlo::inferSliceOp(location, adaptor.getOperand().getType(),
+                            adaptor.getStartIndices(), adaptor.getLimitIndices(),
+@@ -2119,9 +2136,10 @@
+ 
+ LogicalResult SortOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  SortOp::Adaptor adaptor(operands, attributes, regions);
++  SortOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferSortOp(location, adaptor.getInputs(), inferredReturnShapes);
+ }
+ 
+@@ -2174,9 +2192,9 @@
+ 
+ LogicalResult TransposeOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> loc, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  TransposeOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  TransposeOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferTransposeOp(loc, adaptor.getOperand(),
+                                adaptor.getPermutation(), inferredReturnTypes);
+ }
+@@ -2187,9 +2205,10 @@
+ 
+ LogicalResult TriangularSolveOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  TriangularSolveOp::Adaptor adaptor(operands, attributes, regions);
++  TriangularSolveOp::Adaptor adaptor(operands, attributes, {}, regions);
+   bool isTransposeAInvalid =
+       (adaptor.getTransposeA() == Transpose::TRANSPOSE_INVALID);
+   return hlo::inferTriangularSolveOp(location, adaptor.getA(), adaptor.getB(),
+@@ -2203,9 +2222,9 @@
+ 
+ LogicalResult GetTupleElementOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  GetTupleElementOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  GetTupleElementOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferGetTupleElementOp(location, adaptor.getOperand(),
+                                      adaptor.getIndex(), inferredReturnTypes);
+ }
+@@ -2216,9 +2235,9 @@
+ 
+ LogicalResult TupleOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  TupleOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  TupleOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferTupleOp(context, location, adaptor.getVal(),
+                            inferredReturnTypes);
+ }
+@@ -2237,9 +2256,10 @@
+ 
+ LogicalResult CompareOp::inferReturnTypeComponents(
+     MLIRContext* context, std::optional<Location> location,
+-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
++    ValueShapeRange operands, DictionaryAttr attributes,
++    OpaqueProperties /*properties*/, RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  CompareOp::Adaptor adaptor(operands, attributes, regions);
++  CompareOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferCompareOp(context, location, adaptor.getLhs(),
+                              inferredReturnShapes);
+ }
+@@ -2257,9 +2277,9 @@
+ 
+ LogicalResult SelectAndScatterOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  SelectAndScatterOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  SelectAndScatterOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferSelectAndScatterOp(adaptor.getOperand(),
+                                       inferredReturnTypes);
+ }
+@@ -2277,9 +2297,9 @@
+ 
+ LogicalResult ScatterOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  ScatterOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  ScatterOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferScatterOp(location, adaptor.getInputs(),
+                              inferredReturnTypes);
+ }
+@@ -2299,9 +2319,9 @@
+ 
+ LogicalResult WhileOp::inferReturnTypes(
+     MLIRContext*, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  WhileOp::Adaptor adaptor(operands, attributes, regions);
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
++  WhileOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferWhileOp(location, adaptor.getOperand(), inferredReturnTypes);
+ }
+ 
+@@ -2376,9 +2396,10 @@
+ 
+ LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
+     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties /*properties*/,
++    RegionRange regions,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+-  UniformDequantizeOp::Adaptor adaptor(operands, attributes, regions);
++  UniformDequantizeOp::Adaptor adaptor(operands, attributes, {}, regions);
+   return hlo::inferUniformDequantizeOp(location, adaptor.getOperand(),
+                                        inferredReturnShapes);
+ }
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+@@ -17,3 +17,10 @@
+ # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
+ from ._stablehlo_ops_gen import *
+ from .._mlir_libs._stablehlo import *
++
++
++def get_earliest_forward_compatible_version():
++  """Return the earliest StableHLO version that the current StableHLO version
++    is still forward compatible with.
++  """
++  return "0.9.0"
+diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
+--- stablehlo/stablehlo/reference/Tensor.cpp
++++ stablehlo/stablehlo/reference/Tensor.cpp
+@@ -100,14 +100,24 @@
+       getSizeInBytes(elementType) * flattenIndex(getShape(), index);
+ 
+   // Handle floating-point types.
++  if (elementType.isFloat8E4M3B11FNUZ()) {
++    auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
++    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3B11FNUZ(),
++                                        APInt(8, *elementData)));
++  }
++  if (elementType.isFloat8E4M3FN()) {
++    auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
++    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3FN(),
++                                        APInt(8, *elementData)));
++  }
+   if (elementType.isFloat8E4M3FNUZ()) {
+     auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
+     return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3FNUZ(),
+                                         APInt(8, *elementData)));
+   }
+-  if (elementType.isFloat8E4M3B11FNUZ()) {
++  if (elementType.isFloat8E5M2()) {
+     auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
+-    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3B11FNUZ(),
++    return Element(elementType, APFloat(llvm::APFloatBase::Float8E5M2(),
+                                         APInt(8, *elementData)));
+   }
+   if (elementType.isFloat8E5M2FNUZ()) {
+@@ -222,7 +232,8 @@
+       getSizeInBytes(elementType) * flattenIndex(getShape(), index);
+ 
+   // Handle floating-point types.
+-  if (elementType.isFloat8E4M3FNUZ() || elementType.isFloat8E4M3B11FNUZ() ||
++  if (elementType.isFloat8E4M3B11FNUZ() || elementType.isFloat8E4M3FN() ||
++      elementType.isFloat8E4M3FNUZ() || elementType.isFloat8E5M2() ||
+       elementType.isFloat8E5M2FNUZ()) {
+     auto elementData = reinterpret_cast<uint8_t *>(elementPtr);
+     auto value = element.getFloatValue();
+@@ -377,16 +388,17 @@
+   auto elemType = type.getElementType();
+ 
+   // Handle floating-point types.
+-  if (elemType.isFloat8E4M3FNUZ() || elemType.isFloat8E4M3B11FNUZ() ||
++  if (elemType.isFloat8E4M3B11FNUZ() || elemType.isFloat8E4M3FN() ||
++      elemType.isFloat8E4M3FNUZ() || elemType.isFloat8E5M2() ||
+       elemType.isFloat8E5M2FNUZ()) {
+     auto floatValues = llvm::to_vector(llvm::map_range(
+         attr.getValues<APFloat>(), [&](APFloat value) -> uint8_t {
+           return value.bitcastToAPInt().getZExtValue();
+         }));
+ 
+-    // For f8E4M3FNUZ, f8E4M3B11FNUZ, and f8E5M2FNUZ floating-point types, we
+-    // use uint8_t as their storage type because there are no builtin types for
+-    // those.
++    // For f8E4M3B11FNUZ, f8E4M3FN, f8E4M3FNUZ, f8E5M2, and f8E5M2FNUZ
++    // floating-point types, we use uint8_t as their storage type because there
++    // are no builtin types for those.
+     return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
+                             floatValues));
+   }
+@@ -398,7 +410,7 @@
+         }));
+ 
+     // For both f16 and bf16 floating-point types, we use uint16_t as their
+-    // storage type because there are no buitin types for those.
++    // storage type because there are no builtin types for those.
+     return Tensor(
+         type,
+         HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(floatValues));
+diff --ruN a/stablehlo/stablehlo/reference/Types.cpp b/stablehlo/stablehlo/reference/Types.cpp
+--- stablehlo/stablehlo/reference/Types.cpp
++++ stablehlo/stablehlo/reference/Types.cpp
+@@ -44,7 +44,8 @@
+ }
+ 
+ bool isSupportedFloatType(Type type) {
+-  return type.isFloat8E4M3FNUZ() || type.isFloat8E4M3B11FNUZ() ||
++  return type.isFloat8E4M3B11FNUZ() || type.isFloat8E4M3FN() ||
++         type.isFloat8E4M3FNUZ() || type.isFloat8E5M2() ||
+          type.isFloat8E5M2FNUZ() || type.isF16() || type.isBF16() ||
+          type.isF32() || type.isF64();
+ }
+diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+--- stablehlo/stablehlo/tests/TestUtils.cpp
++++ stablehlo/stablehlo/tests/TestUtils.cpp
+@@ -55,7 +55,8 @@
+     SmallVector<Type, 4> types;
+     if (failed(definingOpInt.inferReturnTypes(
+             op->getContext(), op->getLoc(), definingOp->getOperands(),
+-            definingOp->getAttrDictionary(), definingOp->getRegions(), types)))
++            definingOp->getAttrDictionary(), nullptr, definingOp->getRegions(),
++            types)))
+       return failure();
+ 
+     // Replace the op with another pass-through op with attributes added.
 diff --ruN a/stablehlo/stablehlo/tests/infer_chlo.mlir b/stablehlo/stablehlo/tests/infer_chlo.mlir
 --- stablehlo/stablehlo/tests/infer_chlo.mlir
 +++ stablehlo/stablehlo/tests/infer_chlo.mlir
-@@ -19,7 +19,7 @@
- // CHECK-LABEL: @complex_ranked_components
- func.func @complex_ranked_components(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>> {
-   %0 = chlo.broadcast_complex %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>>
--  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-1, -1], element_type0 = complex<f32>}
-+  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-9223372036854775808, -9223372036854775808], element_type0 = complex<f32>}
-   %1 = "hlo_test_infer.get_return_type_components"(%0) : (tensor<?x?xcomplex<f32>>) -> tensor<?x?xcomplex<f32>>
-   func.return %1 : tensor<?x?xcomplex<f32>>
- }
-@@ -28,7 +28,7 @@
- // CHECK-LABEL: @compare_ranked_components
- func.func @compare_ranked_components(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xi1> {
-   %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
--  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-1, -1], element_type0 = i1}
-+  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-9223372036854775808, -9223372036854775808], element_type0 = i1}
-   %1 = "hlo_test_infer.get_return_type_components"(%0) : (tensor<?x?xi1>) -> tensor<?x?xi1>
-   func.return %0 : tensor<?x?xi1>
- }
-@@ -37,7 +37,7 @@
- // CHECK-LABEL: @broadcast_add_ranked_components_r1
- func.func @broadcast_add_ranked_components_r1(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
-   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
--  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-1], element_type0 = f32}
-+  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-9223372036854775808], element_type0 = f32}
-   %1 = "hlo_test_infer.get_return_type_components"(%0) : (tensor<?xf32>) -> tensor<?xf32>
-   func.return %1 : tensor<?xf32>
- }
-@@ -46,7 +46,7 @@
- // CHECK-LABEL: @broadcast_add_ranked_components_r1x2
- func.func @broadcast_add_ranked_components_r1x2(%arg0: tensor<?xf32>, %arg1: tensor<?x3xf32>) -> tensor<?x3xf32> {
-   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
--  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-1, 3], element_type0 = f32}
-+  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-9223372036854775808, 3], element_type0 = f32}
-   %1 = "hlo_test_infer.get_return_type_components"(%0) : (tensor<?x3xf32>) -> tensor<?x3xf32>
-   func.return %1 : tensor<?x3xf32>
- }
-@@ -55,7 +55,7 @@
- // CHECK-LABEL: @broadcast_add_ranked_components_with_zero_r1x2
- func.func @broadcast_add_ranked_components_with_zero_r1x2(%arg0: tensor<0xf32>, %arg1: tensor<?x1xf32>) -> tensor<?x0xf32> {
-   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<0xf32>, tensor<?x1xf32>) -> tensor<?x0xf32>
--  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-1, 0], element_type0 = f32}
-+  // CHECK: "hlo_test_infer.return_type_components"(%0) {dims0 = [-9223372036854775808, 0], element_type0 = f32}
-   %1 = "hlo_test_infer.get_return_type_components"(%0) : (tensor<?x0xf32>) -> tensor<?x0xf32>
-   func.return %1 : tensor<?x0xf32>
- }
+@@ -46,6 +46,7 @@
+ 
+ // -----
+ func.func @broadcast_complex_mismatch(%arg0: tensor<2xf64>, %arg1: tensor<2xf32>) -> tensor<2xcomplex<f32>> {
++  // expected-error @+2 {{failed to infer returned types}}
+   // expected-error @+1 {{mismatched operand types}}
+   %0 = "chlo.broadcast_complex"(%arg0, %arg1) : (tensor<2xf64>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
+   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+@@ -109,6 +110,7 @@
+ 
+ // -----
+ func.func @broadcast_select_branch_mismatch(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xf32>) -> tensor<2xi32> {
++  // expected-error @+2 {{failed to infer returned types}}
+   // expected-error @+1 {{mismatched operand types}}
+   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xf32>) -> tensor<2xi32>
+   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<2xi32>) -> tensor<2xi32>
 diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
 --- stablehlo/stablehlo/tests/infer_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
-@@ -554,7 +554,7 @@
- func.func @tensor_bounds(%arg0: tensor<3x5xf32>, %arg1: tensor<i32>) -> tensor<*xindex> {
-   %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x5xf32>, tensor<i32>) -> tensor<*xf32>
- 
--  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
-+  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -562,9 +562,9 @@
+@@ -59,6 +59,7 @@
  // -----
  
- // CHECK-LABEL: @static_tensor_bounds
--func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, -1]>>) -> tensor<*xindex> {
-+func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, ?]>>) -> tensor<*xindex> {
-   %bounds = stablehlo.constant dense<8> : tensor<i32>
--  %result = "stablehlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, -1]>>, tensor<i32>) -> tensor<*xf32>
-+  %result = "stablehlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, ?]>>, tensor<i32>) -> tensor<*xf32>
- 
-   // CHECK: types0 = tensor<8x5xf32>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-@@ -574,8 +574,8 @@
+ func.func @broadcast(%a : tensor<3xi32>) -> tensor<1x2x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{Broadcast with negative dimension size -2}}
+   %0 = "stablehlo.broadcast"(%a) {broadcast_sizes = dense<[1, -2]> : tensor<2xi64>}
+       : (tensor<3xi32>) -> tensor<1x2x3xi32>
+@@ -938,6 +939,7 @@
  // -----
  
- // CHECK-LABEL: @edit_tensor_bounds
--func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
--  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
-+func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-+  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
- 
-   // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, 5]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-@@ -585,10 +585,10 @@
- // -----
- 
- // CHECK-LABEL: @retain_tensor_bounds
--func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
--  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
--
--  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
-+func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-+  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-+
-+  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -596,10 +596,10 @@
- // -----
- 
- // CHECK-LABEL: @unknown_bounds
--func.func @unknown_bounds(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
--  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
--
--  // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
-+func.func @unknown_bounds(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-+  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-+
-+  // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -622,21 +622,21 @@
- // See PairwiseSameOperandAndResultType::inferDimWithBound()
- // CHECK-LABEL: @add_bounds
- func.func @add_bounds(
--  %arg0: tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
--  %arg1: tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>) -> tensor<*xindex> {
-+  %arg0: tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
-+  %arg1: tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>) -> tensor<*xindex> {
-   %result1 = "stablehlo.add"(%arg0, %arg1) : (
--    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
--    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>)
-+    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
-+    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>)
-     -> tensor<?x?x?x?x?x?x?xf32>
-   %result2 = "stablehlo.add"(%arg1, %arg0) : (
--    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>,
--    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>)
-+    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>,
-+    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>)
-     -> tensor<?x?x?x?x?x?x?xf32>
- 
--  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
-+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
-   %1 = "hlo_test_infer.get_return_types"(%result1) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
- 
--  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
-+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
-   %2 = "hlo_test_infer.get_return_types"(%result2) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -646,11 +646,11 @@
- // This test covers "Error out" case for type inference of binary op with bounds
- // See PairwiseSameOperandAndResultType::inferDimWithBound()
- func.func @add_bounds_mismatch(
--  %arg0: tensor<3xf32, #stablehlo.type_extensions<bounds = [-1]>>,
-+  %arg0: tensor<3xf32, #stablehlo.type_extensions<bounds = [?]>>,
-   %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [2]>>) -> tensor<*xindex> {
-   // expected-error@+1 {{requires compatible types for all operands and results}}
-   %result = "stablehlo.add"(%arg0, %arg1) : (
--    tensor<3xf32, #stablehlo.type_extensions<bounds = [-1]>>,
-+    tensor<3xf32, #stablehlo.type_extensions<bounds = [?]>>,
-     tensor<?xf32, #stablehlo.type_extensions<bounds = [2]>>) -> tensor<?xf32>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
-@@ -682,10 +682,10 @@
- // -----
- 
- // CHECK-LABEL: func @transpose_with_bounds
--func.func @transpose_with_bounds(%arg0: tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, -1, 3, -1]>>) -> tensor<*xindex> {
--  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, -1, 3, -1]>>) -> tensor<*xi32>
--
--  // CHECK: types0 = tensor<2x?x4x?xi32, #stablehlo.type_extensions<bounds = [-1, 1, -1, 3]>>
-+func.func @transpose_with_bounds(%arg0: tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, ?, 3, ?]>>) -> tensor<*xindex> {
-+  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, ?, 3, ?]>>) -> tensor<*xi32>
-+
-+  // CHECK: types0 = tensor<2x?x4x?xi32, #stablehlo.type_extensions<bounds = [?, 1, ?, 3]>>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -693,8 +693,8 @@
- // -----
- 
- // CHECK-LABEL: func @slice_with_bounds
--func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xindex> {
--  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xi32>
-+func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
-+  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
-   // CHECK: types0 = tensor<1x2x2xi32>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
-@@ -702,9 +702,9 @@
- 
- // -----
- 
--func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xindex> {
-+func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
+ func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #stablehlo.bounds<?, 4, ?>>) -> tensor<*xindex> {
++  // expected-error@+2 {{failed to infer returned types}}
    // expected-error@+1 {{limit index 5 is larger than dimension bound 4 in dimension 1}}
--  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xi32>
-+  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
+   %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.bounds<?, 4, ?>>) -> tensor<*xi32>
    %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -712,26 +712,26 @@
+@@ -961,6 +963,7 @@
  // -----
  
- // CHECK-LABEL: @pad_with_bounds
--func.func @pad_with_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
-+func.func @pad_with_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
+ func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.bounds<?, 3, ?>>, %arg1: tensor<f16>) -> tensor<*xindex> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{Padding result in negative bound for dimension 1}}
    %0 = "stablehlo.pad"(%arg0, %arg1) {
-     edge_padding_low = dense<[2, 2, 0]> : tensor<3xi64>,
-     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
-     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
--  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, tensor<f16>) -> tensor<*xf16>
-+  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
--  // CHECK: types0 = tensor<7x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 7, -1]>>
--  func.return %1 : tensor<*xindex>
--}
--
--// -----
--
--func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
-+  // CHECK: types0 = tensor<7x?x?xf16, #stablehlo.type_extensions<bounds = [?, 7, ?]>>
-+  func.return %1 : tensor<*xindex>
+     edge_padding_low = dense<[2, -10, 0]> : tensor<3xi64>,
+diff --ruN a/stablehlo/stablehlo/tests/interpret_constant.mlir b/stablehlo/stablehlo/tests/interpret_constant.mlir
+--- stablehlo/stablehlo/tests/interpret_constant.mlir
++++ stablehlo/stablehlo/tests/interpret_constant.mlir
+@@ -80,24 +80,41 @@
+ 
+ // -----
+ 
+-func.func @constant_op_test_f8_e4m3_fnuz() {
+-  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FNUZ>
+-  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.25, 240.0, -240.0, 0.000976562, -0.000976562]> : tensor<10xf8E4M3FNUZ>
++func.func @constant_op_test_f8_e4m3b11_fnuz() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3B11FNUZ>
++  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.101563, 3.25, 30.0, -30.0, 0.00012207, -0.00012207]> : tensor<10xf8E4M3B11FNUZ>
+   func.return
+ }
+ 
+ // -----
+ 
+-func.func @constant_op_test_f8_e4m3b11_fnuz() {
+-  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3B11FNUZ>
+-  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.25, 30.0, -30.0, 0.0001220703125, -0.0001220703125]> : tensor<10xf8E4M3B11FNUZ>
++func.func @constant_op_test_f8_e4m3_fn() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FN>
++  check.expect_almost_eq_const %0, dense<[0.0, -0.0, 1.0, 0.125, 0.1015630, 3.25, 0x7F, 0xFF, 0.001953130, -0.001953130]> : tensor<10xf8E4M3FN>
+   func.return
+ }
+ 
+ // -----
++
++func.func @constant_op_test_f8_e4m3_fnuz() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FNUZ>
++  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.101563, 3.25, 240.0, -240.0, 0.000976562, -0.0009765620]> : tensor<10xf8E4M3FNUZ>
++  func.return
 +}
 +
 +// -----
 +
-+func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
-   // expected-error@+1 {{Padding result in negative bound for dimension 1}}
-   %0 = "stablehlo.pad"(%arg0, %arg1) {
-     edge_padding_low = dense<[2, -10, 0]> : tensor<3xi64>,
-     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
-     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
--  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, tensor<f16>) -> tensor<*xf16>
-+  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -750,13 +750,13 @@
- 
- // CHECK-LABEL: @concat_bounds_c0
- func.func @concat_bounds_c0(
--  %arg0: tensor<5x1xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x1xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x1xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x1xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x3xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -764,19 +764,19 @@
- 
- // CHECK-LABEL: @concat_bounds_c1
- func.func @concat_bounds_c1(
--  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   func.return %1 : tensor<*xindex>
- }
-@@ -785,19 +785,19 @@
- 
- // CHECK-LABEL: @concat_bounds_c2
- func.func @concat_bounds_c2(
--  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
--  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 6]>>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
-+  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 6]>>
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>, 
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
--  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 6]>>
--  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>,
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-+  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 6]>>
-+  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   func.return %1 : tensor<*xindex>
- }
-@@ -806,13 +806,13 @@
- 
- // CHECK-LABEL: @concat_bounds_c3
- func.func @concat_bounds_c3(
--  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -820,19 +820,19 @@
- 
- // CHECK-LABEL: @concat_bounds_c4
- func.func @concat_bounds_c4(
--  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   func.return %1 : tensor<*xindex>
- }
-@@ -841,13 +841,13 @@
- 
- // CHECK-LABEL: @concat_bounds_c5
- func.func @concat_bounds_c5(
--  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 3]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 3]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 3]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
--  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 7]>>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 3]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
-+  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 7]>>
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -860,13 +860,13 @@
- //
- // CHECK-LABEL: @concat_bounds_unranked_c0
- func.func @concat_bounds_unranked_c0(
--  %arg0: tensor<*xi32>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<*xi32>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (
--    tensor<*xi32>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<5x?xi32>
--  // CHECK: types0 = tensor<?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex> 
-+    tensor<*xi32>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
-+  // CHECK: types0 = tensor<?x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -874,12 +874,12 @@
- 
- // CHECK-LABEL: @concat_bounds_unranked_c1
- func.func @concat_bounds_unranked_c1(
--  %arg0: tensor<*xi32>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<*xi32>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<*xi32>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<5x?xi32>
-+    tensor<*xi32>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex> 
--  func.return %1 : tensor<*xindex>
--}
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex>
-+  func.return %1 : tensor<*xindex>
++func.func @constant_op_test_f8_e5m2() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E5M2>
++  check.expect_almost_eq_const %0, dense<[0.0, -0.0, 1.0, 0.125, 0.09375, 3.0, 0x7F, 0xFF, 0.0000152588, -0.0000152588]> : tensor<10xf8E5M2>
++  func.return
 +}
++
++// -----
++
+ func.func @constant_op_test_f8_e5m2_fnuz() {
+   %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E5M2FNUZ>
+-  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.0, 57344.0, -57344.0, 7.62939e-06, -7.62939e-06]> : tensor<10xf8E5M2FNUZ>
++  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.09375, 3.0, 57344.0, -57344.0, 0.00000762939, -0.00000762939]> : tensor<10xf8E5M2FNUZ>
+   func.return
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -91,6 +91,7 @@
+ // -----
+ 
+ func.func @top_k(%arg0 : tensor<*xf32>) {
++  // expected-error @+2 {{failed to infer returned types}}
+   // @expected-error @+1{{operand must be ranked}}
+   %0:2 = chlo.top_k(%arg0, k=8) : tensor<*xf32> -> (tensor<8xf32>, tensor<8xi32>)
+   return
+@@ -99,6 +100,7 @@
+ // -----
+ 
+ func.func @top_k(%arg0 : tensor<f32>) {
++  // expected-error @+2 {{failed to infer returned types}}
+   // @expected-error @+1{{operand's rank must be at least 1}}
+   %0:2 = chlo.top_k(%arg0, k=8) : tensor<f32> -> (tensor<8xf32>, tensor<8xi32>)
+   return
+@@ -107,6 +109,7 @@
+ // -----
+ 
+ func.func @top_k(%arg0 : tensor<?xf32>) {
++  // expected-error @+2 {{failed to infer returned types}}
+   // @expected-error @+1{{operand's last dimension must be static}}
+   %0:2 = chlo.top_k(%arg0, k=8) : tensor<?xf32> -> (tensor<8xf32>, tensor<8xi32>)
+   return
+@@ -115,6 +118,7 @@
+ // -----
+ 
+ func.func @top_k(%arg0 : tensor<4xf32>) {
++  // expected-error @+2 {{failed to infer returned types}}
+   // @expected-error @+1{{operand's last dimension must be at least 8}}
+   %0:2 = chlo.top_k(%arg0, k=8) : tensor<4xf32> -> (tensor<8xf32>, tensor<8xi32>)
+   return
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -4266,7 +4266,7 @@
+@@ -484,6 +484,7 @@
  // -----
  
- func.func @error_batch_norm_grad(%input: tensor<?x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<?x2x2x2xf32>) -> tensor<?x2x2x2xf32> {
--  // expected-error@+1 {{expects the size of scale factor to be same as the feature count, but the size of scale factor is 2 and the feature count is -1.}}
-+  // expected-error@+1 {{expects the size of scale factor to be same as the feature count, but the size of scale factor is 2 and the feature count is -9223372036854775808.}}
-   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<?x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<?x2x2x2xf32>) -> (tensor<?x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
-   func.return %0#0 : tensor<?x2x2x2xf32>
+ func.func @alltoall_negative_split_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{AllToAll split_dimension cannot be negative}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = -1 : i64,
+@@ -497,6 +498,7 @@
+ // -----
+ 
+ func.func @alltoall_out_bound_split_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{AllToAll split_dimension 2 is out-of-bounds for input rank 2}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 2 : i64,
+@@ -510,6 +512,7 @@
+ // -----
+ 
+ func.func @alltoall_negative_concat_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{AllToAll concat_dimension cannot be negative}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -523,6 +526,7 @@
+ // -----
+ 
+ func.func @alltoall_out_bound_concat_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{AllToAll concat_dimension 2 is out-of-bounds for input rank 2}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -536,6 +540,7 @@
+ // -----
+ 
+ func.func @alltoall_invalid_split_count(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{AllToAll split_count must be > 0}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -549,7 +554,8 @@
+ // -----
+ 
+ func.func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+-// expected-error@+1 {{split dimension has size 16, expected to be a multiple of split_count 5}}
++  // expected-error@+2 {{failed to infer returned types}}
++  // expected-error@+1 {{split dimension has size 16, expected to be a multiple of split_count 5}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+     concat_dimension = 0 : i64,
+@@ -562,6 +568,7 @@
+ // -----
+ 
+ func.func @alltoall_invalid_replica_group(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{replica groups should be a rank 2 tensor}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -575,6 +582,7 @@
+ // -----
+ 
+ func.func @alltoall_invalid_replica_group(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{replica id #1 not seen in replica groups}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -588,6 +596,7 @@
+ // -----
+ 
+ func.func @alltoall_invalid_replica_group(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{replica id #2 seen more than once}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -601,6 +610,7 @@
+ // -----
+ 
+ func.func @alltoall_invalid_replica_group(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{replica id #4 not seen in replica groups}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -614,6 +624,7 @@
+ // -----
+ 
+ func.func @alltoall_invalid_replica_group(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{group size of replica_groups must be 4}}
+   %0 = "stablehlo.all_to_all"(%data) {
+     split_dimension = 1 : i64,
+@@ -794,6 +805,7 @@
+ // -----
+ 
+ func.func @broadcast_bad_sizes_rank(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{broadcast_sizes has rank 2 instead of rank 1}}
+   %0 = "stablehlo.broadcast"(%arg0) {broadcast_sizes = dense<[[1, 2]]> : tensor<1x2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
+   func.return %0 : tensor<1x2x3xi32>
+@@ -802,6 +814,7 @@
+ // -----
+ 
+ func.func @broadcast_bad_result_rank(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.broadcast' op inferred type(s) 'tensor<2x3xi32>' are incompatible with return type(s) of operation 'tensor<1x2x3xi32>'}}
+   %0 = "stablehlo.broadcast"(%arg0) {broadcast_sizes = dense<[2]> : tensor<1xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
+   func.return %0 : tensor<1x2x3xi32>
+@@ -810,6 +823,7 @@
+ // -----
+ 
+ func.func @broadcast_bad_first_part_result_shape(%arg0: tensor<3xi32>) -> tensor<1x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.broadcast' op inferred type(s) 'tensor<2x3xi32>' are incompatible with return type(s) of operation 'tensor<1x3xi32>'}}
+   %0 = "stablehlo.broadcast"(%arg0) {broadcast_sizes = dense<[2]> : tensor<1xi64>} : (tensor<3xi32>) -> tensor<1x3xi32>
+   func.return %0 : tensor<1x3xi32>
+@@ -818,6 +832,7 @@
+ // -----
+ 
+ func.func @broadcast_bad_second_part_result_shape(%arg0: tensor<3xi32>) -> tensor<2x1xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.broadcast' op inferred type(s) 'tensor<2x3xi32>' are incompatible with return type(s) of operation 'tensor<2x1xi32>'}}
+   %0 = "stablehlo.broadcast"(%arg0) {broadcast_sizes = dense<[2]> : tensor<1xi64>} : (tensor<3xi32>) -> tensor<2x1xi32>
+   func.return %0 : tensor<2x1xi32>
+@@ -976,6 +991,7 @@
+ // -----
+ 
+ func.func @if_c1(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<f32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // @expected-error@+1 {{branch 0 must have 0 arguments, but found 1}}
+   %0 = "stablehlo.if"(%pred) ({
+       ^bb0(%arg0: tensor<f32>):
+@@ -989,6 +1005,7 @@
+ // -----
+ 
+ func.func @if_c1(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<f32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // @expected-error@+1 {{branch 1 must have 0 arguments, but found 1}}
+   %0 = "stablehlo.if"(%pred) ({
+       "stablehlo.return"(%branch_operand) : (tensor<f32>) -> ()
+@@ -1002,6 +1019,7 @@
+ // -----
+ 
+ func.func @if_c2(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<f32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // @expected-error@+1 {{branch 0 and branch 1 have mismatched return types: 'tensor<f32>', 'tensor<f32>' vs 'tensor<f32>'}}
+   %0 = "stablehlo.if"(%pred) ({
+       "stablehlo.return"(%branch_operand, %branch_operand) : (tensor<f32>, tensor<f32>) -> ()
+@@ -1014,6 +1032,7 @@
+ // -----
+ 
+ func.func @if_c3(%pred : tensor<i1>, %branch_operand : tensor<f32>) -> tensor<i32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // @expected-error@+1 {{inferred type(s) 'tensor<f32>' are incompatible with return type(s) of operation 'tensor<i32>'}}
+   %0 = "stablehlo.if"(%pred) ({
+       "stablehlo.return"(%branch_operand) : (tensor<f32>) -> ()
+@@ -1050,6 +1069,7 @@
+ // -----
+ 
+ func.func @if_i1(%pred : tensor<1xi1>, %branch_operand : tensor<f32>) -> tensor<f32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // @expected-error@+1 {{operand should be rank 0 tensor but got rank 1}}
+   %0 = "stablehlo.if"(%pred) ({
+       "stablehlo.return"(%branch_operand) : (tensor<f32>) -> ()
+@@ -1086,6 +1106,7 @@
+ // -----
+ 
+ func.func @case_c1(%index : tensor<i32>, %branch_operand : tensor<2xf32>) -> tensor<2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // @expected-error@+1 {{expect at least one branch}}
+   %0 = "stablehlo.case"(%index) : (tensor<i32>) -> tensor<2xf32>
+   func.return %0 : tensor<2xf32>
+@@ -1094,6 +1115,7 @@
+ // -----
+ 
+ func.func @case_c2(%index : tensor<i32>, %branch_operand : tensor<f32>) -> tensor<f32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // @expected-error@+1 {{branch 1 must have 0 arguments, but found 1}}
+   %0 = "stablehlo.case"(%index) ({
+       "stablehlo.return"(%branch_operand) : (tensor<f32>) -> ()
+@@ -1107,6 +1129,7 @@
+ // -----
+ 
+ func.func @case_c3(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{branch 0 and branch 1 have mismatched return types: 'tensor<f32>' vs 'tensor<i32>'}}
+   %0 = "stablehlo.case"(%index) ({
+       %1 = "stablehlo.negate"(%operand_1) : (tensor<f32>) -> tensor<f32>
+@@ -1121,7 +1144,8 @@
+ // -----
+ 
+ func.func @case_c4(%index : tensor<i32>, %branch_operand : tensor<f32>) -> tensor<i32> {
+-  // @expected-error@+1 {{inferred type(s) 'tensor<f32>' are incompatible with return type(s) of operation 'tensor<i32>'}}
++  // expected-error@+2 {{failed to infer returned types}}
++  // expected-error@+1 {{inferred type(s) 'tensor<f32>' are incompatible with return type(s) of operation 'tensor<i32>'}}
+   %0 = "stablehlo.case"(%index) ({
+       "stablehlo.return"(%branch_operand) : (tensor<f32>) -> ()
+   }, {
+@@ -1157,7 +1181,8 @@
+ // -----
+ 
+ func.func @case_i1(%index : tensor<1xi32>, %branch_operand : tensor<2xf32>) -> tensor<2xf32> {
+-  // @expected-error@+1 {{operand should be rank 0 tensor but got rank 1}}
++  // expected-error@+2 {{failed to infer returned types}}
++  // expected-error@+1 {{operand should be rank 0 tensor but got rank 1}}
+   %0 = "stablehlo.case"(%index) ({
+       "stablehlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
+   }, {
+@@ -1295,6 +1320,7 @@
+ // -----
+ 
+ func.func @concatenate_c1_c5(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{op inferred type(s) 'tensor<3xi32>' are incompatible with return type(s) of operation 'tensor<4xi32>'}}
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<4xi32>
+   func.return %0 : tensor<4xi32>
+@@ -1303,6 +1329,7 @@
+ // -----
+ 
+ func.func @concatenate_c2(%arg0: tensor<1xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{operands (0) and (1) do not match rank}}
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2x2xi32>) -> tensor<3xi32>
+   func.return %0 : tensor<3xi32>
+@@ -1319,6 +1346,7 @@
+ // -----
+ 
+ func.func @concatenate_c4(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{dimension -1 is negative}}
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+   func.return %0 : tensor<3xi32>
+@@ -1327,6 +1355,7 @@
+ // -----
+ 
+ func.func @concatenate_c4(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{dimension -1 is negative}}
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+   func.return %0 : tensor<*xi32>
+@@ -1335,6 +1364,7 @@
+ // -----
+ 
+ func.func @concatenate_c4(%arg0: tensor<i32>, %arg1: tensor<i32>)  -> tensor<2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{rank-0 values cannot be concatenated}}
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+   func.return %0 : tensor<2xi32>
+@@ -1343,6 +1373,7 @@
+ // -----
+ 
+ func.func @concatenate_c4(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{dimension 10 is out-of-bounds for input rank 1}}
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 10 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+   func.return %0 : tensor<3xi32>
+@@ -1351,6 +1382,7 @@
+ // -----
+ 
+ func.func @concatenate_c6(%arg0: tensor<1x3xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{shapes of operand (0) and (1) do not match at non-concat index: (1, 3) != (2, 2) at non-concat index 1}}
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1x3xi32>, tensor<2x2xi32>) -> tensor<3x3xi32>
+   func.return %0 : tensor<3x3xi32>
+@@ -1381,6 +1413,7 @@
+ // -----
+ 
+ func.func @clamp_c1(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{min shape [2] is not scalar and is not compatible to operand shape [1]}}
+   %0 = "stablehlo.clamp"(%arg1, %arg0, %arg0) : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+   func.return %0: tensor<1xi32>
+@@ -1389,6 +1422,7 @@
+ // -----
+ 
+ func.func @clamp_c2(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{max shape [2] is not scalar and is not compatible to operand shape [1]}}
+   %0 = "stablehlo.clamp"(%arg0, %arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<1xi32>
+   func.return %0: tensor<1xi32>
+@@ -1397,7 +1431,8 @@
+ // -----
+ 
+ func.func @clamp_c4(%arg0: tensor<1xi32>) -> tensor<1x2xi32> {
+-  // // expected-error@+1{{inferred type(s) 'tensor<1xi32>' are incompatible with return type(s) of operation 'tensor<1x2xi32>'}}
++  // expected-error@+2 {{failed to infer returned types}}
++  // expected-error@+1{{inferred type(s) 'tensor<1xi32>' are incompatible with return type(s) of operation 'tensor<1x2xi32>'}}
+   %0 = "stablehlo.clamp"(%arg0, %arg0, %arg0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2xi32>
+   func.return %0: tensor<1x2xi32>
  }
-diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
---- stablehlo/stablehlo/tests/print_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/print_stablehlo.mlir
-@@ -268,10 +268,10 @@
+@@ -1421,6 +1456,7 @@
+ // -----
+ 
+ func.func @cholesky_error_nonsquare(%arg0: tensor<1x2x1xf32>) -> tensor<1x2x1xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{minor dimensions of 'a' must have equal size, got shape 1, 2, 1}}
+   %0 = "stablehlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x1xf32>) -> tensor<1x2x1xf32>
+   func.return %0: tensor<1x2x1xf32>
+@@ -1429,6 +1465,7 @@
+ // -----
+ 
+ func.func @cholesky_invalid_rank(%arg0: tensor<1xf32>) -> tensor<1xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{argument 'a' must have rank >= 2, got shape 1}}
+   %0 = "stablehlo.cholesky"(%arg0) { lower = true } : (tensor<1xf32>) -> tensor<1xf32>
+   func.return %0: tensor<1xf32>
+@@ -1437,7 +1474,7 @@
+ // -----
+ 
+ func.func @cholesky_invalid_elt(%arg0: tensor<1x2x2xi32>) -> tensor<1x2x2xi32> {
+-  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<1x2x2xi32>}}
++  // expected-error@+1 {{operand #0 must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<1x2x2xi32>'}}
+   %0 = "stablehlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xi32>) -> tensor<1x2x2xi32>
+   func.return %0: tensor<1x2x2xi32>
+ }
+@@ -1445,6 +1482,7 @@
+ // -----
+ 
+ func.func @cholesky_wrong_infer_shape(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.cholesky' op inferred type(s) 'tensor<1x2x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2x2x2xf32>'}}
+   %0 = "stablehlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xf32>) -> tensor<1x2x2x2xf32>
+   func.return %0: tensor<1x2x2x2xf32>
+@@ -1544,6 +1582,7 @@
+ // -----
+ 
+ func.func @imag_c2(%arg0: tensor<2xf32>) -> tensor<2xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<2xf32>' are incompatible with return type(s) of operation 'tensor<2xf16>'}}
+   %0 = "stablehlo.imag"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
+   func.return %0 : tensor<2xf16>
+@@ -1637,6 +1676,7 @@
+ // -----
+ 
+ func.func @map_c3(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires monotonically increasing dimension numbers, but got: dense<[1, 0]> : tensor<2xi64>}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+@@ -1649,6 +1689,7 @@
+ // -----
+ 
+ func.func @map_c3(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{applied to a subset of dimensions currently not supported: operand dimensions = 2, requested map dimensions size = 3}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+@@ -1661,6 +1702,7 @@
+ // -----
+ 
+ func.func @map_c4(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects number of operands to match the arity of map computation, but got: 2 and 1}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg: tensor<f32>):
+@@ -1673,6 +1715,7 @@
+ // -----
+ 
+ func.func @map_c4(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{computation arguments must be 0-rank tensor, but got: arg #1 of type 'tensor<5xf32>'}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<f32>, %arg3: tensor<5xf32>):
+@@ -1685,6 +1728,7 @@
+ // -----
+ 
+ func.func @map_c4(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{element type of operands and computation arguments must match, but got: 'f32' and 'i32'}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+@@ -1697,6 +1741,7 @@
+ // -----
+ 
+ func.func @map_c4(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{computation must return single output, but got: 0}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+@@ -1709,6 +1754,7 @@
+ // -----
+ 
+ func.func @map_c4(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{computation must return 0-rank tensor, but got: 'tensor<5xf32>'}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+@@ -1732,6 +1778,7 @@
+ // -----
+ 
+ func.func @map_i2(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{dimensions should be rank 1 but got rank 2}}
+   %0 = "stablehlo.map"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+@@ -1778,6 +1825,7 @@
+ // -----
+ 
+ func.func @real_c2(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<2x3xf16>'}}
+   %0 = "stablehlo.real"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16>
+   func.return %0 : tensor<2x3xf16>
+@@ -1899,6 +1947,7 @@
+ 
+ func.func @rng_normal_invalid_shape(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+   %cst = "stablehlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error @+1 {{inferred type(s) 'tensor<7xf32>' are incompatible with return type(s) of operation 'tensor<12xf32>'}}
+   %0 = "stablehlo.rng"(%arg0, %arg1, %cst) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<f32>, tensor<f32>, tensor<1xi64>) -> tensor<12xf32>
+   func.return
+@@ -1908,7 +1957,7 @@
+ 
+ func.func @rng_normal_invalid_mu_rank(%mu: tensor<1xf32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%mu, %sigma, %shape) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -1917,7 +1966,7 @@
+ 
+ func.func @rng_normal_invalid_sigma_rank(%mu: tensor<f32>, %sigma: tensor<1xf32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{#1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{#1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%mu, %sigma, %shape) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -1935,7 +1984,7 @@
+ 
+ func.func @rng_normal_invalid_type(%arg0: tensor<complex<f32>>, %arg1: tensor<f32>) {
+   %cst = "stablehlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
+-  // expected-error @+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
++  // expected-error @+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
+   %0 = "stablehlo.rng"(%arg0, %arg1, %cst) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<complex<f32>>, tensor<f32>, tensor<1xi64>) -> tensor<7xf32>
+   func.return
+ }
+@@ -1968,6 +2017,7 @@
+ // -----
+ 
+ func.func @rng_uniform_invalid_shape(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<7xi64>) {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error @+1 {{inferred type(s) 'tensor<?x?x?x?x?x?x?xf32>' are incompatible with return type(s) of operation 'tensor<?xf32>'}}
+   %0 = "stablehlo.rng"(%arg0, %arg1, %arg2) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<f32>, tensor<f32>, tensor<7xi64>) -> tensor<?xf32>
+   func.return
+@@ -1977,7 +2027,7 @@
+ 
+ func.func @rng_uniform_invalid_a_rank(%a: tensor<1xf32>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -1987,7 +2037,7 @@
+ 
+ func.func @rng_uniform_invalid_b_rank(%a: tensor<f32>, %b: tensor<1xf32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{operand #1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{operand #1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -2005,7 +2055,7 @@
+ 
+ func.func @rng_uniform_invalid_type(%a: tensor<complex<f32>>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
++  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
+   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -2069,6 +2119,7 @@
+ // -----
+ 
+ func.func @select_c1(%arg0: tensor<3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires the same shape for all operands}}
+   %0 = "stablehlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+   func.return %0 : tensor<2x3xi32>
+@@ -2077,6 +2128,7 @@
+ // -----
+ 
+ func.func @select_c2(%arg0: tensor<3xi1>, %arg1: tensor<2x4xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires compatible types for non-predicate operands}}
+   %0 = "stablehlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x4xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+   func.return %0 : tensor<2x3xi32>
+@@ -2085,6 +2137,7 @@
+ // -----
+ 
+ func.func @select_c2(%arg0: tensor<i1>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xf32>) -> tensor<2x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<2x3xi32>'}}
+   %0 = "stablehlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xi32>
+   func.return %0 : tensor<2x3xi32>
+@@ -2101,6 +2154,7 @@
+ // -----
+ 
+ func.func @slice_c2(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{the number of elements in start_indices (3) does not match the rank of the operand (2)}}
+   %0 = "stablehlo.slice"(%arg0) {
+     start_indices = dense<[1, 0, 0]> : tensor<3xi64>,
+@@ -2113,6 +2167,7 @@
+ // -----
+ 
+ func.func @slice_c3(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{negative start index -1 in dimension 0}}
+   %0 = "stablehlo.slice"(%arg0) {
+     start_indices = dense<[-1, 0]> : tensor<2xi64>,
+@@ -2125,6 +2180,7 @@
+ // -----
+ 
+ func.func @slice_c3(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{limit index 5 is larger than dimension size 4 in dimension 1}}
+   %0 = "stablehlo.slice"(%arg0) {
+     start_indices = dense<[1, 0]> : tensor<2xi64>,
+@@ -2137,6 +2193,7 @@
+ // -----
+ 
+ func.func @slice_c3(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start index 3 is larger than limit index 2 in dimension 1}}
+   %0 = "stablehlo.slice"(%arg0) {
+     start_indices = dense<[1, 3]> : tensor<2xi64>,
+@@ -2149,6 +2206,7 @@
+ // -----
+ 
+ func.func @slice_c4(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{stride must be positive but got 0 in dimension 0}}
+   %0 = "stablehlo.slice"(%arg0) {
+     start_indices = dense<[1, 0]> : tensor<2xi64>,
+@@ -2173,6 +2231,7 @@
+ // -----
+ 
+ func.func @slice_i2(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start_indices has rank 2 instead of required rank 1}}
+   %0 = "stablehlo.slice"(%arg0) {
+     start_indices = dense<[[1, 0]]> : tensor<1x2xi64>,
+@@ -2201,6 +2260,7 @@
+ // -----
+ 
+ func.func @dynamic_slice_c2(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{has mismatched number of slice sizes (1) and number of start indices (2)}}
+   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+   func.return %0 : tensor<1x4xi32>
+@@ -2209,6 +2269,7 @@
+ // -----
+ 
+ func.func @dynamic_slice_c2(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>) -> tensor<1x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{has mismatched number of start indices (1) and the rank of operand (2)}}
+   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1) {slice_sizes = dense<[1]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i64>) -> tensor<1x4xi32>
+   func.return %0 : tensor<1x4xi32>
+@@ -2217,6 +2278,7 @@
+ // -----
+ 
+ func.func @dynamic_slice_c3(%arg0: tensor<3x4xi32>, %arg1: tensor<i32>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start indices must have same element type}}
+   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i32>, tensor<i64>) -> tensor<1x4xi32>
+   func.return %0 : tensor<1x4xi32>
+@@ -2225,6 +2287,7 @@
+ // -----
+ 
+ func.func @dynamic_slice_c4(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{has negative size index to dynamic slice: -1}}
+   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[-1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+   func.return %0 : tensor<1x4xi32>
+@@ -2233,6 +2296,7 @@
+ // -----
+ 
+ func.func @dynamic_slice_c4(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{has slice size 10 greater than dimension size 4 in dimension 1 of operand}}
+   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 10]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+   func.return %0 : tensor<1x4xi32>
+@@ -2241,6 +2305,7 @@
+ // -----
+ 
+ func.func @dynamic_slice_c5(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<2x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<1x4xi32>' are incompatible with return type(s) of operation 'tensor<2x4xi32>'}}
+   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<2x4xi32>
+   func.return %0 : tensor<2x4xi32>
+@@ -2257,6 +2322,7 @@
+ // -----
+ 
+ func.func @dynamic_slice_i3(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice_sizes should be rank 1, but got rank 0.}}
+   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<1> : tensor<i64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+   func.return %0 : tensor<1x4xi32>
+@@ -2273,6 +2339,7 @@
+ // -----
+ 
+ func.func @dynamic_update_slice_c1(%operand: tensor<3x4xi64>, %update: tensor<1x4xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x5xi64> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{op inferred type(s) 'tensor<3x4xi64>' are incompatible with return type(s) of operation 'tensor<3x5xi64>'}}
+   %0 = "stablehlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<1x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x5xi64>
+   func.return %0 : tensor<3x5xi64>
+@@ -2281,6 +2348,7 @@
+ // -----
+ 
+ func.func @dynamic_update_slice_c3(%operand: tensor<3x4xi64>, %update: tensor<2xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4xi64> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{update rank does not match operand rank: 1 vs 2.}}
+   %0 = "stablehlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<2xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+   func.return %0 : tensor<3x4xi64>
+@@ -2289,6 +2357,7 @@
+ // -----
+ 
+ func.func @dynamic_update_slice_c4(%operand: tensor<3x4xi64>, %update: tensor<1x2xi64>, %start_indices0: tensor<i64>) -> tensor<3x4xi64> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects number of start_indices to match operand rank: 1 vs 2.}}
+   %0 = "stablehlo.dynamic_update_slice"(%operand, %update, %start_indices0) : (tensor<3x4xi64>, tensor<1x2xi64>, tensor<i64>) -> tensor<3x4xi64>
+   func.return %0 : tensor<3x4xi64>
+@@ -2297,6 +2366,7 @@
+ // -----
+ 
+ func.func @dynamic_update_slice_c5(%operand: tensor<11x3x4xi32>, %update: tensor<1x3x4xi32>, %start_indices0: tensor<i32>, %start_indices1: tensor<i64>, %start_indices2: tensor<i64>) -> tensor<11x3x4xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start indices must have same element type}}
+   %0 = "stablehlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1, %start_indices2) : (tensor<11x3x4xi32>, tensor<1x3x4xi32>, tensor<i32>, tensor<i64>, tensor<i64>) -> tensor<11x3x4xi32>
+   func.return %0 : tensor<11x3x4xi32>
+@@ -2305,6 +2375,7 @@
+ // -----
+ 
+ func.func @dynamic_update_slice_c6(%operand: tensor<3x4xi64>, %update: tensor<1x5xi64>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4xi64> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects size at dimension 1 of update to be in range [0, 4]. Got: 5.}}
+   %0 = "stablehlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4xi64>, tensor<1x5xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+   func.return %0 : tensor<3x4xi64>
+@@ -2375,6 +2446,7 @@
+ // -----
+ 
+ func.func @transpose_bad_permutations_rank(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{permutation has rank 2 instead of rank 1}}
+   %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[[1]]> : tensor<1x1xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
+   func.return %0: tensor<2x1x4x3xi32>
+@@ -2383,6 +2455,7 @@
+ // -----
+ 
+ func.func @transpose_bad_permutations_size(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{TransposeOp operand rank 4 does not match permutation size 1}}
+   %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1]> : tensor<1xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
+   func.return %0: tensor<2x1x4x3xi32>
+@@ -2391,6 +2464,7 @@
+ // -----
+ 
+ func.func @transpose_bad_permutation(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{attribute permutation must be a permutation of [0, 1, 2, 3] but got dense<[1, 0, 3, 9]> : tensor<4xi64>}}
+   %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 9]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
+   func.return %0: tensor<2x1x4x3xi32>
+@@ -2399,6 +2473,7 @@
+ // -----
+ 
+ func.func @transpose_operand_result_rank_mismatch(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{op inferred type(s) 'tensor<2x1x4x3xi32>' are incompatible with return type(s) of operation 'tensor<2xi32>'}}
+   %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2xi32>
+   func.return %0: tensor<2xi32>
+@@ -2407,6 +2482,7 @@
+ // -----
+ 
+ func.func @transpose_operand_result_permutation_mismatch(%arg0: tensor<1x?x3x?xi32>) ->  tensor<?x2x?x?xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{op inferred type(s) 'tensor<?x1x?x3xi32>' are incompatible with return type(s) of operation 'tensor<?x2x?x?xi32>}}
+   %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x?x3x?xi32>) -> tensor<?x2x?x?xi32>
+   func.return %0: tensor<?x2x?x?xi32>
+@@ -2471,6 +2547,7 @@
+ // -----
+ 
+ func.func @triangular_solve_rank_less_than_2(%arg0: tensor<4xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x3xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{operand 'a' must have rank >= 2, but got 'tensor<4xf32>'}}
+   %0 = "stablehlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<4xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
+   func.return %0 : tensor<4x3xf32>
+@@ -2479,6 +2556,7 @@
+ // -----
+ 
+ func.func @triangular_solve_unequal_minor_dims_a(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x3xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{two minor dimensions of operand 'a' must be compatible, but got 'tensor<4x3xf32>'}}
+   %0 = "stablehlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<4x3xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
+   func.return %0 : tensor<4x3xf32>
+@@ -2487,6 +2565,7 @@
+ // -----
+ 
+ func.func @triangular_solve_unequal_rank(%arg0: tensor<10x4x4xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x3xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{operands must have equal rank, but got 'tensor<10x4x4xf32>' and 'tensor<4x3xf32>'}}
+   %0 = "stablehlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<10x4x4xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
+   func.return %0 : tensor<4x3xf32>
+@@ -2495,6 +2574,7 @@
+ // -----
+ 
+ func.func @triangular_solve_mismatch_shared_dim(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{shared dimension of operands 'a' and 'b' must be compatible, but got 'tensor<4x4xf32>' and 'tensor<3x4xf32>'}}
+   %0 = "stablehlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<4x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
+   func.return %0 : tensor<3x4xf32>
+@@ -2503,6 +2583,7 @@
+ // -----
+ 
+ func.func @triangular_solve_mismatch_leading_dims(%arg0: tensor<10x5x4x4xf32>, %arg1: tensor<10x6x4x3xf32>) -> tensor<10x6x4x3xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{batch dimensions of the operands must be compatible, but got 'tensor<10x5x4x4xf32>' and 'tensor<10x6x4x3xf32>'}}
+   %0 = "stablehlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<10x5x4x4xf32>, tensor<10x6x4x3xf32>) -> tensor<10x6x4x3xf32>
+   func.return %0 : tensor<10x6x4x3xf32>
+@@ -2511,6 +2592,7 @@
+ // -----
+ 
+ func.func @triangular_solve_mismatch_result_and_b_type(%arg0: tensor<4x4xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<4x3xf32>' are incompatible with return type(s) of operation 'tensor<4x4xf32>'}}
+   %0 = "stablehlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<4x4xf32>, tensor<4x3xf32>) -> tensor<4x4xf32>
+   func.return %0 : tensor<4x4xf32>
+@@ -2519,6 +2601,7 @@
+ // -----
+ 
+ func.func @triangular_solve(%arg0: tensor<10x5x4x4xf32>, %arg1: tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{Invalid transpose option value for triangular solve}}
+   %0 = "stablehlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #stablehlo<transpose TRANSPOSE_INVALID>, unit_diagonal = true} : (tensor<10x5x4x4xf32>, tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xf32>
+   func.return %0 : tensor<10x5x4x4xf32>
+@@ -2542,6 +2625,7 @@
+ // -----
+ 
+ func.func @tuple_arg_size_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'tuple<tensor<f32>, tensor<f32>>' are incompatible with return type(s) of operation 'tuple<tensor<f32>, tensor<f32>, tensor<f32>>'}}
+   %0 = "stablehlo.tuple"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+   func.return %0 : tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+@@ -2550,6 +2634,7 @@
+ // -----
+ 
+ func.func @tuple_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tuple<tensor<f32>, tensor<i32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tuple<tensor<f32>, tensor<f32>>' are incompatible with return type(s) of operation 'tuple<tensor<f32>, tensor<i32>>'}}
+   %0 = "stablehlo.tuple"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<i32>>
+   func.return %0 : tuple<tensor<f32>, tensor<i32>>
+@@ -2572,6 +2657,7 @@
+ // -----
+ 
+ func.func @get_tuple_element_bad_type(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<i32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<f32>' are incompatible with return type(s) of operation 'tensor<i32>'}}
+   %0 = "stablehlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<i32>
+   func.return %0 : tensor<i32>
+@@ -2580,6 +2666,7 @@
+ // -----
+ 
+ func.func @get_tuple_element_index_out_of_bounds(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{index 2 is out of bounds of operand with size 2}}
+   %0 = "stablehlo.get_tuple_element"(%arg0) {index = 2 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+@@ -2611,7 +2698,7 @@
+ // -----
+ 
+ func.func @floor_invalid_i32_type(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+-  // expected-error@+1 {{must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<4xi32>'}}
++  // expected-error@+1 {{must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<4xi32>'}}
+   %0 = "stablehlo.floor"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+   func.return %0 : tensor<4xi32>
+ }
+@@ -2632,6 +2719,7 @@
+ // -----
+ 
+ func.func @constant_invalid() -> () {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.constant' op inferred type(s) 'tensor<i32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
+   %0 = "stablehlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<3xi32>)
+   func.return
+@@ -3516,6 +3604,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{index_vector_dim 4 is out of bounds for start indices with rank 3}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3533,6 +3622,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) is not equal to operand rank (3)}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3550,6 +3640,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start_index_map size (1) is not equal to size of index dimension (2) of start_indices (2)}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3567,6 +3658,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice_sizes.rank != 1}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3584,6 +3676,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice_sizes size (2) not equal to (implied) operand rank (3)}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3601,6 +3694,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<*xi32>, %start_indices : tensor<*xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice_sizes size (6) not equal to (implied) operand rank (3)}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3618,6 +3712,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<1x5x8xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3635,6 +3730,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<*xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<8x?x7x1x6x1x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3652,6 +3748,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<*xi32>, %start_indices : tensor<*xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice_sizes collapsed dimension 2 should <= 1 but got 8}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3669,6 +3766,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{collapsed dimension -1 is out of bounds for slice_sizes.size (3)}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3686,6 +3784,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{collapsed dimension 17 is out of bounds for slice_sizes.size (3)}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3703,6 +3802,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<*xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice size (-1) is out of bounds for operand dimension (2) at index 2}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3720,6 +3820,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<*xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice size (8) is out of bounds for operand dimension (2) at index 2}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3737,6 +3838,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<16x11xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x8x6xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects offset_dims to not repeat, got: [2, 2]}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3754,6 +3856,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<16x11xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x8x6xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects offset_dims to be sorted, got: [2, 1]}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3771,6 +3874,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects collapsed_slice_dims to not repeat, got: [1, 1]}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3788,6 +3892,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects collapsed_slice_dims to be sorted, got: [1, 0]}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3805,6 +3910,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{offset_dims[0]: -1 is out of bounds for implied result rank 3}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3822,6 +3928,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{offset_dims[0]: 3 is out of bounds for implied result rank 3}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3839,6 +3946,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start_index_map[0]: -2 is out of bounds for operand rank 3}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3856,6 +3964,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start_index_map[1]: 3 is out of bounds for operand rank 3}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3873,6 +3982,7 @@
+ // -----
+ 
+ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects start_index_map to not repeat, got: [0, 0]}}
+   %res = "stablehlo.gather"(%operand, %start_indices) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3936,6 +4046,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<*xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<*xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{index_vector_dim 4 is out of bounds for start indices with rank 3}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3952,6 +4063,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<*xi32>, %slice_sizes : tensor<*xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) is not equal to operand rank (3)}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3968,6 +4080,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<*xi32>, %start_indices : tensor<?x?x2xi32>, %slice_sizes : tensor<*xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{start_index_map size (1) is not equal to size of index dimension (2) of start_indices (2)}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -3984,6 +4097,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<*xi32>, %start_indices : tensor<*xi32>, %slice_sizes : tensor<?x?xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice_sizes.rank != 1}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -4000,6 +4114,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<*xi32>, %slice_sizes : tensor<2xi32>) -> tensor<*xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{slice_sizes size (2) not equal to (implied) operand rank (3)}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -4016,6 +4131,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<1x5x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -4032,6 +4148,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<*xi32>) -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<1x5x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -4048,6 +4165,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<?x?x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -4064,6 +4182,7 @@
+ // -----
+ 
+ func.func @dynamic_gather(%operand : tensor<*xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<?xi32>) -> tensor<?xi32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<?x?x?xi32>' are incompatible with return type(s) of operation 'tensor<?xi32>'}}
+   %res = "stablehlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+     dimension_numbers = #stablehlo.gather<
+@@ -4087,6 +4206,7 @@
+ // -----
+ 
+ func.func @get_dimension_size_c1(%I: tensor<1x128x512xf32>) -> tensor<i32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires non-negative dimension attribute; found (-1)}}
+   %size = "stablehlo.get_dimension_size"(%I) {dimension = -1 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+   func.return %size : tensor<i32>
+@@ -4095,6 +4215,7 @@
+ // -----
+ 
+ func.func @get_dimension_size_c1(%I: tensor<1x128x512xf32>) -> tensor<i32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
+   %size = "stablehlo.get_dimension_size"(%I) {dimension = 3 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+   func.return %size : tensor<i32>
+@@ -4105,6 +4226,7 @@
+ func.func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+   %dim = stablehlo.constant dense<512> : tensor<1xi32>
+ 
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{size operand should be of rank-0}}
+   %result = "stablehlo.set_dimension_size"(%I, %dim) {dimension = 2 : i64} : (tensor<1x128x512xf32>, tensor<1xi32>) -> tensor<1x128x512xf32>
+   func.return %result : tensor<1x128x512xf32>
+@@ -4114,6 +4236,7 @@
+ 
+ func.func @set_dimension_size_negative_dimension(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+   %dim = stablehlo.constant dense<512> : tensor<i32>
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires non-negative dimension attribute; found (-1)}}
+   %result = "stablehlo.set_dimension_size"(%I, %dim) {dimension =-1 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
+   func.return %result : tensor<1x128x512xf32>
+@@ -4123,6 +4246,7 @@
+ 
+ func.func @set_dimension_size_invalid_dimension(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+   %dim = stablehlo.constant dense<512> : tensor<i32>
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
+   %result = "stablehlo.set_dimension_size"(%I, %dim) {dimension = 3 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
+   func.return %result : tensor<1x128x512xf32>
+@@ -4651,6 +4775,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects featureIndex to be smaller than the rank of multi-dimensional operands; got featureIndex 4, and rank 4.}}
+   %0:3 = "stablehlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = 4 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4659,6 +4784,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects featureIndex to be a non-negative number, got -1.}}
+   %0:3 = "stablehlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = -1 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4667,6 +4793,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<3xf32>, %offset: tensor<3xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects the size of single-dimensional operands to be compatible with feature count, but the size of single-dimensional operands is 3 and the feature count is 2.}}
+   %0:3 = "stablehlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = 3 : i64} : (tensor<2x2x2x2xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<2x2x2x2xf32>, tensor<3xf32>, tensor<3xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4697,6 +4824,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<4x256xf32>) {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects featureIndex to be smaller than the rank of multi-dimensional operands; got featureIndex 2, and rank 2.}}
+   %0 = "stablehlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = 2 : i64} :
+       (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
+@@ -4707,6 +4835,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<4x256xf32>) {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects featureIndex to be a non-negative number, got -1.}}
+   %0 = "stablehlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = -1 : i64} :
+       (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
+@@ -4717,6 +4846,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<25xf32>, %offset: tensor<25xf32>, %mean: tensor<25xf32>, %variance: tensor<25xf32>) -> (tensor<4x256xf32>) {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects the size of single-dimensional operands to be compatible with feature count, but the size of single-dimensional operands is 25 and the feature count is 256.}}
+   %0 = "stablehlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = 1 : i64} :
+       (tensor<4x256xf32>, tensor<25xf32>, tensor<25xf32>, tensor<25xf32>,
+@@ -4746,6 +4876,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects featureIndex to be smaller than the rank of multi-dimensional operands; got featureIndex 4, and rank 4.}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 4 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4754,6 +4885,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects featureIndex to be a non-negative number, got -1.}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = -1 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4762,6 +4894,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<4xf32>, %mean: tensor<4xf32>, %variance: tensor<4xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects the size of single-dimensional operands to be compatible with feature count, but the size of single-dimensional operands is 4 and the feature count is 2.}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<4xf32>, tensor<4xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4770,6 +4903,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<4xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects single-dimensional operands to have compatible shapes}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<4xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4778,7 +4912,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xi32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
+-  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2x2x2xi32>'}}
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2x2x2xi32>'}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xi32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+ }
+@@ -4786,6 +4920,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2xf32>) -> tensor<2x2x2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{expects multi-dimensional operands to have compatible shapes}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+@@ -4810,7 +4945,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
+-  // expected-error@+1 {{result #1 must be 1D tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2xf32>'}}
++  // expected-error@+1 {{result #1 must be 1D tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2xf32>'}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2x2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+ }
+@@ -4818,7 +4953,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<*xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<*xf32> {
+-  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<*xf32>'}}
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<*xf32>'}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<*xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<*xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<*xf32>
+ }
+@@ -4866,6 +5001,7 @@
+ // -----
+ 
+ func.func @rfft_not_float32or64(%arg0: tensor<3x9xf16>) -> tensor<3x5xcomplex<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{RFFT requires f32 or f64 input type, but is given 'f16'.}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #stablehlo<fft_type RFFT> } : (tensor<3x9xf16>) -> tensor<3x5xcomplex<f32>>
+   func.return %0 : tensor<3x5xcomplex<f32>>
+@@ -4874,6 +5010,7 @@
+ // -----
+ 
+ func.func @fft_invalid_rank(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{rank must be between 1 and 3, but got 4.}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<4xi64>, fft_type = #stablehlo<fft_type RFFT> } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+   func.return %0 : tensor<3x9xcomplex<f32>>
+@@ -4882,6 +5019,7 @@
+ // -----
+ 
+ func.func @fft_rank_mismatch(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{operand rank must not be less than fft rank of 3 for operand of type 'tensor<3x9xf32>'}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<3xi64>, fft_type = #stablehlo<fft_type RFFT> } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+   func.return %0 : tensor<3x9xcomplex<f32>>
+@@ -4890,6 +5028,7 @@
+ // -----
+ 
+ func.func @rfft_invalid_dim(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{RFFT requires innermost dimensions to be compatible with fft_length. Got: 3, 9 but wanted 9, 9.}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<2xi64>, fft_type = #stablehlo<fft_type RFFT> } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+   func.return %0 : tensor<3x9xcomplex<f32>>
+@@ -4898,6 +5037,7 @@
+ // -----
+ 
+ func.func @irfft_invalid_dim(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{IRFFT requires non-final dimensions to be compatible with fft_length. Got: 3, 9 but wanted 9, 9, and 3 != 9.}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<2xi64>, fft_type = #stablehlo<fft_type IRFFT> } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32>
+   func.return %0 : tensor<3x9xf32>
+@@ -4906,6 +5046,7 @@
+ // -----
+ 
+ func.func @irfft_invalid_dim(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{IRFFT requires innermost dimension to be compatible with fft_length[-1]/2+1. Got: 9 but fft_length is 9.}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #stablehlo<fft_type IRFFT> } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32>
+   func.return %0 : tensor<3x9xf32>
+@@ -4914,6 +5055,7 @@
+ // -----
+ 
+ func.func @irfft_invalid_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{FFT/IFFT/IRFFT take a complex tensor as input, but is given 'tensor<3x9xf32>'}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<16> : tensor<1xi64>, fft_type = #stablehlo<fft_type IRFFT> } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+   func.return %0 : tensor<3x9xcomplex<f32>>
+@@ -4922,6 +5064,7 @@
+ // -----
+ 
+ func.func @irfft_invalid_ret_elt(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x16xcomplex<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<3x16xf32>' are incompatible with return type(s) of operation 'tensor<3x16xcomplex<f32>>'}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<16> : tensor<1xi64>, fft_type = #stablehlo<fft_type IRFFT> } : (tensor<3x9xcomplex<f32>>) -> tensor<3x16xcomplex<f32>>
+   func.return %0 : tensor<3x16xcomplex<f32>>
+@@ -4930,6 +5073,7 @@
+ // -----
+ 
+ func.func @rfft_invalid_ret_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<3x5xcomplex<f32>>' are incompatible with return type(s) of operation 'tensor<3x9xf32>'}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #stablehlo<fft_type RFFT> } : (tensor<3x9xf32>) -> tensor<3x9xf32>
+   func.return %0 : tensor<3x9xf32>
+@@ -4946,6 +5090,7 @@
+ // -----
+ 
+ func.func @rfft_dynamic_incompatible_dims(%arg0: tensor<3x10xf32>) -> tensor<?x?xcomplex<f32>> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1{{RFFT requires innermost dimensions to be compatible with fft_length. Got: 3, 10 but wanted 9.}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #stablehlo<fft_type RFFT> } : (tensor<3x10xf32>) -> tensor<?x?xcomplex<f32>>
+   func.return %0 : tensor<?x?xcomplex<f32>>
+@@ -4962,6 +5107,7 @@
+ // -----
+ 
+ func.func @irfft_dynamic_incompatible_non_final_dims(%arg0: tensor<?x3x15xcomplex<f32>>) -> tensor<?x?x?xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1{{IRFFT requires non-final dimensions to be compatible with fft_length. Got: -9223372036854775808, 3, 15 but wanted 4, 16, and 3 != 4}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<[4, 16]> : tensor<2xi64>, fft_type = #stablehlo<fft_type IRFFT> } : (tensor<?x3x15xcomplex<f32>>) -> tensor<?x?x?xf32>
+   func.return %0 : tensor<?x?x?xf32>
+@@ -4970,6 +5116,7 @@
+ // -----
+ 
+ func.func @irfft_dynamic_incompatible_final_dim(%arg0: tensor<?x8xcomplex<f32>>) -> tensor<?x?xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1{{IRFFT requires innermost dimension to be compatible with fft_length[-1]/2+1. Got: 8 but fft_length is 16.}}
+   %0 = "stablehlo.fft"(%arg0) { fft_length = dense<16> : tensor<1xi64>, fft_type = #stablehlo<fft_type IRFFT> } : (tensor<?x8xcomplex<f32>>) -> tensor<?x?xf32>
+   func.return %0 : tensor<?x?xf32>
+@@ -5115,6 +5262,7 @@
+ // -----
+ 
+ func.func @quantized_constants_invalid_storage_type() -> () {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.constant' op inferred type(s) 'tensor<2xui8>' are incompatible with return type(s) of operation 'tensor<2x!quant.uniform<i8:f32, 2.000000e+00:15>>}}
+   %0 = "stablehlo.constant"() {value = dense<[1, 2]> : tensor<2xui8>} : () -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
+   func.return
+@@ -5187,6 +5335,7 @@
+ // -----
+ 
+ func.func @pad_c2(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{edge_padding_low length (2) must match operand rank (3)}}
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<[0, 1]> : tensor<2xi64>,
+@@ -5199,6 +5348,7 @@
+ // -----
+ 
+ func.func @pad_c3(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x3xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{Interior padding cannot be negative: -1}}
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+@@ -5211,6 +5361,7 @@
+ // -----
+ 
+ func.func @pad_c4(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{Padding result in negative size for dimension 2}}
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<[0, 1, -4]> : tensor<3xi64>,
+@@ -5223,6 +5374,7 @@
+ // -----
+ 
+ func.func @pad_c4(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<8x8x8xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.pad' op inferred type(s) 'tensor<2x4x7xf16>' are incompatible with return type(s) of operation 'tensor<8x8x8xf16>'}}
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+@@ -5248,6 +5400,7 @@
+ // -----
+ 
+ func.func @pad_i2(%arg0: tensor<1x2x3xf16>, %arg1: tensor<2xf16>) -> tensor<2x4x7xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{padding value type should be a rank-0 tensor, is rank 1}}
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+@@ -5260,6 +5413,7 @@
+ // -----
+ 
+ func.func @pad_i3(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{edge_padding_low has rank 0 instead of required rank 1}}
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<1> : tensor<i64>,
+@@ -5495,6 +5649,7 @@
+ // -----
+ 
+ func.func @abs_c2(%arg0: tensor<1x2xf32>) -> tensor<1x2xf64> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.abs' op inferred type(s) 'tensor<1x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2xf64>'}}
+   %0 = "stablehlo.abs"(%arg0) {} : (tensor<1x2xf32>) -> tensor<1x2xf64>
+   func.return %0 : tensor<1x2xf64>
+@@ -5503,7 +5658,8 @@
+ // -----
+ 
+ func.func @abs_c2(%arg0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64> {
+-// expected-error@+1 {{'stablehlo.abs' op inferred type(s) 'tensor<1x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2xf64>'}}
++  // expected-error@+2 {{failed to infer returned types}}
++  // expected-error@+1 {{'stablehlo.abs' op inferred type(s) 'tensor<1x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2xf64>'}}
+   %0 = "stablehlo.abs"(%arg0) {} : (tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64>
+   func.return %0 : tensor<1x2xf64>
+ }
+@@ -5526,6 +5682,47 @@
+ 
+ // -----
+ 
++func.func @complex_int_input(%arg0: tensor<10x10xi32>, %arg1: tensor<10x10xi32>) -> tensor<10x10xcomplex<i32>> {
++  // expected-error@+1 {{operand #0 must be tensor of 32-bit float or 64-bit float values, but got 'tensor<10x10xi32>'}}
++  %0 = "stablehlo.complex"(%arg0, %arg1) {} : (tensor<10x10xi32>, tensor<10x10xi32>) -> tensor<10x10xcomplex<i32>>
++  func.return %0 : tensor<10x10xcomplex<i32>>
++}
++
++// -----
++
++func.func @complex_f32_f64_mix_input(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf64>) -> tensor<10x10xcomplex<f64>> {
++  // expected-error@+1 {{requires the same element type for all operands}}
++  %0 = "stablehlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf32>, tensor<10x10xf64>) -> tensor<10x10xcomplex<f64>>
++  func.return %0 : tensor<10x10xcomplex<f64>>
++}
++
++// -----
++
++func.func @complex_f16_input(%arg0: tensor<10x10xf16>, %arg1: tensor<10x10xf16>) -> tensor<10x10xcomplex<f16>> {
++  // expected-error@+1 {{operand #0 must be tensor of 32-bit float or 64-bit float values, but got 'tensor<10x10xf16>'}}
++  %0 = "stablehlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf16>, tensor<10x10xf16>) -> tensor<10x10xcomplex<f16>>
++  func.return %0 : tensor<10x10xcomplex<f16>>
++}
++
++// -----
++
++func.func @complex_mismatch_return_element_type(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>) -> tensor<10x10xcomplex<f64>> {
++  // expected-error@+2 {{failed to infer returned types}}
++  // expected-error@+1 {{inferred type(s) 'tensor<10x10xcomplex<f32>>' are incompatible with return type(s) of operation 'tensor<10x10xcomplex<f64>>'}}
++  %0 = "stablehlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xcomplex<f64>>
++  func.return %0 : tensor<10x10xcomplex<f64>>
++}
++
++// -----
++
++func.func @complex_mismatch_return_shape(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>) -> tensor<5x5xcomplex<f32>> {
++  // expected-error@+1 {{requires the same shape for all operands and results}}
++  %0 = "stablehlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<5x5xcomplex<f32>>
++  func.return %0 : tensor<5x5xcomplex<f32>>
++}
++
++// -----
++
+ // CHECK-LABEL: func @is_finite
+ func.func @is_finite(%arg0: tensor<3xf32>) -> tensor<3xi1> {
+   %0 = "stablehlo.is_finite"(%arg0) {} : (tensor<3xf32>) -> tensor<3xi1>
+@@ -5535,7 +5732,7 @@
+ // -----
+ 
+ func.func @is_finite_int_input(%arg0: tensor<3xi32>) -> tensor<3xi1> {
+-  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<3xi32>'}}
++  // expected-error@+1 {{operand #0 must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<3xi32>'}}
+   %0 = "stablehlo.is_finite"(%arg0) {} : (tensor<3xi32>) -> tensor<3xi1>
+   func.return %0 : tensor<3xi1>
+ }
+@@ -5559,6 +5756,7 @@
+ // -----
+ 
+ func.func @negative_dimension_attr(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires non-negative dimension attribute; found (-1)}}
+   %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = -1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+   func.return %result : tensor<*xf32>
+@@ -5567,6 +5765,7 @@
+ // -----
+ 
+ func.func @invalid_dimension_attr(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{requires dimension attribute in range [0, 2); found (2)}}
+   %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 2 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+   func.return %result : tensor<*xf32>
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+@@ -179,13 +179,15 @@
+   %cst_4 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+   %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
+   %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+-  %cst_7 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2FNUZ>
+-  %cst_8 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FNUZ>
+-  %cst_9 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3B11FNUZ>
+-  %cst_10 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
+-  %cst_11 = arith.constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
+-  %cst_12 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+-  %cst_13 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
++  %cst_7 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3B11FNUZ>
++  %cst_8 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FN>
++  %cst_9 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FNUZ>
++  %cst_10 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2>
++  %cst_11 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2FNUZ>
++  %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
++  %cst_13 = arith.constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
++  %cst_14 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
++  %cst_15 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+   func.return
  }
  
- // CHECK-LABEL: func @extensions
--func.func @extensions(%arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>,
-+func.func @extensions(%arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>,
-                 %arg1 : tensor<i32>) -> () {
--  // CHECK:      %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 1 : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
--  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
-+  // CHECK:      %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 1 : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-+  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-   "stablehlo.return"() : () -> ()
- }
+diff --ruN a/stablehlo/stablehlo/tests/verify_reduce.mlir b/stablehlo/stablehlo/tests/verify_reduce.mlir
+--- stablehlo/stablehlo/tests/verify_reduce.mlir
++++ stablehlo/stablehlo/tests/verify_reduce.mlir
+@@ -401,6 +401,7 @@
+ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
+     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>) {
  
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{inferred type(s) 'tensor<?xf32>', 'tensor<?xi32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xi32>', 'tensor<?xi32>'}}
+   %0:3 = "stablehlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
+ 
+@@ -419,6 +420,7 @@
+ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
+     -> (tensor<?x?xi32>) {
+ 
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xf32>'}}
+   %0:2 = "stablehlo.reduce"(%arg0, %arg1) ({
+ 
+@@ -436,6 +438,7 @@
+ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
+     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>) {
+ 
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.reduce' op inferred type(s) 'tensor<?xf32>', 'tensor<?xi32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?x?xf32>'}}
+   %0:2 = "stablehlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
+ 
+@@ -454,6 +457,7 @@
+ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
+     -> (tensor<?xi32>) {
+ 
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?xi32>'}}
+   %0 = "stablehlo.reduce"(%arg0, %arg1) ({
+ 
+@@ -471,6 +475,7 @@
+ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
+     -> (tensor<?x?xi32>) {
+ 
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error@+1 {{'stablehlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?x?xf32>'}}
+   %0 = "stablehlo.reduce"(%arg0, %arg1) ({
+ 
+diff --ruN a/stablehlo/stablehlo/tests/verify_reduce_window.mlir b/stablehlo/stablehlo/tests/verify_reduce_window.mlir
+--- stablehlo/stablehlo/tests/verify_reduce_window.mlir
++++ stablehlo/stablehlo/tests/verify_reduce_window.mlir
+@@ -450,6 +450,7 @@
+ func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
+     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
+         tensor<2x2xf32> {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>'}}
+   %0 = "stablehlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+@@ -472,6 +473,7 @@
+ func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
+     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
+         (tensor<2x2xf32>, tensor<2x3xi32>) {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>', 'tensor<2x3xi32>'}}
+   %0:2 = "stablehlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+@@ -494,6 +496,7 @@
+ func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
+     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
+         (tensor<2x2xi32>, tensor<2x2xi32>) {
++  // expected-error@+2 {{failed to infer returned types}}
+   // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xi32>', 'tensor<2x2xi32>'}}
+   %0:2 = "stablehlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+diff --ruN a/stablehlo/stablehlo/tests/verify_scatter.mlir b/stablehlo/stablehlo/tests/verify_scatter.mlir
+--- stablehlo/stablehlo/tests/verify_scatter.mlir
++++ stablehlo/stablehlo/tests/verify_scatter.mlir
+@@ -481,6 +481,7 @@
+     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
+       tensor<200x100xf32> {
+ 
++  // expected-error @+2 {{failed to infer returned types}}
+   // expected-error @+1 {{inferred type(s) 'tensor<200x100x300xf32>' are incompatible with return type(s) of operation 'tensor<200x100xf32>'}}
+   %0 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+diff --ruN a/stablehlo/stablehlo/tests/verify_select_and_scatter.mlir b/stablehlo/stablehlo/tests/verify_select_and_scatter.mlir
+--- stablehlo/stablehlo/tests/verify_select_and_scatter.mlir
++++ stablehlo/stablehlo/tests/verify_select_and_scatter.mlir
+@@ -394,6 +394,7 @@
+     %arg1: tensor<10x12x12x64xf32>) -> () {
+     %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+ 
++    // expected-error @+2 {{failed to infer returned types}}
+     // expected-error @+1 {{inferred type(s) 'tensor<10x24x24x64xf32>' are incompatible with return type(s) of operation 'tensor<10x24x24x32xf32>'}}
+     %1 = "stablehlo.select_and_scatter"(%arg0, %arg1, %0) ({
+     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+@@ -422,6 +423,7 @@
+     %arg1: tensor<10x12x12x64xf32>) -> () {
+     %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+ 
++    // expected-error @+2 {{failed to infer returned types}}
+     // expected-error @+1 {{inferred type(s) 'tensor<10x24x24x64xf32>' are incompatible with return type(s) of operation 'tensor<10x24x24x64xi32>'}}
+     %1 = "stablehlo.select_and_scatter"(%arg0, %arg1, %0) ({
+     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -852,7 +852,8 @@
+     SmallVector<Type> inferredReturnTypes;
+     if (failed(op.inferReturnTypes(getContext(), /*location=*/{},
+                                    op->getOperands(), op->getAttrDictionary(),
+-                                   op->getRegions(), inferredReturnTypes)))
++                                   op->getPropertiesStorage(), op->getRegions(),
++                                   inferredReturnTypes)))
+       return rewriter.notifyMatchFailure(op, "inferReturnTypes failed");
+     return refineReturnTypes(rewriter, op, inferredReturnTypes);
+   }
 

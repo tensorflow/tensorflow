@@ -32,9 +32,8 @@ class TestCostAnalysis
     const auto& cost_analysis = getAnalysis<CostAnalysis>();
 
     auto func_op = getOperation();
-    int64_t op_key = 0;
     for (auto& op : func_op.front()) {
-      op.emitRemark() << "Cost: " << cost_analysis.GetCost(&op, op_key++);
+      op.emitRemark() << "Cost: " << cost_analysis.GetCost(&op);
     }
   }
 };

@@ -21,12 +21,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 
 #include "rocm/include/roctracer/roctracer.h"
-#include "rocm/include/roctracer/roctracer_hcc.h"
 #include "rocm/include/roctracer/roctracer_hip.h"
 #include "rocm/rocm_config.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
+#if TF_ROCM_VERSION >= 50300
+#include "rocm/include/roctracer/roctracer_roctx.h"
+#else
+#include "rocm/include/roctracer/roctracer_hcc.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace wrap {
@@ -43,17 +47,17 @@ namespace wrap {
 
 #define ROCTRACER_API_WRAPPER(API_NAME)                                       \
   template <typename... Args>                                                 \
-  auto API_NAME(Args... args)->decltype(::API_NAME(args...)) {                \
+  auto API_NAME(Args... args) -> decltype(::API_NAME(args...)) {              \
     using FuncPtrT = std::add_pointer<decltype(::API_NAME)>::type;            \
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = #API_NAME;                                   \
       void* f;                                                                \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
+      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
           stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
-              .value(),                                                  \
+              .value(),                                                       \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
-                    << " in roctracer DSO; dlerror: " << s.error_message();   \
+                    << " in roctracer DSO; dlerror: " << s.message();         \
       return reinterpret_cast<FuncPtrT>(f);                                   \
     }();                                                                      \
     return loaded(args...);                                                   \

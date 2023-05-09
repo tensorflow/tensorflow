@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_COMPARISONS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_COMPARISONS_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -112,20 +112,11 @@ struct BroadcastComparison4DSlowCommon {
   NdArrayDesc<4> desc2;
 };
 
-inline BroadcastComparison4DSlowCommon BroadcastComparison4DSlowPreprocess(
+TFLITE_NOINLINE
+BroadcastComparison4DSlowCommon BroadcastComparison4DSlowPreprocess(
     const RuntimeShape& unextended_input1_shape,
     const RuntimeShape& unextended_input2_shape,
-    const RuntimeShape& unextended_output_shape) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-  return {RuntimeShape::ExtendedShape(4, unextended_output_shape), desc1,
-          desc2};
-}
+    const RuntimeShape& unextended_output_shape);
 
 template <typename T, ComparisonFn<T> F>
 inline void BroadcastComparison4DSlowImpl(

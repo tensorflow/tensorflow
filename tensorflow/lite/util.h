@@ -28,7 +28,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -110,6 +110,12 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product);
 inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
   return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
 }
+
+// Compute the number of bytes required to represent a tensor with dimensions
+// specified by the array dims (of length dims_size). Returns the status code
+// and bytes.
+TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
+                           size_t* bytes, TfLiteContext context);
 
 }  // namespace tflite
 

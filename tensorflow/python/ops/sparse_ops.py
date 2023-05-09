@@ -30,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -266,7 +267,7 @@ def sparse_eye(num_rows,
     diag_range = math_ops.range(diag_size, dtype=dtypes.int64)
 
     return sparse_tensor.SparseTensor(
-        indices=array_ops.stack([diag_range, diag_range], axis=1),
+        indices=array_ops_stack.stack([diag_range, diag_range], axis=1),
         values=array_ops.ones(diag_size, dtype=dtype),
         dense_shape=[num_rows, num_columns])
 
@@ -864,6 +865,7 @@ def sparse_reorder(sp_input, name=None):
 
 @tf_export("sparse.reshape", v1=["sparse.reshape", "sparse_reshape"])
 @deprecation.deprecated_endpoints("sparse_reshape")
+@dispatch.add_dispatch_support
 def sparse_reshape(sp_input, shape, name=None):
   """Reshapes a `SparseTensor` to represent values in a new dense shape.
 
@@ -1065,7 +1067,8 @@ def sparse_split_v2(sp_input=None,
 
   >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
   >>> values = [1, 2, 3, 4, 5]
-  >>> t = tf.sparse.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> t = tf.sparse.SparseTensor(indices=indices, values=values,
+  ...                            dense_shape=[2, 7])
   >>> tf.sparse.to_dense(t)
   <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
   array([[0, 0, 1, 0, 2, 3, 0],

@@ -7,10 +7,6 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
@@ -38,16 +34,14 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["device_tracer_test.cc"],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
-        "nomac",
         "gpu_cupti",
+        "nomac",
     ],
     deps = [
         ":cupti_collector",
-        "//tensorflow/compiler/xla/backends/profiler/gpu:device_tracer",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/backends/profiler/gpu:device_tracer",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -66,6 +60,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
@@ -78,9 +73,9 @@ tf_cuda_library(
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:cupti_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
-        "//tensorflow/compiler/xla/backends/profiler/gpu:cupti_interface",
     ] + tf_additional_cupti_deps(),
 )
 
@@ -210,19 +205,19 @@ tf_cuda_library(
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:cupti_collector",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:parse_annotation",
+        "//tensorflow/core/profiler/utils:trace_utils",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/strings",
-        "//tensorflow/compiler/xla/backends/profiler/gpu:cupti_collector",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:parse_annotation",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
-        "//tensorflow/core/profiler/utils:trace_utils",
     ] + tf_additional_cupti_deps(),
 )
 

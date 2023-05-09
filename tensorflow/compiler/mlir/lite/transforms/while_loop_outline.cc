@@ -79,8 +79,10 @@ bool IsAlreadyOutlined(WhileOp while_op) {
 
 bool IsCompatibleTypeWithTFLCastOp(Type type) {
   auto elemType = getElementTypeOrSelf(type);
-  // F32 and BF16 types are allowed.
-  if (elemType.isBF16() || elemType.isF32()) return true;
+  // F16, F32, F64, BF16 types are allowed.
+  if (elemType.isBF16() || elemType.isF16() || elemType.isF32() ||
+      elemType.isF64())
+    return true;
 
   // I1, I8 I16, I32, I64 types are allowed.
   if (elemType.isInteger(1) || elemType.isInteger(8) ||
@@ -180,7 +182,7 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   auto block = b.createBlock(&region);
   SmallVector<Value, 4> new_operands;
   new_operands.reserve(types.size());
-  for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
+  for (Type t : llvm::ArrayRef(types).drop_back(extern_values.size()))
     new_operands.push_back(block->addArgument(t, loc));
   for (Value v : extern_values) new_operands.push_back(v);
   auto call = b.create<func::CallOp>(loc, func, new_operands);

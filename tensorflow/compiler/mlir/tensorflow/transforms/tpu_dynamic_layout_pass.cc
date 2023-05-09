@@ -127,7 +127,7 @@ TF::TPUGetLayoutOp BuildGetLayout(const int64_t execute_arg_index,
                                   OpBuilder* builder) {
   return builder->create<TF::TPUGetLayoutOp>(
       compile_launch.getLoc(),
-      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamicSize},
+      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamic},
                                                  builder->getIntegerType(64))},
       llvm::ArrayRef<Value>{compilation_key},
       llvm::ArrayRef<NamedAttribute>{
@@ -172,7 +172,7 @@ bool HandleReplicatedInputs(
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(replicate_arg);
-  for (auto entry : llvm::enumerate(inputs)) {
+  for (const auto& entry : llvm::enumerate(inputs)) {
     auto input_op = entry.value().get().getDefiningOp();
     if (!input_op || !IsSupportedInputOp(input_op, resource_alias_analysis))
       return false;
@@ -181,13 +181,13 @@ bool HandleReplicatedInputs(
   auto get_layout = BuildGetLayout(execute_arg_index, compilation_key,
                                    compile_launch, &builder);
   builder.setInsertionPoint(replicate);
-  for (auto entry : llvm::enumerate(inputs)) {
+  for (const auto& entry : llvm::enumerate(inputs)) {
     auto copy_with_layout =
         BuildCopyWithLayout(execute_launch, compile_launch, get_layout,
                             entry.value().get(), &builder);
 
     auto device_list = replicate.getDevices()
-                           .getValue()
+                           .value()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
     copy_with_layout->setAttr(kDeviceAttr,
@@ -222,7 +222,7 @@ void HandleCompileAndExecutes(
         llvm::cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
     const auto& input_mapping = std::get<1>(execute_and_input_mapping);
 
-    for (auto& input_and_idx : llvm::enumerate(execute.getArgs())) {
+    for (const auto& input_and_idx : llvm::enumerate(execute.getArgs())) {
       Value input = input_and_idx.value();
       const int64_t execute_arg_index = input_and_idx.index();
       if (auto block_arg = input.dyn_cast<BlockArgument>()) {

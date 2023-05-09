@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -409,7 +410,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         // that we should terminate the iteration early.
         return errors::InvalidArgument(
             "Function invocation produced OutOfRangeError: ",
-            result->status.error_message());
+            result->status.message());
       }
       *end_of_sequence = result->end_of_input;
       return result->status;
@@ -560,8 +561,8 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           key, kErrorCode, static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(key, kErrorMessage, status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(key, kErrorMessage,
+                                               std::string(status.message())));
       }
       return OkStatus();
     }
@@ -570,9 +571,9 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(key, kErrorCode, &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(key, kErrorMessage, &error_message));

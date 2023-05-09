@@ -33,14 +33,16 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/tools/model_loader.h"
 #include "tensorflow/lite/tools/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
@@ -536,8 +539,22 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 }
 
 int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
-  std::ifstream in_file(params_.Get<std::string>("graph"),
-                        std::ios::binary | std::ios::ate);
+  std::string fd_or_graph_path = params_.Get<std::string>("graph");
+  // Path can be one of the following:
+  // 1) File descriptor path: path must be in the format of
+  // "fd:%model_fd%:%model_offset%:%model_size%".
+  // 2) File path: path to the model file.
+  // Please see tensorflow/lite/tools/model_loader.h for more information.
+  std::vector<absl::string_view> parts = absl::StrSplit(fd_or_graph_path, ':');
+  if (!parts.empty() && parts[0] == "fd") {
+    int64_t model_size = -1;
+    if (parts.size() != 4 || !absl::SimpleAtoi(parts[3], &model_size)) {
+      TFLITE_LOG(ERROR) << "Failed to parse model file size: "
+                        << fd_or_graph_path;
+    }
+    return model_size;
+  }
+  std::ifstream in_file(fd_or_graph_path, std::ios::binary | std::ios::ate);
   return in_file.tellg();
 }
 
@@ -742,6 +759,15 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
       << "Going to apply " << created_delegates.size()
       << " delegates one after another.";
+
+  // If created_delegates is empty, 'require_full_delegation' flag will not be
+  // checked, thus CPU fallback will happen. Adding check here to avoid
+  // fallback in this situation.
+  if (created_delegates.empty() &&
+      params_.Get<bool>("require_full_delegation")) {
+    TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+    return kTfLiteError;
+  }
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
     TfLiteDelegate* delegate = created_delegate.delegate.get();
@@ -854,13 +880,20 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
-  std::string graph = params_.Get<std::string>("graph");
-  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
-  if (!model_) {
-    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+  std::string fd_or_graph_path = params_.Get<std::string>("graph");
+  model_loader_ = tools::CreateModelLoaderFromPath(fd_or_graph_path);
+  if (!model_loader_) {
+    TFLITE_LOG(ERROR) << "Failed to initialize model loader with path "
+                      << fd_or_graph_path;
     return kTfLiteError;
   }
-  TFLITE_LOG(INFO) << "Loaded model " << graph;
+  if (!model_loader_->Init()) {
+    TFLITE_LOG(ERROR) << "Failed to load model " << fd_or_graph_path;
+    return kTfLiteError;
+  }
+  model_ = tflite::FlatBufferModel::BuildFromModel(
+      model_loader_->GetModel()->GetModel());
+  TFLITE_LOG(INFO) << "Loaded model " << fd_or_graph_path;
   return kTfLiteOk;
 }
 

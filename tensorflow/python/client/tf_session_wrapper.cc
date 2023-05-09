@@ -13,35 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Must be at top (before any system includes and Python.h).
-// clang-format off
-#include "pybind11/chrono.h"
-#include "pybind11/complex.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
-// clang-format on
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <string>
 
 #include "Python.h"
 #include "absl/types/optional.h"
 #include "third_party/eigen3/Eigen/Core"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/chrono.h"  // from @pybind11
+#include "pybind11/complex.h"  // from @pybind11
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
+#include "pybind11/stl_bind.h"  // from @pybind11
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/python_api.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/version_info.h"
 #include "tensorflow/python/client/tf_session_helper.h"
-#include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/python/lib/core/numpy.h"
 
 namespace pybind11 {
 namespace detail {
+
 // Convert between absl::optional and python.
 //
 // pybind11 supports std::optional, and absl::optional is meant to be a
@@ -87,9 +99,162 @@ tensorflow::NameVector ConvertPyListToNameVector(
 
 namespace py = pybind11;
 
+// TODO(power) -- share these with JAX (see python_utils.h)
+template <typename Func, typename... Extra>
+pybind11::object property_readonly(Func&& get, const char* doc = "") {
+  pybind11::handle property_class(
+      reinterpret_cast<PyObject*>(&PyProperty_Type));
+  return property_class(
+      pybind11::cpp_function(std::forward<Func>(get),
+                             py::return_value_policy::reference_internal),
+      pybind11::none(), pybind11::none(), doc);
+}
+
+template <typename GetFunc, typename SetFunc>
+pybind11::object property(GetFunc&& get, SetFunc&& set) {
+  pybind11::handle property_class(
+      reinterpret_cast<PyObject*>(&PyProperty_Type));
+  return property_class(
+      pybind11::cpp_function(std::forward<GetFunc>(get),
+                             py::return_value_policy::reference_internal),
+      pybind11::cpp_function(std::forward<SetFunc>(set)), pybind11::none(), "");
+}
+
+template <typename Constructor>
+pybind11::object def_static(Constructor&& constructor) {
+  return pybind11::staticmethod(
+      pybind11::cpp_function(std::forward<Constructor>(constructor)));
+}
+
+template <typename Func, typename... Extra>
+pybind11::object method(pybind11::object type, Func&& function,
+                        const Extra&... extra) {
+  return pybind11::cpp_function(std::forward<Func>(function),
+                                pybind11::is_method(type), extra...);
+}
+
+// Construct a "TF" Python object. This covers the boiler-plate for Python type
+// generation. The type is assumed to be a GC type (containing other types).
+// To add the required Python type fields, classes definitions must start with
+//
+// TFObject_Head(classname)
+//
+// Required attributes/methods:
+//
+// Constructor(PyObject* args, PyObject* kw)
+// ~Destructor
+// Clear()
+// Visit(visitproc visit, void* arg)
+//
+// Individual methods/attributes are added to the type later, as seen below.
+template <class T>
+void MakeTfObjectType(PyObject** py_type) {
+  py::str name = py::str(T::kTypeName);
+  py::str qualname = py::str(T::kTypeName);
+  PyHeapTypeObject* heap_type = reinterpret_cast<PyHeapTypeObject*>(
+      PyType_Type.tp_alloc(&PyType_Type, 0));
+
+  heap_type->ht_name = name.release().ptr();
+  heap_type->ht_qualname = qualname.release().ptr();
+
+  PyTypeObject* type = &heap_type->ht_type;
+  type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE |
+                   Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_BASETYPE;
+  type->tp_name = T::kTypeName;
+  type->tp_basicsize = sizeof(T);
+
+  type->tp_new = [](PyTypeObject* subtype, PyObject* args,
+                    PyObject* kwds) -> PyObject* {
+    T* self = reinterpret_cast<T*>(subtype->tp_alloc(subtype, 0));
+    if (!self) return nullptr;
+
+    // PyType_GenericAlloc (the default implementation of tp_alloc) by default
+    // enables the garbage collector immediately for our object. This makes
+    // initialization extremely tricky as we need to avoid having the object
+    // in an invalid intermediate state.
+    //
+    // We disable the GC here until initialization is finished.
+    PyObject_GC_UnTrack(self);
+    new (self) T(args, kwds);
+    self->dict = PyDict_New();
+    PyObject_GC_Track(self);
+
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
+    return reinterpret_cast<PyObject*>(self);
+  };
+
+  type->tp_dealloc = [](PyObject* self) {
+    VLOG(3) << "Destroy: " << T::kTypeName;
+    PyObject_GC_UnTrack(self);
+    PyTypeObject* tp = Py_TYPE(self);
+    PyObject_ClearWeakRefs(self);
+
+    T* o = reinterpret_cast<T*>(self);
+    Py_CLEAR(o->dict);
+    o->~T();
+
+    tp->tp_free(self);
+    Py_DECREF(tp);
+  };
+
+  type->tp_traverse = [](PyObject* self, visitproc visit, void* arg) {
+    VLOG(3) << "Visit: " << T::kTypeName;
+    T* o = reinterpret_cast<T*>(self);
+    Py_VISIT(Py_TYPE(self));
+    Py_VISIT(o->dict);
+    return o->Visit(visit, arg);
+  };
+
+  type->tp_clear = [](PyObject* self) {
+    VLOG(3) << "Clear: " << T::kTypeName;
+    T* o = reinterpret_cast<T*>(self);
+    Py_CLEAR(o->dict);
+    o->Clear();
+    return 0;
+  };
+
+  type->tp_weaklistoffset = offsetof(T, weakrefs);
+
+  // All TF objects use a dictionary today, so we initialize it at construction.
+  // If some types become fully C++ based or require only thin Python wrappers,
+  // we can instead defer dictionary creation using a custom getter/setter.
+  type->tp_dictoffset = offsetof(T, dict);
+
+  // type->tp_getset = &tp_getset[0];
+  type->tp_descr_get = nullptr;
+  type->tp_descr_set = nullptr;
+  type->tp_call = nullptr;
+  type->tp_vectorcall_offset = 0;
+
+  type->tp_repr = nullptr;
+
+  if (PyType_Ready(type) != 0) {
+    PyErr_Print();
+    LOG(FATAL) << "Failed to build type.";  // Crash ok. In module init.
+  }
+  *py_type = reinterpret_cast<PyObject*>(type);
+}
+
+#define TFObject_HEAD(typename) \
+  PyObject_HEAD;                \
+  PyObject* dict = nullptr;     \
+  PyObject* weakrefs = nullptr; \
+  static PyObject* py_type;     \
+  static constexpr const char* kTypeName = #typename;
+
+struct PyGraph;
+struct PyOperation;
+struct PyTensor;
+
+// Bind operation maps opaquely to avoid copying.
+typedef absl::flat_hash_map<int64_t, py::object> OpsByIdMap;
+typedef absl::flat_hash_map<std::string, py::object> OpsByNameMap;
+
+PYBIND11_MAKE_OPAQUE(TF_Operation);
 PYBIND11_MAKE_OPAQUE(TF_Graph);
 PYBIND11_MAKE_OPAQUE(TF_Session);
-PYBIND11_MAKE_OPAQUE(TF_Operation);
 PYBIND11_MAKE_OPAQUE(TF_Buffer);
 PYBIND11_MAKE_OPAQUE(TF_ImportGraphDefOptions);
 PYBIND11_MAKE_OPAQUE(TF_ImportGraphDefResults);
@@ -102,12 +267,779 @@ PYBIND11_MAKE_OPAQUE(TF_Server);
 PYBIND11_MAKE_OPAQUE(TF_DeviceList);
 PYBIND11_MAKE_OPAQUE(TF_Status);
 
-PYBIND11_MODULE(_pywrap_tf_session, m) {
-  // Numpy initialization code for array checks.
-  tensorflow::ImportNumpy();
+PYBIND11_MAKE_OPAQUE(OpsByIdMap);
+PYBIND11_MAKE_OPAQUE(OpsByNameMap);
 
-  py::class_<TF_Graph> TF_Graph_class(m, "TF_Graph");
-  py::class_<TF_Operation> TF_Operation_class(m, "TF_Operation");
+// Convert the given handle to a TF object type.
+template <class T>
+T* AsPyTfObject(py::handle handle) {
+  if (handle.get_type() == T::py_type) {
+    return reinterpret_cast<T*>(handle.ptr());
+  }
+  if (PyType_IsSubtype(Py_TYPE(handle.ptr()),
+                       reinterpret_cast<PyTypeObject*>(T::py_type))) {
+    return reinterpret_cast<T*>(handle.ptr());
+  }
+  // The tf_should_use wrapper masquerades as a base class, and forwards
+  // attribute lookups to an underlying class. This should be removed (it is
+  // slow, confusing, and not so relevant with TF2), or at least moved to the
+  // C++ wrapper classes (it is only used on Tensor and Operation). In the
+  // meantime, use a custom caster to handle the cases where we are passed a
+  // `tf_should_use` instead of the original class.
+  if (py::hasattr(handle, "_tf_should_use_wrapped_value")) {
+    return AsPyTfObject<T>(py::getattr(handle, "_tf_should_use_wrapped_value"));
+  }
+
+  throw std::runtime_error(
+      absl::StrCat("Expected a ", T::kTypeName, " got ",
+                   py::cast<std::string>(py::str(handle))));
+}
+
+template <class T>
+py::object AsPyObject(T* obj) {
+  return py::reinterpret_borrow<py::object>(reinterpret_cast<PyObject*>(obj));
+}
+
+// Reference counting helper for PyTfObjects.
+//
+// Similar to the pybind holder types, this manages the Python reference
+// counting while allowing access to the underlying PyTfObject type.
+//
+// As a special case to support Dismantle(), this allows setting our underlying
+// pointer to None when clearing the type. Direct access to attributes is not
+// allowed after this point.
+template <class T>
+class tf_handle {
+ public:
+  tf_handle() : obj_(nullptr) {}
+  explicit tf_handle(PyObject* obj) : obj_(nullptr) {
+    obj_ = AsPyTfObject<T>(obj);
+    Py_INCREF(obj);
+  }
+  ~tf_handle() { Py_CLEAR(obj_); }
+
+  tf_handle(const tf_handle<T>& other) { Reset(other.obj_); }
+
+  tf_handle<T>& operator=(tf_handle<T>&& other) {
+    if (this == &other) {
+      return *this;
+    }
+    obj_ = other.obj_;
+    other.obj_ = nullptr;
+  }
+
+  tf_handle<T>& operator=(const tf_handle<T>& other) {
+    Reset(other.ptr());
+    return *this;
+  }
+
+  tf_handle<T>& operator=(PyObject* obj) {
+    Reset(obj);
+    return *this;
+  }
+
+  void Destroy() {
+    Py_INCREF(Py_None);
+    Py_CLEAR(obj_);
+    obj_ = reinterpret_cast<T*>(Py_None);
+  }
+
+  void Reset(PyObject* obj) {
+    if (obj == reinterpret_cast<PyObject*>(obj_)) {
+      return;
+    }
+    Py_INCREF(obj);
+    Py_CLEAR(obj_);
+    obj_ = AsPyTfObject<T>(obj);
+  }
+
+  void Clear() { Py_CLEAR(obj_); }
+
+  T* operator->() {
+    if (reinterpret_cast<PyObject*>(obj_) == Py_None) {
+      throw std::runtime_error("Tried to deference None as a TF type.");
+    }
+    return obj_;
+  }
+  PyObject* ptr() const { return reinterpret_cast<PyObject*>(obj_); }
+
+  py::handle borrow() { return py::reinterpret_borrow<py::object>(ptr()); }
+  py::handle steal() { return py::reinterpret_steal<py::object>(ptr()); }
+
+ private:
+  T* obj_;
+};
+
+namespace pybind11 {
+namespace detail {
+
+#define TF_CASTER(TfObject)                                           \
+  template <>                                                         \
+  struct type_caster<TfObject> : public type_caster_base<TfObject> {  \
+   public:                                                            \
+    using base = type_caster_base<TfObject>;                          \
+    bool load(py::handle src, bool convert) {                         \
+      value = AsPyTfObject<TfObject>(src);                            \
+      return true;                                                    \
+    }                                                                 \
+    static py::handle cast(TfObject* src, return_value_policy policy, \
+                           py::handle parent) {                       \
+      PyObject* src_obj = reinterpret_cast<PyObject*>(src);           \
+      return py::reinterpret_borrow<py::object>(src_obj);             \
+    }                                                                 \
+  };
+
+TF_CASTER(PyGraph);
+TF_CASTER(PyOperation);
+TF_CASTER(PyTensor);
+
+}  // namespace detail
+}  // namespace pybind11
+
+// TF_Operation's are owned by their graph.
+struct TF_OperationDeleter {
+  void operator()(TF_Operation* op) {}
+};
+
+struct PyGraph {
+  TFObject_HEAD(PyGraph);
+
+  TF_Graph* graph;
+
+  // The C++ graph maintains an ID for every node, however our Python code has
+  // _also_ previously assigned a node ID, which is independent and different
+  // from the C++ ID. Moreover, the Python IDs are _dense_ and the Python
+  // implementation relies on the `ops_by_id` map having "insertion order"
+  // for the implementation of `get_operations` and auto control-deps.
+  //
+  // To keep compatibility and improve performance, we use 3 collections:
+  //
+  // * A py::list which tracks operations in insertion order.
+  // * A flat-map from C++ ID to PyOperation.
+  // * A flat-map from std::string to PyOperation.
+  py::list op_list;
+
+  // Operation ownership is maintained in ops_by_id.
+  OpsByIdMap ops_by_id;
+  OpsByNameMap ops_by_name;
+
+  PyGraph(PyObject* args, PyObject* kwds) {
+    graph = TF_NewGraph();
+
+    // By default shape inference functions are required, however this breaks
+    // many custom ops. Disable this check for Python graphs.
+    tsl::mutex_lock l(graph->mu);
+    graph->refiner.set_require_shape_inference_fns(false);
+  }
+
+  ~PyGraph() {
+    Clear();
+    TF_DeleteGraph(graph);
+  }
+
+  void Dismantle();
+
+  void Clear() {
+    Py_CLEAR(op_list.release().ptr());
+    for (auto it = ops_by_id.begin(); it != ops_by_id.end(); ++it) {
+      Py_CLEAR(it->second.release().ptr());
+    }
+    ops_by_id.clear();
+    for (auto it = ops_by_name.begin(); it != ops_by_name.end(); ++it) {
+      Py_CLEAR(it->second.release().ptr());
+    }
+    ops_by_name.clear();
+  }
+
+  int Visit(visitproc visit, void* arg) {
+    Py_VISIT(op_list.ptr());
+    for (auto it = ops_by_id.begin(); it != ops_by_id.end(); ++it) {
+      Py_VISIT(it->second.ptr());
+    }
+    for (auto it = ops_by_name.begin(); it != ops_by_name.end(); ++it) {
+      Py_VISIT(it->second.ptr());
+    }
+    return 0;
+  }
+
+  int64_t add_op(py::object obj);
+
+  py::list operations() { return op_list; }
+  int64_t num_operations() const { return op_list.size(); }
+
+  // Return operations that are part of the Graph, but do not yet have
+  // OperationHandle's. This logic is only invoked when importing an existing
+  // GraphDef into Python. It should be removed once all logic moves to C++.
+  std::vector<TF_Operation*> new_operations() {
+    tsl::mutex_lock l(graph->mu);
+    std::vector<TF_Operation*> ops;
+
+    // SUBTLE: `op_nodes` skips the SOURCE and SINK nodes
+    for (auto n : graph->graph.op_nodes()) {
+      if (ops_by_name.find(n->name()) == ops_by_name.end()) {
+        ops.push_back(reinterpret_cast<TF_Operation*>(n));
+      }
+    }
+    return ops;
+  }
+
+  py::object get_operation_by_name(const std::string& name) {
+    tsl::mutex_lock l(graph->mu);
+    auto it = ops_by_name.find(name);
+    if (it == ops_by_name.end()) {
+      throw py::key_error();
+    }
+    return it->second;
+  }
+
+  int version() const { return ops_by_id.size(); }
+
+  py::bytes version_def() const {
+    tsl::mutex_lock l(graph->mu);
+    return py::bytes(graph->graph.versions().SerializeAsString());
+  }
+
+  tsl::StatusOr<py::bytes> _op_def_for_type(
+      const std::string& kTypeName) const {
+    tsl::mutex_lock l(graph->mu);
+    const tensorflow::OpDef* op_def;
+    TF_RETURN_IF_ERROR(
+        graph->graph.op_registry()->LookUpOpDef(kTypeName, &op_def));
+    return py::bytes(op_def->SerializeAsString());
+  }
+
+  void add_control_input(tensorflow::Node* src, tensorflow::Node* dst) {
+    tsl::mutex_lock l(graph->mu);
+
+    graph->graph.AddControlEdge(src, dst);
+    record_mutation(*dst, "adding control edge");
+  }
+
+  void remove_all_control_inputs(const tensorflow::Node& node) {
+    tsl::mutex_lock l(graph->mu);
+    std::vector<const tensorflow::Edge*> control_edges;
+    for (const tensorflow::Edge* edge : node.in_edges()) {
+      if (!edge->IsControlEdge()) continue;
+      control_edges.push_back(edge);
+    }
+    for (const tensorflow::Edge* edge : control_edges) {
+      graph->graph.RemoveControlEdge(edge);
+    }
+  }
+
+  void record_mutation(const tensorflow::Node& node, const std::string& reason)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+    tensorflow::RecordMutation(
+        graph, reinterpret_cast<const TF_Operation&>(node), reason.c_str());
+  }
+
+  TF_Graph* tf_graph() { return graph; }
+};
+
+struct PyOperation {
+  TFObject_HEAD(PyOperation);
+
+  TF_Operation* tf_op = nullptr;
+  py::list outputs;
+
+  // N.B. initialized later by Python.
+  tf_handle<PyGraph> graph;
+  py::function tensor_fn;
+
+  PyOperation(PyObject* args, PyObject* kwds) {
+    PyObject *py_op, *py_tensor_fn;
+    if (!PyArg_ParseTuple(args, "OO", &py_op, &py_tensor_fn)) {
+      return;
+    }
+    tf_op = py::cast<TF_Operation*>(py_op);
+    tensor_fn = py::cast<py::function>(py_tensor_fn);
+  }
+
+  ~PyOperation() { Clear(); }
+
+  void Clear() {
+    Py_CLEAR(outputs.release().ptr());
+    graph.Clear();
+  }
+
+  void Dismantle();
+
+  int Visit(visitproc visit, void* arg) {
+    Py_VISIT(graph.ptr());
+    Py_VISIT(outputs.ptr());
+    return 0;
+  }
+
+  void _init_outputs() {
+    int num_outputs = TF_OperationNumOutputs(tf_op);
+    for (int i = 0; i < num_outputs; ++i) {
+      auto dtype = TF_OperationOutputType(TF_Output{tf_op, i});
+      outputs.append(tensor_fn(AsPyObject(this), i, dtype));
+    }
+  }
+
+  tsl::Status _add_outputs(py::list dtypes, py::list shapes);
+
+  const TF_Operation* op() { return tf_op; }
+
+  TF_Output _tf_output(int idx) const { return TF_Output{tf_op, idx}; }
+  TF_Input _tf_input(int idx) const { return TF_Input{tf_op, idx}; }
+
+  py::bytes node_def() {
+    return py::bytes(tf_op->node.def().SerializeAsString());
+  }
+
+  py::bytes op_def() const {
+    return py::bytes(tf_op->node.op_def().SerializeAsString());
+  }
+
+  bool is_stateful() const { return tf_op->node.op_def().is_stateful(); }
+
+  const std::string& type() { return tf_op->node.type_string(); }
+
+  void add_control_input(PyOperation* input) {
+    graph->add_control_input(&input->tf_op->node, &tf_op->node);
+  }
+
+  void add_control_inputs(py::iterable inputs);
+
+  py::list control_inputs() {
+    py::list output;
+    for (const auto* edge : tf_op->node.in_edges()) {
+      if (edge->IsControlEdge() && !edge->src()->IsSource()) {
+        output.append(graph->ops_by_id[edge->src()->id()]);
+      }
+    }
+    return output;
+  }
+  py::list control_outputs() {
+    py::list output;
+    for (const auto* edge : tf_op->node.out_edges()) {
+      if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
+        output.append(graph->ops_by_id[edge->dst()->id()]);
+      }
+    }
+    return output;
+  }
+
+  void remove_all_control_inputs() {
+    graph->remove_all_control_inputs(tf_op->node);
+  }
+
+  void set_device(const std::string& device) {
+    tsl::mutex_lock l(graph->graph->mu);
+    tf_op->node.set_requested_device(device);
+    graph->record_mutation(tf_op->node, "setting device");
+  }
+
+  const std::string& device() { return tf_op->node.requested_device(); }
+  const std::string& name() { return tf_op->node.name(); }
+};
+
+struct PyTensor {
+  TFObject_HEAD(PyTensor);
+
+  py::object tf_output = py::none();
+  py::object name = py::none();
+  py::object dtype = py::none();
+  py::object shape_val = py::none();
+  py::object uid = py::none();
+
+  tf_handle<PyOperation> op;
+  tf_handle<PyGraph> graph;
+
+  int value_index = -1;
+
+  PyTensor(PyObject* args, PyObject* kwds) {
+    PyObject *py_op, *py_index, *py_dtype, *py_uid;
+    if (!PyArg_ParseTuple(args, "OOOO", &py_op, &py_index, &py_dtype,
+                          &py_uid)) {
+      return;
+    }
+    dtype = py::reinterpret_borrow<py::object>(py_dtype);
+    value_index = py::cast<int>(py::handle(py_index));
+    op = py_op;
+    graph = op->graph;
+    name = py::str(absl::StrCat(op->name(), ":", value_index));
+    tf_output = py::cast(TF_Output{op->tf_op, value_index});
+    uid = py::reinterpret_borrow<py::object>(py_uid);
+  }
+  ~PyTensor() { Clear(); }
+
+  void Clear() {
+    Py_CLEAR(tf_output.release().ptr());
+    Py_CLEAR(name.release().ptr());
+    Py_CLEAR(dtype.release().ptr());
+    Py_CLEAR(shape_val.release().ptr());
+    Py_CLEAR(uid.release().ptr());
+    op.Clear();
+    graph.Clear();
+  }
+
+  int Visit(visitproc visit, void* arg) {
+    Py_VISIT(op.ptr());
+    Py_VISIT(tf_output.ptr());
+    Py_VISIT(graph.ptr());
+    Py_VISIT(name.ptr());
+    Py_VISIT(dtype.ptr());
+    Py_VISIT(shape_val.ptr());
+    Py_VISIT(uid.ptr());
+    return 0;
+  }
+
+  tsl::StatusOr<py::object> shape() {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    bool unknown_shape = false;
+    auto dims = tensorflow::TF_GraphGetTensorShapeHelper(
+        graph->tf_graph(), TF_Output{op->tf_op, value_index}, status.get(),
+        &unknown_shape);
+    if (!status.get()->status.ok()) {
+      return status.get()->status;
+    }
+
+    py::list py_list;
+    for (int64_t dim : dims) {
+      py_list.append(dim == -1 ? py::none() : py::cast(dim));
+    }
+
+    return py::make_tuple(py_list, py::cast(unknown_shape));
+  }
+
+  tsl::Status set_shape(py::iterable shape, bool unknown_shape) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    std::vector<int64_t> dims;
+    if (!unknown_shape) {
+      for (py::handle dim : shape) {
+        if (dim.is_none()) {
+          dims.push_back(-1);
+        } else {
+          dims.push_back(py::cast<int64_t>(dim));
+        }
+      }
+    }
+    tensorflow::TF_GraphSetTensorShape_wrapper(
+        graph->tf_graph(), TF_Output{op->tf_op, value_index}, dims,
+        unknown_shape, status.get());
+    return status.get()->status;
+  }
+
+  int64_t rank() {
+    tsl::mutex_lock l(graph->graph->mu);
+    tensorflow::shape_inference::InferenceContext* ic =
+        graph->graph->refiner.GetContext(&op->tf_op->node);
+
+    tensorflow::shape_inference::ShapeHandle shape = ic->output(value_index);
+    if (ic->RankKnown(shape)) {
+      return ic->Rank(shape);
+    }
+    return -1;
+  }
+
+  py::list consumers() {
+    py::list out;
+    for (const auto* edge : op->tf_op->node.out_edges()) {
+      if (edge->src_output() != value_index) {
+        continue;
+      }
+      out.append(graph->ops_by_id[edge->dst()->id()]);
+    }
+    return out;
+  }
+};
+
+PyObject* PyOperation::py_type = nullptr;
+PyObject* PyTensor::py_type = nullptr;
+PyObject* PyGraph::py_type = nullptr;
+
+void PyOperation::Dismantle() {
+  outputs = py::list();
+  PyDict_Clear(dict);
+  graph.Destroy();
+}
+
+tsl::Status PyOperation::_add_outputs(py::list dtypes, py::list shapes) {
+  int orig_outputs = outputs.size();
+  for (int i = 0; i < dtypes.size(); ++i) {
+    py::object tensor =
+        tensor_fn(AsPyObject(this), orig_outputs + i, dtypes[i]);
+
+    // The passed in `shapes` may be TensorShapes, convert them to lists if
+    // needed.
+    bool unknown_shape;
+    py::object dims;
+    if (py::hasattr(shapes[i], "as_list")) {
+      unknown_shape = shapes[i].attr("rank").is_none();
+      if (!unknown_shape) {
+        dims = shapes[i].attr("as_list")();
+      } else {
+        dims = py::list();
+      }
+    } else {
+      unknown_shape = false;
+      dims = shapes[i];
+    }
+    TF_RETURN_IF_ERROR(
+        AsPyTfObject<PyTensor>(tensor)->set_shape(dims, unknown_shape));
+    outputs.append(tensor);
+  }
+  return tsl::OkStatus();
+}
+
+void PyOperation::add_control_inputs(py::iterable inputs) {
+  tsl::mutex_lock l(graph->tf_graph()->mu);
+  for (py::handle input : inputs) {
+    auto* input_handle = py::cast<PyOperation*>(input);
+    graph->tf_graph()->graph.AddControlEdge(&input_handle->tf_op->node,
+                                            &tf_op->node);
+  }
+  graph->record_mutation(tf_op->node, "adding control input");
+}
+
+void PyGraph::Dismantle() {
+  for (auto& op : op_list) {
+    AsPyTfObject<PyOperation>(op.ptr())->Dismantle();
+  }
+  op_list = py::list();
+  ops_by_id.clear();
+  ops_by_name.clear();
+}
+
+int64_t PyGraph::add_op(py::object obj) {
+  PyOperation* op_handle = AsPyTfObject<PyOperation>(obj);
+  int64_t op_id = op_handle->tf_op->node.id();
+  op_list.append(obj);
+  ops_by_id[op_id] = obj;
+  ops_by_name[op_handle->name()] = obj;
+  return op_id;
+}
+
+PYBIND11_MODULE(_pywrap_tf_session, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
+
+  // Numpy initialization code for array checks.
+  tsl::ImportNumpy();
+
+  py::bind_map<OpsByIdMap>(m, "OpsById");
+  py::bind_map<OpsByNameMap>(m, "OpsByName");
+
+  py::str module_name(m.attr("__name__"));
+
+  MakeTfObjectType<PyGraph>(&PyGraph::py_type);
+  py::object c_graph = py::reinterpret_borrow<py::object>(PyGraph::py_type);
+  m.attr("PyGraph") = c_graph;
+  c_graph.attr("__module__") = module_name;
+  c_graph.attr("Dismantle") = method(c_graph, [](py::handle handle) {
+    AsPyTfObject<PyGraph>(handle)->Dismantle();
+  });
+  c_graph.attr("_version_def") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyGraph>(handle)->version_def();
+  });
+  c_graph.attr("version") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyGraph>(handle)->version();
+  });
+  c_graph.attr("_op_def_for_type") =
+      method(c_graph, [](py::handle handle, std::string type) {
+        return AsPyTfObject<PyGraph>(handle)->_op_def_for_type(type);
+      });
+  c_graph.attr("_nodes_by_name") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyGraph>(handle)->ops_by_name;
+  });
+  c_graph.attr("_nodes_by_id") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyGraph>(handle)->ops_by_id;
+  });
+  c_graph.attr("_get_operation_by_name") =
+      method(c_graph, [](py::handle handle, std::string name) {
+        return AsPyTfObject<PyGraph>(handle)->get_operation_by_name(name);
+      });
+  c_graph.attr("get_operations") = method(c_graph, [](py::handle handle) {
+    auto ops = AsPyTfObject<PyGraph>(handle)->operations();
+    py::list copy;
+    for (auto& op : ops) {
+      copy.append(op);
+    }
+    return copy;
+  });
+  c_graph.attr("operations") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyGraph>(handle)->operations();
+  });
+  c_graph.attr("new_operations") = method(c_graph, [](py::handle handle) {
+    return AsPyTfObject<PyGraph>(handle)->new_operations();
+  });
+  c_graph.attr("num_operations") = method(c_graph, [](py::handle handle) {
+    return AsPyTfObject<PyGraph>(handle)->num_operations();
+  });
+  c_graph.attr("_add_op") =
+      method(c_graph, [](py::handle handle, py::object op) {
+        return AsPyTfObject<PyGraph>(handle)->add_op(op);
+      });
+
+  MakeTfObjectType<PyOperation>(&PyOperation::py_type);
+  py::object c_op = py::reinterpret_borrow<py::object>(PyOperation::py_type);
+  m.attr("PyOperation") = c_op;
+  c_op.attr("__module__") = module_name;
+  c_op.attr("_tf_output") = method(c_op, [](py::handle handle, int index) {
+    return AsPyTfObject<PyOperation>(handle)->_tf_output(index);
+  });
+  c_op.attr("_tf_input") = method(c_op, [](py::handle handle, int index) {
+    return AsPyTfObject<PyOperation>(handle)->_tf_input(index);
+  });
+  c_op.attr("_set_device_from_string") =
+      method(c_op, [](py::handle handle, std::string device) {
+        return AsPyTfObject<PyOperation>(handle)->set_device(device);
+      });
+  c_op.attr("_add_control_input") =
+      method(c_op, [](py::handle handle, py::handle input) {
+        return AsPyTfObject<PyOperation>(handle)->add_control_input(
+            AsPyTfObject<PyOperation>(input));
+      });
+  c_op.attr("_add_control_inputs") =
+      method(c_op, [](py::handle handle, py::iterable inputs) {
+        return AsPyTfObject<PyOperation>(handle)->add_control_inputs(inputs);
+      });
+  c_op.attr("_remove_all_control_inputs") = method(c_op, [](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->remove_all_control_inputs();
+  });
+  c_op.attr("outputs") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->outputs;
+  });
+  c_op.attr("graph") = property(
+      [](py::handle handle) {
+        return AsPyTfObject<PyOperation>(handle)->graph.borrow();
+      },
+      [](py::handle handle, py::handle graph) {
+        auto op = AsPyTfObject<PyOperation>(handle);
+        op->graph = graph.ptr();
+      });
+  c_op.attr("_c_op") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->tf_op;
+  });
+  c_op.attr("_is_stateful") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->is_stateful();
+  });
+  c_op.attr("_op_def") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->op_def();
+  });
+  c_op.attr("_node_def") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->node_def();
+  });
+  c_op.attr("type") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->type();
+  });
+  c_op.attr("name") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->name();
+  });
+  c_op.attr("device") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->device();
+  });
+  c_op.attr("_control_outputs") = property_readonly([](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->control_outputs();
+  });
+  c_op.attr("_init_outputs") = method(c_op, [](py::handle handle) {
+    return AsPyTfObject<PyOperation>(handle)->_init_outputs();
+  });
+  c_op.attr("_add_outputs") =
+      method(c_op, [](py::handle handle, py::list dtypes, py::list shapes) {
+        return AsPyTfObject<PyOperation>(handle)->_add_outputs(dtypes, shapes);
+      });
+  c_op.attr("control_inputs") = property_readonly(
+      [](py::handle handle) {
+        return AsPyTfObject<PyOperation>(handle)->control_inputs();
+      },
+      R"doc(
+    The `Operation` objects on which this op has a control dependency.
+
+    Before this op is executed, TensorFlow will ensure that the
+    operations in `self.control_inputs` have finished executing. This
+    mechanism can be used to run ops sequentially for performance
+    reasons, or to ensure that the side effects of an op are observed
+    in the correct order.
+
+    Returns:
+      A list of `Operation` objects.
+  )doc");
+
+  [&m, &module_name]() {
+    MakeTfObjectType<PyTensor>(&PyTensor::py_type);
+    py::object c_tensor = py::reinterpret_borrow<py::object>(PyTensor::py_type);
+    m.attr("PyTensor") = c_tensor;
+    c_tensor.attr("__module__") = module_name;
+    c_tensor.attr("device") = property_readonly([](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->op->device();
+    });
+    c_tensor.attr("ndim") = property_readonly([](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->rank();
+    });
+    c_tensor.attr("_rank") = method(c_tensor, [](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->rank();
+    });
+    c_tensor.attr("_shape") = property_readonly([](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->shape();
+    });
+    c_tensor.attr("_dtype") = property_readonly([](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->dtype;
+    });
+    c_tensor.attr("_name") = property(
+        [](py::handle handle) { return AsPyTfObject<PyTensor>(handle)->name; },
+        [](py::handle handle, py::object name) {
+          AsPyTfObject<PyTensor>(handle)->name = name;
+        });
+    c_tensor.attr("_shape_val") = property(
+        [](py::handle handle) {
+          auto py_tensor = AsPyTfObject<PyTensor>(handle);
+          return py_tensor->shape_val;
+        },
+        [](py::handle handle, py::object shape) {
+          AsPyTfObject<PyTensor>(handle)->shape_val = shape;
+        });
+    c_tensor.attr("_id") = property(
+        [](py::handle handle) { return AsPyTfObject<PyTensor>(handle)->uid; },
+        [](py::handle handle, py::object uid) {
+          AsPyTfObject<PyTensor>(handle)->uid = uid;
+        });
+    c_tensor.attr("graph") =
+        property_readonly([](py::handle handle) -> py::handle {
+          auto& graph = AsPyTfObject<PyTensor>(handle)->graph;
+          if (graph.ptr() != nullptr) {
+            return graph.borrow();
+          }
+          return py::none();
+        });
+    c_tensor.attr("_as_tf_output") = method(c_tensor, [](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->tf_output;
+    });
+    c_tensor.attr("_op") =
+        property_readonly([](py::handle handle) -> py::handle {
+          auto& op = AsPyTfObject<PyTensor>(handle)->op;
+          if (op.ptr() != nullptr) {
+            return op.borrow();
+          }
+          return py::none();
+        });
+    c_tensor.attr("op") =
+        property_readonly([](py::handle handle) -> py::handle {
+          auto& op = AsPyTfObject<PyTensor>(handle)->op;
+          if (op.ptr() != nullptr) {
+            return op.borrow();
+          }
+          return py::none();
+        });
+    c_tensor.attr("_set_shape") = method(c_tensor, [](py::handle handle,
+                                                      py::iterable shape,
+                                                      bool unknown_shape) {
+      return AsPyTfObject<PyTensor>(handle)->set_shape(shape, unknown_shape);
+    });
+    c_tensor.attr("value_index") = property_readonly([](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->value_index;
+    });
+    c_tensor.attr("consumers") = method(c_tensor, [](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->consumers();
+    });
+  }();
+
+  py::class_<TF_Operation, std::unique_ptr<TF_Operation, TF_OperationDeleter>>
+      TF_Operation_class(m, "TF_Operation");
 
   py::class_<TF_Output>(m, "TF_Output")
       .def(py::init<>())
@@ -141,13 +1073,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // (at least PyArray_Return, maybe others).
 
   // Do not release GIL.
-  m.def("TF_OperationGetControlInputs_wrapper",
-        tensorflow::TF_OperationGetControlInputs_wrapper);
-  // Do not release GIL.
   m.def("TF_OperationGetControlOutputs_wrapper",
         tensorflow::TF_OperationGetControlOutputs_wrapper);
-  m.def("TF_OperationOutputConsumers_wrapper",
-        tensorflow::TF_OperationOutputConsumers_wrapper);
   // Do not release GIL.
   m.def("GetOperationInputs", tensorflow::GetOperationInputs);
   // Do not release GIL.
@@ -194,8 +1121,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def(
       "TF_GraphToFunction_wrapper",
-      [](const TF_Graph* fn_body, const char* fn_name,
-         bool append_hash_to_fn_name,
+      [](PyGraph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
          absl::optional<std::vector<TF_Operation*>> opers_opt,
          const std::vector<TF_Output>& inputs,
          const std::vector<TF_Output>& outputs,
@@ -217,7 +1143,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         // Release GIL.
         py::gil_scoped_release release;
         auto output = tensorflow::TF_GraphToFunction_wrapper(
-            fn_body, fn_name, append_hash_to_fn_name,
+            fn_body->tf_graph(), fn_name, append_hash_to_fn_name,
             opers_opt.has_value() ? &opers_opt.value() : nullptr, inputs,
             outputs, output_names_name_vector, &control_outputs,
             control_output_names_name_vector,
@@ -227,53 +1153,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
-  m.def("TF_GraphGetTensorShapeHelper", [](TF_Graph* graph, TF_Output output) {
-    tensorflow::Safe_TF_StatusPtr status =
-        tensorflow::make_safe(TF_NewStatus());
-    bool unknown_shape;
-
-    auto result = tensorflow::TF_GraphGetTensorShapeHelper(
-        graph, output, status.get(), &unknown_shape);
-    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-
-    // Create a python list from InlinedVector
-    py::list py_list;
-    for (size_t i = 0; i < result.size(); ++i) {
-      py_list.append(py::cast(result[i]));
-    }
-
-    // Return a tuple.
-    py::tuple result_tuple = py::make_tuple(py_list, py::cast(unknown_shape));
-    return result_tuple;
-  });
-
-  m.def("TF_GraphSetTensorShape_wrapper",
-        [](TF_Graph* graph, TF_Output output, const std::vector<int64_t>& dims,
-           bool unknown_shape) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-
-          // Release GIL.
-          py::gil_scoped_release release;
-          tensorflow::TF_GraphSetTensorShape_wrapper(
-              graph, output, dims, unknown_shape, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
-        });
-
-  m.def("TF_GraphGetTensorShape_wrapper",
-        [](TF_Graph* graph, TF_Output output, const std::vector<int64_t>& dims,
-           bool unknown_shape) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          // Release GIL.
-          py::gil_scoped_release release;
-          tensorflow::TF_GraphSetTensorShape_wrapper(
-              graph, output, dims, unknown_shape, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
-        });
-
   m.def("TF_GraphSetOutputHandleShapesAndTypes_wrapper",
-        [](TF_Graph* graph, TF_Output output,
+        [](PyGraph* graph, TF_Output output,
            const std::vector<absl::optional<std::vector<int64_t>>>& shapes,
            const std::vector<int>& ranks, py::handle& types) {
           tensorflow::Safe_TF_StatusPtr status =
@@ -313,29 +1194,30 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           Py_DECREF(seq);
 
           tensorflow::TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-              graph, output, shapes_local, ranks, types_local, status.get());
+              graph->tf_graph(), output, shapes_local, ranks, types_local,
+              status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
 
   // Do not release GIL.
   m.def("TF_CreatePlaceholders",
-        [](TF_Graph* graph, py::handle& dtypes, const char* prefix) {
+        [](PyGraph* graph, py::handle& dtypes, const char* prefix) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
-          auto output = tensorflow::TF_CreatePlaceholders(graph, dtypes.ptr(),
-                                                          prefix, status.get());
+          auto output = tensorflow::TF_CreatePlaceholders(
+              graph->tf_graph(), dtypes.ptr(), prefix, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return output;
         });
 
   m.def(
       "TF_NewSession",
-      [](TF_Graph* graph, const TF_SessionOptions* opts) {
+      [](PyGraph* graph, const TF_SessionOptions* opts) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         // Release GIL.
         py::gil_scoped_release release;
-        auto output = TF_NewSession(graph, opts, status.get());
+        auto output = TF_NewSession(graph->tf_graph(), opts, status.get());
         tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         return output;
       },
@@ -343,12 +1225,13 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def(
       "TF_NewSessionRef",
-      [](TF_Graph* graph, const TF_SessionOptions* opts) {
+      [](PyGraph* graph, const TF_SessionOptions* opts) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         // Release GIL.
         py::gil_scoped_release release;
-        auto output = tensorflow::TF_NewSessionRef(graph, opts, status.get());
+        auto output =
+            tensorflow::TF_NewSessionRef(graph->tf_graph(), opts, status.get());
         tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         return output;
       },
@@ -374,15 +1257,13 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
   });
 
-  m.def("SetRequireShapeInferenceFns", tensorflow::SetRequireShapeInferenceFns);
-
   // Do not release GIL.
   m.def("TF_TryEvaluateConstant_wrapper",
-        [](TF_Graph* graph, const TF_Output output) {
+        [](PyGraph* graph, const TF_Output output) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           auto result = tensorflow::TF_TryEvaluateConstant_wrapper(
-              graph, output, status.get());
+              graph->tf_graph(), output, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return tensorflow::PyoOrThrow(result);
         });
@@ -396,22 +1277,23 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
   });
 
-  m.def("GetHandleShapeAndType", [](TF_Graph* graph, TF_Output output) {
+  m.def("GetHandleShapeAndType", [](PyGraph* graph, TF_Output output) {
     std::string output_string =
-        tensorflow::GetHandleShapeAndType(graph, output);
+        tensorflow::GetHandleShapeAndType(graph->tf_graph(), output);
     // Override default py3 behavior of attempting to encode into Unicode as
     // the dependent functions expect bytes.
     return py::bytes(output_string);
   });
 
   m.def("SetHandleShapeAndType",
-        [](TF_Graph* graph, TF_Output output, py::bytes proto) {
+        [](PyGraph* graph, TF_Output output, py::bytes proto) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           tensorflow::Safe_TF_BufferPtr buf =
               tensorflow::make_safe(ProtoStringToTFBuffer(proto.ptr()));
-          tensorflow::SetHandleShapeAndType(graph, output, buf.get()->data,
-                                            buf.get()->length, status.get());
+          tensorflow::SetHandleShapeAndType(graph->tf_graph(), output,
+                                            buf.get()->data, buf.get()->length,
+                                            status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
 
@@ -562,30 +1444,15 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
   });
 
-  m.def("TF_NewGraph", TF_NewGraph, py::return_value_policy::reference,
-        py::call_guard<py::gil_scoped_release>());
-  m.def("TF_DeleteGraph", TF_DeleteGraph,
-        py::call_guard<py::gil_scoped_release>());
-
-  m.def("TF_GraphGetOpDef",
-        [](TF_Graph* graph, const char* op_name, TF_Buffer* output_op_def) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          // Release GIL.
-          py::gil_scoped_release release;
-          TF_GraphGetOpDef(graph, op_name, output_op_def, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
-        });
-
   m.def(
       "TF_NewOperation",
-      [](TF_Graph* graph, const char* op_type, const char* oper_name) {
+      [](PyGraph* graph, const char* op_type, const char* oper_name) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         // Release GIL.
         py::gil_scoped_release release;
         TF_OperationDescription* output =
-            TF_NewOperation(graph, op_type, oper_name);
+            TF_NewOperation(graph->tf_graph(), op_type, oper_name);
         tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         return output;
       },
@@ -648,6 +1515,16 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         py::call_guard<py::gil_scoped_release>());
 
   m.def("TF_AddInput", TF_AddInput);
+  m.def(
+      "TF_AddInputList", [](TF_OperationDescription* desc, py::handle& inputs) {
+        std::vector<TF_Output> vec;
+        size_t size = PyList_Size(inputs.ptr());
+        for (size_t i = 0; i < size; ++i) {
+          TF_Output item = py::cast<TF_Output>(PyList_GetItem(inputs.ptr(), i));
+          vec.push_back(item);
+        }
+        TF_AddInputList(desc, vec.data(), vec.size());
+      });
 
   m.def("TF_OperationToNodeDef",
         [](TF_Operation* oper, TF_Buffer* output_node_def) {
@@ -676,10 +1553,9 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     return py::cast(*trace, py::return_value_policy::reference);
   });
 
-  m.def("SetRequestedDevice", tensorflow::SetRequestedDevice);
-
   // TF_Buffer util methods
-  // TODO(amitpatankar): Consolidate Buffer methods into a separate header file.
+  // TODO(amitpatankar): Consolidate Buffer methods into a separate header
+  // file.
   m.def("TF_NewBuffer", TF_NewBuffer, py::return_value_policy::reference);
   m.def("TF_GetBuffer", [](TF_Buffer* buf) {
     TF_Buffer buffer = TF_GetBuffer(buf);
@@ -696,34 +1572,35 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
-  m.def("SetAttr", [](TF_Graph* graph, TF_Operation* op, const char* attr_name,
+  m.def("SetAttr", [](PyGraph* graph, TF_Operation* op, const char* attr_name,
                       TF_Buffer* attr_value_proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     // Release GIL.
     py::gil_scoped_release release;
-    tensorflow::SetAttr(graph, op, attr_name, attr_value_proto, status.get());
+    tensorflow::SetAttr(graph->tf_graph(), op, attr_name, attr_value_proto,
+                        status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
   });
 
   m.def("ClearAttr",
-        [](TF_Graph* graph, TF_Operation* op, const char* attr_name) {
+        [](PyGraph* graph, TF_Operation* op, const char* attr_name) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           // Release GIL.
           py::gil_scoped_release release;
-          tensorflow::ClearAttr(graph, op, attr_name, status.get());
+          tensorflow::ClearAttr(graph->tf_graph(), op, attr_name, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         });
 
   // Note: users should prefer using tf.cast or equivalent, and only when
-  // it's infeasible to set the type via OpDef's type constructor and inference
-  // function.
-  m.def("SetFullType", [](TF_Graph* graph, TF_Operation* op,
+  // it's infeasible to set the type via OpDef's type constructor and
+  // inference function.
+  m.def("SetFullType", [](PyGraph* graph, TF_Operation* op,
                           const std::string& serialized_full_type) {
     tensorflow::FullTypeDef proto;
     proto.ParseFromString(serialized_full_type);
-    tensorflow::SetFullType(graph, op, proto);
+    tensorflow::SetFullType(graph->tf_graph(), op, proto);
   });
 
   m.def(
@@ -764,30 +1641,15 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         py::call_guard<py::gil_scoped_release>());
 
   m.def("TF_AddControlInput", TF_AddControlInput);
-  m.def(
-      "TF_AddInputList", [](TF_OperationDescription* desc, py::handle& inputs) {
-        std::vector<TF_Output> vec;
-        size_t size = PyList_Size(inputs.ptr());
-        for (size_t i = 0; i < size; ++i) {
-          TF_Output item = py::cast<TF_Output>(PyList_GetItem(inputs.ptr(), i));
-          vec.push_back(item);
-        }
-        TF_AddInputList(desc, vec.data(), vec.size());
-      });
 
-  m.def("UpdateEdge", [](TF_Graph* graph, TF_Output new_src, TF_Input dst) {
+  m.def("UpdateEdge", [](PyGraph* graph, TF_Output new_src, TF_Input dst) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     // Release GIL.
     py::gil_scoped_release release;
-    tensorflow::UpdateEdge(graph, new_src, dst, status.get());
+    tensorflow::UpdateEdge(graph->tf_graph(), new_src, dst, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
   });
-
-  m.def("RemoveAllControlInputs", tensorflow::RemoveAllControlInputs,
-        py::call_guard<py::gil_scoped_release>());
-  m.def("AddControlInput", tensorflow::AddControlInput,
-        py::call_guard<py::gil_scoped_release>());
 
   m.def("TF_NewImportGraphDefOptions", TF_NewImportGraphDefOptions,
         py::return_value_policy::reference,
@@ -815,12 +1677,12 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def(
       "TF_GraphImportGraphDefWithResults",
-      [](TF_Graph* graph, const TF_Buffer* graph_def,
+      [](PyGraph* graph, const TF_Buffer* graph_def,
          const TF_ImportGraphDefOptions* options) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
-        auto output = TF_GraphImportGraphDefWithResults(graph, graph_def,
-                                                        options, status.get());
+        auto output = TF_GraphImportGraphDefWithResults(
+            graph->tf_graph(), graph_def, options, status.get());
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         return output;
       },
@@ -828,10 +1690,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def(
       "TF_GraphNextOperation",
-      [](TF_Graph* graph, size_t pos) {
+      [](PyGraph* graph, size_t pos) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
-        auto output = TF_GraphNextOperation(graph, &pos);
+        auto output = TF_GraphNextOperation(graph->tf_graph(), &pos);
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
 
         // Returns a (TF_Operation*, int pos) tuple.
@@ -870,26 +1732,17 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
-  m.def("TF_GraphToGraphDef", [](TF_Graph* graph, TF_Buffer* output_graph_def) {
+  m.def("TF_GraphToGraphDef", [](PyGraph* graph, TF_Buffer* output_graph_def) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     // Release GIL.
     py::gil_scoped_release release;
-    TF_GraphToGraphDef(graph, output_graph_def, status.get());
+    TF_GraphToGraphDef(graph->tf_graph(), output_graph_def, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
   });
 
   m.def("TF_OperationNumInputs", TF_OperationNumInputs,
         py::call_guard<py::gil_scoped_release>());
-
-  m.def("TF_GraphVersions", [](TF_Graph* graph, TF_Buffer* output_graph_def) {
-    tensorflow::Safe_TF_StatusPtr status =
-        tensorflow::make_safe(TF_NewStatus());
-    // Release GIL.
-    py::gil_scoped_release release;
-    TF_GraphVersions(graph, output_graph_def, status.get());
-    tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
-  });
 
   m.def("TF_DeleteFunction", TF_DeleteFunction,
         py::call_guard<py::gil_scoped_release>());
@@ -922,14 +1775,23 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         });
 
   m.def("TF_GraphCopyFunction",
-        [](TF_Graph* graph, const TF_Function* func, const TF_Function* grad) {
+        [](PyGraph* graph, const TF_Function* func, const TF_Function* grad) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           // Release GIL.
           py::gil_scoped_release release;
-          TF_GraphCopyFunction(graph, func, grad, status.get());
+          TF_GraphCopyFunction(graph->tf_graph(), func, grad, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         });
+
+  m.def("TF_GraphRemoveFunction", [](PyGraph* graph, const char* func_name) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    // Release GIL.
+    py::gil_scoped_release release;
+    TF_GraphRemoveFunction(graph->tf_graph(), func_name, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+  });
 
   m.def(
       "TF_FunctionImportFunctionDef",
@@ -1151,12 +2013,13 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("TF_DeleteDeviceList", TF_DeleteDeviceList);
 
   m.def("AddWhileInputHack",
-        [](TF_Graph* graph, TF_Output new_src, TF_Operation* dst) {
+        [](PyGraph* graph, TF_Output new_src, TF_Operation* dst) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           // Release GIL for threading.
           py::gil_scoped_release release;
-          tensorflow::AddWhileInputHack(graph, new_src, dst, status.get());
+          tensorflow::AddWhileInputHack(graph->tf_graph(), new_src, dst,
+                                        status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         });
 

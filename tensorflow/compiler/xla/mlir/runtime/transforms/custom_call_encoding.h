@@ -23,12 +23,14 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -60,11 +62,13 @@ namespace runtime {
 //
 // Custom call arguments are encoded as an array of pointers allocated on the
 // stack. Each individual argument is also encoded on the stack, because
-// arguments are run time values and we can't encode them in the constant
-// section.
+// arguments are typically run time values and we can't encode them in the
+// constant section. Statically known arguments (constants) can be encoded as
+// global values together with attributes.
 
 // Forward declare class declared below.
 class Globals;
+class Allocas;
 
 //===----------------------------------------------------------------------===//
 // Custom call arguments encoding.
@@ -75,7 +79,10 @@ class CustomCallArgEncoding {
  public:
   struct Encoded {
     mlir::LLVM::GlobalOp type_id;  // llvm.mlir.global external $type_name : i64
-    mlir::LLVM::AllocaOp value;    // llvm.alloca 1 x ArgType
+
+    // Statically known arguments might be encoded as global constants,
+    // otherwise it will be `!llvm.alloca 1 x ArgType`.
+    std::variant<mlir::LLVM::AllocaOp, mlir::LLVM::GlobalOp> value;
   };
 
   virtual ~CustomCallArgEncoding() = default;
@@ -83,7 +90,7 @@ class CustomCallArgEncoding {
   virtual mlir::LogicalResult Match(mlir::Value value,
                                     mlir::Value conterted) const = 0;
 
-  virtual mlir::FailureOr<Encoded> Encode(Globals &g,
+  virtual mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
                                           mlir::ImplicitLocOpBuilder &b,
                                           mlir::Value value,
                                           mlir::Value converted) const = 0;
@@ -96,7 +103,8 @@ class CustomCallArgEncodingSet {
 
   // Finds matching argument encoding and tries to encode the values. Returns
   // failure if didn't match values to any of the argument encodings.
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b,
                                   mlir::Value value,
                                   mlir::Value converted) const;
 
@@ -136,7 +144,7 @@ class CustomCallRetEncoding {
   virtual mlir::LogicalResult Match(mlir::Type type,
                                     mlir::Type converted) const = 0;
 
-  virtual mlir::FailureOr<Encoded> Encode(Globals &g,
+  virtual mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
                                           mlir::ImplicitLocOpBuilder &b,
                                           mlir::Type type,
                                           mlir::Type converted) const = 0;
@@ -153,7 +161,8 @@ class CustomCallRetEncodingSet {
 
   // Finds matching result encoding and tries to encode the values. Returns
   // failure if didn't match values to any of the result encodings.
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b,
                                   mlir::Type type, mlir::Type converted) const;
 
   // Convert the encoded value in alloca back to a value with the converted
@@ -251,7 +260,7 @@ class CustomCallAttrEncodingSet {
 // comparison. All type id symbols at run time must be resolved to the type id
 // instances defined in the current process.
 mlir::LLVM::GlobalOp EncodeTypeId(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::TypeID type_id);
+                                  TypeID type_id);
 
 // Encodes string as a module global null-terminated string constant + size. We
 // reuse the encoding scheme for arrays to store sting with its size, to avoid
@@ -287,7 +296,7 @@ class Globals {
 
   // Creates a global external variable for the type id.
   mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
-                                   mlir::TypeID type_id);
+                                   TypeID type_id);
 
   // Creates a global null-terminated string constant.
   mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
@@ -337,6 +346,55 @@ class Globals {
   // A mapping from the TypeID to the unique type name for encoding external
   // globals corresponding to types ids.
   TypeIDNameRegistry type_id_names_;
+};
+
+//===----------------------------------------------------------------------===//
+// A helper class to create alloca operations for encoded arguments.
+//===----------------------------------------------------------------------===//
+
+class EncodingAllocas;
+
+// We reuse allocas for encoding custom call arguments and results, because we
+// potentially can have thousands of custom calls, and we do not want to
+// accidentally blow up the stack size. It means that we might encode the same
+// argument multiple times, but encoding is cheap (few store operations), and
+// LLVM can potentially optimize them away.
+//
+// TODO(ezhulenev): Use `llvm.invariant.start` and `llvm.invariant.end` to mark
+// encoded arguments allocas.
+class Allocas {
+ public:
+  ~Allocas();
+
+  mlir::LLVM::AllocaOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
+                                   mlir::Type type);
+
+ private:
+  friend class EncodingAllocas;
+
+  struct TypedAllocas {
+    size_t offset = 0;
+    llvm::SmallVector<mlir::LLVM::AllocaOp> allocas;
+  };
+
+  explicit Allocas(mlir::Block *block,
+                   llvm::DenseMap<mlir::Type, TypedAllocas> *allocas);
+
+  mlir::Block *block_;
+  llvm::DenseMap<mlir::Type, TypedAllocas> *allocas_;
+};
+
+// Mapping from basic block to allocas.
+class EncodingAllocas {
+ public:
+  Allocas GetForOperation(mlir::Operation *op);
+
+ private:
+  friend class Allocas;
+
+  llvm::DenseMap<mlir::Block *,
+                 llvm::DenseMap<mlir::Type, Allocas::TypedAllocas>>
+      allocas_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -435,6 +493,15 @@ struct UnitAttrEncoding : public CustomCallAttrEncoding {
                                   mlir::Attribute) const final;
 };
 
+struct DictionaryAttrEncoding : public CustomCallAttrEncoding {
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
+                                  std::string_view,
+                                  mlir::Attribute) const final;
+};
+
 // Custom call attribute encoding that encodes enums using their underlying
 // scalar type. Type id is based on the enum type passed to the runtime.
 //
@@ -472,7 +539,7 @@ struct EnumAttrEncoding : public CustomCallAttrEncoding {
     using T = std::underlying_type_t<RuntimeEnumType>;
     T underlying_value = static_cast<T>(run_time_enum);
 
-    mlir::TypeID type_id = mlir::TypeID::get<Tagged<RuntimeEnumType>>();
+    TypeID type_id = TypeID::get<Tagged<RuntimeEnumType>>();
     mlir::Attribute underlying_attr = AsAttr(b, underlying_value);
 
     Encoded encoded;
@@ -558,7 +625,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
       attrs.emplace_back(bind(attr.cast<AttrType>(), b));
 
     // Encode extracted attributes as an aggregate.
-    auto type_id = mlir::TypeID::get<Tagged<RuntimeType>>();
+    auto type_id = TypeID::get<Tagged<RuntimeType>>();
     auto sym = "__rt_aggregate_" + AttrType::getMnemonic();
     auto aggregate =
         EncodeAttributes(sym_table, g, b, encoding, sym.str(), attrs);
@@ -583,8 +650,9 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
 class ScalarArgEncoding : public CustomCallArgEncoding {
  public:
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Value, mlir::Value) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Value,
+                                  mlir::Value) const final;
 };
 
 // Encodes custom call arguments passed as an opaque LLVM pointer (!llvm.ptr)
@@ -596,8 +664,9 @@ class OpaqueArgEncoding : public CustomCallArgEncoding {
   OpaqueArgEncoding(std::function<bool(mlir::Value)> match, TypeID type_id);
 
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Value, mlir::Value) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Value,
+                                  mlir::Value) const final;
 
   template <typename T>
   static auto Match() {
@@ -613,8 +682,9 @@ class OpaqueArgEncoding : public CustomCallArgEncoding {
 class MemrefArgEncoding : public CustomCallArgEncoding {
  public:
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Value, mlir::Value) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Value,
+                                  mlir::Value) const final;
 };
 
 //===----------------------------------------------------------------------===//
@@ -625,8 +695,9 @@ class MemrefArgEncoding : public CustomCallArgEncoding {
 class ScalarRetEncoding : public CustomCallRetEncoding {
  public:
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                  mlir::Type) const final;
   mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
                                       mlir::Type,
                                       mlir::LLVM::AllocaOp) const final;
@@ -641,8 +712,9 @@ class OpaqueRetEncoding : public CustomCallRetEncoding {
   OpaqueRetEncoding(std::function<bool(mlir::Type)> match, TypeID type_id);
 
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                  mlir::Type) const final;
   mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
                                       mlir::Type,
                                       mlir::LLVM::AllocaOp) const final;
@@ -661,8 +733,20 @@ class OpaqueRetEncoding : public CustomCallRetEncoding {
 class MemrefRetEncoding : public CustomCallRetEncoding {
  public:
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                  mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
+};
+
+class AsyncValueRetEncoding : public CustomCallRetEncoding {
+ public:
+  mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                  mlir::Type) const final;
   mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
                                       mlir::Type,
                                       mlir::LLVM::AllocaOp) const final;

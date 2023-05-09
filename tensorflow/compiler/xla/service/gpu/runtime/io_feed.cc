@@ -29,20 +29,10 @@ namespace xla {
 namespace gpu {
 
 using runtime::CustomCall;
-using runtime::Executable;
 
-namespace {
-struct Infeed {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CustomCall::RemainingArgs args,
-                          std::string_view config) const;
-  static Infeed Handler() { return Infeed(); }
-};
-}  // namespace
-
-absl::Status Infeed::operator()(const ServiceExecutableRunOptions* run_options,
-                                CustomCall::RemainingArgs args,
-                                std::string_view config) const {
+static absl::Status InfeedImpl(const ServiceExecutableRunOptions* run_options,
+                               CustomCall::RemainingArgs args,
+                               std::string_view config) {
   VLOG(3) << "Infeeding to GPU";
 
   se::Stream* stream = run_options->stream();
@@ -87,30 +77,9 @@ absl::Status Infeed::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool Infeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                   void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.infeed")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<std::string_view>("config")
-                             .To<checks>(Infeed::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-namespace {
-struct Outfeed {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CustomCall::RemainingArgs args,
-                          std::string_view config) const;
-  static Outfeed Handler() { return Outfeed(); }
-};
-}  // namespace
-
-absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
-                                 CustomCall::RemainingArgs args,
-                                 std::string_view config) const {
+static absl::Status OutfeedImpl(const ServiceExecutableRunOptions* run_options,
+                                CustomCall::RemainingArgs args,
+                                std::string_view config) {
   VLOG(3) << "Outfeeding from GPU";
 
   se::Stream* stream = run_options->stream();
@@ -182,21 +151,29 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool Outfeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                    void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.outfeed")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<std::string_view>("config")
-                             .To<checks>(Outfeed::Handler())
-                             .release();
+//===----------------------------------------------------------------------===//
+// Define Xla runtime bindings for the custom calls.
+//===----------------------------------------------------------------------===//
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Infeed, FunctionWrapper<InfeedImpl>(), checks,
+    CustomCall::Bind("xla.gpu.infeed")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<CustomCall::RemainingArgs>()  // args
+        .Attr<std::string_view>("config"));
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Outfeed, FunctionWrapper<OutfeedImpl>(), checks,
+    CustomCall::Bind("xla.gpu.outfeed")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<CustomCall::RemainingArgs>()  // args
+        .Attr<std::string_view>("config"));
+
+//===----------------------------------------------------------------------===//
 
 void RegisterIoFeedCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.infeed", &xla::gpu::Infeed);
-  registry.Register("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  registry.Register("xla.gpu.infeed", Infeed);
+  registry.Register("xla.gpu.outfeed", Outfeed);
 }
 
 }  // namespace gpu

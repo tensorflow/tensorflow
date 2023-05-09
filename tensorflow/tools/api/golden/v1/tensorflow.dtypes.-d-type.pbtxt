@@ -69,6 +69,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
+    argspec: "args=[\'self\', \'type_enum\', \'handle_data\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "experimental_as_proto"
@@ -93,5 +94,9 @@ tf_class {
   member_method {
     name: "most_specific_common_supertype"
     argspec: "args=[\'self\', \'types\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder_value"
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
   }
 }

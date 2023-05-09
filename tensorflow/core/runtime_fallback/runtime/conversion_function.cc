@@ -48,7 +48,7 @@ ConvertRuntimeFallbackTensorToDenseHostTensor(
       tensor.GetTensorHandle()->Resolve(&status)};
   if (!status.ok())
     return tfrt::MakeStringError("error resolving TensorHandle: ",
-                                 status.error_message());
+                                 status.message());
 
   void *data = tensor_interface->Data();
   size_t size = tensor_interface->ByteSize();
@@ -75,7 +75,7 @@ ConvertRuntimeFallbackTensorToStringHostTensor(
   if (!status.ok())
     return tfrt::MakeErrorAsyncValueRef(
 
-        tfrt::StrCat("error resolving TensorHandle: ", status.error_message()));
+        tfrt::StrCat("error resolving TensorHandle: ", status.message()));
 
   assert(tensor_interface->Type() == DT_STRING);
 
@@ -108,7 +108,7 @@ ConvertScalarHostTensorToRuntimeFallbackTensor(
         "error copying ScalarHostTensor to DenseHostTensor");
 
   return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-      CopyRefDHTToRuntimeFallbackTensor(optional_dht.getValue(), host));
+      CopyRefDHTToRuntimeFallbackTensor(optional_dht.value(), host));
 }
 
 static tfrt::AsyncValueRef<RuntimeFallbackTensor>
@@ -145,14 +145,14 @@ TransferRuntimeFallbackToAnotherDevice(const RuntimeFallbackTensor &tensor,
     return tfrt::MakeStringError(
         "Cannot get EagerContext from ExecutionContext.");
   auto expected_eager_context =
-      eager_context_resource.getValue()->GetTFEagerContext();
+      eager_context_resource.value()->GetTFEagerContext();
   if (!expected_eager_context) return expected_eager_context.takeError();
   auto *eager_context = expected_eager_context.get();
 
   auto *th = tensor.GetTensorHandle();
   Device *tf_device;
   Status s = eager_context->FindDeviceFromName(dst.name().data(), &tf_device);
-  if (!s.ok()) return tfrt::MakeStringError(s.error_message());
+  if (!s.ok()) return tfrt::MakeStringError(s.message());
 
   auto *host = exec_ctx.host();
 
@@ -161,7 +161,7 @@ TransferRuntimeFallbackToAnotherDevice(const RuntimeFallbackTensor &tensor,
   s = EagerCopyToDevice(th, eager_context, &eager_context->Executor(),
                         tf_device,
                         /*mirror=*/false, &result_th);
-  if (!s.ok()) return tfrt::MakeStringError(s.error_message());
+  if (!s.ok()) return tfrt::MakeStringError(s.message());
   return CreateRuntimeFallbackTensorFromTfTensorHandle(
       OwnedTensorHandle(result_th), host);
 }

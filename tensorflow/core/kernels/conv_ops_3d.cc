@@ -183,8 +183,11 @@ class Conv3DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(
         context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
                                    padding_, &out, &padding));
-    TensorShape out_shape = ShapeFromFormat(
-        data_format_, in_batch, {{out[0], out[1], out[2]}}, out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context,
+                   ShapeFromFormatWithStatus(data_format_, in_batch,
+                                             {{out[0], out[1], out[2]}},
+                                             out_depth, &out_shape));
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
@@ -328,9 +331,11 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
       const int64_t new_in_planes = in_planes + planes_odd;
 
       Tensor transformed_input;
-      TensorShape transformed_shape = ShapeFromFormat(
-          data_format, in_batch, {{new_in_planes, new_in_rows, new_in_cols}},
-          in_depth);
+      TensorShape transformed_shape;
+      OP_REQUIRES_OK(ctx, ShapeFromFormatWithStatus(
+                              data_format, in_batch,
+                              {{new_in_planes, new_in_rows, new_in_cols}},
+                              in_depth, &transformed_shape));
       OP_REQUIRES_OK(
           ctx, ctx->allocate_temp(DataTypeToEnum<T>::value, transformed_shape,
                                   &transformed_input));
@@ -359,8 +364,11 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
     VLOG(4) << "Convert the input tensor from NDHWC to NCDHW.";
-    const TensorShape nchw_shape = ShapeFromFormat(
-        FORMAT_NCHW, in_batch, {{in_planes, in_rows, in_cols}}, in_depth);
+    TensorShape nchw_shape;
+    OP_REQUIRES_OK(ctx,
+                   ShapeFromFormatWithStatus(FORMAT_NCHW, in_batch,
+                                             {{in_planes, in_rows, in_cols}},
+                                             in_depth, &nchw_shape));
     if (in_depth > 1) {
       Tensor transformed_input;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
@@ -458,12 +466,14 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
   Tensor transformed_output;
   if (data_format != compute_data_format) {
     VLOG(4) << "Allocate temporary memory for output in compute data format";
+    TensorShape transformed_output_shape;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(
-                 DataTypeToEnum<T>::value,
-                 ShapeFromFormat(FORMAT_NCHW, in_batch,
-                                 {{out_planes, out_rows, out_cols}}, out_depth),
-                 &transformed_output));
+        ctx, ShapeFromFormatWithStatus(FORMAT_NCHW, in_batch,
+                                       {{out_planes, out_rows, out_cols}},
+                                       out_depth, &transformed_output_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                transformed_output_shape, &transformed_output));
   } else {
     transformed_output = *output;
   }
@@ -550,11 +560,12 @@ struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
     auto* stream = ctx->op_device_context()->stream();
     const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
         se::CudaComputeCapability::AMPERE);
-    Tensor casted_input = input_param;
-    Tensor casted_filter = filter;
-    Tensor casted_out = *output;
 
     if (cast_to_float) {
+      Tensor casted_input = input_param;
+      Tensor casted_filter = filter;
+      Tensor casted_out = *output;
+
       const GPUDevice& device = ctx->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input_param.shape(),
@@ -581,9 +592,9 @@ struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
       return;
     }
 
-    LaunchConvOpImpl<Eigen::bfloat16>(ctx, cudnn_use_autotune, casted_input,
-                                      casted_filter, dilations, strides,
-                                      padding, data_format, &casted_out);
+    LaunchConvOpImpl<Eigen::bfloat16>(ctx, cudnn_use_autotune, input_param,
+                                      filter, dilations, strides, padding,
+                                      data_format, output);
   }
 };
 

@@ -68,9 +68,9 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -100,9 +100,9 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "@com_google_absl//absl/strings",
     ] + if_static([
         ":annotation_stack_impl",
     ]),
@@ -140,7 +140,7 @@ cc_library(
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer_impl",
-        "//tensorflow/core/profiler/lib:profiler_interface",
+        "//tensorflow/tsl/profiler/lib:profiler_interface",
     ],
 )
 

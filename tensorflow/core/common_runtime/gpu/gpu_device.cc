@@ -37,9 +37,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
@@ -69,6 +70,7 @@ limitations under the License.
 #endif
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -341,6 +343,15 @@ class BaseGPUDevice::StreamGroupFactory {
     streams_.clear();
   }
 
+  std::optional<tsl::TfDeviceId> FindTfDeviceId(se::Stream* compute) const {
+    for (const auto& item : streams_) {
+      if (item.second.compute == compute) {
+        return tsl::TfDeviceId(std::get<0>(item.first));
+      }
+    }
+    return std::nullopt;
+  }
+
  private:
   // Returns priority for the given virtual GPU id from the session options.
   // Returns 0 if no virtual devices are specified.
@@ -431,7 +442,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
 }
 
 Status BaseGPUDevice::Init(const SessionOptions& options) {
-  auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
+  auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager(), tf_device_id_);
   if (!executor_status.status().ok()) {
     return errors::Internal("Failed to get StreamExecutor for device ",
@@ -558,6 +569,11 @@ string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                          stream_id, "]");
 }
 
+std::optional<tsl::TfDeviceId> BaseGPUDevice::FindTfDeviceId(
+    se::Stream* compute) {
+  return StreamGroupFactory::Global().FindTfDeviceId(compute);
+}
+
 namespace {
 const absl::flat_hash_set<std::string>* GetOpsToLogFromEnv() {
   auto* result = new absl::flat_hash_set<std::string>;
@@ -617,7 +633,7 @@ void BaseGPUDevice::LogInputs(OpKernel* op_kernel, OpKernelContext* context) {
 void BaseGPUDevice::LogOutputs(OpKernel* op_kernel, OpKernelContext* context) {
   if (!context->status().ok()) {
     LOG(INFO) << op_kernel->name()
-              << " failed: " << context->status().error_message();
+              << " failed: " << context->status().message();
     return;
   }
 
@@ -1040,7 +1056,8 @@ int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
   // Otherwise, depending on the capability version assign
   //  500MiB (for cuda_compute_capability <= 6.x) or
   // 1050MiB (for cuda_compute_capability <= 7.x) or
-  // 1536MiB (for cuda_compute_capability >= 8.x)
+  // 1536MiB (for cuda_compute_capability <= 8.x) or
+  // 1800MiB (for cuda_compute_capability >= 9.x)
   int64_t min_system_memory;
   if (available_memory < (1LL << 31)) {
     min_system_memory = 225 * 1024 * 1024;
@@ -1049,8 +1066,10 @@ int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
       min_system_memory = 500 * 1024 * 1024;
     } else if (cc_major <= 7) {
       min_system_memory = 1050 * 1024 * 1024;
-    } else {
+    } else if (cc_major <= 8) {
       min_system_memory = 1536 * 1024 * 1024;
+    } else {
+      min_system_memory = 1800 * 1024 * 1024;
     }
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
@@ -1083,7 +1102,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                                       int64_t* memory_limit) {
   int64_t total_memory = 0;
   int64_t available_memory = 0;
-  se::StreamExecutor* se = DeviceIdUtil::ExecutorForPlatformDeviceId(
+  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
                                se::GPUMachineManager(), platform_device_id)
                                .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
@@ -1287,7 +1306,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // because it treats an empty gpu_options.visible_device_list as 'all GPUs
   // are visible'.
   if (num_gpus_to_use > 0) {
-    TF_RETURN_IF_ERROR(DeviceIdUtil::ParseVisibleDeviceList(
+    TF_RETURN_IF_ERROR(tsl::ParseVisibleDeviceList(
         gpu_options.visible_device_list(), gpu_manager->VisibleDeviceCount(),
         &visible_gpu_order));
     bool new_gpu_found = false;
@@ -1369,7 +1388,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
                                 " failed. Status: ", hipGetErrorString(err));
       }
       int priority_low, priority_high;
-      hipDeviceGetStreamPriorityRange(&priority_low, &priority_high);
+      err = hipDeviceGetStreamPriorityRange(&priority_low, &priority_high);
       if (err != hipSuccess) {
         return errors::Internal(
             "hipDeviceGetStreamPriorityRange() on GPU:", original_device,
@@ -1382,7 +1401,13 @@ Status BaseGPUDeviceFactory::CreateDevices(
                          std::make_pair(priority_low, priority_high)));
 #endif
     }
-    // Reset to the original device.
+    // Reset to the original device, if it is a valid visible gpu. Otherwise use
+    // the first valid device.
+    if (std::find(valid_platform_device_ids.begin(),
+                  valid_platform_device_ids.end(),
+                  original_device) == valid_platform_device_ids.end()) {
+      original_device = valid_platform_device_ids[0].value();
+    }
 #if GOOGLE_CUDA
     err = cudaSetDevice(original_device);
     if (err != cudaSuccess) {
@@ -1562,8 +1587,8 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   CHECK_GE(tf_device_id.value(), 0);
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_device_id.value());
-  DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
-                                     tf_device_id);
+  tsl::CheckValidTfDeviceId(
+      DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
   tsl::PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
@@ -1632,12 +1657,12 @@ GetPeerAccessMap(se::Platform* platform,
                        bool>);
   for (tsl::PlatformDeviceId platform_gpu_i : visible_gpu_order) {
     for (tsl::PlatformDeviceId platform_gpu_j : visible_gpu_order) {
-      se::StreamExecutor* from =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_i)
-              .value();
-      se::StreamExecutor* to =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_j)
-              .value();
+      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                     platform, platform_gpu_i)
+                                     .value();
+      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                   platform, platform_gpu_j)
+                                   .value();
       (*map)[{platform_gpu_i, platform_gpu_j}] =
           from->CanEnablePeerAccessTo(to);
     }
@@ -1853,12 +1878,12 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
     for (int j = 0; j < visible_gpu_order.size(); ++j) {
       const tsl::PlatformDeviceId platform_gpu_j = visible_gpu_order[j];
       // We have already validated that ExecutorForDevice() calls return OK.
-      se::StreamExecutor* from =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_i)
-              .value();
-      se::StreamExecutor* to =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_j)
-              .value();
+      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                     gpu_manager, platform_gpu_i)
+                                     .value();
+      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                   gpu_manager, platform_gpu_j)
+                                   .value();
 
       if (from->CanEnablePeerAccessTo(to)) {
         ++possible_peer_count;

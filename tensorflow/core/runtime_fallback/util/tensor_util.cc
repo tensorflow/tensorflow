@@ -25,7 +25,6 @@ using tfrt::Expected;
 using tfrt::HostBuffer;
 using tfrt::RCReference;
 using tfrt::StringHostTensor;
-using tfrt::TensorShape;
 
 // Moves one ref on HostBuffer to tensorflow::Tensor.
 tensorflow::Tensor MoveHostBufferToTfTensor(RCReference<HostBuffer> host_buffer,

@@ -92,11 +92,11 @@ _test_size_override = {
         ":tflite_driver",
         ":tflite_driver_delegate_providers",
         ":util",
-        "@com_google_googletest//:gtest",
-        "@com_googlesource_code_re2//:re2",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_googletest//:gtest",
+        "@com_googlesource_code_re2//:re2",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",
@@ -202,7 +202,7 @@ cc_library(
         ":split",
         ":test_runner",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
     ],
 )
 
@@ -228,6 +228,7 @@ cc_library(
     hdrs = ["split.h"],
     deps = [
         "//tensorflow/lite:string",
+        "//third_party/eigen3",
     ],
 )
 
@@ -263,23 +264,24 @@ cc_library(
     hdrs = ["tflite_driver.h"],
     deps = [
         ":join",
+        ":result_expectations",
         ":split",
         ":test_runner",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
-        "//tensorflow/lite/kernels/gradient:gradient_ops",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
-        "//tensorflow/lite/kernels/parse_example:parse_example",
+        "//tensorflow/lite/kernels/gradient:gradient_ops",
+        "//tensorflow/lite/kernels/parse_example",
         "//tensorflow/lite/kernels/perception:perception_ops",
         "//tensorflow/lite/tools/evaluation:utils",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:ios": [],
         "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
@@ -350,10 +352,10 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -385,9 +387,9 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "//tensorflow/lite:string_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "//tensorflow/lite:string_util",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:core_cpu",
@@ -589,6 +591,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "result_expectations",
+    srcs = ["result_expectations.cc"],
+    hdrs = ["result_expectations.h"],
+    deps = [
+        ":split",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # A selective built tflite for testing.
 tflite_custom_cc_library(
     name = "test_tflite_lib",
@@ -613,7 +629,7 @@ cc_test(
         ":test_tflite_lib",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

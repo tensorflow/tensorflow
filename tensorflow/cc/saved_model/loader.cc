@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -65,8 +65,8 @@ auto* load_latency_by_stage = monitoring::Sampler<2>::New(
         "model_path",
         "stage",
     },
-    // Scale of 10, power of 1.8 with bucket count 33 (~20 minutes).
-    monitoring::Buckets::Exponential(10, 1.8, 33));
+    // Scale of 10, power of 1.8 with bucket count 37 (~258 minutes).
+    monitoring::Buckets::Exponential(10, 1.8, 37));
 
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
@@ -301,7 +301,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   auto fingerprint_proto =
       saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
   if (fingerprint_proto.ok()) {
-    // Set gauge cell with graph_def_checksum.
+    // Set gauge cell with saved_model_checksum.
     metrics::SavedModelReadFingerprint().Set(
         std::to_string(fingerprint_proto->saved_model_checksum()));
   }
@@ -318,6 +318,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   };
   if (status.ok()) {
     log_and_count(kLoadAttemptSuccess);
+    metrics::SavedModelReadPath().Set(export_dir);
   } else {
     log_and_count(kLoadAttemptFail);
   }

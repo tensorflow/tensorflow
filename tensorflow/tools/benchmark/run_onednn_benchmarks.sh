@@ -14,11 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 
+# Benchmarks all downloaded models, parses, and summarizes results.
+
 set -x
+source onednn_benchmark_config.sh
 
 export OUTDIR=~/onednn_benchmarks
 mkdir -p ${OUTDIR}
 bash run_models.sh 2>&1 | tee ${OUTDIR}/verbose.log
 grep -v 'profiler_session\|xplane' ${OUTDIR}/verbose.log > ${OUTDIR}/run.log
-grep "\+ bazel-bin\|no stats:\|'BATCH=" ${OUTDIR}/run.log > ${OUTDIR}/to_parse.log
-python parse_onednn_benchmarks.py ${OUTDIR}/to_parse.log | tee ${OUTDIR}/results.csv
+grep "\+ ${BUILDER} run\|no stats:\|'BATCH=" ${OUTDIR}/run.log > ${OUTDIR}/to_parse.log
+python3 parse_onednn_benchmarks.py ${OUTDIR}/to_parse.log | tee ${OUTDIR}/results.csv

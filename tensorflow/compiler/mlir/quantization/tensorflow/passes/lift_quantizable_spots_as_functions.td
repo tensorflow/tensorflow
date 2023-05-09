@@ -83,6 +83,28 @@ def LiftConv3D : Pat<
       (NamedAttr<"dilations"> $dilations))),
   [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
+def LiftBatchMatMul : Pat<
+  (TF_BatchMatMulV2Op:$res $x, $y, $adj_x, $adj_y),
+  (LiftAsFunctionCall<"composite_batch_matmul_fn">
+    (ArgumentList $x, $y),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"adj_x"> $adj_x),
+      (NamedAttr<"adj_y"> $adj_y))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
+
+def LiftEinsum : Pat<
+  (TF_EinsumOp:$res $input, $equation),
+  (LiftAsFunctionCall<"composite_einsum_fn">
+    (ArgumentList $input),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"equation"> $equation))),
+  [(IsNotInLiftedFunc $res),
+   (IsEinsumSupportedByXlaDotV2 $equation)
+  ], (addBenefit 1)>;
+
+
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops with bias as functions
 //===----------------------------------------------------------------------===//
@@ -130,6 +152,22 @@ def LiftMatmulWithBias : Pat<
       (NamedAttr<"transpose_b"> $transpose_b))),
   [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
 
+// TODO(b/278493977): Create generic implementation of lifting any fused op
+// with any reshaping op
+def LiftMatmulWithReshapeAndBias : Pat<
+  (TF_BiasAddOp:$res
+    (TF_ReshapeOp:$out
+      (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+    $shape),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_matmul_with_reshape_and_bias_fn">
+    (ArgumentList $a, $b, $bias, $shape),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"transpose_a"> $transpose_a),
+      (NamedAttr<"transpose_b"> $transpose_b))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
 def LiftConv3dWithBias : Pat<
   (TF_BiasAddOp:$res
     (TF_Conv3DOp $input, $filter, $strides, $padding,
@@ -143,6 +181,31 @@ def LiftConv3dWithBias : Pat<
       (NamedAttr<"padding"> $padding),
       (NamedAttr<"dilations"> $dilations))),
   [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
+def LiftBatchMatMulWithBias : Pat<
+  (TF_BiasAddOp:$res
+    (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_batch_matmul_with_bias_fn">
+    (ArgumentList $x, $y, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"adj_x"> $adj_x),
+      (NamedAttr<"adj_y"> $adj_y))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
+def LiftEinsumWithBias : Pat<
+  (TF_BiasAddOp:$res
+    (TF_EinsumOp $input, $equation),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_einsum_with_bias_fn">
+    (AppendToVector (ArgumentList $input), $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"equation"> $equation))),
+  [(IsNotInLiftedFunc $res),
+   (IsEinsumSupportedByXlaDotV2 $equation)],
+  (addBenefit 5)>;
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops with bias and activation as functions
@@ -263,6 +326,65 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
         (NamedAttr<"dilations"> $dilations))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
+  def LiftBatchMatMulWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y)),
+    (LiftAsFunctionCall<"composite_batch_matmul_with_"# ActivationName #"_fn">
+      (ArgumentList $x, $y),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"adj_x"> $adj_x),
+        (NamedAttr<"adj_y"> $adj_y))),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftBatchMatMulWithBiasAnd#LastFusedOp : Pat<
+    (ActivationOp:$res
+      (TF_BiasAddOp
+        (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
+        $bias, IsDataFormatNHWC:$bias_data_format)),
+    (LiftAsFunctionCall<"composite_batch_matmul_with_bias_and_"# ActivationName #"_fn">
+      (ArgumentList $x, $y, $bias),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"adj_x"> $adj_x),
+        (NamedAttr<"adj_y"> $adj_y))),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftEinsumWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_EinsumOp $input, $equation)),
+    (LiftAsFunctionCall<"composite_einsum_with_"# ActivationName #"_fn">
+      (ArgumentList $input),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"equation"> $equation))),
+    [(IsNotInLiftedFunc $res),
+     (IsEinsumSupportedByXlaDotV2 $equation)],
+    (addBenefit 10)>;
+
+  def LiftEinsumWithBiasAnd#LastFusedOp : Pat<
+    (ActivationOp:$res
+      (TF_BiasAddOp
+        (TF_EinsumOp $input, $equation),
+        $bias, IsDataFormatNHWC:$bias_data_format)),
+    (LiftAsFunctionCall<"composite_einsum_with_bias_and_"# ActivationName #"_fn">
+      (AppendToVector (ArgumentList $input), $bias),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"equation"> $equation))),
+    [(IsNotInLiftedFunc $res),
+     (IsEinsumSupportedByXlaDotV2 $equation)],
+    (addBenefit 10)>;
+
 }
 defm : LiftCompositeOpsWithActivation<TF_ReluOp, "relu">;
 defm : LiftCompositeOpsWithActivation<TF_Relu6Op, "relu6">;
+
+def LiftGather : Pat<
+  (TF_GatherV2Op:$res $params, $indices, $axis, $batch_dims),
+  (LiftAsFunctionCall<"composite_gather_fn">
+    (ArgumentList $params, $indices, $axis),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"batch_dims"> $batch_dims))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $params)], (addBenefit 1)>;

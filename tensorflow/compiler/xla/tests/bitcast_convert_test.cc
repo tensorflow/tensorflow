@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -87,6 +88,16 @@ TEST_F(BitcastConvertTest, ConvertR1F32ToR1S32) {
 
   std::vector<int32_t> expected = {0x422a6666, 0x4280cccd};
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
+}
+
+TEST_F(BitcastConvertTest, ConvertR1F8e4m3fnToR1U8) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<uint8_t>(&builder, {0x38, 0xC0});
+  BitcastConvertType(a, F8E4M3FN);
+
+  std::vector<tsl::float8_e4m3fn> expected = {tsl::float8_e4m3fn{1.0},
+                                              tsl::float8_e4m3fn{-2.0}};
+  ComputeAndCompareR1<tsl::float8_e4m3fn>(&builder, expected, {});
 }
 
 TEST_F(BitcastConvertTest, ConvertS32Extremes) {

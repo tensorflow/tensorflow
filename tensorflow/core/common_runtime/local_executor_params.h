@@ -19,9 +19,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-namespace tsl {
-class Status;
-}
+#include "tensorflow/core/lib/core/status.h"
+
 namespace tensorflow {
 class Device;
 class StepStatsCollector;
@@ -29,7 +28,6 @@ class SessionMetadata;
 class FunctionLibraryRuntime;
 class NodeProperties;
 class OpKernel;
-using tsl::Status;
 
 // LocalExecutorParams provides arguments that will be shared by all invocations
 // of an executor. We expect that different contexts would provide different

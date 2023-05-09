@@ -27,219 +27,128 @@ namespace gpu {
 namespace cl {
 namespace {
 
-TEST_F(OpenCLOperationTest, Abs) {
-  auto status = AbsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Abs) { ASSERT_OK(AbsTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Cos) {
-  auto status = CosTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Cos) { ASSERT_OK(CosTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Copy) {
-  auto status = CopyTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Copy) { ASSERT_OK(CopyTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Elu) {
-  auto status = EluTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Elu) { ASSERT_OK(EluTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Exp) {
-  auto status = ExpTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Exp) { ASSERT_OK(ExpTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Floor) {
-  auto status = FloorTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Floor) { ASSERT_OK(FloorTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, FloorDiv) {
-  auto status = FloorDivTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, FloorDiv) { ASSERT_OK(FloorDivTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, FloorMod) {
-  auto status = FloorModTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, FloorMod) { ASSERT_OK(FloorModTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, HardSwish) {
-  auto status = HardSwishTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Gelu) { ASSERT_OK(GeluTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Log) {
-  auto status = LogTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, HardSwish) { ASSERT_OK(HardSwishTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Neg) {
-  auto status = NegTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Log) { ASSERT_OK(LogTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Rsqrt) {
-  auto status = RsqrtTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Neg) { ASSERT_OK(NegTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Sigmoid) {
-  auto status = SigmoidTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Rsqrt) { ASSERT_OK(RsqrtTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Sin) {
-  auto status = SinTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Sigmoid) { ASSERT_OK(SigmoidTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Sqrt) {
-  auto status = SqrtTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Sin) { ASSERT_OK(SinTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Square) {
-  auto status = SquareTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Sqrt) { ASSERT_OK(SqrtTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Tanh) {
-  auto status = TanhTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Square) { ASSERT_OK(SquareTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Sub) {
-  auto status = SubTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Tanh) { ASSERT_OK(TanhTest(&exec_env_)); }
+
+TEST_F(OpenCLOperationTest, Sub) { ASSERT_OK(SubTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, SquaredDiff) {
-  auto status = SquaredDiffTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(SquaredDiffTest(&exec_env_));
 }
 
-TEST_F(OpenCLOperationTest, Div) {
-  auto status = DivTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Div) { ASSERT_OK(DivTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Pow) {
-  auto status = PowTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Pow) { ASSERT_OK(PowTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Add) {
-  auto status = AddTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Add) { ASSERT_OK(AddTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Maximum) {
-  auto status = MaximumTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Maximum) { ASSERT_OK(MaximumTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, MaximumWithScalar) {
-  auto status = MaximumWithScalarTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MaximumWithScalarTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, MaximumWithConstantLinearTensor) {
-  auto status = MaximumWithConstantLinearTensorTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MaximumWithConstantLinearTensorTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensor) {
-  auto status = MaximumWithConstantHWCTensorTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MaximumWithConstantHWCTensorTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensorBroadcastChannels) {
-  auto status = MaximumWithConstantHWCTensorBroadcastChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MaximumWithConstantHWCTensorBroadcastChannelsTest(&exec_env_));
 }
 
-TEST_F(OpenCLOperationTest, Minimum) {
-  auto status = MinimumTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Minimum) { ASSERT_OK(MinimumTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, MinimumWithScalar) {
-  auto status = MinimumWithScalarTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MinimumWithScalarTest(&exec_env_));
 }
 
-TEST_F(OpenCLOperationTest, Mul) {
-  auto status = MulTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Mul) { ASSERT_OK(MulTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, MulBroadcastHW) {
-  auto status = MulBroadcastHWTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MulBroadcastHWTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, MulBroadcastChannels) {
-  auto status = MulBroadcastChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MulBroadcastChannelsTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, SubWithScalarAtFirstPosition) {
-  auto status = SubWithScalarAtFirstPositionTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(SubWithScalarAtFirstPositionTest(&exec_env_));
 }
 
-TEST_F(OpenCLOperationTest, Less) {
-  auto status = LessTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Less) { ASSERT_OK(LessTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, LessEqual) {
-  auto status = LessEqualTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, LessEqual) { ASSERT_OK(LessEqualTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, Greater) {
-  auto status = GreaterTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Greater) { ASSERT_OK(GreaterTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, GreaterEqual) {
-  auto status = GreaterEqualTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(GreaterEqualTest(&exec_env_));
 }
 
-TEST_F(OpenCLOperationTest, Equal) {
-  auto status = EqualTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, Equal) { ASSERT_OK(EqualTest(&exec_env_)); }
 
-TEST_F(OpenCLOperationTest, NotEqual) {
-  auto status = NotEqualTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+TEST_F(OpenCLOperationTest, NotEqual) { ASSERT_OK(NotEqualTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, CosBroadcast) {
-  auto status = CosBroadcastTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(CosBroadcastTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, MaximumScalarBroadcastInput) {
-  auto status = MaximumScalarBroadcastInputTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MaximumScalarBroadcastInputTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, MulLinearBroadcastInput) {
-  auto status = MulLinearBroadcastInputTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MulLinearBroadcastInputTest(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, MulBroadcastBothInputs) {
-  auto status = MulBroadcastBothInputsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_OK(MulBroadcastBothInputsTest(&exec_env_));
+}
+
+TEST_F(OpenCLOperationTest, LogicalAndTest) {
+  ASSERT_OK(LogicalAndTest(&exec_env_));
+}
+
+TEST_F(OpenCLOperationTest, LogicalAndWithConstantTest) {
+  ASSERT_OK(LogicalAndWithConstantTest(&exec_env_));
 }
 
 }  // namespace

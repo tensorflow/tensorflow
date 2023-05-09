@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/runner/runner.h"
 
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
+#include "tensorflow/compiler/xla/runtime/logical_result.h"
+#include "tensorflow/compiler/xla/runtime/results.h"
 #include "tensorflow/compiler/xla/runtime/runner/runner.pb.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -41,6 +47,8 @@ using tsl::ReadFileToString;
 using tsl::ReadTextProto;
 using tsl::WriteBinaryProto;
 using tsl::WriteTextProto;
+
+using RunnerArgs = Arguments<ScalarArg, MemrefDesc>;
 
 void AppendRunnerFlags(std::vector<tsl::Flag>* flag_list, RunnerFlags* flags) {
   flag_list->emplace_back("function", &flags->function, "Test function name.");
@@ -92,8 +100,7 @@ static absl::Status WriteProtoFile(Env* env, const std::string& fname,
 // Convert ArgumentsProto message to Xla runtime arguments.
 //===----------------------------------------------------------------------===//
 
-static absl::Status ConvertScalar(const ScalarProto& scalar,
-                                  Arguments<ScalarArg>& args) {
+static absl::Status ConvertScalar(const ScalarProto& scalar, RunnerArgs& args) {
   switch (scalar.value_case()) {
     case ScalarProto::ValueCase::kI32:
       args.emplace_back<ScalarArg>(scalar.i32());
@@ -108,14 +115,25 @@ static absl::Status ConvertScalar(const ScalarProto& scalar,
   return absl::OkStatus();
 }
 
+static absl::Status ConvertTensor(const TensorProto& tensor, RunnerArgs& args) {
+  args.emplace_back<MemrefDesc>(
+      tensor.dtype(),
+      static_cast<void*>(const_cast<std::string*>(&tensor.contents())),
+      /*offset=*/0, tensor.sizes(), tensor.strides());
+  return absl::OkStatus();
+}
+
 // Converts arguments protobuf message into Xla runtime arguments.
-static absl::Status ConvertArgs(ArgumentsProto& proto,
-                                Arguments<ScalarArg>& args) {
+static absl::Status ConvertArgs(ArgumentsProto& proto, RunnerArgs& args) {
   for (auto& arg : proto.arguments()) {
     switch (arg.argument_case()) {
       // Convert `ScalarProto` -> `ScalarArg`.
       case ArgumentProto::ArgumentCase::kScalar:
         if (auto st = ConvertScalar(arg.scalar(), args); !st.ok()) return st;
+        break;
+      // Convert `TensorProto` -> `MemrefDesc`.
+      case ArgumentProto::ArgumentCase::kTensor:
+        if (auto st = ConvertTensor(arg.tensor(), args); !st.ok()) return st;
         break;
       // Unsupported argument type.
       default:
@@ -123,7 +141,6 @@ static absl::Status ConvertArgs(ArgumentsProto& proto,
             StrFormat("unsupported argument: %s", arg.DebugString()));
     }
   }
-
   return absl::OkStatus();
 }
 
@@ -155,11 +172,78 @@ struct ReturnResults {
         break;
     }
 
+    // Assuming result cannot be processed as Scalar, try `TensorProto`
+    auto* memref = llvm::dyn_cast<MemrefType>(runtime_type);
+    if (memref) {
+      auto desc = ConvertReturnedMemref<MemrefDesc>(*this, memref, ret);
+      if (failed(desc)) return failure();
+
+      char* data = static_cast<char*>(desc->data());
+      int64_t size_in_bytes = primitive_util::ByteWidth(desc->dtype());
+
+      TensorProto* tensor_proto = result->mutable_tensor();
+      for (int64_t size : desc->sizes()) {
+        size_in_bytes *= size;
+        tensor_proto->add_sizes(size);
+      }
+
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data, size_in_bytes);
+      tensor_proto->set_contents(std::string(data, size_in_bytes));
+      tensor_proto->set_dtype(desc->dtype());
+
+      std::free(desc->data());
+      return success();
+    }
+
     return failure();
+  }
+
+  MemrefDesc operator()(PrimitiveType element_type, void* base_ptr,
+                        void* data_ptr, int64_t offset,
+                        absl::Span<const int64_t> sizes,
+                        absl::Span<const int64_t> strides) const {
+    return MemrefDesc(element_type, base_ptr, offset, sizes, strides);
   }
 
   ResultsProto* proto = nullptr;
 };
+
+// Converts arguments protobuf message into Xla runtime arguments.
+static absl::Status WriteInoutResults(ArgumentsProto& proto, RunnerArgs& args,
+                                      ResultsProto* results) {
+  for (int i = 0; i < proto.arguments().size(); ++i) {
+    ArgumentProto arg = proto.arguments().Get(i);
+    switch (arg.argument_case()) {
+      case ArgumentProto::ArgumentCase::kScalar:
+        continue;
+      case ArgumentProto::ArgumentCase::kTensor:
+        if (arg.tensor().inout()) {
+          auto* result = results->add_results();
+          TensorProto* tensor_proto = result->mutable_tensor();
+
+          auto* memref = llvm::cast<MemrefDesc>(&args[i]);
+
+          char* sv = static_cast<char*>(memref->data());
+          int64_t size_in_bytes = primitive_util::ByteWidth(memref->dtype());
+
+          for (int64_t size : memref->sizes()) {
+            size_in_bytes *= size;
+            tensor_proto->add_sizes(size);
+          }
+
+          tensor_proto->set_contents(std::string(sv, size_in_bytes));
+          tensor_proto->set_dtype(memref->dtype());
+        }
+        break;
+      // Unsupported argument type.
+      default:
+        return InvalidArgumentError(
+            StrFormat("unsupported argument: %s", arg.DebugString()));
+    }
+  }
+
+  return absl::OkStatus();
+}
 
 //===----------------------------------------------------------------------===//
 
@@ -178,7 +262,7 @@ absl::Status Execute(RunnerFlags flags,
   if (auto st = ReadFileToString(env, flags.module_path, &module); !st.ok()) {
     return InternalError(
         StrFormat("failed to read module input from %s, error: %s",
-                  flags.module_path, st.error_message()));
+                  flags.module_path, st.message()));
   }
 
   // Read arguments from the input file.
@@ -191,7 +275,7 @@ absl::Status Execute(RunnerFlags flags,
   }
 
   // Convert arguments proto message to the Xla runtime arguments.
-  Arguments<ScalarArg> args(args_proto.arguments_size());
+  RunnerArgs args(args_proto.arguments_size());
   if (auto converted = ConvertArgs(args_proto, args); !converted.ok())
     return converted;
 
@@ -211,7 +295,11 @@ absl::Status Execute(RunnerFlags flags,
   // Execute and convert results to proto message.
   if (auto executed = executable->Execute(args, converter, execute_opts);
       !executed.ok())
-    return executed;
+    return executed.status();
+
+  if (auto inout = WriteInoutResults(args_proto, args, &results_proto);
+      !inout.ok())
+    return inout;
 
   // Write results proto to the requested file location.
   if (auto wrote = WriteProtoFile(env, flags.results_path, results_proto);

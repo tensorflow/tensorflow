@@ -5,20 +5,21 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/tsl:tsl.bzl",
     "if_windows",
+    "set_external_visibility",
     "tsl_copts",
 )
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        ":dependency_whitelist",
-    ],
+    default_visibility = set_external_visibility([
+        ":dependency_allowlist",
+    ]),
     licenses = ["notice"],
 )
 
 package_group(
-    name = "dependency_whitelist",
+    name = "dependency_allowlist",
     packages = [
         "//learning/brain/tfrc/...",
         "//tensorflow/...",
@@ -99,7 +100,6 @@ cc_library(
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
     copts = tsl_copts(),
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
@@ -143,7 +143,6 @@ cc_library(
         "-DTPU_GCS_FS",
         "-DPLATFORM_CLOUD_TPU",
     ],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
@@ -273,8 +272,10 @@ cc_library(
     deps = [
         ":curl_http_request",
         ":http_request",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:retrying_utils",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -454,7 +455,6 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:resource_loader",
         "//tensorflow/tsl/platform:scanner",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -477,7 +477,6 @@ tsl_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:resource_loader",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
@@ -490,6 +489,7 @@ tsl_cc_test(
     deps = [
         ":compute_engine_metadata_client",
         ":http_request_fake",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",

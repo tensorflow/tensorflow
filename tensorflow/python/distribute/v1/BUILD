@@ -1,6 +1,6 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -8,7 +8,7 @@ package(
     licenses = ["notice"],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     python_version = "PY3",
@@ -17,6 +17,7 @@ cuda_py_test(
         "no_windows_gpu",  # b/216367668
     ],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
@@ -35,16 +36,16 @@ cuda_py_test(
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:indexed_slices",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "all_reduce",
     srcs = [
         "all_reduce.py",
@@ -55,25 +56,25 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/python/framework:device",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "all_reduce_test",
     srcs = ["all_reduce_test.py"],
     deps = [
         ":all_reduce",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
 )
@@ -91,6 +92,7 @@ pytype_strict_library(
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util",
+        "//tensorflow/python/types:data",
+        "//tensorflow/python/util:deprecation",
     ],
 )

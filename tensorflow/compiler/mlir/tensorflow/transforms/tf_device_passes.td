@@ -170,7 +170,7 @@ def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-com
         "tf_device.launch"() {
           "tf.B"()
           tf_device.return
-        } {device = "TPU_REPLICATED_HOST"} : () -> ()
+        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
         "tf.C"()
         tf_device.return
       }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
@@ -272,6 +272,18 @@ def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::f
       }
     ```
   }];
+
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute, as well as determining whether or not the "
+           "islands created by this pass should be split after the replicated "
+           "ops have been lifted.">
+  ];
 
   let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
 }

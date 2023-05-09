@@ -1,12 +1,13 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
-load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud", "tsl_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/tsl:internal",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -14,7 +15,7 @@ cc_library(
     name = "preemption_notifier",
     srcs = ["preemption_notifier.cc"],
     hdrs = ["preemption_notifier.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
@@ -53,6 +54,7 @@ cc_library(
         ":preemption_notifier",
         "//tensorflow/tsl/distributed_runtime:call_options",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/lib/monitoring:gauge",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:status",
@@ -71,8 +73,6 @@ tsl_cc_test(
     deps = [
         ":preemption_notifier",
         ":preemption_sync_manager",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/time",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_client",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
@@ -90,5 +90,7 @@ tsl_cc_test(
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc_impl",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc_impl",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
     ] + tsl_grpc_cc_dependencies(),
 )

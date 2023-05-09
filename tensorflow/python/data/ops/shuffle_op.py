@@ -22,7 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def _shuffle(
+def _shuffle(  # pylint: disable=unused-private-name
     input_dataset,
     buffer_size,
     seed=None,

@@ -39,17 +39,17 @@ cc_library(
     hdrs = ["image_preprocessing_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/tsl/util:stats_calculator_portable",
-        "//tensorflow/lite/profiling:time",
-        "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
+        "//tensorflow/tsl/util:stats_calculator_portable",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_jpeg_internal",
@@ -108,9 +108,9 @@ cc_library(
     deps = [
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/tsl/util:stats_calculator_portable",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -130,7 +131,8 @@ cc_test(
     deps = [
         ":tflite_inference_stage",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
@@ -170,6 +172,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/tsl/util:stats_calculator_portable",
+        "@FP16",
     ],
 )
 
@@ -181,7 +184,7 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":inference_profiler_stage",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
@@ -196,7 +199,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
@@ -227,7 +230,7 @@ cc_library(
         ":object_detection_average_precision_stage",
         ":tflite_inference_stage",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",

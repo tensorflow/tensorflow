@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 
 #ifdef TFLITE_BUILD_WITH_XNNPACK_DELEGATE
@@ -30,11 +30,20 @@ using TfLiteDelegatePtr =
 
 #ifdef TFLITE_BUILD_WITH_XNNPACK_DELEGATE
 TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(
-    TfLiteContext* context, bool enable_xnnpack_unsigned_quantized) {
+    TfLiteContext* context, XNNPackQS8Options xnnpack_qs8_options) {
   auto opts = TfLiteXNNPackDelegateOptionsDefault();
-  if (enable_xnnpack_unsigned_quantized) {
-    opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
+  switch (xnnpack_qs8_options) {
+    case XNNPackQS8Options::enabled:
+      opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
+      break;
+    case XNNPackQS8Options::disabled:
+      opts.flags &= ~(1UL << (TFLITE_XNNPACK_DELEGATE_FLAG_QU8 - 1));
+      break;
+    case (XNNPackQS8Options::default_value):
+    default:
+      break;
   }
+
   return TfLiteDelegatePtr(
       TfLiteXNNPackDelegateCreateWithThreadpool(&opts, context),
       TfLiteXNNPackDelegateDelete);
@@ -48,7 +57,7 @@ TFLITE_ATTRIBUTE_WEAK TfLiteDelegatePtr AcquireXNNPACKDelegate() {
 }
 
 TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(
-    TfLiteContext* context, bool enable_xnnpack_unsigned_quantized) {
+    TfLiteContext* context, XNNPackQS8Options xnnpack_qs8_options) {
   return AcquireXNNPACKDelegate();
 }
 #endif

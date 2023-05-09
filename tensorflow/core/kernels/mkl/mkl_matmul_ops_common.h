@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_
 #define TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #include <memory>
 #include <string>
 #include <vector>
@@ -757,7 +757,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.b_mem.reset(
         new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
     context_.c_mem.reset(
-        new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
+        new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
     auto scratchpad_md = context_.prim_desc->scratchpad_desc();
     context_.sp_mem.reset(
         new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));
@@ -896,15 +896,17 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
   MklMatMulParams params("dnnl_gemm", a_dims, b_dims, c_dims, a_strides,
                          b_strides, c_strides);
+  auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
+  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
   MklMatMulPrimitive<T, T, T>* matmul_prim =
       MklMatMulPrimitiveFactory<T, T, T, T>::Get(params, 0);
 
   UserScratchPad<unsigned char> scratch_pad;
   scratch_pad.AllocateSPTensor(matmul_prim, ctx);
   // Execute matmul primitive.
-  auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
+
   std::shared_ptr<stream> cpu_stream;
-  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+
   cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
   matmul_prim->Execute(cpu_stream, a, b, c, scratch_pad.Get());
 }
@@ -913,5 +915,5 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
 #endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_

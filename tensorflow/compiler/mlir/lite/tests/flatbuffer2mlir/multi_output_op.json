@@ -1,8 +1,11 @@
 // RUN: json_to_flatbuffer %p/test_schema.fbs %s | flatbuffer_translate --tflite-flatbuffer-to-mlir --mlir-print-debuginfo -o - | FileCheck %s
 
+// CHECK: #[[LOC0:.*]] = loc("<stdin>":0:0)
 // CHECK: "tfl.split"
 // CHECK-SAME: loc(#[[SPLIT_LOC:.*]])
-// CHECK: #[[SPLIT_LOC]] = loc(fused["output0"("<stdin>":0:0), "output1"("<stdin>":0:0)])
+// CHECK: #[[LOC1:.*]] = loc("output0"(#[[LOC0]]))
+// CHECK: #[[LOC2:.*]] = loc("output1"(#[[LOC0]]))
+// CHECK: #[[SPLIT_LOC]] = loc(fused[#[[LOC1]], #[[LOC2]]])
 
 {
   "version": 3,

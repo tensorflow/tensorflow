@@ -60,6 +60,26 @@ def SetResourceOp : FallbackSync_Op<"set_resource", [CoreRT_TypedAttributeTrait]
   let assemblyFormat = "operands attr-dict";
 }
 
+def SetResourceDhtOp : FallbackSync_Op<"set_resource_dht", [CoreRT_TypedAttributeTrait]> {
+  let summary = "Set a DHT in resource array";
+
+  let description = [{
+    Set a DHT in resource array.
+
+    arg: the tensor to be set in the resource array.
+    index: the index in the resource array
+  }];
+
+  let arguments = (ins
+    TensorType:$arg,
+    I64Attr:$index
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = "operands attr-dict";
+}
+
 def GetResourceOp : FallbackSync_Op<"get_resource",
     [CoreRT_TypedAttributeTrait]> {
   let summary = "get a tensor in resource array";
@@ -82,7 +102,29 @@ def GetResourceOp : FallbackSync_Op<"get_resource",
   let assemblyFormat = "attr-dict `:` type($results)";
 }
 
-def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
+def GetResourceDhtOp : FallbackSync_Op<"get_resource_dht",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "get a DHT in resource array";
+
+  let description = [{
+    Get a tensor in resource array.
+
+    indices: the indices in the resource array.
+    results: the tensor values for the corresponding indices.
+  }];
+
+  let arguments = (ins
+    I64ArrayAttr:$indices
+  );
+
+  let results = (outs
+    Variadic<TensorType>:$results
+  );
+
+  let assemblyFormat = "attr-dict `:` type($results)";
+}
+
+def CreateOp: FallbackSync_Op<"createop", []> {
   let summary = "The Fallback CreateOp";
 
   let description = [{
@@ -100,17 +142,16 @@ def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
   }];
 
   let arguments = (ins
-    I64Attr:$num_args,
-    ArrayAttr:$op_attrs,
-    I64Attr:$op_key,
-    StrAttr:$op_name
+    StrAttr:$node_def,
+    I32Attr:$op_key
   );
 
   let results = (outs);
+
+  let assemblyFormat = "attr-dict";
 }
 
-def SyncExecuteOp : FallbackSync_Op<"executeop",
-    [Pure, CoreRT_TypedAttributeTrait]> {
+def SyncExecuteOp : FallbackSync_Op<"executeop", [Pure]> {
   let summary = "The Fallback Sync ExecuteOp";
   let description = [{
     The ExecuteOp executes an operation on the specified device.
@@ -122,28 +163,14 @@ def SyncExecuteOp : FallbackSync_Op<"executeop",
   }];
 
   let arguments = (ins
-    Variadic<TFTensorType>:$operands,
-    ArrayAttr:$op_attrs,
-    I64Attr:$op_key,
-    StrAttr:$op_name
+    Variadic<TFTensorType>,
+    StrAttr:$node_def,
+    I32Attr:$op_key
   );
 
-  let results = (outs
-    Variadic<TFTensorType>:$results
-  );
+  let results = (outs Variadic<TFTensorType>);
 
-  let extraClassDeclaration = [{
-    void getOpAttrs(SmallVectorImpl<std::pair<StringRef, Attribute>>* op_attrs);
-  }];
-
-  let builders = [
-    OpBuilder<(ins "ArrayRef<Type>":$results, "ValueRange":$operands,
-      "ArrayRef<std::pair<StringRef, Attribute>>":$op_attrs,
-      "StringRef":$op_name)>];
-
-  let hasVerifier = 1;
-
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "`(`operands`)` attr-dict `:` functional-type(operands, results)";
 }
 
 

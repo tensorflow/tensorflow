@@ -21,11 +21,11 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def filter(input_dataset, predicate, name=None):  # pylint: disable=redefined-builtin
-  return FilterDataset(input_dataset, predicate, name=name)
+def _filter(input_dataset, predicate, name=None):  # pylint: disable=redefined-builtin
+  return _FilterDataset(input_dataset, predicate, name=name)
 
 
-class FilterDataset(dataset_ops.UnaryUnchangedStructureDataset):
+class _FilterDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that filters its input according to a predicate function."""
 
   def __init__(self,
@@ -52,7 +52,7 @@ class FilterDataset(dataset_ops.UnaryUnchangedStructureDataset):
         other_arguments=self._predicate.function.captured_inputs,
         predicate=self._predicate.function,
         **self._common_args)
-    super(FilterDataset, self).__init__(input_dataset, variant_tensor)
+    super().__init__(input_dataset, variant_tensor)
 
   def _functions(self):
     return [self._predicate]

@@ -47,7 +47,7 @@ static void ConvertReturnOperations(func::FuncOp func, Value exec_ctx) {
     ImplicitLocOpBuilder b(ret.getLoc(), ret);
 
     // Return all outputs via the `rt.set_output` operation.
-    for (auto& pair : llvm::enumerate(ret.getOperands())) {
+    for (const auto& pair : llvm::enumerate(ret.getOperands())) {
       b.create<SetOutputOp>(exec_ctx, pair.index(), pair.value());
     }
 

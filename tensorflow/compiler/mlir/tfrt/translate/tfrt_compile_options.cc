@@ -34,6 +34,8 @@ std::ostream& operator<<(std::ostream& os,
       return os << "TfFallback";
     case TfrtDeviceInfraTarget::kBridgeFallback:
       return os << "BridgeFallback";
+    case TfrtDeviceInfraTarget::kGpu:
+      return os << "Gpu";
   }
 }
 
@@ -42,7 +44,6 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << "variable_device = " << options.variable_device
             << ", default_device = " << options.default_device
             << ", enable_optimizer = " << options.enable_optimizer
-            << ", enable_native_ops = " << options.enable_native_ops
             << ", enable_grappler = " << options.enable_grappler
             << ", force_data_format = " << options.force_data_format
             << ", device_target = " << options.device_target

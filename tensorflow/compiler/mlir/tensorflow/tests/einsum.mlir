@@ -1,5 +1,43 @@
 // RUN: tf-opt -split-input-file -verify-diagnostics -tf-einsum %s | FileCheck %s
 
+func.func @unary_einsum_reduce_sum_transpose(%arg0: tensor<3x4x5x6xf32>) -> tensor<3x5x4xf32> {
+  %0 = "tf.Einsum"(%arg0) {T = "tfdtype$DT_FLOAT", equation = "...gse->...sg"}: (tensor<3x4x5x6xf32>) -> tensor<3x5x4xf32>
+  func.return %0 : tensor<3x5x4xf32>
+  // CHECK-LABEL: unary_einsum_reduce_sum_transpose
+  // CHECK-DAG: %[[cst:.*]] = arith.constant dense<3> : tensor<1xi32>
+  // CHECK-DAG: %[[cst_1:.*]] = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
+  // CHECK: %[[v0:.*]] = "tf.Sum"(%arg0, %[[cst]]) {keep_dims = false} : (tensor<3x4x5x6xf32>, tensor<1xi32>) -> tensor<3x4x5xf32>
+  // CHECK: %[[v1:.*]] = "tf.Transpose"(%[[v0]], %[[cst_1]]) : (tensor<3x4x5xf32>, tensor<3xi32>) -> tensor<3x5x4xf32>
+  // CHECK: return %[[v1]] : tensor<3x5x4xf32>
+}
+
+func.func @unary_einsum_reduce_sum_transpose1(%arg0: tensor<3x4x5x6xf32>) -> tensor<3x4x5xf32> {
+  %0 = "tf.Einsum"(%arg0) {T = "tfdtype$DT_FLOAT", equation = "...gse->...gs"}: (tensor<3x4x5x6xf32>) -> tensor<3x4x5xf32>
+  func.return %0 : tensor<3x4x5xf32>
+  // CHECK-LABEL: unary_einsum_reduce_sum_transpose1
+  // CHECK-DAG: %[[cst:.*]] = arith.constant dense<3> : tensor<1xi32>
+  // CHECK: %[[v0:.*]] = "tf.Sum"(%arg0, %[[cst]]) {keep_dims = false} : (tensor<3x4x5x6xf32>, tensor<1xi32>) -> tensor<3x4x5xf32>
+  // CHECK: return %[[v0]] : tensor<3x4x5xf32>
+}
+
+func.func @unary_einsum_transpose(%arg0: tensor<3x4x5xf32>) -> tensor<3x5x4xf32> {
+  %0 = "tf.Einsum"(%arg0) {T = "tfdtype$DT_FLOAT", equation = "ijk->ikj"}: (tensor<3x4x5xf32>) -> tensor<3x5x4xf32>
+  func.return %0 : tensor<3x5x4xf32>
+  // CHECK-LABEL: unary_einsum_transpose
+  // CHECK-DAG: %[[cst:.*]] = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
+  // CHECK: %[[v0:.*]] = "tf.Transpose"(%arg0, %[[cst]]) : (tensor<3x4x5xf32>, tensor<3xi32>) -> tensor<3x5x4xf32>
+  // CHECK: return %[[v0]] : tensor<3x5x4xf32>
+}
+
+func.func @unary_einsum_reduce_sum(%arg0: tensor<4x5x6xf32>) -> tensor<4xf32> {
+  %0 = "tf.Einsum"(%arg0) {T = "tfdtype$DT_FLOAT", equation = "ijk->i"}: (tensor<4x5x6xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+  // CHECK-LABEL: unary_einsum_reduce_sum
+  // CHECK-DAG: %[[cst:.*]] =  arith.constant dense<[1, 2]> : tensor<2xi32>
+  // CHECK: %[[v0:.*]] = "tf.Sum"(%arg0, %[[cst]]) {keep_dims = false} : (tensor<4x5x6xf32>, tensor<2xi32>) -> tensor<4xf32>
+  // CHECK: return %[[v0]]
+}
+
 func.func @einsum_basic(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>) -> tensor<3x4x6xf32> {
   %0 = "tf.Einsum"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", equation = "ijk,ikm->ijm"}: (tensor<3x4x5xf32>, tensor<3x5x6xf32>) -> tensor<3x4x6xf32>
   func.return %0 : tensor<3x4x6xf32>
@@ -13,6 +51,16 @@ func.func @einsum_matmul(%arg0: tensor<7x9xf32>, %arg1: tensor<9x5xf32>) -> tens
   // CHECK-LABEL: einsum_matmul
   // CHECK: %[[v0:.*]] = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<7x9xf32>, tensor<9x5xf32>) -> tensor<7x5xf32>
   // CHECK: return %[[v0]] : tensor<7x5xf32>
+}
+
+func.func @einsum_matmul_dynamic_size(%arg0: tensor<2x?x?x?xf32>, %arg1: tensor<2x?xf32>) -> tensor<2x?x?x1xf32> {
+  %0 = "tf.Einsum"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", equation = "bxyc,bx->bxyc"} : (tensor<2x?x?x?xf32>, tensor<2x?xf32>) -> tensor<2x?x?x1xf32>
+  func.return %0 : tensor<2x?x?x1xf32>
+  // CHECK-LABEL: einsum_matmul_dynamic_size
+  // CHECK-DAG: %[[cst:.*]] = arith.constant dense<[2, -1, 1, 1]> : tensor<4xi64>
+  // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg1, %cst) : (tensor<2x?xf32>, tensor<4xi64>) -> tensor<2x?x1x1xf32>
+  // CHECK: %[[v1:.*]] = "tf.BatchMatMulV2"(%arg0, %0) {adj_x = false, adj_y = false} : (tensor<2x?x?x?xf32>, tensor<2x?x1x1xf32>) -> tensor<2x?x?x1xf32>
+  // CHECK: return %[[v1]] : tensor<2x?x?x1xf32>
 }
 
 func.func @einsum_broadcast(%arg0: tensor<3x4x5xf32>, %arg1: tensor<5x6xf32>) -> tensor<3x4x6xf32> {

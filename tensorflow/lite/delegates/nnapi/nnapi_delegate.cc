@@ -53,9 +53,9 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"
@@ -1945,16 +1945,18 @@ class NNAPIOpBuilder {
         if (allocation_memory_mapping_->count(mmap_alloc) == 0) {
           ANeuralNetworksMemory* ann_memory_handle = nullptr;
           nnapi_->ANeuralNetworksMemory_createFromFd(
-              mmap_alloc->bytes(), PROT_READ, mmap_alloc->fd(), 0,
-              &ann_memory_handle);
+              mmap_alloc->mmapped_buffer_size(), PROT_READ, mmap_alloc->fd(),
+              mmap_alloc->mmapped_buffer_offset_in_file(), &ann_memory_handle);
           allocation_memory_mapping_->insert(
               std::make_pair(mmap_alloc, ann_memory_handle));
         }
         ANeuralNetworksMemory* ann_memory_handle =
             allocation_memory_mapping_->at(mmap_alloc);
-        // Compute the offset to the base pointer of the MMAPAllocation.
-        auto offset = reinterpret_cast<const uint8_t*>(tensor->data.raw) -
-                      reinterpret_cast<const uint8_t*>(mmap_alloc->base());
+        // Compute the offset to the mmapped buffer address of the
+        // MMAPAllocation.
+        auto offset =
+            reinterpret_cast<const uint8_t*>(tensor->data.raw) -
+            reinterpret_cast<const uint8_t*>(mmap_alloc->mmapped_buffer());
         RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
             context_,
             nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
@@ -2313,6 +2315,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinArgMax:
     case kTfLiteBuiltinArgMin: {
@@ -2372,6 +2381,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinAveragePool2d: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -2804,6 +2820,13 @@ bool NNAPIDelegateKernel::Validate(
       Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float div.", &val_ctx);
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinPadv2: {
@@ -3075,6 +3098,9 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI does not support generating a scalar as output for MEAN.",
              &val_ctx);
+      Expect(context->tensors[node->inputs->data[0]].dims->size <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support mean of a tensor with rank > 4", &val_ctx);
     } break;
     case kTfLiteBuiltinEmbeddingLookup: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -3529,6 +3555,10 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMinAndroidSdkVersion(android_sdk_version,
                                  kNNAPIRuntimeFeatureLevel7, &val_ctx);
       ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+      Expect(reinterpret_cast<TfLiteMirrorPaddingParams*>(node->builtin_data)
+                     ->mode != kTfLiteMirrorPaddingUnknown,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "Unknown padding mode", &val_ctx);
 
       const TfLiteIntArrayView input_shape(
           context->tensors[node->inputs->data[0]].dims);
@@ -4445,9 +4475,17 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       *nn_op_type = ANEURALNETWORKS_PACK;
     } break;
     case kTfLiteBuiltinMirrorPad: {
+      constexpr int kNnapiModeReflect = 0;
+      constexpr int kNnapiModeSymmetric = 1;
       auto builtin = reinterpret_cast<TfLiteMirrorPaddingParams*>(
           mapping_args.node->builtin_data);
-      mapping_args.builder->AddScalarInt32Operand(builtin->mode);
+      int32_t nn_mirror_mode = -1;
+      if (builtin->mode == kTfLiteMirrorPaddingReflect) {
+        nn_mirror_mode = kNnapiModeReflect;
+      } else if (builtin->mode == kTfLiteMirrorPaddingSymmetric) {
+        nn_mirror_mode = kNnapiModeSymmetric;
+      }
+      mapping_args.builder->AddScalarInt32Operand(nn_mirror_mode);
       *nn_op_type = ANEURALNETWORKS_MIRROR_PAD;
     } break;
     case kTfLiteBuiltinReverseV2: {

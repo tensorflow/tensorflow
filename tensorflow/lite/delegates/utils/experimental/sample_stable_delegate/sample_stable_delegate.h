@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 
 namespace tflite {
@@ -26,7 +27,9 @@ namespace helpers {
 int CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor);
 }  // namespace helpers
 
-static const char kSampleStableDelegateName[] = "SampleStableDelegate";
+// LINT.IfChange
+static const char kSampleStableDelegateName[] = "google_sample_delegate";
+// LINT.ThenChange(Google-internal path)
 static const char kSampleStableDelegateVersion[] = "1.0.0";
 
 // A simple delegate that supports only addition and subtraction operations.
@@ -36,8 +39,9 @@ static const char kSampleStableDelegateVersion[] = "1.0.0";
 class SampleStableDelegate : public SimpleOpaqueDelegateInterface {
  public:
   // SampleStableDelegate supports float32 input type only.
-  // Returns true if the inputs of 'node' are float32 and the operation is
-  // addition or subtraction.
+  // Returns true if the inputs of 'node' are two tensors of float32 with the
+  // same shape and the operation is addition or subtraction (without fused
+  // activation).
   bool IsNodeSupportedByDelegate(
       const TfLiteRegistrationExternal* registration_external,
       const TfLiteOpaqueNode* node,

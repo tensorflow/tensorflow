@@ -56,8 +56,8 @@ cc_library(
         ":hexagon_implementation",
         ":utils",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon/builders:op_builder",
         "//tensorflow/lite/delegates/hexagon/hexagon_nn:hexagon_nn_header",
         "//tensorflow/lite/delegates/utils:simple_delegate",
@@ -89,7 +89,7 @@ cc_library(
         ":utils",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
     ] + select({
         "//tensorflow:ios": [],
@@ -110,7 +110,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
 )
@@ -121,7 +121,7 @@ cc_test(
     linkopts = tflite_linkopts() + ["-lm"],
     deps = [
         ":utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

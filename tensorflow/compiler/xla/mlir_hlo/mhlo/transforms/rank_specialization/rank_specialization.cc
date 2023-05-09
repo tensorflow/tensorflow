@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/EquivalenceClasses.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -31,7 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Block.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -142,7 +141,7 @@ struct RankSpecializationClusterPattern : public RewritePattern {
                              SmallVector<Location>(operandTypes.size(), loc));
 
     // Copy operations into the body.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     for (auto it : llvm::zip(operands, block->getArguments()))
       bvm.map(std::get<0>(it), std::get<1>(it));
     rewriter.setInsertionPointToStart(block);
@@ -191,10 +190,10 @@ struct MergeRankSpecializationClusterOpsPattern
     // Merge cluster operands. Consider only those operands of the second
     // cluster that do not originate in the preceding cluster.
     SmallVector<Value, 8> newOperands;
-    for (Value v : precedingOp.operands()) newOperands.push_back(v);
-    for (Value v : op.operands()) {
+    for (Value v : precedingOp.getOperands()) newOperands.push_back(v);
+    for (Value v : op.getOperands()) {
       if (v.getDefiningOp() != precedingOp &&
-          !llvm::is_contained(precedingOp.operands(), v)) {
+          !llvm::is_contained(precedingOp.getOperands(), v)) {
         newOperands.push_back(v);
       }
     }
@@ -229,7 +228,7 @@ struct MergeRankSpecializationClusterOpsPattern
 
     // Map operands and copy operations of the preceding cluster into the new
     // body.
-    BlockAndValueMapping bvm;
+    IRMapping bvm;
     for (const auto &it : llvm::enumerate(precedingBody->getArguments()))
       bvm.map(it.value(), newBody->getArgument(it.index()));
     for (Operation &nestedOp : precedingBody->without_terminator())
@@ -238,7 +237,7 @@ struct MergeRankSpecializationClusterOpsPattern
     // Map operands and copy operations of the second cluster. If they result
     // from the preceeding cluster, we can simply map the corresponding value
     // internally.
-    for (auto it : llvm::zip(body->getArguments(), op.operands())) {
+    for (auto it : llvm::zip(body->getArguments(), op.getOperands())) {
       Value blockArg, operand;
       std::tie(blockArg, operand) = it;
       if (operand.getDefiningOp() == precedingOp) {
@@ -247,7 +246,7 @@ struct MergeRankSpecializationClusterOpsPattern
         bvm.map(blockArg,
                 bvm.lookup(precedingYieldOp.getOperand(where.getIndex())));
       } else {
-        auto where = llvm::find(newOp.operands(), operand);
+        auto where = llvm::find(newOp.getOperands(), operand);
         bvm.map(blockArg, newBody->getArgument(where.getIndex()));
       }
     }
@@ -314,7 +313,7 @@ bool isScalarShapeType(Type ty) {
 Type deriveRankedTensorTypes(Type ty, int64_t rank) {
   auto tensorTy = ty.dyn_cast<TensorType>();
   if (!tensorTy) return ty;
-  SmallVector<int64_t, 8> shape(rank, ShapedType::kDynamicSize);
+  SmallVector<int64_t, 8> shape(rank, ShapedType::kDynamic);
   return RankedTensorType::get(shape, tensorTy.getElementType());
 }
 
@@ -325,7 +324,7 @@ Type deriveUnrankedTensorTypes(Type ty) {
 }
 
 SmallVector<Value, 8> materializeRankedOperations(
-    OpBuilder &b, Location loc, BlockAndValueMapping &bvm,
+    OpBuilder &b, Location loc, IRMapping &bvm,
     chlo::RankSpecializationClusterOp op) {
   // Create ranked operations.
   for (Operation &nestedOp : op.SingleBlock::getBody()->without_terminator()) {
@@ -413,7 +412,7 @@ SmallVector<Value, 8> materializeFinalReshape(
 
   // Replace all remaining uses of the original cluster's block args.
   for (auto it :
-       llvm::zip(op.operands(), op.SingleBlock::getBody()->getArguments())) {
+       llvm::zip(op.getOperands(), op.SingleBlock::getBody()->getArguments())) {
     Value operand, barg;
     std::tie(operand, barg) = it;
     barg.replaceUsesWithIf(operand, [&](OpOperand &operand) {
@@ -443,7 +442,7 @@ Value materializeScalarRankSpecializationCase(
   // non-scalars.
   Value one = b.create<arith::ConstantIndexOp>(loc, 1);
   Value allOthersAreScalar;
-  for (auto it : llvm::zip(op.operands(), shapes)) {
+  for (auto it : llvm::zip(op.getOperands(), shapes)) {
     Value operand, shape;
     std::tie(operand, shape) = it;
     if (llvm::is_contained(nonScalarsOfSameShape, operand) ||
@@ -461,11 +460,11 @@ Value materializeScalarRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allOthersAreScalar,
+      loc, allOthersAreScalar,
       [&](OpBuilder &b, Location loc) {
         // Compute flat non-scalar shape.
         SmallVector<Value, 4> nonScalarShapes;
-        for (auto it : llvm::zip(op.operands(), shapes)) {
+        for (auto it : llvm::zip(op.getOperands(), shapes)) {
           Value operand, shape;
           std::tie(operand, shape) = it;
           if (llvm::is_contained(nonScalarsOfSameShape, operand))
@@ -475,7 +474,7 @@ Value materializeScalarRankSpecializationCase(
 
         // Derive ranked operands.
         auto rankedOperands = llvm::to_vector<8>(
-            llvm::map_range(op.operands(), [&](Value v) -> Value {
+            llvm::map_range(op.getOperands(), [&](Value v) -> Value {
               if (isScalarTensorType(v.getType())) return v;
               if (!llvm::is_contained(nonScalarsOfSameShape, v)) {
                 return b
@@ -492,7 +491,7 @@ Value materializeScalarRankSpecializationCase(
             }));
 
         // Materialize ranked variants for the element-wise operations.
-        BlockAndValueMapping bvm;
+        IRMapping bvm;
         for (auto it : llvm::zip(op.SingleBlock::getBody()->getArguments(),
                                  rankedOperands))
           bvm.map(std::get<0>(it), std::get<1>(it));
@@ -532,12 +531,12 @@ Value materializeEqualShapesRankSpecializationCase(
   }
 
   auto ifOp = b.create<scf::IfOp>(
-      loc, op->getResultTypes(), allShapesEqOrScalar,
+      loc, allShapesEqOrScalar,
       [&](OpBuilder &b, Location loc) {
         // Flatten non-scalar operands.
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
         auto flatOperands = llvm::to_vector<8>(
-            llvm::map_range(op.operands(), [&](Value v) -> Value {
+            llvm::map_range(op.getOperands(), [&](Value v) -> Value {
               if (isScalarTensorType(v.getType())) return v;
               return b.create<mhlo::DynamicReshapeOp>(
                   loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
@@ -545,7 +544,7 @@ Value materializeEqualShapesRankSpecializationCase(
             }));
 
         // Materialize ranked variants for the element-wise operations.
-        BlockAndValueMapping bvm;
+        IRMapping bvm;
         for (auto it :
              llvm::zip(op.SingleBlock::getBody()->getArguments(), flatOperands))
           bvm.map(std::get<0>(it), std::get<1>(it));
@@ -575,7 +574,7 @@ Value materializeTargetRankSpecializationCase(
       mlir::DenseIntElementsAttr::get(extentTensorTy,
                                       SmallVector<int64_t, 6>(targetRank, 1)));
   SmallVector<Value, 8> rankedOperands;
-  for (auto it : llvm::zip(op.operands(), shapes)) {
+  for (auto it : llvm::zip(op.getOperands(), shapes)) {
     Value operand, shape;
     std::tie(operand, shape) = it;
     if (operand.getType().isa<RankedTensorType>()) {
@@ -594,7 +593,7 @@ Value materializeTargetRankSpecializationCase(
   }
 
   // Materialize ranked versions of the element-wise operations.
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   for (auto it : llvm::zip(op.getBody().front().getArguments(), rankedOperands))
     bvm.map(std::get<0>(it), std::get<1>(it));
 
@@ -707,9 +706,9 @@ materializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
   Value flatShape = materializeFlatShape(rewriter, loc, nonScalarShapes);
 
   // Materialize ranked variants for the element-wise operations.
-  BlockAndValueMapping bvm;
+  IRMapping bvm;
   for (auto it :
-       llvm::zip(op.SingleBlock::getBody()->getArguments(), op.operands())) {
+       llvm::zip(op.SingleBlock::getBody()->getArguments(), op.getOperands())) {
     Value operand;
     Value bbArg;
     std::tie(bbArg, operand) = it;
@@ -740,9 +739,10 @@ Value materializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(
     SmallVector<SmallVector<Value, 4>, 4> nonScalarEqs, int64_t maxTargetRank) {
   assert(nonScalarEqs.size() == 2 &&
          "Expect two non-scalar equivalence classes.");
-  auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
-    return rewriter.create<shape::ShapeOfOp>(loc, v).getResult();
-  }));
+  auto shapes =
+      llvm::to_vector<8>(llvm::map_range(op.getOperands(), [&](Value v) {
+        return rewriter.create<shape::ShapeOfOp>(loc, v).getResult();
+      }));
   ValueRange lhsNonScalarEqs = nonScalarEqs[0];
   ValueRange rhsNonScalarEqs = nonScalarEqs[1];
 
@@ -769,9 +769,10 @@ Value materializeDefaultRankSpecialization(PatternRewriter &rewriter,
                                            Location loc,
                                            chlo::RankSpecializationClusterOp op,
                                            int64_t maxTargetRank) {
-  auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
-    return rewriter.create<shape::ShapeOfOp>(loc, v).getResult();
-  }));
+  auto shapes =
+      llvm::to_vector<8>(llvm::map_range(op.getOperands(), [&](Value v) {
+        return rewriter.create<shape::ShapeOfOp>(loc, v).getResult();
+      }));
 
   // Materialize all the different cases.
   Value unshapedResult = materializeDefaultRankSpecializationCases(
@@ -788,7 +789,7 @@ SmallVector<SmallVector<Value, 4>, 4> findNonScalarShapeEquivalences(
 
   // Bridge the equivalences between operands and block arguments.
   for (auto it :
-       llvm::zip(op.operands(), op.SingleBlock::getBody()->getArguments()))
+       llvm::zip(op.getOperands(), op.SingleBlock::getBody()->getArguments()))
     eqs.unionSets(std::get<0>(it), std::get<1>(it));
 
   // Find equalities through `SameOperandsAndResultShape` trait.
@@ -848,7 +849,7 @@ SmallVector<SmallVector<Value, 4>, 4> findNonScalarShapeEquivalences(
 
   // Convert to a list-like equivalence class representation.
   SmallVector<SmallVector<Value, 4>, 4> nonScalarEqs;
-  for (Value v : op.operands()) {
+  for (Value v : op.getOperands()) {
     if (isScalarTensorType(v.getType())) continue;
     bool inserted = false;
     for (auto &eqClass : nonScalarEqs) {

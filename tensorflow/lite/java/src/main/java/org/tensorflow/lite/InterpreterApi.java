@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.acceleration.ValidatedAccelerationConfig;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
@@ -33,15 +34,16 @@ import org.tensorflow.lite.nnapi.NnApiDelegate;
  *
  * <p>For example, if a model takes only one input and returns only one output:
  *
- * <pre> {@code
+ * <pre>{@code
  * try (InterpreterApi interpreter =
  *     new InterpreterApi.create(file_of_a_tensorflowlite_model)) {
  *   interpreter.run(input, output);
- * }}</pre>
+ * }
+ * }</pre>
  *
  * <p>If a model takes multiple inputs or outputs:
  *
- * <pre> {@code
+ * <pre>{@code
  * Object[] inputs = {input0, input1, ...};
  * Map<Integer, Object> map_of_indices_to_outputs = new HashMap<>();
  * FloatBuffer ith_output = FloatBuffer.allocateDirect(3 * 2 * 4);  // Float tensor, shape 3x2x4.
@@ -50,17 +52,34 @@ import org.tensorflow.lite.nnapi.NnApiDelegate;
  * try (InterpreterApi interpreter =
  *     new InterpreterApi.create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
- * }}</pre>
+ * }
+ * }</pre>
  *
  * <p>If a model takes or produces string tensors:
  *
- * <pre> {@code
+ * <pre>{@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
- * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
+ * String[][] output = new String[3][2];  // Output tensor shape is [3, 2].
  * try (InterpreterApi interpreter =
  *     new InterpreterApi.create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
- * }}</pre>
+ * }
+ * }</pre>
+ *
+ * <p>Note that there's a distinction between shape [] and shape[1]. For scalar string tensor
+ * outputs:
+ *
+ * <pre>{@code
+ * String[] input = {"foo"};  // Input tensor shape is [1].
+ * ByteBuffer outputBuffer = ByteBuffer.allocate(OUTPUT_BYTES_SIZE);  // Output tensor shape is [].
+ * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ *   interpreter.runForMultipleInputsOutputs(input, outputBuffer);
+ * }
+ * byte[] outputBytes = new byte[outputBuffer.remaining()];
+ * outputBuffer.get(outputBytes);
+ * // Below, the `charset` can be StandardCharsets.UTF_8.
+ * String output = new String(outputBytes, charset);
+ * }</pre>
  *
  * <p>Orders of inputs and outputs are determined when converting TensorFlow model to TensorFlowLite
  * model with Toco, as are the default shapes of the inputs.
@@ -98,6 +117,8 @@ public interface InterpreterApi extends AutoCloseable {
       this.delegates = new ArrayList<>(other.delegates);
       this.delegateFactories = new ArrayList<>(other.delegateFactories);
       this.runtime = other.runtime;
+      this.validatedAccelerationConfig = other.validatedAccelerationConfig;
+      this.useXNNPACK = other.useXNNPACK;
     }
 
     /**
@@ -268,10 +289,48 @@ public interface InterpreterApi extends AutoCloseable {
       return runtime;
     }
 
+    /** Specify the acceleration configuration. */
+    public Options setAccelerationConfig(ValidatedAccelerationConfig config) {
+      this.validatedAccelerationConfig = config;
+      return this;
+    }
+
+    /** Return the acceleration configuration. */
+    public ValidatedAccelerationConfig getAccelerationConfig() {
+      return this.validatedAccelerationConfig;
+    }
+
+    /**
+     * Enable or disable an optimized set of CPU kernels (provided by XNNPACK). Enabled by default.
+     */
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      this.useXNNPACK = useXNNPACK;
+      return this;
+    }
+
+    public boolean getUseXNNPACK() {
+      // A null value indicates the default behavior, which is currently to apply the delegate.
+      return useXNNPACK == null || useXNNPACK.booleanValue();
+    }
+
     TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
     int numThreads = -1;
     Boolean useNNAPI;
+
+    /**
+     * Note: the initial "null" value indicates default behavior (XNNPACK delegate will be applied
+     * by default whenever possible).
+     *
+     * <p>Disabling this flag will disable use of a highly optimized set of CPU kernels provided via
+     * the XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
+     * See
+     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+     * for more details.
+     */
+    Boolean useXNNPACK;
+
     Boolean allowCancellation;
+    ValidatedAccelerationConfig validatedAccelerationConfig;
 
     // See InterpreterApi.Options#addDelegate.
     final List<Delegate> delegates;

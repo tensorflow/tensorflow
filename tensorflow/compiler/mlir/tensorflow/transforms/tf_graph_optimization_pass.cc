@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 
+#include <utility>
+
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -23,14 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #define DEBUG_TYPE "run-tf-graph-optimization"
 
@@ -72,7 +74,7 @@ void GraphOptPass::runOnOperation() {
   auto graph = std::make_unique<Graph>(flib_def);
   Status status = ConvertMlirToGraph(module_in, confs, &graph, &flib_def);
   if (!status.ok()) {
-    mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.error_message();
+    mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.message();
     return signalPassFailure();
   }
 
@@ -92,7 +94,7 @@ void GraphOptPass::runOnOperation() {
     Status status = pass->Run(options);
     if (!status.ok()) {
       mlir::emitError(mlir::UnknownLoc::get(&ctx))
-          << pass->name() << ": " << status.error_message();
+          << pass->name() << ": " << status.message();
       return signalPassFailure();
     }
   }
@@ -104,7 +106,7 @@ void GraphOptPass::runOnOperation() {
       ConvertGraphToMlir(**options.graph, debug_info, flib_def, specs, &ctx);
   if (!module_or_status.ok()) {
     mlir::emitError(mlir::UnknownLoc::get(&ctx))
-        << module_or_status.status().error_message();
+        << module_or_status.status().message();
     return signalPassFailure();
   }
   auto module_out = std::move(module_or_status).value();

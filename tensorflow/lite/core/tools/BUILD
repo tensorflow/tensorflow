@@ -1,8 +1,11 @@
 load("//tensorflow/lite:special_rules.bzl", "verifier_internal_visibility_allowlist")
 load("//tensorflow/lite:build_def.bzl", "tflite_self_contained_libs_test_suite")
+load("//tensorflow/lite/core:special_rules.bzl", "verifier_visibility_allowlist")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/lite:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -10,17 +13,19 @@ cc_library(
     name = "verifier",
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-    ],
+    ] + verifier_visibility_allowlist(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/tools:verifier_internal",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
@@ -41,9 +46,11 @@ cc_test(
     deps = [
         ":verifier",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
@@ -57,7 +64,10 @@ cc_library(
     name = "verifier_internal",
     srcs = ["verifier_internal.cc"],
     hdrs = ["verifier_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = verifier_internal_visibility_allowlist() + [
+        "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite/java/src/main/native:__pkg__",
         "//tensorflow/lite/tools:__subpackages__",
     ],
     deps = [
@@ -75,6 +85,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",

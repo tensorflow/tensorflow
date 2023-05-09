@@ -464,6 +464,10 @@ mlir::LogicalResult DecomposeControlflow(mlir::MLIRContext* context,
   for (mlir::tf_device::ClusterOp cluster : clusters) {
     mlir::WalkResult walk_result = cluster->walk([&](mlir::Operation* op) {
       if (auto if_op = mlir::dyn_cast<mlir::TF::IfRegionOp>(op)) {
+        // Remove the device attr to follow the 'default' placement set during
+        // replicated execution. If there is a device attr, TensorFlow will
+        // run the body on that device instead.
+        op->removeAttr("device");
         if (mlir::failed(
                 DecomposeIf(if_op, context, num_control_flow_send_recvs)))
           return mlir::WalkResult::interrupt();
