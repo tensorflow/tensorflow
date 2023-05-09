@@ -362,6 +362,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   pre_spmd_pipeline.AddPass<CallInliner>();
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+  pre_spmd_pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTopK;
+  });
+
   // The SPMD partitioner would mess up the sort+slice structure, so we need to
   // rewrite Topk before that happens.
   pre_spmd_pipeline.AddPass<TopkRewriter>(

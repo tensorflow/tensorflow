@@ -352,12 +352,33 @@ StatusOr<PrimitiveType> MaybeUpcast(
             PrimitiveType_Name(shape.element_type()));
       }
       return ShapeUtil::ChangeElementType(shape, PRED);
-
     default:
       return InvalidArgument(
           "Unknown operation for unary shape inference: \"%s\".",
           HloOpcodeString(opcode));
   }
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferTopKShape(
+    const Shape& operand_shape, int64_t k) {
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of top-k operation"));
+  int64_t last_dim = operand_shape.rank() - 1;
+  std::vector<bool> is_dynamic(operand_shape.rank());
+  std::vector<int64_t> dimensions(operand_shape.rank());
+
+  TF_RET_CHECK(operand_shape.dimensions(last_dim) >= k)
+      << "k=" << k << " is larger than the last dimension of size="
+      << operand_shape.dimensions(last_dim);
+  for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
+    is_dynamic[i] =
+        i == last_dim ? false : operand_shape.is_dynamic_dimension(i);
+    dimensions[i] = i == last_dim ? k : operand_shape.dimensions(i);
+  }
+
+  Shape out = ShapeUtil::MakeShape(operand_shape.element_type(), dimensions,
+                                   is_dynamic);
+  Shape idxs_shape = ShapeUtil::ChangeElementType(out, PrimitiveType::S32);
+  return ShapeUtil::MakeTupleShape({out, idxs_shape});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConcatOpShape(
