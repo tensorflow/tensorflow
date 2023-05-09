@@ -822,7 +822,7 @@ def real(input, name=None):
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
-    elif tf.debugging.is_numeric_tensor(input):
+    elif input.dtype.is_numeric:
       return input
     else:
       raise TypeError("input must be a numeric tensor, but got tensor with dtype {}".format(input.dtype))
