@@ -790,7 +790,7 @@ SavedModelImpl::SavedModelImpl(
       bytecode_(std::move(bytecode)),
       loaded_executable_(std::move(loaded_executable)),
       req_deadline_tracker_(
-          options.graph_execution_options.runtime->core_runtime()
+          options_.graph_execution_options.runtime->core_runtime()
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),
