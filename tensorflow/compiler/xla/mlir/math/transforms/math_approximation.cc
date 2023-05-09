@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -593,18 +594,61 @@ LogicalResult Log1pApproximation::matchAndRewrite(
   //          ^^^^^^^^^^^^^^^^^^^^^^
   //             "log_large" below.
   Value cst_one = bcast(f32Cst(builder, 1.0f));
+  Value cst_negative_half = bcast(f32Cst(builder, -0.5f));
+
   Value x = op.getOperand();
-  Value u = builder.create<arith::AddFOp>(x, cst_one);
-  Value u_small =
-      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, u, cst_one);
-  Value log_u = builder.create<math::LogOp>(u);
-  Value u_inf =
-      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, u, log_u);
-  Value log_large = builder.create<arith::MulFOp>(
-      x, builder.create<arith::DivFOp>(
-             log_u, builder.create<arith::SubFOp>(u, cst_one)));
-  Value approximation = builder.create<arith::SelectOp>(
-      builder.create<arith::OrIOp>(u_small, u_inf), x, log_large);
+  Value for_large_x =
+      builder.create<math::LogOp>(builder.create<arith::AddFOp>(cst_one, x));
+
+  // When x is small, (defined to be less than sqrt(2) / 2), use a rational
+  // approximation. The approximation below is based on one from the Cephes
+  // Mathematical Library.
+  //
+  // sqrt(2) - 1.
+  const auto kAntilogarithmIsSmallThreshold = 0.41421356237309504880;
+
+  static const std::array<double, 7> kDenominatorCoeffs{
+      1.,
+      1.5062909083469192043167E1,
+      8.3047565967967209469434E1,
+      2.2176239823732856465394E2,
+      3.0909872225312059774938E2,
+      2.1642788614495947685003E2,
+      6.0118660497603843919306E1,
+  };
+
+  static const std::array<double, 7> kNumeratorCoeffs{
+      4.5270000862445199635215E-5, 4.9854102823193375972212E-1,
+      6.5787325942061044846969E0,  2.9911919328553073277375E1,
+      6.0949667980987787057556E1,  5.7112963590585538103336E1,
+      2.0039553499201281259648E1,
+  };
+
+  auto eval_polynomial = [&](const std::array<double, 7> &coefficients) {
+    auto poly = bcast(f32Cst(builder, 0.0));
+    for (double c : coefficients) {
+      poly = builder.create<math::FmaOp>(poly, x, bcast(f32Cst(builder, c)));
+    }
+    return poly;
+  };
+
+  auto x_squared = builder.create<arith::MulFOp>(x, x);
+  Value denominator = eval_polynomial(kDenominatorCoeffs);
+  Value numerator = eval_polynomial(kNumeratorCoeffs);
+  Value for_small_x = builder.create<arith::DivFOp>(numerator, denominator);
+  for_small_x = builder.create<arith::MulFOp>(
+      builder.create<arith::MulFOp>(x, x_squared), for_small_x);
+  for_small_x =
+      builder.create<math::FmaOp>(cst_negative_half, x_squared, for_small_x);
+  for_small_x = builder.create<arith::AddFOp>(x, for_small_x);
+
+  auto abs_x = builder.create<math::AbsFOp>(x);
+  auto x_is_small = builder.create<arith::CmpFOp>(
+      arith::CmpFPredicate::OLT, abs_x,
+      bcast(f32Cst(builder, kAntilogarithmIsSmallThreshold)));
+  Value approximation =
+      builder.create<arith::SelectOp>(x_is_small, for_small_x, for_large_x);
+
   rewriter.replaceOp(op, approximation);
   return mlir::success();
 }
