@@ -2,6 +2,9 @@
 
 <table class="tfo-notebook-buttons" align="left">
   <td>
+    <a target="_blank" href="https://www.tensorflow.org/third_party/devsite/tensorflow/en/lite/examples/auto_complete/overview"><img src="https://www.tensorflow.org/images/tf_logo_32px.png" />View on TensorFlow.org</a>
+  </td>
+  <td>
     <a target="_blank" href="https://colab.sandbox.google.com/github/tensorflow/codelabs/blob/main/KerasNLP/io2023_workshop.ipynb"><img src="https://www.tensorflow.org/images/colab_logo_32px.png" />Run in Google Colab</a>
   </td>
 </table>
@@ -80,8 +83,7 @@ model to a more compact TensorFlow Lite format using the TensorFlow Lite
 **converter**, and then use the TensorFlow Lite **interpreter**, which is highly
 optimized for mobile devices, to run the converted model.
 
-<img src="../images/tflite_workflow.png" class="attempt-right" />
-
+<img src="https://www.tensorflow.org/lite/examples/auto_complete/images/tflite_workflow.png" class="attempt-right" />
 Start with the `generate()` function from `GPT2CausalLM` that performs the
 conversion. Wrap the `generate()` function to create a concrete TensorFlow
 function:
@@ -270,7 +272,7 @@ gradle file.
 
 ### Context window size
 
-<img src="../images/context_window.png" class="attempt-right" />
+<img src="https://www.tensorflow.org/lite/examples/auto_complete/images/context_window.png" class="attempt-right" />
 
 The app has a changeable parameter ‘context window size’, which is needed
 because LLMs today generally have a fixed context size which limits how many
