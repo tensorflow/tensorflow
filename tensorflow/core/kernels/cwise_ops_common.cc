@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+
 namespace tensorflow {
 
 BinaryOpShared::BinaryOpShared(OpKernelConstruction* ctx, DataType out,
@@ -26,9 +29,9 @@ BinaryOpShared::BinaryOpShared(OpKernelConstruction* ctx, DataType out,
 }
 
 void BinaryOpShared::SetUnimplementedError(OpKernelContext* ctx) {
-  ctx->SetStatus(errors::Unimplemented(
+  ctx->SetStatus(absl::UnimplementedError(absl::StrCat(
       "Broadcast between ", ctx->input(0).shape().DebugString(), " and ",
-      ctx->input(1).shape().DebugString(), " is not supported yet."));
+      ctx->input(1).shape().DebugString(), " is not supported yet.")));
 }
 
 void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
@@ -39,16 +42,16 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
   const string& op = ctx->op_kernel().type_string();
   if ((op == "Div" || op == "Mod" || op == "FloorMod" || op == "FloorDiv") &&
       DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
-    ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
+    ctx->CtxFailure(absl::InvalidArgumentError("Integer division by zero"));
   } else if ((op == "Pow") &&
              DataTypeIsInteger(ctx->op_kernel().input_type(0)) &&
              DataTypeIsSigned(ctx->op_kernel().input_type(1))) {
-    ctx->CtxFailure(errors::InvalidArgument(
+    ctx->CtxFailure(absl::InvalidArgumentError(
         "Integers to negative integer powers are not allowed"));
   } else {
     ctx->CtxFailure(
-        errors::Internal("Unexpected error in binary operator "
-                         "(only integer div and mod should have errors)"));
+        absl::InternalError("Unexpected error in binary operator "
+                            "(only integer div and mod should have errors)"));
   }
 }
 
@@ -68,9 +71,9 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
       return;
     }
 
-    ctx->SetStatus(errors::InvalidArgument(
-        "Incompatible shapes: ", in0.shape().DebugString(), " vs. ",
-        in1.shape().DebugString()));
+    ctx->SetStatus(absl::InvalidArgumentError(
+        absl::StrCat("Incompatible shapes: ", in0.shape().DebugString(),
+                     " vs. ", in1.shape().DebugString())));
     return;
   }
 

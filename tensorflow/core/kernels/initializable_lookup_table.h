@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -50,18 +51,18 @@ class InitializableLookupTable : public LookupInterface {
   // Returns errors::Unimplemented.
   Status Insert(OpKernelContext* ctx, const Tensor& keys,
                 const Tensor& values) final {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Insert not supported by InitializableLookupTable implementations");
   }
 
   // Returns errors::Unimplemented.
   Status Remove(OpKernelContext* ctx, const Tensor& keys) final {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Remove not supported by InitializableLookupTable implementations");
   }
 
   Status ExportValues(OpKernelContext* context) override {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "ExportValues not supported by InitializableLookupTable "
         "implementations");
   }
@@ -185,7 +186,8 @@ class InitializableLookupTable : public LookupInterface {
       std::function<int64_t(void)> get_expected_num_elements) {
     int64_t expected_num_elements = get_expected_num_elements();
     if (expected_num_elements < 0) {
-      return errors::FailedPrecondition("Got negative expected_num_elements.");
+      return absl::FailedPreconditionError(
+          "Got negative expected_num_elements.");
     }
     return DoPrepare(expected_num_elements);
   }
@@ -225,14 +227,14 @@ class KeyValueTensorIterator
     TensorShape key_shape = keys_->shape();
     if (!key_shape.IsSameSize(values_->shape())) {
       valid_ = false;
-      status_ = errors::InvalidArgument(
+      status_ = absl::InvalidArgumentError(absl::StrCat(
           "keys and values should have the same dimension.",
-          key_shape.DebugString(), " vs ", values_->shape().DebugString());
+          key_shape.DebugString(), " vs ", values_->shape().DebugString()));
     }
     if (key_shape.num_elements() == 0) {
       valid_ = false;
-      status_ =
-          errors::InvalidArgument("keys and values cannot be empty tensors.");
+      status_ = absl::InvalidArgumentError(
+          "keys and values cannot be empty tensors.");
     }
   }
 
@@ -240,7 +242,7 @@ class KeyValueTensorIterator
 
   void Next() override {
     valid_ = false;
-    status_ = errors::OutOfRange("No more data.");
+    status_ = absl::OutOfRangeError("No more data.");
   }
 
   const Tensor& keys() const override { return *keys_; }

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 #include "tensorflow/core/kernels/variable_ops.h"
 
@@ -106,11 +108,12 @@ class TemporaryVariableOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     Status s;
     ResourceMgr* rm = context->resource_manager();
-    OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
+    OP_REQUIRES(context, rm,
+                absl::InternalError("No per-step resource manager."));
     auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());
     auto* tmp_var = new TmpVar;
     OP_REQUIRES(context, tmp_var,
-                errors::ResourceExhausted("Could not allocate TmpVar."));
+                absl::ResourceExhaustedError("Could not allocate TmpVar."));
     tmp_var->name = unique_name;
     s = context->allocate_temp(dtype_, shape_, &tmp_var->val);
     if (!s.ok()) tmp_var->Unref();
@@ -145,10 +148,10 @@ class DestroyTemporaryVariableOp : public OpKernel {
   explicit DestroyTemporaryVariableOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES(context, IsRefType(context->input_type(0)),
-                errors::InvalidArgument("lhs input needs to be a ref type"));
+                absl::InvalidArgumentError("lhs input needs to be a ref type"));
     OP_REQUIRES_OK(context, context->GetAttr("var_name", &var_name_));
     OP_REQUIRES(context, !var_name_.empty(),
-                errors::InvalidArgument("Missing var_name attribute"));
+                absl::InvalidArgumentError("Missing var_name attribute"));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -159,7 +162,8 @@ class DestroyTemporaryVariableOp : public OpKernel {
     Tensor tmpvar = context->mutable_input(0, false);
     context->set_output(0, tmpvar);
     ResourceMgr* rm = context->resource_manager();
-    OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
+    OP_REQUIRES(context, rm,
+                absl::InternalError("No per-step resource manager."));
     auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());
     OP_REQUIRES_OK(
         context, context->step_container()->Delete<TemporaryVariableOp::TmpVar>(

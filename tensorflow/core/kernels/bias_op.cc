@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/bias_op.h"
@@ -93,7 +95,7 @@ class BiasOp : public BinaryOp<T> {
     string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -104,10 +106,12 @@ class BiasOp : public BinaryOp<T> {
     const Tensor& bias = context->input(1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
-                errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        input.shape()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input tensor must be at least 2D: ",
+                                 input.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
-                errors::InvalidArgument("Biases must be 1D: ", bias.shape()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Biases must be 1D: ", bias.shape().DebugString())));
 
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
     int channel_dim;
@@ -118,12 +122,13 @@ class BiasOp : public BinaryOp<T> {
       channel_dim = input.shape().dims() - 1;  // End of code by intel_tf.
     }
 
-    OP_REQUIRES(context,
-                bias.shape().dim_size(0) == input.shape().dim_size(channel_dim),
-                errors::InvalidArgument(
-                    "Must provide as many biases as the last dimension "
-                    "of the input tensor: ",
-                    bias.shape(), " vs. ", input.shape()));
+    OP_REQUIRES(
+        context,
+        bias.shape().dim_size(0) == input.shape().dim_size(channel_dim),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Must provide as many biases as the last dimension "
+            "of the input tensor: ",
+            bias.shape().DebugString(), " vs. ", input.shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
@@ -163,7 +168,7 @@ class BiasGradOp : public OpKernel {
     string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -174,14 +179,15 @@ class BiasGradOp : public OpKernel {
 
     OP_REQUIRES(context,
                 TensorShapeUtils::IsMatrixOrHigher(output_backprop.shape()),
-                errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        output_backprop.shape()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input tensor must be at least 2D: ",
+                                 output_backprop.shape().DebugString())));
 
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(output_backprop.NumElements(),
-                        std::numeric_limits<int32>::max()),
-        errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(output_backprop.NumElements(),
+                                std::numeric_limits<int32>::max()),
+                absl::InvalidArgumentError(
+                    "BiasGrad requires tensor size <= int32 max"));
 
     int channel_dim;
     if (data_format_ == FORMAT_NCHW) {

@@ -17,6 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <algorithm>
+#include <iterator>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -108,24 +114,26 @@ ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
 Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   // indices and values are validated in SparseTensor ctor.
   if (!TensorShapeUtils::IsVector(shape_t->shape())) {
-    return errors::InvalidArgument(
-        "Expected input_shape to be a vector; got shape: ",
-        shape_t->shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected input_shape to be a vector; got shape: ",
+        shape_t->shape().DebugString()));
   }
   if (!TensorShapeUtils::IsScalar(reduction_axes_t->shape()) &&
       !TensorShapeUtils::IsVector(reduction_axes_t->shape())) {
-    return errors::InvalidArgument(
-        "Expected reduction_axes to be a scalar or a vector; got shape: ",
-        reduction_axes_t->shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat(
+            "Expected reduction_axes to be a scalar or a vector; got shape: ",
+            reduction_axes_t->shape().DebugString()));
   }
 
   const auto reduction_axes_flat = reduction_axes_t->flat<int32>();
   for (int64_t i = 0; i < reduction_axes_flat.size(); i++) {
     int32_t axis = reduction_axes_flat(i);
     if (axis < -shape_t->NumElements() || axis >= shape_t->NumElements()) {
-      return errors::InvalidArgument("Invalid reduction dimension ", axis,
-                                     ", for input with ",
-                                     shape_t->NumElements(), " dimensions.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid reduction dimension ", axis,
+                       ", for input with ",
+                       shape_t->NumElements(), " dimensions."));
     }
   }
 
@@ -227,17 +235,18 @@ class SparseReduceOp : public OpKernel {
       OP_REQUIRES(ctx,
                   output_strides.empty() ||
                   (g.group().size() == output_strides.size()),
-                  errors::Internal(
-                      "Expected group size and output_strides size to match",
-                      ", but got ", g.group().size(), " and ",
-                      output_strides.size()));
+                  absl::InternalError(
+                      absl::StrCat(
+                        "Expected group size and output_strides size to match",
+                        ", but got ", g.group().size(), " and ",
+                        output_strides.size())));
       const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
       OP_REQUIRES(ctx,
                   idx >= 0 && idx < out_flat.size(),
-                  errors::Internal(
-                      "Obtained a write index of ", idx,
+                  absl::InternalError(
+                      absl::StrCat("Obtained a write index of ", idx,
                       " which is outside of bounds of [0, ",
-                      out_flat.size(), ")"));
+                      out_flat.size(), ")")));
       out_flat(idx) = reduced_val();
       VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
               << "; idx: " << idx << "; group " << Op::Name() << ": "
