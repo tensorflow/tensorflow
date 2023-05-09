@@ -42,6 +42,9 @@ echo $GPU_DEVICE_TARGETS
 # install rocm
 /setup.packages.rocm.cs7.sh /devel.packages.rocm.cs7.txt
 
+# install hipblasLT if available
+yum --enablerepo=extras install -y hipblaslt-devel || true
+
 # Ensure the ROCm target list is set up
 printf '%s\n' ${GPU_DEVICE_TARGETS} | tee -a "$ROCM_PATH/bin/target.lst"
 touch "${ROCM_PATH}/.info/version"
