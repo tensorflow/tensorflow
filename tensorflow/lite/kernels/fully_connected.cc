@@ -25,14 +25,13 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/optimized/fully_connected_4bit.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/optimized/sparse_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/sparse_ops/fully_connected.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -124,6 +123,8 @@ struct OpData {
   bool compute_row_sums = false;
   // Only used for sparse hybrid fully connected kernels.
   bool ledger_initialized;
+  // Used for 4bit hybrid
+  std::unique_ptr<optimized_4bit::OpData4Bit> op_data_4bit = nullptr;
 };
 
 constexpr int kInputTensor = 0;
@@ -131,6 +132,12 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kShuffledInputWorkspaceTensor = 1;
+
+// Begin temporary tensor ids created at init and initialized during prepare.
+constexpr int kQuantizedInputTensor = 0;
+constexpr int kScalingFactorsTensor = 1;
+constexpr int kAccumulatorTensor = 2;
+constexpr int kInputOffsetsTensor = 3;
 
 inline TfLiteStatus CheckTypes(TfLiteContext* context,
                                const TfLiteTensor* input,
@@ -194,7 +201,98 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus UpdateOutputSize(TfLiteContext* context,
+                              TfLiteFullyConnectedParams* params,
+                              const TfLiteTensor* input, TfLiteTensor* output,
+                              int batch_size, int num_units, int cols) {
+  TfLiteIntArray* output_size_array = nullptr;
+  if (params->keep_num_dims) {
+    TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1], cols);
+    output_size_array = TfLiteIntArrayCopy(input->dims);
+    output_size_array->data[output_size_array->size - 1] = num_units;
+  } else {
+    // Otherwise, the output is (potentially flattened to) a 2-D matrix.
+    output_size_array = TfLiteIntArrayCreate(2);
+    output_size_array->data[0] = batch_size;
+    output_size_array->data[1] = num_units;
+  }
+  return context->ResizeTensor(context, output, output_size_array);
+}
+
+TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
+                             int lhs_width, int rhs_width, int depth,
+                             int batch_size, int cols, int output_depth) {
+  const int units = output_depth;
+  const int lhs_layout_cols =
+      (cols + (optimized_4bit::FilterDepth - 1)) & ~(depth - 1);
+  const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
+  const int rhs_layout_cols = lhs_layout_cols;
+  const int dst_layout_rows = rhs_layout_rows;
+  const int dst_layout_cols = (units + (lhs_width - 1)) & ~(lhs_width - 1);
+
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = TfLiteIntArrayCreate(5);
+  for (int i = 0; i < 5; i++) {
+    node->temporaries->data[i] = data->scratch_tensor_index + i;
+  }
+
+  TfLiteTensor* input_quantized;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetTemporarySafe(context, node, kQuantizedInputTensor, &input_quantized));
+  input_quantized->type = kTfLiteInt8;
+  input_quantized->allocation_type = kTfLiteArenaRw;
+  TfLiteIntArray* input_quantized_size = TfLiteIntArrayCreate(2);
+  input_quantized_size->data[0] = rhs_layout_rows;
+  input_quantized_size->data[1] = rhs_layout_cols;
+  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
+                                                   input_quantized_size));
+  TfLiteTensor* scaling_factors;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetTemporarySafe(context, node, kScalingFactorsTensor, &scaling_factors));
+  scaling_factors->type = kTfLiteFloat32;
+  scaling_factors->allocation_type = kTfLiteArenaRw;
+  TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+  scaling_factors_size->data[0] = rhs_layout_rows;
+  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
+                                                   scaling_factors_size));
+
+  TfLiteTensor* accum_scratch;
+  TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kAccumulatorTensor,
+                                              &accum_scratch));
+  accum_scratch->type = kTfLiteInt32;
+  accum_scratch->allocation_type = kTfLiteArenaRw;
+  TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
+  accum_size->data[0] = dst_layout_rows, accum_size->data[1] = dst_layout_cols;
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, accum_scratch, accum_size));
+
+  TfLiteTensor* input_offsets;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetTemporarySafe(context, node, kInputOffsetsTensor, &input_offsets));
+  input_offsets->type = kTfLiteInt32;
+  input_offsets->allocation_type = kTfLiteArenaRw;
+  TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
+  input_offsets_size->data[0] = rhs_layout_rows;
+  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
+                                                   input_offsets_size));
+
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  auto* params =
+      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+  return UpdateOutputSize(context, params, input, output, batch_size, units,
+                          cols);
+}
+
+TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
+                         KernelType kernel_type) {
   auto* params =
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -342,6 +440,32 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
         filter->type == kTfLiteInt4));
   const bool is_sparse = filter->sparsity != nullptr;
   if (is_hybrid) {
+    const int cols = input_size / batch_size;
+    // Use optimized implementation for 4bit
+    if (filter->type == kTfLiteInt4 && kernel_type == kGenericOptimized &&
+        IsConstantTensor(filter) && (cols % 2 == 0) &&
+        num_units >= optimized_4bit::FilterWidth &&
+        cols >= optimized_4bit::FilterDepth) {
+      if (!data->op_data_4bit) {
+        data->op_data_4bit = std::make_unique<optimized_4bit::OpData4Bit>();
+      }
+      if (data->op_data_4bit->batch_size == batch_size) {
+        return kTfLiteOk;
+      }
+      data->op_data_4bit->batch_size = batch_size;
+      for (int packed_rows = optimized_4bit::GetMaxSupportedRows();
+           packed_rows > 0; packed_rows /= 2) {
+        if (batch_size >= packed_rows) {
+          data->op_data_4bit->rows_right = packed_rows;
+          break;
+        }
+      }
+      const int cols = input_size / batch_size;
+      return PrepareImpl4Bit(context, node, optimized_4bit::FilterWidth,
+                             data->op_data_4bit->rows_right,
+                             optimized_4bit::FilterDepth, batch_size, cols,
+                             num_units);
+    }
     TfLiteIntArrayFree(node->temporaries);
     data->compute_row_sums = true;
     if (is_sparse) {
@@ -430,26 +554,8 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Resize output.
-  TfLiteIntArray* output_size_array = nullptr;
-  if (params->keep_num_dims) {
-    // When number of dimensions are kept the filter operates along the last
-    // dimensions. In other words, for an input tensor with shape
-    // [batch_size, ..., n_inputs] and a filter of shape [n_inputs, n_units]
-    // this Op produces an output of shape [batch_size, ..., n_units].
-    TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1],
-                      SizeOfDimension(filter, 1));
-    output_size_array = TfLiteIntArrayCopy(input->dims);
-    output_size_array->data[output_size_array->size - 1] = num_units;
-  } else {
-    // Otherwise, the output is (potentially flattened to) a 2-D matrix.
-    output_size_array = TfLiteIntArrayCreate(2);
-    output_size_array->data[0] = batch_size;
-    output_size_array->data[1] = num_units;
-  }
-  TF_LITE_ENSURE_OK(context,
-                    context->ResizeTensor(context, output, output_size_array));
-
-  return kTfLiteOk;
+  return UpdateOutputSize(context, params, input, output, batch_size, num_units,
+                          filter->dims->data[1]);
 }
 
 template <KernelType kernel_type>
@@ -476,7 +582,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 params->activation == kTfLiteActReluN1To1 ||
                                 params->activation == kTfLiteActRelu6);
   }
-  return PrepareImpl(context, node);
+  return PrepareImpl(context, node, kernel_type);
 }
 
 TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
@@ -730,6 +836,69 @@ struct SparseHybridFullyConnectedTask : cpu_backend_threadpool::Task {
   TfLiteTensor* input_offsets;
   TfLiteTensor* output;
 };
+
+TfLiteStatus EvalHybridDense4Bit(
+    TfLiteContext* context, TfLiteNode* node,
+    TfLiteFullyConnectedParams* params, OpData* data, const TfLiteTensor* input,
+    const TfLiteTensor* filter, const TfLiteTensor* bias,
+    TfLiteTensor* input_quantized, TfLiteTensor* scaling_factors,
+    TfLiteTensor* accum_scratch, TfLiteTensor* input_offsets,
+    TfLiteTensor* output) {
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
+  int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
+  int32_t* input_offset_ptr = GetTensorData<int32_t>(input_offsets);
+  const int batch_size = data->op_data_4bit->batch_size;
+  const int output_depth = filter->dims->data[0];
+  const int cols = filter->dims->data[1];
+  const int rhs_width = data->op_data_4bit->rows_right;
+  const int depth = optimized_4bit::FilterDepth;
+  const int lhs_width = optimized_4bit::FilterWidth;
+  const int lhs_layout_rows =
+      (output_depth + (lhs_width - 1)) & ~(lhs_width - 1);
+  const int lhs_layout_cols = (cols + (depth - 1)) & ~(depth - 1);
+  const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
+  const int rhs_layout_cols = lhs_layout_cols;
+  const int dst_layout_rows = rhs_layout_rows;
+  const int dst_layout_cols = lhs_layout_rows;
+  if (data->op_data_4bit->needs_prepack) {
+    optimized_4bit::Prepack(
+        &data->op_data_4bit->prepacked_cache, GetTensorData<int8_t>(filter),
+        lhs_layout_rows, lhs_layout_cols, output_depth, cols, lhs_width, depth);
+    data->op_data_4bit->needs_prepack = false;
+  }
+  std::vector<float> filter_scales(lhs_layout_rows, filter->params.scale);
+  auto* filter_params =
+      reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
+  if (filter_params && filter_params->scale && filter_params->scale->size > 0) {
+    if (filter_params->scale->size == 1) {
+      std::fill(filter_scales.begin(), filter_scales.end(),
+                filter_params->scale->data[0]);
+    } else {
+      for (int i = 0; i < filter_params->scale->size; i++) {
+        filter_scales[i] = filter_params->scale->data[i];
+      }
+    }
+  }
+  optimized_4bit::BatchQuantizeFloats4Bit(
+      GetTensorData<float>(input), batch_size, cols, quant_data,
+      scaling_factors_ptr, rhs_width, depth, input_offset_ptr);
+  const float* bias_ptr =
+      bias != nullptr ? GetTensorData<float>(bias) : nullptr;
+  optimized_4bit::AssignBiasAndComputeOffsets(
+      input_offset_ptr, scaling_factors_ptr, filter_scales.data(), bias_ptr,
+      GetTensorData<float>(output), output_depth, batch_size);
+  const uint8_t* lhs = data->op_data_4bit->prepacked_cache;
+  int32_t* dst = GetTensorData<int32_t>(accum_scratch);
+  optimized_4bit::RunAndUnpack(
+      data->op_data_4bit->rows_right, lhs, quant_data, dst, output_depth,
+      batch_size, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
+      rhs_layout_cols, dst_layout_rows, dst_layout_cols,
+      GetTensorData<float>(output), scaling_factors_ptr, filter_scales.data());
+  tensor_utils::ApplyActivationToVector(
+      GetTensorData<float>(output), batch_size * output_depth,
+      params->activation, GetTensorData<float>(output));
+  return kTfLiteOk;
+}
 
 TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                         TfLiteFullyConnectedParams* params, OpData* data,
@@ -1001,6 +1170,11 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     TfLiteTensor* input_offsets;
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, /*index=*/3, &input_offsets));
+    if (data->op_data_4bit) {
+      return EvalHybridDense4Bit(context, node, params, data, input, filter,
+                                 bias, input_quantized, scaling_factors,
+                                 accum_scratch, input_offsets, output);
+    }
     TfLiteTensor* row_sums;
     TF_LITE_ENSURE_OK(context,
                       GetTemporarySafe(context, node, /*index=*/4, &row_sums));
