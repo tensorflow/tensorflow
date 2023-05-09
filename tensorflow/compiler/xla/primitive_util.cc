@@ -113,18 +113,6 @@ int OverflowExponent(PrimitiveType type) {
   }
 }
 
-bool IsSignedIntegralType(PrimitiveType type) {
-  return type == S4 || type == S8 || type == S16 || type == S32 || type == S64;
-}
-
-bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U4 || type == U8 || type == U16 || type == U32 || type == U64;
-}
-
-bool IsIntegralType(PrimitiveType type) {
-  return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
-}
-
 xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 4:
