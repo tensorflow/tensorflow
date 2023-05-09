@@ -597,6 +597,9 @@ void UpdateCompileOptions(SavedModel::Options& options) {
     LOG(INFO) << "lazy_loading_use_graph_executor is updated to be the same as "
                  "enable_lazy_loading: "
               << options.enable_lazy_loading;
+    options.graph_execution_options.compile_options
+        .enable_while_parallel_iterations = true;
+    LOG(INFO) << "enable_while_parallel_iterations is always true for MLRT";
   }
 }
 
