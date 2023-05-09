@@ -772,6 +772,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/data_structures:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
