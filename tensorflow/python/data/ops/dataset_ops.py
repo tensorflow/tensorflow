@@ -630,7 +630,7 @@ class DatasetV2(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
 
-    return NumpyIterator(self)
+    return _NumpyIterator(self)
 
   @property
   def _flat_shapes(self):
@@ -4676,8 +4676,7 @@ nested_structure_coder.register_codec(
 )
 
 
-@tf_export("data.NumpyIterator")
-class NumpyIterator(tracking_base.Trackable):
+class _NumpyIterator(tracking_base.Trackable):
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -4713,11 +4712,11 @@ class NumpyIterator(tracking_base.Trackable):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
 
-  def save(self):
+  def _save(self):
     # pylint: disable=protected-access
     return self._iterator._save()
 
-  def restore(self, state):
+  def _restore(self, state):
     # pylint: disable=protected-access
     return self._iterator._restore(state)
 

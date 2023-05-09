@@ -25,10 +25,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "NumpyIterator"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Options"
     mtype: "<type \'type\'>"
   }
