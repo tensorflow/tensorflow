@@ -624,7 +624,7 @@ message CPUSettings {
   optional int32 num_threads = 1 [default = -1];
 }
 
-/ Arm NN Delegate Settings
+// Arm NN Delegate Settings
 // More information about Arm NN delegate options can be found in https://arm-software.github.io/armnn/latest/delegate.xhtml
 message ArmNNSettings {
   optional string backends = 1;
