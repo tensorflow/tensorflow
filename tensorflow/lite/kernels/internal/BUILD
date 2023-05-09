@@ -467,14 +467,6 @@ cc_library(
 )
 
 selects.config_setting_group(
-    name = "linux_x86_64_opt",
-    match_all = [
-        "//tensorflow:linux_x86_64",
-        "//tensorflow:optimized",
-    ],
-)
-
-selects.config_setting_group(
     name = "android_arm_any",
     match_any = [
         "//tensorflow:android_arm",
@@ -487,7 +479,10 @@ cc_library(
     hdrs = [
         "optimized/fully_connected_4bit.h",
     ] + select({
-        ":linux_x86_64_opt": ["optimized/4bit/sse_fully_connected.h"],
+        # TODO(b/281731660): Remove copybara comments and streamline x86 build for 4bit
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": ["optimized/4bit/sse_fully_connected.h"],
+        # copybara:uncomment_end
         ":android_arm_any": ["optimized/4bit/neon_fully_connected.h"],
         "//conditions:default": ["optimized/4bit/fully_connected_reference.h"],
     }),
@@ -497,16 +492,20 @@ cc_library(
         ":android_arm_any": [
             "FC_4BIT_NEON",
         ],
-        ":linux_x86_64_opt": [
-            "FC_4BIT_SSE",
-        ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": [
+        # "FC_4BIT_SSE",
+        # ],
+        # copybara:uncomment_end
         "//conditions:default": [],
     }),
     deps = [
         ":cppmath",
         ":cpu_check",
     ] + select({
-        ":linux_x86_64_opt": [":sse_fully_connected_4bit"],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": [":sse_fully_connected_4bit"],
+        # copybara:uncomment_end
         ":android_arm_any": [":neon_fully_connected_4bit"],
         "//conditions:default": [":reference_fully_connected_4bit"],
     }),
