@@ -18,6 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <optional>
+#include <queue>
+#include <string>
+#include <string_view>
 #include <vector>
 
 // clang-format off
@@ -25,8 +28,12 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -66,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
@@ -83,7 +91,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
@@ -93,10 +100,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-constexpr char kCpuDevice[] = "CPU";
-constexpr char kGpuDevice[] = "GPU";
-constexpr char kTpuDevice[] = "TPU";
 
 constexpr char kEnabled[] = "enabled";
 constexpr char kDisabled[] = "disabled";
@@ -207,7 +210,7 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
         status.code(),
         absl::StrCat("Failed copying input tensor from ", handle_device->name(),
                      " to ", expected_input_device->name(), " in order to run ",
-                     op->Name(), ": ", status.error_message()));
+                     op->Name(), ": ", status.message()));
   }
 
   *result = result_handle;
@@ -352,11 +355,22 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
     const bool is_tpu = device != nullptr && device->device_type() == "TPU";
     // int32 return values can be placed on TPUs.
     // int32 retrun values can be placed on device for eager operations.
+    FullTypeDef ft = tensor_handle->FullType();
     const bool use_host_memory =
         is_tpu || (!op.is_function() && device != cpu_device &&
                    !is_host_memory_arg)
             ? MTypeFromDTypeIntsOnDevice(tensor_handle->dtype)
             : MTypeFromDType(tensor_handle->dtype);
+    if (use_host_memory) {
+      Int32FulltypePass int32_ft("GetDeviceForInput");
+      TF_RETURN_IF_ERROR(int32_ft.Int32FullTypeForTensor(
+          tensor_handle->dtype, &ft, /*set_only_int32=*/false));
+      VLOG(2)
+          << "Full type information with TFT_SHAPE_TENSOR for int32 for eager '"
+          << tensor_handle->DebugString();
+    }
+    TF_RETURN_IF_ERROR(
+        tensorflow::full_type::CheckMemoryType(use_host_memory, ft));
     if (use_host_memory) {
       *result = cpu_device;
     } else {
@@ -462,7 +476,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   }
 
   // No explicit requests. Compile for XLA devices by default.
-  if (op->GetDeviceParsedName().type == "TPU" ||
+  if (op->GetDeviceParsedName().type == tensorflow::DEVICE_TPU ||
       op->GetDeviceParsedName().type == "XLA_GPU" ||
       op->GetDeviceParsedName().type == "XLA_CPU") {
     VLOG(2) << "Compiling " << op->Name()
@@ -477,34 +491,110 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   return OkStatus();
 }
 
-void UpdateCompileCounter(const EagerOperation* op, bool compile_with_xla,
-                          bool has_tpu_replication) {
+// Check if `op` has tf.StatefulPartitionedCall op with _XlaMustCompile, sets
+// `has_jit_compile` and `device`.
+Status HasNestedJitCompile(const EagerOperation& op, const EagerContext& ctx,
+                           bool* has_jit_compile, string* device) {
+  *has_jit_compile = false;
+
+  const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
+  const std::string kXlaMustCompile = "_XlaMustCompile";
+  if (!op.is_function()) {
+    return OkStatus();
+  }
+
+  std::queue<std::string> function_names;
+  function_names.push(op.Name());
+
+  while (!function_names.empty()) {
+    const string& function_name = function_names.front();
+
+    const FunctionDef* function_def =
+        ctx.pflr()->GetFunctionLibraryDefinition()->Find(function_name);
+    if (function_def == nullptr) {
+      return errors::NotFound("Failed to find function '", function_name, "'");
+    }
+    function_names.pop();
+    for (const NodeDef& node : function_def->node_def()) {
+      if (node.op() == kStatefulPartitionedCallOp) {
+        auto attr = node.attr().find(kXlaMustCompile);
+        if (attr != node.attr().end() && attr->second.b() == true) {
+          *has_jit_compile = true;
+          auto device_attr = node.attr().find("device");
+          if (device_attr != node.attr().end()) {
+            *device = device_attr->second.s();
+          }
+          return OkStatus();
+        } else {
+          auto attr = node.attr().find("f");
+          if (attr != node.attr().end() &&
+              !attr->second.func().name().empty()) {
+            function_names.push(attr->second.func().name());
+          }
+        }
+      }
+    }
+  }
+  return OkStatus();
+}
+
+string CanonicalizeDeviceType(std::string_view device_type) {
+  string canonical_device_type = "Unknown";
+  if (device_type == "XLA_CPU" || device_type == tensorflow::DEVICE_CPU) {
+    canonical_device_type = tensorflow::DEVICE_CPU;
+  }
+  if (device_type == "XLA_GPU" || device_type == tensorflow::DEVICE_GPU) {
+    canonical_device_type = tensorflow::DEVICE_GPU;
+  }
+  if (device_type == tensorflow::DEVICE_TPU) {
+    canonical_device_type = tensorflow::DEVICE_TPU;
+  }
+  return canonical_device_type;
+}
+
+Status UpdateCompileCounter(const EagerOperation* op, const EagerContext& ctx,
+                            bool compile_with_xla, bool has_tpu_replication) {
   if (has_tpu_replication) {
-    function_compile_counter->GetCell(kTpuDevice, kEnabled)->IncrementBy(1);
-    return;
+    function_compile_counter->GetCell(tensorflow::DEVICE_TPU, kEnabled)
+        ->IncrementBy(1);
+    return OkStatus();
   }
 
-  string device_type = "Unknown";
   string compilation_option = kDisabled;
-  if (op->GetDeviceParsedName().type == "XLA_CPU" ||
-      op->GetDeviceParsedName().type == "CPU") {
-    device_type = kCpuDevice;
+  if (!compile_with_xla) {
+    bool nested_jit_compile;
+    string device;
+    TF_RETURN_IF_ERROR(
+        HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
+    if (nested_jit_compile) {
+      if (!device.empty()) {
+        tsl::DeviceNameUtils::ParsedName device_parsed_name;
+        if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name)) {
+          return errors::InvalidArgument("Malformed device specification: '",
+                                         device);
+        }
+        VLOG(1) << "Compilation Device Type: " << device_parsed_name.type;
+
+        function_compile_counter
+            ->GetCell(CanonicalizeDeviceType(device_parsed_name.type), kEnabled)
+            ->IncrementBy(1);
+        return OkStatus();
+      } else {
+        compilation_option = kEnabled;
+      }
+    }
   }
-  if (op->GetDeviceParsedName().type == "XLA_GPU" ||
-      op->GetDeviceParsedName().type == "GPU") {
-    device_type = kGpuDevice;
-  }
-  if (op->GetDeviceParsedName().type == "TPU") {
-    device_type = kTpuDevice;
+
+  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
+  if (device_type == tensorflow::DEVICE_TPU || compile_with_xla) {
     compilation_option = kEnabled;
   }
 
-  if (compile_with_xla) {
-    compilation_option = kEnabled;
-  }
+  VLOG(1) << "Compilation Device Type: " << device_type;
 
   function_compile_counter->GetCell(device_type, compilation_option)
       ->IncrementBy(1);
+  return OkStatus();
 }
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
@@ -965,6 +1055,68 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
   return true;
 }
 
+using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
+
+// Removes boolean tensor inputs from the EagerOperation and returns them.
+// Currently this is only useful to invoke when small_constants_optimizer is
+// enabled because the runtime will have equivalent FunctionDefs of the original
+// tf.function without the boolean tensor input.
+StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
+  BoolTensorInputs result;
+  if (!op->is_function()) return result;
+  // Extract tensor inputs.
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  if (!op->TensorHandleInputs(&inputs).ok()) return result;
+  // Extract the FunctionDef.
+  const FunctionDef* fdef = op->EagerContext().GetFunctionDef(op->Name());
+  if (fdef == nullptr) return result;
+  // Ensure the number of inputs matches the specification in the FunctionDef.
+  if (fdef->signature().input_arg_size() != inputs->size()) return result;
+
+  // Remove all boolean inputs.
+  absl::InlinedVector<TensorHandle*, 4> stripped_inputs;
+  for (int32_t i = 0; i < fdef->signature().input_arg_size(); ++i) {
+    const auto& input_arg = fdef->signature().input_arg(i);
+    // Identify non-boolean inputs to this EagerOperation.
+    if (input_arg.type() != DT_BOOL) {
+      stripped_inputs.push_back(inputs->at(i));
+      continue;
+    }
+    // Identify boolean inputs to this EagerOperation that are on host.
+    const TensorHandle* handle = inputs->at(i);
+    Status s;
+    const char* input_device = handle->DeviceType(&s);
+    if (!s.ok() || !absl::StrContains(input_device, "CPU")) {
+      return errors::InvalidArgument(
+          "Expecting boolean tensor to be on host when "
+          "small_constants_optimizer is enabled.");
+    }
+    const Tensor* tensor;
+    TF_RETURN_IF_ERROR(handle->Tensor(&tensor));
+    // small_constant_optimizer does not handle non-scalar boolean inputs.
+    if (tensor->NumElements() != 1) {
+      stripped_inputs.push_back(inputs->at(i));
+      continue;
+    }
+    const bool input_value = tensor->scalar<bool>()();
+    result.emplace_back(input_arg.name(), input_value);
+  }
+
+  // If we were able to identify all boolean inputs, update the op's inputs.
+  op->Clear();
+  for (auto* input : stripped_inputs) {
+    TF_RETURN_IF_ERROR(op->AddInput(input));
+  }
+  return result;
+}
+
+bool IsSmallConstantOptimizationEnabled(const EagerOperation& op) {
+  if (!op.is_function()) return false;
+  const FunctionDef* fdef = op.EagerContext().GetFunctionDef(op.Name());
+  if (fdef == nullptr) return false;
+  return small_constants_optimizer::IsSmallConstantOptimizationEnabled(*fdef);
+}
+
 StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
@@ -1114,6 +1266,18 @@ Status GetOrCreateKernelAndDevice(
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
 
+  // Update the EagerOperation with information about the boolean input tensors
+  // when small constant optimization is enabled.
+  if (IsSmallConstantOptimizationEnabled(*op)) {
+    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs, RemoveBoolInputs(op));
+    string folded_name = op->Name();
+    for (const auto& [input_name, input_value] : bool_inputs) {
+      folded_name = small_constants_optimizer::FoldedFunctionName(
+          folded_name, input_name, input_value);
+    }
+    op->UpdateName(folded_name);
+  }
+
   // Set the EagerOperation's device prior to extracting the input_device_ptrs
   // to avoid any redundant H2D/D2H copies.
   if (device == nullptr && !op->is_function()) {
@@ -1195,9 +1359,8 @@ Status GetOrCreateKernelAndDevice(
       bool has_tpu_replication = false;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       TF_RETURN_IF_ERROR(HasTPUReplication(*op, ctx, &has_tpu_replication));
-      VLOG(1) << "Compilation Device Type: " << op->GetDeviceParsedName().type;
-      UpdateCompileCounter(op, compile_with_xla, has_tpu_replication);
-
+      TF_RETURN_IF_ERROR(
+          UpdateCompileCounter(op, ctx, compile_with_xla, has_tpu_replication));
       if (compile_with_xla && !has_tpu_replication) {
         if (ctx.JitCompileRewrite()) {
           xla_compile_device_type = op->GetDeviceParsedName().type;
@@ -1853,8 +2016,8 @@ void CollectGraphs(EagerContext* ctx) {
 }
 }  // namespace
 
-Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
-                    int* num_retvals) {
+Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
+                      int* num_retvals) {
   profiler::TraceMe activity([&] {
     return ::tensorflow::profiler::TraceMeEncode(
         "EagerExecute",
@@ -1939,6 +2102,31 @@ Status EagerKernelExecute(
   }
   return GetKernelOutputs(&outputs, retvals.size(), retvals.data(), ctx,
                           kernel.get(), eager_func_params);
+}
+
+Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
+                    int* num_retvals) {
+  if (VLOG_IS_ON(1) && op->is_function()) {
+    const std::string& op_name = op->Name();
+    const std::string& exec_mode = op->IsLocal() ? "local" : "remote";
+    const std::string& device_name = op->DeviceName();
+
+    auto msg = absl::StrCat("eager executing ", exec_mode, " operation '",
+                            op_name, "'");
+
+    if (!device_name.empty()) {
+      absl::StrAppend(&msg, " on device '", device_name, "'");
+    }
+
+    VLOG(1) << "Entering " << msg;
+
+    Status status = DoEagerExecute(op, retvals, num_retvals);
+
+    VLOG(1) << "Exiting " << msg << ", status code is " << status;
+
+    return status;
+  }
+  return DoEagerExecute(op, retvals, num_retvals);
 }
 
 namespace {

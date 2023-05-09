@@ -18,6 +18,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/AttrTypeBase.td"
 
 def DeallocationDialect : Dialect {
   let name = "deallocation";
@@ -27,16 +28,36 @@ def DeallocationDialect : Dialect {
     Ops for modelling owned/unowned memrefs using null pointers.
   }];
   let cppNamespace = "::mlir::deallocation";
+
+  let useDefaultTypePrinterParser = 1;
+}
+
+def OwnershipIndicatorType : TypeDef<DeallocationDialect, "OwnershipIndicator"> {
+  let mnemonic = "ownership";
+  let summary = "an ownership indicator";
 }
 
 class DeallocationOp<string mnemonic, list<Trait> traits = []>
     : Op<DeallocationDialect, mnemonic, traits>;
 
 def GetBufferOp : DeallocationOp<"get_buffer", [Pure]> {
-  let summary = "extracts the data pointer as an index";
+  let summary = "extracts the base pointer as an index";
+
+  let arguments = (ins AnyTypeOf<[AnyMemRef, OwnershipIndicatorType]>:$alloc);
+  let results = (outs Index:$result);
+
+  let assemblyFormat = "attr-dict $alloc `:` type($alloc)";
+}
+
+def OwnOp : DeallocationOp<"own", [Pure]> {
+  let summary = "declare ownership";
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$memref);
-  let results = (outs Index:$result);
+  let results = (outs OwnershipIndicatorType:$result);
+
+  let builders = [
+    OpBuilder<(ins "Value":$memref)>
+  ];
 
   let assemblyFormat = "attr-dict $memref `:` type($memref)";
 }
@@ -44,11 +65,24 @@ def GetBufferOp : DeallocationOp<"get_buffer", [Pure]> {
 def NullOp : DeallocationOp<"null", [Pure]> {
   let summary = "null pointer";
 
-  let results = (outs AnyRankedOrUnrankedMemRef:$result);
+  let results = (outs OwnershipIndicatorType:$result);
 
-  let assemblyFormat = "attr-dict `:` type($result)";
+  let builders = [
+    OpBuilder<(ins)>
+  ];
+
+  let assemblyFormat = "attr-dict";
 }
 
+def FreeOp : DeallocationOp<"free"> {
+  let summary = "free";
+
+  let arguments = (ins OwnershipIndicatorType:$alloc);
+
+  let assemblyFormat = "attr-dict $alloc";
+}
+
+// TODO(jreiffers): Implement InferTypeOpInterface.
 def RetainOp : DeallocationOp<"retain", [AttrSizedOperandSegments]> {
   let summary = "null-safe dealloc";
 
@@ -59,18 +93,17 @@ def RetainOp : DeallocationOp<"retain", [AttrSizedOperandSegments]> {
     Any allocs that are not in the result are deallocated.
 
     `allocs` may contain `null`s. Otherwise, all allocs must be distinct.
+    `retained` values may alias.
   }];
 
   let arguments = (ins Variadic<AnyRankedOrUnrankedMemRef>:$retained,
-                       Variadic<AnyRankedOrUnrankedMemRef>:$allocs);
-  let results = (outs Variadic<AnyRankedOrUnrankedMemRef>:$result_allocs);
+                       Variadic<OwnershipIndicatorType>:$allocs);
+  let results = (outs Variadic<OwnershipIndicatorType>:$result_allocs);
 
   let assemblyFormat = [{
     `(` $retained `)` `of` `(` $allocs `)` attr-dict `:`
       functional-type(operands, results)
   }];
-
-  let hasCanonicalizer = 1;
 }
 
 #endif  // DEALLOCATION_TD_

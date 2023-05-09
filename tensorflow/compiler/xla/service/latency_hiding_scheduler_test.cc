@@ -17,23 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -134,10 +129,9 @@ StatusOr<bool> RunScheduler(
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
-      /*convert_all_reduce=*/[](const HloInstruction*) { return true; },
-      /*convert_all_gather=*/[](const HloInstruction*) { return true; },
-      /*convert_collective_permute=*/
-      [](const HloInstruction*) { return true; }};
+      /*convert_all_reduce=*/HloPredicateTrue,
+      /*convert_all_gather=*/HloPredicateTrue,
+      /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -2522,6 +2516,158 @@ ENTRY entry {
   // opportunities for the other to overlap.
   EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
             GetIndex(new_instruction_sequence, "cp1s"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ReleaseStartWhenLatencyDue) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s)
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s)
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s)
+  slice = f32[16,64,256]{2,1,0} slice(f32[512,2048,2048]{2,1,0} cp1d), slice={[0:16], [0:64], [0:256]}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, c1, cp2d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  sched_config.enable_release_start_policy = true;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Make sure that c0 and c1 are latency-hiding cp2 and cp3 respectively,
+  // instead of being scheduled only within the latency of one of cp2 or cp3.
+  // Note that the cost of c0 and c1 is larger than the latencies of cp2 and cp3
+  // so the best strategy is indeed to distribute them among both cp2 and cp3.
+  // When aggressive_scheduling_policies = true, this is achieved thanks to the
+  // "kScheduleStart" policy, in absence of which the "kAsyncDepth" prevails
+  // in scheduling both c0 and c1 within the latency of cp3.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2d"),
+            GetIndex(new_instruction_sequence, "cp3s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp3s"),
+            GetIndex(new_instruction_sequence, "c1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c1"),
+            GetIndex(new_instruction_sequence, "cp3d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
+  // Extend AsyncTracker for a fake target with one target-defined resource
+  class AsyncTrackerForMyTarget : public AsyncTracker {
+    enum class MyTargetResourceType {
+      kTargetResource0 = 0,
+      kNumTargetResources = 1,
+    };
+
+   public:
+    explicit AsyncTrackerForMyTarget(const SchedulerConfig& config,
+                                     int64_t target_resource0_limit = 3)
+        : AsyncTracker(config),
+          target_resource0_limit_(target_resource0_limit) {}
+
+    absl::string_view GetResourceName(int64_t resource_type) const override {
+      const int64_t first_target_resource = GetFirstTargetDefinedResource();
+      if (resource_type < first_target_resource) {
+        return AsyncTracker::GetResourceName(resource_type);
+      }
+      CHECK_LE(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case static_cast<int64_t>(MyTargetResourceType::kTargetResource0):
+          return "kTargetResource0";
+        default:
+          return "";
+      }
+    }
+
+    ResourceHazardType GetResourceHazardType(
+        int64_t resource_type) const override {
+      const int64_t first_target_resource = GetFirstTargetDefinedResource();
+      if (resource_type < first_target_resource) {
+        return AsyncTracker::GetResourceHazardType(resource_type);
+      }
+      CHECK_LE(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case static_cast<int64_t>(MyTargetResourceType::kTargetResource0):
+          return ResourceHazardType::kShareable;
+        default:
+          return ResourceHazardType::kUnshareable;
+      }
+    }
+
+    int64_t GetNumTargetDefinedResources() const override {
+      return static_cast<int64_t>(MyTargetResourceType::kNumTargetResources);
+    }
+
+    int64_t GetNumAvailableResources(int64_t resource_type) const override {
+      const int64_t first_target_resource =
+          AsyncTracker::GetFirstTargetDefinedResource();
+      CHECK_GE(resource_type, first_target_resource);
+      CHECK_LT(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case (static_cast<int64_t>(MyTargetResourceType::kTargetResource0)):
+          return static_cast<int64_t>(target_resource0_limit_);
+        default:
+          return 1;
+      }
+    }
+
+   private:
+    const int64_t target_resource0_limit_;
+  };
+  // Create an AsyncTrackerForMyTarget object with an overlap limit of 5 for
+  // target-defined resource "kTargetResource0"
+  const int64_t target_resource0_overlap_limit = 5;
+  AsyncTrackerForMyTarget async_tracker_for_my_target(
+      SchedulerConfig(), target_resource0_overlap_limit);
+  // Check the number of target-defined resources
+  CHECK_EQ(async_tracker_for_my_target.GetNumTargetDefinedResources(), 1);
+  // Get the index of the target-defined resource
+  const int64_t target_resource0_index =
+      static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
+  // Check the name of the target-defined resource
+  CHECK_EQ(async_tracker_for_my_target.GetResourceName(target_resource0_index),
+           "kTargetResource0");
+  // Check the hazard type of the target-defined resource
+  CHECK_EQ(
+      static_cast<int64_t>(async_tracker_for_my_target.GetResourceHazardType(
+          target_resource0_index)),
+      static_cast<int64_t>(ResourceHazardType::kShareable));
+  // Check the number of available resources (overlap limit) for the
+  // target-defined resource
+  CHECK_EQ(async_tracker_for_my_target.GetNumAvailableResources(
+               target_resource0_index),
+           target_resource0_overlap_limit);
 }
 
 }  // namespace xla

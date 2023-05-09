@@ -24,12 +24,13 @@ import numpy as np
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
@@ -293,8 +294,8 @@ class Metric(base_layer.Layer, metaclass=abc.ABCMeta):
       initializer=None,
       dtype=None):
     """Adds state variable. Only for use by subclasses."""
-    if distribute_ctx.has_strategy():
-      strategy = distribute_ctx.get_strategy()
+    if distribute_lib.has_strategy():
+      strategy = distribute_lib.get_strategy()
     else:
       strategy = None
 
@@ -1023,7 +1024,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     else:
       result = self.accumulator
-    return ops.convert_to_tensor_v2_with_dispatch(result)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(result)
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
@@ -3442,7 +3443,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
   Returns:
     Binary accuracy values. shape = `[batch_size, d0, .. dN-1]`
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   threshold = math_ops.cast(threshold, y_pred.dtype)
   y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
   return backend.mean(math_ops.equal(y_true, y_pred), axis=-1)
@@ -3500,8 +3501,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
   Returns:
     Sparse categorical accuracy values.
   """
-  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
-  y_true = ops.convert_to_tensor_v2_with_dispatch(y_true)
+  y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_true = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_true)
   y_pred_rank = y_pred.shape.ndims
   y_true_rank = y_true.shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
@@ -3568,8 +3569,12 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   Returns:
     Sparse top K categorical accuracy value.
   """
-  y_pred_rank = ops.convert_to_tensor_v2_with_dispatch(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor_v2_with_dispatch(y_true).shape.ndims
+  y_pred_rank = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      y_pred
+  ).shape.ndims
+  y_true_rank = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      y_true
+  ).shape.ndims
   # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None):
     if y_pred_rank > 2:

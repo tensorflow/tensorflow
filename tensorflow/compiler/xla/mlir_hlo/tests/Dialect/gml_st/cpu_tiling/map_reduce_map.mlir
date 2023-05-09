@@ -31,7 +31,7 @@ func.func @row_reduce_map_fuse_map(%arg0: tensor<?x?xf32>,
 }
 // CHECK-LABEL: @row_reduce_map_fuse_map
 
-// CHECK: gml_st.parallel
+// CHECK: scf.for
 // CHECK:   scf.for
 // CHECK:     arith.addf %{{.*}} : vector<4x4xf32>
 // CHECK:     vector.multi_reduction <add>
@@ -40,22 +40,20 @@ func.func @row_reduce_map_fuse_map(%arg0: tensor<?x?xf32>,
 // CHECK:   scf.for
 // CHECK:     scf.for
 // CHECK:       arith.addf %{{.*}} : vector<4x1xf32>
-// CHECK:       vector.multi_reduction <add>
-// CHECK:         : vector<4x1xf32> to vector<4xf32>
+// CHECK:       arith.addf %{{.*}} : vector<4xf32>
 // CHECK:       scf.yield %{{.*}} : vector<4xf32>
 // CHECK:     scf.yield %{{.*}} : vector<4xf32>
 // CHECK:   math.absf %{{.*}} : vector<4xf32>
-// CHECK:   gml_st.set_yield
+// CHECK:   vector.transfer_write
 
-// CHECK: gml_st.parallel
-// CHECK:   gml_st.parallel
+// CHECK: scf.for
+// CHECK:   scf.for
 // CHECK:     scf.for
 // CHECK:       arith.addf %{{.*}} : f32
 // CHECK:       arith.addf %{{.*}} : f32
 // CHECK:       scf.yield %{{.*}} : f32
 // CHECK:     math.absf %{{.*}} : f32
-// CHECK:     gml_st.set_yield
-// CHECK:   gml_st.set_yield
+// CHECK:     tensor.insert
 
 // -----
 
@@ -88,7 +86,7 @@ func.func @col_reduce_map_fuse_map(%arg0: tensor<?x?xf32>,
 }
 // CHECK-LABEL: @col_reduce_map_fuse_map
 
-// CHECK: gml_st.parallel
+// CHECK: scf.for
 // CHECK:   scf.for
 // CHECK:     arith.addf %{{.*}} : vector<4x4xf32>
 // CHECK:     vector.multi_reduction <add>
@@ -101,15 +99,15 @@ func.func @col_reduce_map_fuse_map(%arg0: tensor<?x?xf32>,
 // CHECK:         arith.addf %{{.*}} : f32
 // CHECK:         scf.yield %{{.*}} : f32
 // CHECK:     scf.yield %{{.*}} : tensor<4xf32>
-// CHECK:   scf.yield %{{.*}} : tensor<?xf32>
-// CHECK:   gml_st.set_yield
+// CHECK:   scf.yield %{{.*}} : tensor<4xf32>
+// CHECK:   vector.transfer_write
 
-// CHECK: gml_st.parallel
-// CHECK:   gml_st.parallel
+// CHECK: scf.for
+// CHECK:   scf.for
 // CHECK:     scf.for
 // CHECK:       arith.addf %{{.*}} : f32
 // CHECK:       arith.addf %{{.*}} : f32
 // CHECK:       scf.yield %{{.*}} : f32
 // CHECK:     math.absf %{{.*}} : f32
-// CHECK:     gml_st.set_yield
-// CHECK:   gml_st.set_yield
+// CHECK:     tensor.insert
+// CHECK:   tensor.insert_slice

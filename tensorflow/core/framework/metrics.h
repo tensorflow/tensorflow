@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
+
+#include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -24,9 +25,16 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace metrics {
+enum class GraphOptimizationSource {
+  kUnknown,
+  kJit,
+  kAot,
+};
+
 // Records when a data-fetching tf.data operation is executed.
 //
 // The `name` argument identifies the operation type (e.g. "ToSingleElementOp").
@@ -130,11 +138,28 @@ void RecordTFDataServiceClientIterators(
 void RecordTFDataServiceDataTransferProtocolUsed(
     const string& data_transfer_protocol);
 
+// Records that a tf.data service worker client fell back to gRPC rather than
+// use `data_transfer_protocol` because of an error of type `code` with message
+// `error_message`.
+void RecordTFDataServiceDataTransferProtocolFallback(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
+// Records that a tf.data service worker client got an error of non-retriable
+// type `code` with message `error_message` when trying to transfer data over
+// `data_transfer_protocol`.
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
+
+// Records distributed tf.data snapshot bytes committed.
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
 
 // Records the file name read by a tf.data Dataset.
 //
@@ -202,6 +227,38 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs);
 // Updates the metric stored for time spent optimizing function graphs.
 void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs);
 
+// Updates the metric stored for time saved by caching graph optimization.
+void UpdateFunctionGraphOptimizationSavingTime(uint64 saving_time_usec,
+                                               GraphOptimizationSource source);
+
+// Retrieves the total time saved by the graph optimization caching.
+uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
+    GraphOptimizationSource source);
+
+// Increments the hit count for the graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheHitCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the hit count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheHitCount(
+    GraphOptimizationSource source);
+
+// Increments the failure count for the graph optimization cache restoring.
+void IncrementFunctionGraphOptimizationCacheFailureCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the failure count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheFailureCount(
+    GraphOptimizationSource source);
+
+// Increments the miss count for the graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheMissCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the miss count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheMissCount(
+    GraphOptimizationSource source);
+
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.
 // device_type: tpu, cpu, gpu, etc.
@@ -232,7 +289,8 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& unsupported_reason, bool has_unsupported_features);
 
 // Records whether a graph contains any of the TF1 features
-void RecordTFVersionByGraphFeatures(const std::string& device_name,
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
                                     bool hasControlFlowV1,
                                     bool hasReferenceVariables,
                                     bool hasManualControlDeps);

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/tools/signature/signature_def_util.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -41,7 +41,7 @@ py::bytes WrappedSetSignatureDefMap(
   }
   auto status = tflite::SetSignatureDefMap(model, signature_def_map, &data);
   if (status != ::tensorflow::OkStatus()) {
-    throw std::invalid_argument(status.error_message());
+    throw std::invalid_argument(std::string(status.message()));
   }
   return py::bytes(data);
 }

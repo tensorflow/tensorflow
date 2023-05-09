@@ -29,6 +29,7 @@ package_group(
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
         "//third_party/py/t5x/...",
+        "//third_party/py/tpu_graphs/...",
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
     ],
@@ -206,6 +207,20 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+xla_cc_test(
+    name = "types_test",
+    size = "small",
+    srcs = ["types_test.cc"],
+    visibility = [":friends"],
+    deps = [
+        ":test",
+        ":types",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -233,6 +248,7 @@ cc_library(
         ":types",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:stacktrace",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -570,6 +586,7 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -593,6 +610,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
@@ -754,6 +772,10 @@ cc_library(
     hdrs = ["executable_run_options.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(
@@ -1161,7 +1183,9 @@ filegroup(
         "runlit.cfg.py",
         "runlit.site.cfg.py",
     ],
-    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler/xla:__subpackages__",  # Scheuklappen: keep
+    ],
 )
 
 # -----------------------------------------------------------------------------

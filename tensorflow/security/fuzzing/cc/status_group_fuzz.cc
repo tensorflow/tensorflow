@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace {
 
-void FuzzTest(tensorflow::error::Code error_code, bool is_derived) {
+void FuzzTest(absl::StatusCode error_code, bool is_derived) {
   const std::string error_message = "ERROR";
   tensorflow::StatusGroup sg;
   tensorflow::Status s = tensorflow::Status(error_code, error_message);

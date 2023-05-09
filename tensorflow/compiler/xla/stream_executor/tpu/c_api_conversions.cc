@@ -103,9 +103,9 @@ SE_DeviceMemoryAllocator ToC(
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
     if (!allocation.ok()) {
       auto status = allocation.status();
+      auto message = status.message();
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.code(), status.error_message().data(),
-          status.error_message().size());
+          se_status, status.raw_code(), message.data(), message.size());
     } else {
       auto& scoped_memory = allocation.value();
       memory->wrapped = ApiConverter::ToC(scoped_memory.Release());
@@ -118,9 +118,9 @@ SE_DeviceMemoryAllocator ToC(
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
+      auto message = status.message();
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.code(), status.error_message().data(),
-          status.error_message().size());
+          se_status, status.raw_code(), message.data(), message.size());
     }
   };
   return se_allocator;

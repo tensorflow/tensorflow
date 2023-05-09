@@ -21,18 +21,23 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/snapshot_utils.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,7 +45,9 @@ namespace data {
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
 
-const absl::Duration kWorkerTimeout = absl::Seconds(45);
+// The time for which an UNKNOWN stream should transition to ORPHAN if no worker
+// claims ownership of it via heartbeat.
+const absl::Duration kUnknownStreamTimeout = absl::Seconds(45);
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
@@ -51,7 +58,8 @@ StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
 
 Status SnapshotManager::Start(const SnapshotRequest& request) {
   if (env_->FileExists(request.path()).ok()) {
-    return InvalidArgument(request.path(), " already exists");
+    return InvalidArgument("Distributed tf.data snapshot at ", request.path(),
+                           " already exists.");
   }
   TF_RETURN_IF_ERROR(CreateSplitProviders(request.dataset(), split_providers_));
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());
@@ -94,6 +102,14 @@ Status SnapshotManager::Resume() {
     mode_ = Mode::kDone;
     LOG(INFO) << "attempted to recover snapshot at " << path_
               << " but it's already done";
+    return OkStatus();
+  }
+  if (env_->FileExists(SnapshotErrorFilePath(path_)).ok()) {
+    mode_ = Mode::kError;
+    StatusProto status_proto;
+    TF_RETURN_IF_ERROR(
+        ReadTextProto(env_, SnapshotErrorFilePath(path_), &status_proto));
+    status_ = tsl::StatusFromProto(status_proto);
     return OkStatus();
   }
   TF_RETURN_IF_ERROR(ReadOnDiskMetadata());
@@ -152,9 +168,9 @@ Status SnapshotManager::ReadOnDiskStreams() {
   }
   num_assigned_splits_ = global_split_indices.size();
 
-  if (!streams_.empty() &&
-      std::all_of(streams_.begin(), streams_.end(),
-                  [](const Stream& stream) { return stream.done; })) {
+  if (!streams_.empty() && absl::c_all_of(streams_, [](const Stream& stream) {
+        return stream.state == Stream::State::kDone;
+      })) {
     mode_ = Mode::kDone;
     TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(SnapshotDoneFilePath(path_),
                                                    std::string(), env_));
@@ -165,6 +181,19 @@ Status SnapshotManager::ReadOnDiskStreams() {
 
 Status SnapshotManager::ReadOnDiskStream(
     int64_t stream_index, absl::flat_hash_set<int64_t>& global_split_indices) {
+  std::string worker_address;
+  TF_RETURN_IF_ERROR(
+      env_->FileExists(StreamWorkerFilePath(path_, stream_index)));
+  TF_RETURN_IF_ERROR(ReadFileToString(
+      env_, StreamWorkerFilePath(path_, stream_index), &worker_address));
+  auto [it, success] = assignments_.insert({worker_address, stream_index});
+  if (!success) {
+    return InvalidArgument("tf.data dispatcher failed to assign stream ",
+                           stream_index, " to snapshot worker ", worker_address,
+                           ": The  worker is already assigned stream ",
+                           it->second, ".");
+  }
+
   std::string splits_path = SplitsDirectory(path_, stream_index);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> source_directories,
                       GetChildren(splits_path, env_));
@@ -191,11 +220,9 @@ Status SnapshotManager::ReadOnDiskStream(
   }
 
   if (env_->FileExists(StreamDoneFilePath(path_, stream_index)).ok()) {
-    streams_[stream_index].done = true;
-    return OkStatus();
+    streams_[stream_index].state = Stream::State::kDone;
   }
 
-  unknowns_.insert(stream_index);
   return OkStatus();
 }
 
@@ -210,11 +237,8 @@ Status SnapshotManager::ReadOnDiskSource(
   bool unused_end_of_splits;
   for (const auto& split_filename : split_filenames) {
     std::string split_path = io::JoinPath(source_path, split_filename);
-
-    // `split_filename` must have this format:
-    // "split_<local_split_index>_<global_split_index>".
-    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_filename));
-    auto [local_split_index, global_split_index] = split_index;
+    TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_filename));
+    auto [local_split_index, global_split_index] = split_indices;
     if (local_split_index > split_filenames.size() - 1) {
       return InvalidArgument(
           "found conflict between the number of splits and name of ",
@@ -239,9 +263,10 @@ Status SnapshotManager::ReadOnDiskSource(
 
 Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
-  streams_[stream_index].done = true;
-  assignments_.erase(worker_address);
-  if (assignments_.empty() && orphans_.empty() && unknowns_.empty()) {
+  streams_[stream_index].state = Stream::State::kDone;
+  if (absl::c_all_of(streams_, [](const Stream& stream) {
+        return stream.state == Stream::State::kDone;
+      })) {
     mode_ = Mode::kDone;
     TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(SnapshotDoneFilePath(path_),
                                                    std::string(), env_));
@@ -250,17 +275,22 @@ Status SnapshotManager::HandleStreamCompletion(
   return OkStatus();
 }
 
-std::optional<int64_t> SnapshotManager::MaybeAssignOrphanStream(
-    absl::string_view worker_address) {
-  if (!orphans_.empty()) {
-    int64_t stream_index = *orphans_.begin();
-    orphans_.erase(orphans_.begin());
-    assignments_[worker_address] = stream_index;
-    VLOG(1) << "assigning an existing stream, " << stream_index
-            << ", to worker " << worker_address;
-    return stream_index;
+Status SnapshotManager::HandleStreamError(absl::string_view worker_address,
+                                          const StatusProto& status_proto) {
+  // This method returns an OkStatus as the RPC status if the worker reports an
+  // error. The errors are communicated back to the workers with a proper RPC
+  // response, instead of with a error status.
+  if (!status_.ok()) {
+    return OkStatus();
   }
-  return std::nullopt;
+
+  mode_ = Mode::kError;
+  status_ = tsl::StatusFromProto(status_proto);
+  TF_RETURN_IF_ERROR(AtomicallyWriteTextProto(SnapshotErrorFilePath(path_),
+                                              status_proto, env_));
+  LOG(ERROR) << "Failed to write tf.data distributed snapshot at " << path_
+             << ". Worker " << worker_address << " reported error: " << status_;
+  return OkStatus();
 }
 
 StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
@@ -270,25 +300,13 @@ StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
     TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(
         SourceDirectory(path_, new_stream_index, source_index)));
   }
+  TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(
+      StreamWorkerFilePath(path_, new_stream_index), worker_address, env_));
   streams_.push_back(Stream(num_sources()));
   assignments_[worker_address] = new_stream_index;
-  VLOG(1) << "assigning a new stream, " << new_stream_index << ", to worker "
-          << worker_address;
+  LOG(INFO) << "creating stream_ " << new_stream_index << " and assigning to "
+            << worker_address;
   return new_stream_index;
-}
-
-Status SnapshotManager::ReassignPreviouslyAssignedStream(
-    int64_t stream_index, absl::string_view worker_address) {
-  if (!stream_available(stream_index)) {
-    return errors::Internal("worker ", worker_address,
-                            " has no known assignment and its desired stream, ",
-                            stream_index, ", is unavailable");
-  }
-  VLOG(1) << "reassigning a previous assignment of stream " << stream_index
-          << " to worker " << worker_address;
-  assignments_[worker_address] = stream_index;
-  unknowns_.erase(stream_index);
-  return OkStatus();
 }
 
 StatusOr<std::optional<int64_t>>
@@ -300,7 +318,6 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
     assigned_stream_index = it->second;
   }
   if (snapshot_progress) {
-    // TODO(b/258691097): Handle worker errors if any.
     if (assigned_stream_index.has_value() &&
         *assigned_stream_index !=
             snapshot_progress->snapshot_task().stream_index()) {
@@ -309,19 +326,16 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
                               " but it's actually assigned assigned stream ",
                               *assigned_stream_index);
     }
-    if (!assigned_stream_index) {
-      TF_RETURN_IF_ERROR(ReassignPreviouslyAssignedStream(
-          snapshot_progress->snapshot_task().stream_index(), worker_address));
-      assigned_stream_index = snapshot_progress->snapshot_task().stream_index();
-    }
-    if (snapshot_progress->completed()) {
+    if (assigned_stream_index.has_value() && snapshot_progress->completed()) {
       TF_RETURN_IF_ERROR(HandleStreamCompletion(
           snapshot_progress->snapshot_task().stream_index(), worker_address));
       assigned_stream_index.reset();
     }
-  }
-  if (!assigned_stream_index) {
-    assigned_stream_index = MaybeAssignOrphanStream(worker_address);
+    if (snapshot_progress->status().code() != error::OK) {
+      TF_RETURN_IF_ERROR(
+          HandleStreamError(worker_address, snapshot_progress->status()));
+      return std::optional<int64_t>();
+    }
   }
   if (!assigned_stream_index) {
     if (mode_ != Mode::kActive) {
@@ -335,7 +349,11 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
-  if (mode_ == Mode::kDone) {
+  dead_workers_.erase(request.worker_address());
+
+  if (mode_ == Mode::kDone || mode_ == Mode::kError) {
+    // When the snapshot manager is done or in an error state, it returns an
+    // empty response to inform the workers to cancel the ongoing tasks.
     return OkStatus();
   }
 
@@ -361,16 +379,12 @@ Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
 
 Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                                          GetSnapshotSplitResponse& response) {
-  auto it = assignments_.find(request.worker_address());
-  if (it == assignments_.end()) {
-    if (!unknowns_.contains(request.stream_index())) {
-      return errors::Internal(
-          "worker ", request.worker_address(),
-          " has no known assignment and its desired stream, ",
-          request.stream_index(), ", is unavailable");
-    }
-    TF_RETURN_IF_ERROR(ReassignPreviouslyAssignedStream(
-        request.stream_index(), request.worker_address()));
+  if (auto it = assignments_.find(request.worker_address());
+      it == assignments_.end()) {
+    return errors::Internal("tf.data snapshot worker ",
+                            request.worker_address(), " was assigned stream ",
+                            request.stream_index(),
+                            ", but the assignment is no longer available.");
   } else if (it->second != request.stream_index()) {
     return errors::Internal("worker ", request.worker_address(),
                             " think it's assigned stream ",
@@ -399,8 +413,8 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
   std::string split_path =
       SplitPath(path_, request.stream_index(), request.source_index(),
                 local_split_index, global_split_index);
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
-      split_path, split, tsl::io::compression::kNone, env_));
+  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
+      split_path, {split}, tsl::io::compression::kNone, env_));
   split.AsProtoTensorContent(response.mutable_split());
 
   ++stream.num_assigned_splits[request.source_index()];
@@ -413,37 +427,11 @@ Status SnapshotManager::GetSnapshotStreams(
   for (int64_t i = 0; i < streams_.size(); ++i) {
     SnapshotStreamInfo* stream = response.add_streams();
     stream->set_index(i);
-    if (orphans_.contains(i)) {
-      stream->set_state(SnapshotStreamInfo::ORPHAN);
-    } else if (unknowns_.contains(i)) {
-      stream->set_state(SnapshotStreamInfo::UNKNOWN);
-    } else {
-      stream->set_state(streams_[i].done ? SnapshotStreamInfo::DONE
-                                         : SnapshotStreamInfo::ASSIGNED);
-    }
+    stream->set_state(streams_[i].state == Stream::State::kDone
+                          ? SnapshotStreamInfo::DONE
+                          : SnapshotStreamInfo::ASSIGNED);
   }
   return OkStatus();
-}
-
-void SnapshotManager::HandleMissingWorker(absl::string_view worker_address) {
-  if (auto it = assignments_.find(worker_address); it != assignments_.end()) {
-    LOG(INFO) << "deleting assignment for stream " << it->second
-              << " due to lost worker " << worker_address;
-    orphans_.insert(it->second);
-    assignments_.erase(it);
-  }
-}
-
-void SnapshotManager::UpdateStreams() {
-  // Check for streams to move from `unknowns_` to `orphans_`.
-  if (resume_time_micros_.has_value() && !unknowns_.empty() &&
-      absl::Microseconds(env_->NowMicros()) - resume_time_micros_.value() >
-          kWorkerTimeout) {
-    for (auto stream_index : unknowns_) {
-      orphans_.insert(stream_index);
-    }
-    unknowns_.clear();
-  }
 }
 
 }  // namespace data

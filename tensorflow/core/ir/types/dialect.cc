@@ -417,7 +417,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
 
 // Get or create a shape attribute.
 ShapeAttr ShapeAttr::get(MLIRContext* context,
-                         llvm::Optional<ArrayRef<int64_t>> shape) {
+                         std::optional<ArrayRef<int64_t>> shape) {
   if (shape) return Base::get(context, *shape, /*unranked=*/false);
 
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
@@ -431,7 +431,7 @@ ShapeAttr ShapeAttr::get(MLIRContext* context, ShapedType shaped_type) {
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
 }
 
-llvm::Optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
+std::optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
   if (hasRank()) return getShape();
   return std::nullopt;
 }
@@ -456,7 +456,7 @@ bool ShapeAttr::hasStaticShape() const {
 namespace {
 // Returns the shape of the given value if it's ranked; returns std::nullopt
 // otherwise.
-Optional<ArrayRef<int64_t>> GetShape(Value value) {
+std::optional<ArrayRef<int64_t>> GetShape(Value value) {
   auto shaped_type = value.getType().cast<ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
   return std::nullopt;
@@ -502,12 +502,12 @@ bool GetCastCompatibleShape(ArrayRef<int64_t> a_shape,
 
 OperandShapeIterator::OperandShapeIterator(Operation::operand_iterator it)
     : llvm::mapped_iterator<Operation::operand_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 ResultShapeIterator::ResultShapeIterator(Operation::result_iterator it)
     : llvm::mapped_iterator<Operation::result_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 //===----------------------------------------------------------------------===//
@@ -863,9 +863,11 @@ Attribute TensorProtoAttr::parse(AsmParser& parser, Type type) {
     parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
     return nullptr;
   }
+  auto shapedType = type.dyn_cast<ShapedType>();
+  if (!shapedType) return nullptr;
 
   std::string bytes_data = absl::HexStringToBytes(data.substr(2));
-  return TensorProtoAttr::get(type, bytes_data);
+  return TensorProtoAttr::get(shapedType, bytes_data);
 }
 
 void TensorProtoAttr::print(mlir::AsmPrinter& printer) const {

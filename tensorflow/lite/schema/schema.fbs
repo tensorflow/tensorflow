@@ -414,8 +414,11 @@ enum BuiltinOperator : int32 {
   ATAN2 = 156,
   UNSORTED_SEGMENT_MIN = 157,
   SIGN = 158,
-  AVERAGE_POOL_3D = 159,
-  MAX_POOL_3D = 160
+  BITCAST = 159,
+  BITWISE_XOR = 160,
+  RIGHT_SHIFT = 161,
+  AVERAGE_POOL_3D = 162,
+  MAX_POOL_3D = 163,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -544,7 +547,10 @@ union BuiltinOptions {
   UnsortedSegmentSumOptions,
   ATan2Options,
   SignOptions,
-  Pool3DOptions
+  BitcastOptions,
+  BitwiseXorOptions,
+  RightShiftOptions,
+  Pool3DOptions,
 }
 
 // LINT.IfChange
@@ -1179,6 +1185,15 @@ table UnsortedSegmentMinOptions{
 }
 
 table SignOptions {
+}
+
+table BitcastOptions {
+}
+
+table BitwiseXorOptions {
+}
+
+table RightShiftOptions {
 }
 
 table Pool3DOptions {

@@ -178,12 +178,13 @@ def initialize_accelerator_system(
         "Call tf.experimental.dtensor.shutdown_accelerator_system() first.")
 
   if experimental_reset_context:
-    logging.warn(
-        "experimental_reset_context is True. "
-        "Resetting TensorFlow context. Existing TensorFlow objects "
-        "(e.g. Tensors and resources) are invalidated."
-    )
-    context.context().ensure_uninitialized()  # pylint: disable=protected-access
+    if context.context()._initialized:    # pylint: disable=protected-access
+      logging.warn(
+          "experimental_reset_context is True. "
+          "Resetting TensorFlow context. Existing TensorFlow objects "
+          "(e.g. Tensors and resources) are invalidated."
+      )
+      context.context().ensure_uninitialized()
 
   if context.context()._initialized:  # pylint: disable=protected-access
     raise ValueError(
@@ -251,24 +252,27 @@ def initialize_accelerator_system(
 def shutdown_accelerator_system() -> None:
   """Shuts down the accelerator system."""
   global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
-  context.async_wait()
+  try:
+    context.async_wait()
+  finally:
+    if not is_initialized():
+      raise ValueError(
+          "Accelerator system is not initialized. Call "
+          "tf.experimental.dtensor.initialize_accelerator_system first."
+      )
 
-  if not is_initialized():
-    raise ValueError(
-        "Accelerator system is not initialized. Call "
-        "tf.experimental.dtensor.initialize_accelerator_system first.")
+    device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
 
-  device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+    if not config.is_local_mode():
+      raise ValueError(
+          "Shutting down accelerator system under multi-client mode is "
+          "not supported."
+      )
 
-  if not config.is_local_mode():
-    raise ValueError(
-        "Shutting down accelerator system under multi-client mode is "
-        "not supported.")
+    if device_type == "TPU" and not config.backend_is_pw():
+      tpu_util.shutdown_tpu_system()
 
-  if device_type == "TPU" and not config.backend_is_pw():
-    tpu_util.shutdown_tpu_system()
-
-  # reset TF context to stop gRPC servers.
-  context._reset_context()  # pylint: disable=protected-access
-  context.context()._clear_caches()  # pylint: disable=protected-access
-  _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = None
+    # reset TF context to stop gRPC servers.
+    context._reset_context()  # pylint: disable=protected-access
+    context.context()._clear_caches()  # pylint: disable=protected-access
+    _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = None

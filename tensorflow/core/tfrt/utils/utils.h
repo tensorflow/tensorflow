@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 class Device;
-class EagerContext;
 }  // namespace tensorflow
 
 namespace tfrt {
@@ -41,12 +40,6 @@ class HostContext;
 
 typedef tensorflow::gtl::InlinedVector<tfrt::DType, 4> TfrtDataTypeVector;
 typedef tensorflow::gtl::ArraySlice<tfrt::DType> TfrtDataTypeSlice;
-
-// TODO(b/161370736): Have a formal method to convert between TF's and TFRT's
-// device name. Currently TFRT adopts the suffix of TF's device name,
-// e.g. CPU:0.
-Expected<const char*> ConvertTfDeviceNameToTfrt(
-    const char* device_name, tensorflow::EagerContext* eager_context);
 
 DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype);
 
@@ -93,14 +86,14 @@ int64_t GetUniqueInt();
 #define RETURN_IF_ERROR_IN_INIT(...) \
   RETURN_IF_ERROR_WITH_STAGE_INFO("Initialize TFRT", __VA_ARGS__)
 
-#define RETURN_IF_ERROR_WITH_STAGE_INFO(stage, ...)                         \
-  do {                                                                      \
-    ::tensorflow::Status _status = (__VA_ARGS__);                           \
-    if (TF_PREDICT_FALSE(!_status.ok())) {                                  \
-      return ::tensorflow::errors::CreateWithUpdatedMessage(                \
-          _status, ::tensorflow::strings::StrCat(stage, ": ",               \
-                                                 _status.error_message())); \
-    }                                                                       \
+#define RETURN_IF_ERROR_WITH_STAGE_INFO(stage, ...)                       \
+  do {                                                                    \
+    ::tensorflow::Status _status = (__VA_ARGS__);                         \
+    if (TF_PREDICT_FALSE(!_status.ok())) {                                \
+      return ::tensorflow::errors::CreateWithUpdatedMessage(              \
+          _status,                                                        \
+          ::tensorflow::strings::StrCat(stage, ": ", _status.message())); \
+    }                                                                     \
   } while (0)
 
 // A list of macros similar to `TF_ASSIGN_OR_RETURN`, with additional model
@@ -122,14 +115,14 @@ int64_t GetUniqueInt();
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), stage, lhs, \
       rexpr)
 
-#define ASSIGN_OR_RETURN_WITH_STAGE_INFO_IMPL(statusor, stage, lhs, rexpr)    \
-  auto statusor = (rexpr);                                                    \
-  if (TF_PREDICT_FALSE(!statusor.ok())) {                                     \
-    const auto& _status = statusor.status();                                  \
-    return ::tensorflow::errors::CreateWithUpdatedMessage(                    \
-        _status,                                                              \
-        ::tensorflow::strings::StrCat(stage, ": ", _status.error_message())); \
-  }                                                                           \
+#define ASSIGN_OR_RETURN_WITH_STAGE_INFO_IMPL(statusor, stage, lhs, rexpr) \
+  auto statusor = (rexpr);                                                 \
+  if (TF_PREDICT_FALSE(!statusor.ok())) {                                  \
+    const auto& _status = statusor.status();                               \
+    return ::tensorflow::errors::CreateWithUpdatedMessage(                 \
+        _status,                                                           \
+        ::tensorflow::strings::StrCat(stage, ": ", _status.message()));    \
+  }                                                                        \
   lhs = std::move(statusor.value())
 
 }  // namespace tfrt

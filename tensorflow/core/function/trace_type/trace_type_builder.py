@@ -29,7 +29,6 @@ class InternalTracingContext(trace.TracingContext):
   def __init__(self, is_legacy_signature: bool = False):
     self._global_to_local_id = {}
     self._alias_id_to_placeholder = {}
-    self._spec_id_to_handledata = {}
     self._is_legacy_signature = is_legacy_signature
 
   def alias_global_id(self, global_id: Hashable) -> Hashable:
@@ -43,12 +42,6 @@ class InternalTracingContext(trace.TracingContext):
 
   def get_placeholder_mapping(self) -> Dict[Hashable, Any]:
     return self._alias_id_to_placeholder
-
-  def add_handledata(self, spec_id: Hashable, handledata: Any) -> None:
-    self._spec_id_to_handledata[spec_id] = handledata
-
-  def get_handledata_mapping(self) -> Dict[Hashable, Any]:
-    return self._spec_id_to_handledata
 
   @property
   def is_legacy_signature(self) -> bool:
@@ -66,13 +59,15 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
   def __init__(self,
                context_graph=None,
                placeholder_mapping=None,
-               handledata_mapping=None,
-               unnest_only=False):
+               unnest_only=False,
+               with_none_control_dependencies=False,
+               composite_device_name=None):
     self._alias_id_to_placeholder = placeholder_mapping or {}
-    self._spec_id_to_handledata = handledata_mapping or {}
     self._naming_scope = None
     self._context_graph = context_graph
     self._unnest_only = unnest_only
+    self._with_none_control_dependencies = with_none_control_dependencies
+    self._composite_device_name = composite_device_name
 
   def has_placeholder(self, alias_id: Hashable) -> bool:
     return alias_id in self._alias_id_to_placeholder
@@ -89,15 +84,6 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
                      "instance of placeholder context.")
     self._alias_id_to_placeholder[alias_id] = placeholder
 
-  def has_handledata(self, spec_id: Hashable) -> bool:
-    return spec_id in self._spec_id_to_handledata
-
-  def get_handledata(self, spec_id: Hashable) -> Any:
-    if not self.has_handledata(spec_id):
-      raise KeyError("Could not find handle data for TraceType with "
-                     f"id: {spec_id} in this instance of placeholder context.")
-    return self._spec_id_to_handledata[spec_id]
-
   def update_naming_scope(self, naming_scope: Optional[str]) -> None:
     self._naming_scope = naming_scope
 
@@ -112,6 +98,14 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
   @property
   def unnest_only(self) -> bool:
     return self._unnest_only
+
+  @property
+  def with_none_control_dependencies(self) -> bool:
+    return self._with_none_control_dependencies
+
+  @property
+  def composite_device_name(self) -> Any:
+    return self._composite_device_name
 
 
 class InternalCastContext(trace.CastContext):

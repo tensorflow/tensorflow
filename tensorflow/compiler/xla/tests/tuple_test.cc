@@ -149,7 +149,7 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNonTupleFailsGracefully) {
   auto result_status = builder.Build();
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(
-      result_status.status().error_message(),
+      result_status.status().message(),
       ::testing::HasSubstr("Operand to GetTupleElement() is not a tuple"));
 }
 
@@ -252,10 +252,6 @@ XLA_TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
 }
 
 XLA_TEST_F(TupleTest, NestedTuples) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Nested tuples are not supported by the MLIR pipeline";
-  }
-
   XlaBuilder builder(TestName());
   auto inner_tuple = Tuple(&builder, {ConstantR1<float>(&builder, {1.0, 2.0}),
                                       ConstantR0<float>(&builder, 42.0)});
@@ -272,10 +268,6 @@ XLA_TEST_F(TupleTest, NestedTuples) {
 }
 
 XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Nested tuples are not supported by the MLIR pipeline";
-  }
-
   XlaBuilder builder(TestName());
 
   Shape data_shape = ShapeUtil::MakeShape(F32, {3});
@@ -305,10 +297,6 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
 }
 
 XLA_TEST_F(TupleTest, ComplexTuples) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Nested tuples are not supported by the MLIR pipeline";
-  }
-
   XlaBuilder builder(TestName());
   {
     Shape c64r0 = ShapeUtil::MakeShape(C64, {});
@@ -381,9 +369,9 @@ XLA_TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Expected instruction to have shape equal to"));
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("actual shape is"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("actual shape is"));
 }
 
 XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {

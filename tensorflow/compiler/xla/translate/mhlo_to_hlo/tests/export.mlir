@@ -606,6 +606,9 @@ func.func @main() {
   // CHECK: f8e4m3fn[4] constant({1, 2, 3, 4})
   %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
 
+  // CHECK: f8e4m3b11fnuz[4] constant({1, 2, 3, 4})
+  %cst_13 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3B11FNUZ>
+
   func.return
 }
 
@@ -856,6 +859,50 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  schedule=SCHEDULE_EARLIEST
 // CHECK-SAME:  backend_config="bar"
 
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tuple<tensor<2x3xf32>> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> tuple<tensor<2x3xf32>>
+  func.return %0 : tuple<tensor<2x3xf32>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  (f32[2,3]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tuple<tensor<2x3xf32>, tensor<4x5xf16>> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> tuple<tensor<2x3xf32>, tensor<4x5xf16>>
+  func.return %0 : tuple<tensor<2x3xf32>, tensor<4x5xf16>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  (f32[2,3], f16[4,5]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<4x5xf16>) {
+  %0:2 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<4x5xf16>)
+  func.return %0#0, %0#1 : tensor<2x3xf32>, tensor<4x5xf16>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  [[OUTS:%.*]] = (f32[2,3], f16[4,5]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-DAG:  [[OUT0:%.*]] = f32[2,3] get-tuple-element((f32[2,3], f16[4,5]) [[OUTS]]), index=0
+// CHECK-DAG:  [[OUT1:%.*]] = f16[4,5] get-tuple-element((f32[2,3], f16[4,5]) [[OUTS]]), index=1
+// CHECK:  ROOT
+// CHECK-SAME: (f32[2,3], f16[4,5]) tuple(f32[2,3] [[OUT0]], f16[4,5] [[OUT1]])
 
 // -----
 
@@ -872,6 +919,36 @@ func.func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
 // CHECK: %[[ARG1]] = s8[3] parameter(1)
 // CHECK: ROOT
 // CHECK-SAME: s64[] dot(s8[3] %[[ARG0]], s8[3] %[[ARG1]]),
+
+// -----
+
+// Test dot i4xi4 -> i8
+
+func.func @main(%arg0: tensor<3xi4>, %arg1: tensor<3xi4>) -> tensor<i8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xi4>, tensor<3xi4>) -> tensor<i8>
+  func.return %0 : tensor<i8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: s4[3], [[ARG_2:.*]]: s4[3]) -> s8[]
+// CHECK:  %[[ARG_1:.*]] = s4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = s4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = s8[] dot(s4[3] %[[ARG_1:.*]], s4[3] %[[ARG_2:.*]])
+
+// -----
+
+// Test dot ui4xui4 -> ui8
+
+func.func @main(%arg0: tensor<3xui4>, %arg1: tensor<3xui4>) -> tensor<ui8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xui4>, tensor<3xui4>) -> tensor<ui8>
+  func.return %0 : tensor<ui8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: u4[3], [[ARG_2:.*]]: u4[3]) -> u8[]
+// CHECK:  %[[ARG_1:.*]] = u4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = u4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = u8[] dot(u4[3] %[[ARG_1:.*]], u4[3] %[[ARG_2:.*]])
 
 // -----
 

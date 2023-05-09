@@ -13,7 +13,6 @@ py_binary(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//third_party/py/numpy",

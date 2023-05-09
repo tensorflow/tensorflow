@@ -16,10 +16,10 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 

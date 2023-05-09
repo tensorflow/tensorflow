@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 using tensorflow::DataType;
 using tensorflow::DataTypeVector;
@@ -441,7 +441,7 @@ Location GraphDefImporter::ConvertLocation(const NodeDef &node) {
 
   SmallVector<Location> node_locs;
   node_locs.reserve(original_nodes.size());
-  for (auto &it : llvm::enumerate(original_nodes)) {
+  for (const auto &it : llvm::enumerate(original_nodes)) {
     std::string func_name =
         it.index() < original_funcs.size() ? original_funcs[it.index()] : "";
     node_locs.push_back(ConvertLocation(it.value(), func_name));
@@ -551,7 +551,7 @@ Status GraphDefImporter::ConvertFunctionDef(
   SmallVector<Type> arg_types, res_types;
 
   // Convert the arguments and argument attributes.
-  for (auto &it : llvm::enumerate(signature.input_arg())) {
+  for (const auto &it : llvm::enumerate(signature.input_arg())) {
     Type dtype;
     TF_RETURN_IF_ERROR(ConvertDataType(it.value().type(), b_, &dtype));
     BlockArgument data =
@@ -578,10 +578,10 @@ Status GraphDefImporter::ConvertFunctionDef(
   // otherwise the ranges will be invalidated.
   ConversionState s(body, placeholder_state_);
   for (const auto &it : llvm::enumerate(signature.input_arg())) {
-    s.emplace(
-        it.value().name(),
-        new ResultInfo{/*resolved=*/true, body->getArgument(it.index() * 2 + 1),
-                       body->getArguments().slice(it.index() * 2, 1)});
+    s.emplace(it.value().name(),
+              absl::WrapUnique(new ResultInfo{
+                  /*resolved=*/true, body->getArgument(it.index() * 2 + 1),
+                  body->getArguments().slice(it.index() * 2, 1)}));
   }
   TF_RETURN_IF_ERROR(ConvertNodes(builder, s, function.node_def(), body));
 

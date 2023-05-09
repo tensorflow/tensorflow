@@ -47,18 +47,22 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-CreateDataServiceWorkerClient(const std::string& address,
-                              const std::string& protocol,
-                              const std::string& transfer_protocol) {
-  auto client = std::make_unique<DataServiceWorkerClient>(address, protocol,
-                                                          transfer_protocol);
+CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
+                              const DataTransferServerInfo& info) {
+  auto client = std::make_unique<DataServiceWorkerClient>(
+      info.address(), dispatcher_protocol, info.protocol());
   TF_RETURN_IF_ERROR(client->Initialize());
-  metrics::RecordTFDataServiceDataTransferProtocolUsed(transfer_protocol);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      client->CheckCompatibility(info.compatibility_info()),
+      "for data transfer protocol '", client->GetDataTransferProtocol(),
+      "', the compatibility check between the trainer worker and the ",
+      "tf.data service worker at ", info.address(), "failed");
   return client;
 }
 
@@ -79,8 +83,7 @@ Status DataServiceWorkerClient::EnsureInitialized() {
 }
 
 std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
-  if (transfer_protocol_ == kGrpcTransferProtocol &&
-      LocalWorkers::Get(address_) != nullptr) {
+  if (LocalWorkers::Get(address_) != nullptr) {
     return kLocalTransferProtocol;
   }
   return transfer_protocol_;

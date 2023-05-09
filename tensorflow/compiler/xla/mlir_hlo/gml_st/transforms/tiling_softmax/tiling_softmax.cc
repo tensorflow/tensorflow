@@ -26,11 +26,11 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_TILINGSOFTMAXPASS
@@ -43,15 +43,14 @@ Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
                                  int64_t i) {
   auto matOp =
       llvm::cast<tensor::ExtractSliceOp>(op->getOperand(i).getDefiningOp());
-  FailureOr<Value> fused = createFusedOp(rewriter, matOp);
+  FailureOr<Operation *> fused = fuse(rewriter, matOp);
   assert(succeeded(fused) && "expect success after matching");
-  rewriter.replaceOp(matOp, *fused);
-  return fused->getDefiningOp();
+  return *fused;
 }
 
 LogicalResult tilePartialSoftmax(
     TilingInterface op, PatternRewriter &rewriter,
-    llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
+    llvm::function_ref<FailureOr<TilingResult>(Operation *, int64_t)>
         tileOperationFn) {
   // Match cwise root op.
   // Match all operands to be derived from the same source value in one of two
@@ -59,8 +58,8 @@ LogicalResult tilePartialSoftmax(
   //   i)  by a reduction and subsequent bcast in one dimension, or
   //   ii) by using the source value as is.
   Value commonSource;
-  Optional<int64_t> commonReductionDim;
-  SmallVector<Optional<SimpleBcastReduction>> simpleBcastReductions;
+  std::optional<int64_t> commonReductionDim;
+  SmallVector<std::optional<SimpleBcastReduction>> simpleBcastReductions;
   auto mapOp = llvm::dyn_cast_or_null<linalg::MapOp>(op.getOperation());
   if (!mapOp || mapOp.getNumDpsInits() != 1)
     return rewriter.notifyMatchFailure(op, "no mapOp");
@@ -95,10 +94,12 @@ LogicalResult tilePartialSoftmax(
     return rewriter.notifyMatchFailure(op, "no common dim/src");
 
   // Tile or fuse cwise root op.
-  FailureOr<Operation *> tiledOp = tileOperationFn(op, *commonReductionDim);
-  if (failed(tiledOp))
+  FailureOr<TilingResult> tilingResult =
+      tileOperationFn(op, *commonReductionDim);
+  if (failed(tilingResult))
     return rewriter.notifyMatchFailure(op, "call to tileOperationFn failed");
-  setLabel(*tiledOp, kTileSoftmaxAppliedLabel);
+  Operation *tiledOp = tilingResult->tiledOps[0];
+  setLabel(tiledOp, kTileSoftmaxAppliedLabel);
 
   // Fuse through the bcast reduction chains.
   Value commonTiledSource;
@@ -107,7 +108,7 @@ LogicalResult tilePartialSoftmax(
     if (!simpleBcastReductions[i]) continue;
 
     // Fuse.
-    Operation *tiledBcast = fuseIthOperandInPlace(rewriter, *tiledOp, i);
+    Operation *tiledBcast = fuseIthOperandInPlace(rewriter, tiledOp, i);
     Operation *tiledReduction =
         fuseIthOperandInPlace(rewriter, tiledBcast, /*i=*/0);
 
@@ -122,7 +123,7 @@ LogicalResult tilePartialSoftmax(
   // Also use the common tiled source value for the remaining operands.
   for (size_t i = 0; i < simpleBcastReductions.size(); i++) {
     if (simpleBcastReductions[i]) continue;
-    (*tiledOp)->setOperand(i, commonTiledSource);
+    tiledOp->setOperand(i, commonTiledSource);
   }
 
   return success();
@@ -152,32 +153,35 @@ struct TilePartialSoftmaxPattern
     return tilePartialSoftmax(
         op, rewriter,
         [&](Operation *op,
-            int64_t commonReductionDim) -> FailureOr<Operation *> {
+            int64_t commonReductionDim) -> FailureOr<TilingResult> {
           // Populate tiling options.
-          TilingOptions tilingOptions;
-          tilingOptions.tileSizeComputationFn =
+          scf::SCFTilingOptions tilingOptions;
+          tilingOptions.setTileSizeComputationFunction(
               [&](OpBuilder &b, Operation *op) -> SmallVector<Value> {
-            Location loc = op->getLoc();
-            SmallVector<Value> tileSizeValues;
-            for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
-                 i++) {
-              // Skip tiling the reduction dimension. By convention, this is a
-              // tile size of 0.
-              int64_t tileSizeInDim =
-                  i == commonReductionDim ? 0 : tileSizes[i];
-              tileSizeValues.push_back(
-                  b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
-            }
-            return tileSizeValues;
-          };
+                Location loc = op->getLoc();
+                SmallVector<Value> tileSizeValues;
+                for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
+                     i++) {
+                  // Skip tiling the reduction dimension. By convention, this is
+                  // a tile size of 0.
+                  int64_t tileSizeInDim =
+                      i == commonReductionDim ? 0 : tileSizes[i];
+                  tileSizeValues.push_back(
+                      b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
+                }
+                return tileSizeValues;
+              });
           // Tile.
-          FailureOr<TilingResult> tilingResult =
-              tileUsingGmlSt(tilingOptions, rewriter, op);
+          FailureOr<GMLSTTilingResult> tilingResult = tileUsingSCFForallOp(
+              rewriter, cast<TilingInterface>(op), tilingOptions);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
           setLabel(tilingResult->tiledOps.front(), kTileSoftmaxAppliedLabel);
-          return tilingResult->tiledOps.front();
+          Operation *tiledOp = tilingResult->tiledOps.front();
+          return TilingResult{{tiledOp},
+                              SmallVector<Value>(tiledOp->result_begin(),
+                                                 tiledOp->result_end())};
         });
   }
 
@@ -198,9 +202,9 @@ struct FusePartialSoftmaxPattern
     if (!llvm::isa<TilingInterface>(def)) return failure();
 
     return tilePartialSoftmax(
-        def, rewriter,
+        cast<TilingInterface>(def), rewriter,
         [&](Operation *cwiseOp,
-            int64_t /*commonReductionDim*/) -> FailureOr<Operation *> {
+            int64_t /*commonReductionDim*/) -> FailureOr<TilingResult> {
           auto iface = llvm::dyn_cast_or_null<TilingInterface>(cwiseOp);
           if (!iface) {
             return rewriter.notifyMatchFailure(
@@ -215,15 +219,15 @@ struct FusePartialSoftmaxPattern
           // Fuse.
           SmallVector<OpFoldResult> offsets = op.getMixedOffsets();
           SmallVector<OpFoldResult> sizes = op.getMixedSizes();
-          FailureOr<Value> result =
+          FailureOr<TilingResult> tilingResult =
               iface.generateResultTileValue(rewriter, 0, offsets, sizes);
-          if (failed(result)) {
+          if (failed(tilingResult)) {
             return rewriter.notifyMatchFailure(
                 cwiseOp, "failed to generate result tile");
           }
 
-          rewriter.replaceOp(op, *result);
-          return result->getDefiningOp();
+          rewriter.replaceOp(op, tilingResult->tiledValues[0]);
+          return tilingResult;
         });
   }
 };
@@ -238,11 +242,7 @@ struct FuseUnaryCwisePattern : public OpRewritePattern<tensor::ExtractSliceOp> {
     auto mapOp = dyn_cast_or_null<linalg::MapOp>(source);
     if (!mapOp || mapOp.getNumDpsInputs() != 1) return failure();
     // Fuse.
-    FailureOr<Value> fused = createFusedOp(rewriter, op);
-    if (failed(fused)) return failure();
-
-    rewriter.replaceOp(op, *fused);
-    return success();
+    return fuse(rewriter, op);
   }
 };
 
@@ -252,8 +252,8 @@ struct TilingSoftmaxPass
   explicit TilingSoftmaxPass(ArrayRef<int64_t> ts) { this->tileSizes = ts; }
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry
-        .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
+    registry.insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect,
+                    scf::SCFDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 
@@ -289,5 +289,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
   return std::make_unique<TilingSoftmaxPass>(tileSizes);
 }
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st

@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -78,6 +81,21 @@ struct CompileOptions {
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
+
+  // Key-value string pairs, parsed in order to set miscellaneous options,
+  // overriding if appropriate.
+  using OptionOverride = std::variant<std::string, bool>;
+  std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+
+  // Used to indicate the precision configuration.
+  PrecisionConfig::Precision matrix_unit_operand_precision =
+      PrecisionConfig::DEFAULT;
+
+  // Applies env_option_overrides to executable_build_options.debug_options().
+  Status ApplyAllOptionOverrides();
+
+  // Applies a single option to executable_build_options.debug_options().
+  Status ApplyOption(const std::string& key, const OptionOverride& value);
 
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;

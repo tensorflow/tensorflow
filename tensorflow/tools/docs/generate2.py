@@ -285,7 +285,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
       "tf/nn/sigmoid_cross_entropy_with_logits.md":
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
-          "keras/engine/training.py",
+          "engine/training.py",
   }
 
   all_passed = True

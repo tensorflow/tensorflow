@@ -22,10 +22,10 @@ from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.test_util import get_cluster_def
 from tensorflow.python.distribute.test_util import TestClusterParams
 from tensorflow.python.eager import context
@@ -51,7 +51,7 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import autotrackable
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 # We create one cluster to share between tests. The cluster should be large
@@ -553,17 +553,16 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
       return embedding_ops.safe_embedding_lookup_sparse_v2(
           sv, sp_ids, sp_weights)
 
-    # TODO(chenkai): Add safe_sparse_lookup to the list. Currently
-    # ShardedVariable is converted to a tensor in safe_sparse_lookup.
-    for func in [lookup, sparse_lookup]:
+    for func in [lookup, sparse_lookup, safe_sparse_lookup]:
       num_gather_ops = 0
       for op in func.get_concrete_function().graph.get_operations():
         if op.type == 'ResourceGather':
           num_gather_ops += 1
       self.assertEqual(
-          num_gather_ops, len(v), 'Number of ResourceGather op does not match'
-          ' expected, possibly due to ShardedVariable accidentally being'
-          ' converted to tensor in embedding_lookup ops.')
+          num_gather_ops, len(v), 'Number of ResourceGather op '
+          f'({num_gather_ops}) does not match expected ({len(v)}), possibly '
+          'due to ShardedVariable accidentally being converted to tensor in '
+          'embedding_lookup ops.')
 
     self.assertAllEqual(lookup(), [[1., 2.], [7., 8.], [9., 10.]])
     self.assertAllClose(sparse_lookup(), [[4., 5.], [9., 10.], [3., 4.]])
@@ -705,7 +704,8 @@ class ShardedVariableSaveLoadTest(test.TestCase, parameterized.TestCase):
   def setUp(self):
     super().setUp()
     cluster_def = get_cluster_def(test_cluster_params, num_workers=2, num_ps=3)
-    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+    self.cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -719,7 +719,7 @@ class ShardedVariableSaveLoadTest(test.TestCase, parameterized.TestCase):
           variable_partitioner=sharded_variable.FixedShardsPartitioner(
               num_shards))
     else:
-      strategy = ds_context._get_default_strategy()
+      strategy = distribute_lib._get_default_strategy()
     return strategy
 
   @combinations.generate(

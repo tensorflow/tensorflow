@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -36,8 +38,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -70,7 +74,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 
 void HasError(const Status& s, const error::Code code, StringPiece substr) {
   EXPECT_EQ(s.code(), code) << s;
-  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
+  EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -170,11 +174,12 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         device_mgr_.get(), Env::Default(), &options.config,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
-        Rendezvous::Factory{
-            [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-              *r = new IntraProcessRendezvous(device_mgr);
-              return OkStatus();
-            }}));
+        Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                               tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              new IntraProcessRendezvous(device_mgr));
+          return OkStatus();
+        }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -250,8 +255,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -308,8 +313,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -385,6 +390,10 @@ TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
     }
 
     StackFrame LastUserFrame() const override { return StackFrame{}; }
+
+    std::vector<StackFrame> GetUserFrames(int limit) const override {
+      return {};
+    }
   };
 
   FunctionDef func = test::function::XTimesTwo();
@@ -2019,6 +2028,43 @@ TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
   }
 }
 
+TEST_F(FunctionLibraryRuntimeTest, FullTypeForInt32) {
+  auto T = DT_INT32;
+  FunctionDef int32_func = FDH::Define(
+      // Name
+      "DoubleInt32",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"z: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// z = Add<T>(x, x)
+       {{"z"}, "Add", {"x", "x"}, {{"T", T}}}});
+  Init({int32_func});
+
+  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  auto y = test::AsTensor<float>({1.0, 2.0, 3.0, 4.0});
+  Tensor z;
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "DoubleInt32", {}, &handle));
+
+  const FunctionBody* fb = flr0_->GetFunctionBody(handle);
+  for (const Node* node : fb->arg_nodes) {
+    if (node->name() == "x") {
+      ASSERT_TRUE(node->def().has_experimental_type());
+      FullTypeDef ft = node->def().experimental_type();
+      EXPECT_EQ(ft.type_id(), TFT_PRODUCT);
+      ASSERT_EQ(ft.args_size(), 1);
+      EXPECT_EQ(ft.args(0).type_id(), TFT_SHAPE_TENSOR);
+      ASSERT_EQ(ft.args(0).args_size(), 1);
+      EXPECT_EQ(ft.args(0).args(0).type_id(), TFT_INT32);
+    }
+  }
+}
+
 class UserIntraOpThreadPoolOp : public OpKernel {
  public:
   using OpKernel::OpKernel;
@@ -2403,6 +2449,134 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithControlDeps) {
   // NOTE: We are not removing Identity nodes with any control
   // dependencies yet.
   TF_EXPECT_GRAPH_EQ(expected, Optimize(remove_listarray_and_identity, func));
+}
+
+class TestStackTrace : public AbstractStackTrace {
+ public:
+  explicit TestStackTrace(const std::vector<StackFrame>& frames)
+      : frames_(frames) {}
+
+  absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+
+  StackFrame LastUserFrame() const override { return frames_.back(); }
+
+  std::vector<StackFrame> GetUserFrames(int limit) const override {
+    return frames_;
+  }
+
+  string ToString(const TracePrintingOptions& opts) const override {
+    return "";
+  }
+
+  std::vector<StackFrame> frames_;
+};
+
+TEST(StackTracesMapToGraphDebugInfoTest, EmptyMap) {
+  StackTracesMap map;
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 0);
+  EXPECT_EQ(generated.traces_size(), 0);
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, EmptyFrames) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames;
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 0);
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 0);
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, OneFrame) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 1);
+  EXPECT_EQ(generated.files()[0], "dummy_file_name");
+
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 1);
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[0].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].line(), 10);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].func(),
+            "dummy_function_name");
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, TwoFramesSameFile) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"dummy_file_name", 20, "other_function_name"})};
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 1);
+  EXPECT_EQ(generated.files()[0], "dummy_file_name");
+
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 2);
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[0].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].line(), 10);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].func(),
+            "dummy_function_name");
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[1].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].line(), 20);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].func(),
+            "other_function_name");
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, TwoFramesDifferentFile) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"other_file_name", 20, "other_function_name"})};
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 2);
+  EXPECT_EQ(generated.files()[0], "dummy_file_name");
+  EXPECT_EQ(generated.files()[1], "other_file_name");
+
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 2);
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[0].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].line(), 10);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].func(),
+            "dummy_function_name");
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[1].file_index(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].line(), 20);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].func(),
+            "other_function_name");
+}
+
+TEST(StackTracesTest, CacheCleaningWorks) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"other_file_name", 20, "other_function_name"})};
+  auto stack_trace = TestStackTrace(frames);
+  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
+  stack_trace.WipeCache();
+  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
 }
 
 }  // namespace

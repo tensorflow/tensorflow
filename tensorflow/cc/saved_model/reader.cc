@@ -54,7 +54,8 @@ Status ReadSavedModel(absl::string_view export_dir,
     Status result =
         ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
     if (result.ok()) {
-      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+      metrics::SavedModelReadCount(
+          saved_model::GetWriteVersion(*saved_model_proto))
           .IncrementBy(1);
     }
     return result;
@@ -68,13 +69,14 @@ Status ReadSavedModel(absl::string_view export_dir,
     Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
                                   saved_model_proto);
     if (result.ok()) {
-      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+      metrics::SavedModelReadCount(
+          saved_model::GetWriteVersion(*saved_model_proto))
           .IncrementBy(1);
     }
     return result;
   }
   return Status(
-      error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
                       "export directory path: ",
                       export_dir,
@@ -105,7 +107,7 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
     }
   }
   return Status(
-      error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       strings::StrCat(
           "Could not find meta graph def matching supplied tags: { ",
           absl::StrJoin(tags, " "),

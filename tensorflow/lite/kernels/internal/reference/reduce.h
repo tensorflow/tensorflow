@@ -377,8 +377,8 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
-    if (current >
-        (std::numeric_limits<int64_t>::max() / num_elements_in_axis)) {
+    if (current > static_cast<size_t>(std::numeric_limits<int64_t>::max() /
+                                      num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;

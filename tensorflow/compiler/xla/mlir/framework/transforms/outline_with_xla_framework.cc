@@ -77,6 +77,7 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // Functions should only be outlined once and should only use memrefs
     if (!func) return failure();
+    if (func.getSymName() != "main") return failure();
     if (llvm::any_of(op->getOperandTypes(),
                      [](Type t) { return !t.isa<MemRefType>(); }) ||
         op->getNumResults() != 0)

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
-#include "tensorflow/tsl/util/determinism.h"
 #include "tensorflow/tsl/util/env_var.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
@@ -405,8 +404,9 @@ static void InitializeTypedBuffer(se::Stream* stream,
       // Only double gets random values in double.  Other data types get random
       // values in float then cast them to the target data types.
       using RandomFloatingPointType =
-          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
-                                    T>::type;
+          typename std::conditional<std::is_same<T, Eigen::half>::value ||
+                                        std::is_same<T, Eigen::bfloat16>::value,
+                                    float, T>::type;
       using RandomType =
           typename std::conditional<std::is_integral<T>::value, float,
                                     RandomFloatingPointType>::type;
@@ -414,7 +414,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
       auto upper_bound =
           RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
       auto rand_val = UniformDistribution(RandomType(0), upper_bound, &gen);
-      // For float or double, it is between [0,1].
+      // For bf16, float or double, it is between [0,1].
       // For fp16, it ranges between [0, 0.1].
       // For integer types, element is either 0 or 1 for less overflows
       // especially for int8_t.
@@ -448,11 +448,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64_t* rng_state, se::DeviceMemoryBase buffer) {
   switch (buffer_type) {
     case xla::F16:
-    case xla::BF16:
-      // Using F16 for BF16 initialization: it's fine since we only need some
-      // random number there, and random generator is not working for BF16 (not
-      // all required overloads are there).
       return InitializeTypedBuffer<Eigen::half>(stream, buffer, rng_state);
+    case xla::BF16:
+      return InitializeTypedBuffer<Eigen::bfloat16>(stream, buffer, rng_state);
     case xla::F32:
     case xla::C64:
       return InitializeTypedBuffer<float>(stream, buffer, rng_state);
@@ -464,6 +462,8 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       // semantics and cannot be used as a buffer.
     case xla::S8:
       return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
+    case xla::S16:
+      return InitializeTypedBuffer<int16_t>(stream, buffer, rng_state);
     case xla::S32:
       return InitializeTypedBuffer<int32_t>(stream, buffer, rng_state);
     default:
@@ -519,7 +519,7 @@ bool RequireDeterminism(const HloModuleConfig& config) {
                                         &cudnn_deterministic));
     return cudnn_deterministic;
   }();
-  return tsl::OpDeterminismRequired() || require_cudnn_determinism ||
+  return require_cudnn_determinism ||
          config.debug_options().xla_gpu_deterministic_ops();
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/Support/SourceMgr.h"
@@ -54,7 +55,7 @@ static llvm::SmallVector<Tensor> GetInputTensors(
 
   for (const InputTensorSpec& spec : input_specs) {
     TensorShape shape;
-    CHECK(TensorShapeUtils::MakeShape(spec.dims, &shape).ok());
+    CHECK_OK(TensorShapeUtils::MakeShape(spec.dims, &shape));
     input_tensors.emplace_back(spec.dtype, shape);
 
     // Initialize tensors with random data.
@@ -193,7 +194,7 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
 void RunEigenBenchmark(
     ::testing::benchmark::State& state,
     std::function<void(llvm::ArrayRef<Tensor>,
-                       llvm::Optional<Eigen::ThreadPoolDevice>)>
+                       std::optional<Eigen::ThreadPoolDevice>)>
         compute,
     llvm::ArrayRef<InputTensorSpec> input_specs) {
   // Number of worker threads.
@@ -201,7 +202,7 @@ void RunEigenBenchmark(
 
   // Maybe construct an Eigen thread pool device for evaluating expressions.
   Eigen::ThreadPool thread_pool(num_threads);
-  llvm::Optional<Eigen::ThreadPoolDevice> device;
+  std::optional<Eigen::ThreadPoolDevice> device;
   if (num_threads > 0) device.emplace(&thread_pool, num_threads);
 
   // Generate random inputs based on the tensor specs.

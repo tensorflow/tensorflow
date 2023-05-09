@@ -48,6 +48,13 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
       }
     } else if (function_name.contains("matmul")) {
       spec->coeff_op_quant_dim[1] = -1;
+      if (function_name.contains("with_bias") ||
+          function_name.contains("and_bias")) {
+        spec->biases_params[2] = {{0, 1},
+                                  quant::GetUniformQuantizedTypeForBias};
+      }
+    } else if (function_name.contains("einsum")) {
+      spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};

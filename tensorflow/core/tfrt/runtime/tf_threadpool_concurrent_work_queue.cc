@@ -48,7 +48,7 @@ void TfThreadPoolWorkQueue::AddTask(tfrt::TaskFunction work) {
   });
 }
 
-llvm::Optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(
+std::optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(
     tfrt::TaskFunction work, bool allow_queuing) {
   AddTask(std::move(work));
   return std::nullopt;

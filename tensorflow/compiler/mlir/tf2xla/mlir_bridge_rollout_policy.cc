@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 
+#include <optional>
+
 #include "tensorflow/compiler/jit/flags.h"
 
 namespace tensorflow {
@@ -22,7 +24,7 @@ namespace tensorflow {
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
     const FunctionLibraryDefinition* function_library,
-    std::optional<ConfigProto> config_proto,
+    std::optional<ConfigProto> config_proto, bool run_tpu_bridge,
     bool uses_uninitialized_resource_args, bool is_v1_compat,
     bool record_stats) {
   switch (GetMlirBridgeRolloutState(config_proto)) {

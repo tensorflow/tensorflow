@@ -191,21 +191,22 @@ llvm::SmallVector<mlir::Attribute> ValueToAttribute(
     return {};
   }
 
-  return {
-      dispatchScalarType(type.cast<ShapedType>().getElementType(),
-                         [&](auto dummy) -> mlir::Attribute {
-                           using T = decltype(dummy);
-                           auto& t = std::get<TensorOrMemref<T>>(value.storage);
-                           SmallVector<T> vals;
-                           for (const auto& index : t.view.indices()) {
-                             vals.push_back(t.at(index));
-                           }
-                           if constexpr (std::is_same_v<T, bool>) {
-                             return mlir::DenseElementsAttr::get(type, vals);
-                           } else {
-                             return mlir::DenseElementsAttr::get<T>(type, vals);
-                           }
-                         })};
+  auto shaped_ty = type.cast<ShapedType>();
+  return {dispatchScalarType(shaped_ty, [&](auto dummy) -> mlir::Attribute {
+    using T = decltype(dummy);
+    auto& t = std::get<TensorOrMemref<T>>(value.storage);
+    SmallVector<T> vals;
+    for (const auto& index : t.view.indices()) {
+      vals.push_back(t.at(index));
+    }
+    auto attr_ty =
+        shaped_ty.cloneWith(/*shape=*/t.view.sizes, shaped_ty.getElementType());
+    if constexpr (std::is_same_v<T, bool>) {
+      return mlir::DenseElementsAttr::get(attr_ty, vals);
+    } else {
+      return mlir::DenseElementsAttr::get<T>(attr_ty, vals);
+    }
+  })};
 }
 
 namespace {
@@ -275,6 +276,8 @@ tsl::StatusOr<InterpreterValue> LiteralToValue(const xla::Literal& literal) {
         return tsl::errors::Unimplemented("F8E5M2 not implemented");
       case xla::F8E4M3FN:
         return tsl::errors::Unimplemented("F8E4M3FN not implemented");
+      case xla::F8E4M3B11FNUZ:
+        return tsl::errors::Unimplemented("F8E4M3B11FNUZ not implemented");
       case xla::C64:
         return {{ArrayLiteralToTensor<std::complex<float>>(literal)}};
       case xla::C128:

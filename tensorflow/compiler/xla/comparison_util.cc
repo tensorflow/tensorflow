@@ -36,14 +36,19 @@ bool IsValidComparison(xla::PrimitiveType type, Comparison::Order order) {
     case F32:
     case BF16:
     case F64:
+    case F8E5M2:
+    case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case C64:
     case C128:
       return true;
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -55,11 +60,6 @@ bool IsValidComparison(xla::PrimitiveType type, Comparison::Order order) {
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
-    // TODO(b/259609697): Add support for comparing F8 values. F8 values are
-    // comparable like any other floating-point type, but comparisons are not
-    // yet implemented by any backend.
-    case F8E5M2:
-    case F8E4M3FN:
       return false;
   }
 }
@@ -92,11 +92,13 @@ Comparison::Order DefaultOrdering(Comparison::Type type) {
 // Returns the expected ordering for each primitive type.
 Comparison::Order DefaultOrdering(PrimitiveType type) {
   switch (type) {
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -104,6 +106,7 @@ Comparison::Order DefaultOrdering(PrimitiveType type) {
       return Comparison::Order::kTotal;
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case BF16:
     case F16:
     case F32:
@@ -186,11 +189,11 @@ std::string ComparisonTypeToString(Comparison::Type type) {
   }
 }
 
-std::string ComparisonPrimitiveTypeToString(PrimitiveType type) {
+absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type) {
   return PrimitiveType_Name(type);
 }
 
-std::string ComparisonOrderToString(Comparison::Order order) {
+absl::string_view ComparisonOrderToString(Comparison::Order order) {
   switch (order) {
     case Comparison::Order::kPartial:
       return "PARTIALORDER";
@@ -246,12 +249,14 @@ StatusOr<Comparison::Type> StringToComparisonType(
 
 Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
   switch (type) {
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
       return Type::kSigned;
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -259,6 +264,7 @@ Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
       return Type::kUnsigned;
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case F16:
     case F32:
     case BF16:
@@ -311,13 +317,18 @@ std::optional<Comparison> Comparison::Inverse() const {
     case F32:
     case BF16:
     case F64:
+    case F8E5M2:
+    case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case C64:
     case C128:
+    case S4:
     case S8:
     case S16:
     case S32:
     case S64:
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -326,8 +337,6 @@ std::optional<Comparison> Comparison::Inverse() const {
     case TUPLE:
     case OPAQUE_TYPE:
     case TOKEN:
-    case F8E5M2:
-    case F8E4M3FN:
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:

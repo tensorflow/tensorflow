@@ -671,7 +671,7 @@ array([b'3.14', b'2.72'], dtype=object)
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>:$input,
 
     DefaultValuedOptionalAttr<I64Attr, "-1">:$precision,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$scientific,
@@ -1142,6 +1142,27 @@ to be batched.}]>:$captured_tensors,
   TF_DerivedOperandTypeListAttr Tcaptured = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Returns the callee of this operation.
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
+    }
+
+    // Erases variable arguments from `batch_func_op`. `erase_indices` contains
+    // the indices of the arguments to erase.
+    void eraseArguments(const BitVector& erase_indices);
+
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() {
+      // Merge `in_tensors` and `captured_tensors`. `operand_segment_sizes`
+      // has two elements, so it will be merging two operand ranges (the two
+      // variadic arguments). Attributes like `batch_timeout_micros` will not
+      // make it to the return array.
+      auto segment_sizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(getOperandSegmentSizeAttr());
+      return OperandRangeRange(getOperands(), segment_sizes).join();
+    }
+  }];
 }
 
 def TF_BatchMatMulOp : TF_Op<"BatchMatMul", [Pure, TF_SameOperandsAndResultElementTypeResolveRef]> {
@@ -7510,8 +7531,8 @@ def TF_LinSpaceOp : TF_Op<"LinSpace", [Pure]> {
 
   let description = [{
 A sequence of `num` evenly-spaced values are generated beginning at `start`.
-If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
-so that the last one is exactly `stop`.
+If `num > 1`, the values in the sequence increase by
+`(stop - start) / (num - 1)`, so that the last one is exactly `stop`.
 
 For example:
 
@@ -11166,6 +11187,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
 
     // returns the callee of this operation.
     func::FuncOp func() {
@@ -18883,7 +18906,7 @@ All elements must have the same shape (excepting the first dimension).
     Arg<TF_ResourceTensor, [{The handle to a TensorArray.}], [TF_TensorArrayRead]>:$handle,
     Arg<TF_Float32Tensor, [{A float scalar that enforces proper chaining of operations.}]>:$flow_in,
 
-    DefaultValuedOptionalAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
+    DefaultValuedOptionalAttr<TF_ShapeAttr, "std::nullopt">:$element_shape_except0
   );
 
   let results = (outs
@@ -18911,7 +18934,7 @@ All elements selected by `indices` must have the same shape.
     Arg<TF_Int32Tensor, [{The locations in the TensorArray from which to read tensor elements.}]>:$indices,
     Arg<TF_Float32Tensor, [{A float scalar that enforces proper chaining of operations.}]>:$flow_in,
 
-    DefaultValuedOptionalAttr<TF_ShapeAttr, "llvm::None">:$element_shape
+    DefaultValuedOptionalAttr<TF_ShapeAttr, "std::nullopt">:$element_shape
   );
 
   let results = (outs
@@ -19090,7 +19113,7 @@ Write data via Write and read via Read or Pack.
     Arg<TF_Int32Tensor, [{The size of the array.}]>:$size,
 
     TypeAttr:$dtype,
-    DefaultValuedOptionalAttr<TF_ShapeAttr, "llvm::None">:$element_shape,
+    DefaultValuedOptionalAttr<TF_ShapeAttr, "std::nullopt">:$element_shape,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$dynamic_size,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$clear_after_read,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$identical_element_shapes,
@@ -19861,7 +19884,7 @@ If two elements are equal, the lower-index element appears first.
 
   let arguments = (ins
     Arg<TF_IntOrFpTensor, [{1-D or higher with last dimension at least `k`.}]>:$input,
-    Arg<TF_Int32Tensor, [{0-D.  Number of top elements to look for along the last dimension (along each
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{0-D.  Number of top elements to look for along the last dimension (along each
 row for matrices).}]>:$k,
 
     DefaultValuedOptionalAttr<BoolAttr, "true">:$sorted
@@ -19869,10 +19892,12 @@ row for matrices).}]>:$k,
 
   let results = (outs
     Res<TF_IntOrFpTensor, [{The `k` largest elements along each last dimensional slice.}]>:$values,
-    Res<TF_Int32Tensor, [{The indices of `values` within the last dimension of `input`.}]>:$indices
+    Res<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{The indices of `values` within the last dimension of `input`.}]>:$indices
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tk = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr index_type = TF_DerivedResultTypeAttr<1>;
 
   let hasVerifier = 1;
 }
@@ -20195,6 +20220,8 @@ Must have same shape with `output_scales`.}]>:$output_zero_points,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [Pure]> {
@@ -20227,6 +20254,8 @@ Same shape condition as scales.}]>:$zero_points,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [Pure]> {
@@ -21027,6 +21056,33 @@ where(input) ==> [[0, 0, 0],
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_WriteTrainingPredictionsOp : TF_Op<"WriteTrainingPredictions", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+  let summary = [{
+Writes the given predictions into a RecordIO file using a previously
+  }];
+
+  let description = [{
+initialized global TrainingPredictionWriter. The predictions are transformed
+into a PredictionData proto before they are written to the file.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A tensor of Woodshed Keys corresponding to each of the prediction
+values. These keys should be in byte format.}]>:$keys,
+    Arg<Variadic<TF_Float32Tensor>, [{A list of float tensors containing prediction values.}]>:$predictions_list,
+    Arg<TF_Int64Tensor, [{An int that speficies at which step the predictions are generated.}]>:$step,
+    Arg<TF_Int64Tensor, [{The utc timestamp in microseconds of when the predictions were created.}]>:$timestamp_usec,
+
+    StrArrayAttr:$prediction_names,
+    BoolAttr:$training,
+    StrAttr:$file_path
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr num_predictions = TF_DerivedOperandSizeAttr<1>;
+}
+
 def TF_XdivyOp : TF_Op<"Xdivy", [Pure, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
@@ -21102,8 +21158,8 @@ def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [Pure]> {
   let summary = "Invokes a StableHLO module.";
 
   let description = [{
-This op is experimental and is intended for use with JAX native serialization
-in a TensorFlow context.
+This op is used with JAX native serialization in a TensorFlow context with
+stability guarantees.
   }];
 
   let arguments = (ins
@@ -21116,7 +21172,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     StrAttr:$module,
     TF_ShapeAttrArray:$Sout,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
-    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
+    DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list
   );
 
   let results = (outs
@@ -21418,7 +21475,7 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments]> {
+def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments, DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "XLA Launch Op. For use by the XLA JIT only.";
 
   let arguments = (ins
@@ -22588,7 +22645,8 @@ A pseudo-op to represent host-side computation in an XLA program.
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$host_mlir_module
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$host_mlir_module,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$manual_sharding
   );
 
   let results = (outs
@@ -22615,7 +22673,8 @@ A placeholder op to receive values from a running XLA computation.
 execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
-    I64Attr:$device_ordinal
+    I64Attr:$device_ordinal,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs
@@ -22635,7 +22694,8 @@ A placeholder op to receive values from a running XLA computation with support f
 execution the transfer corresponds to.}]>:$dynamic_key,
     Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
 
-    StrAttr:$key
+    StrAttr:$key,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs
@@ -22654,7 +22714,8 @@ def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", [DeclareOpInterfaceMethods
 execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
-    I64Attr:$device_ordinal
+    I64Attr:$device_ordinal,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs);
@@ -22673,7 +22734,8 @@ A placeholder op to send values to a running XLA computation with support for a 
 execution the transfer corresponds to.}]>:$dynamic_key,
     Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
 
-    StrAttr:$key
+    StrAttr:$key,
+    DefaultValuedOptionalAttr<StrAttr, "\"TPU\"">:$device_type
   );
 
   let results = (outs);

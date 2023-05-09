@@ -24,10 +24,10 @@ limitations under the License.
 // clang-format off
 // These headers must be at the top, before including Python.h header
 // Otherwise, we get C2039 on MSVC due to 'copysign'
-#include "pybind11/complex.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
-#include "pybind11/stl_bind.h"
+#include "pybind11/complex.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
+#include "pybind11/stl_bind.h"  // from @pybind11
 // clang-format on
 
 #include <frameobject.h>
@@ -198,6 +198,11 @@ class StackTraceWrapper : public AbstractStackTrace {
 
     PyGILState_Release(state);
     return *stack_frames_cache_;
+  }
+
+  void WipeCache() override {
+    tensorflow::mutex_lock lock(mu_);
+    stack_frames_cache_ = {};
   }
 
   int get_stacklevel() const { return stacklevel_; }
@@ -491,6 +496,9 @@ PYBIND11_MODULE(_tf_stack, m) {
             return StackTraceWrapper{self.GetUserFrames()};
           },
           "Returns the non-framework frames as a new trace object.")
+      .def(
+          "wipe_cache", [](StackTraceWrapper& self) { self.WipeCache(); },
+          "Remove all cached or generated data.")
       .def(
           "last_user_frame",
           [](const StackTraceWrapper& self) { return self.LastUserFrame(); },

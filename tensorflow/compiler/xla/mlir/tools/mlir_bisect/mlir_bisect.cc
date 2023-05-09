@@ -38,8 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/bisect_lib.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/test_passes.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/deallocation/IR/deallocation_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/test_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
@@ -256,8 +256,8 @@ void ReplaceArgsWithConstants(ModuleOp module,
         bbarg.getType());
     CHECK_EQ(attr.size(), 1) << "unsupported argument";
 
-    bbarg.replaceAllUsesWith(b.create<arith::ConstantOp>(
-        main.getLoc(), attr.front(), bbarg.getType()));
+    bbarg.replaceAllUsesWith(arith::ConstantOp::materialize(
+        b, attr.front(), bbarg.getType(), main.getLoc()));
   }
   while (main.getBody().getNumArguments() > 0) {
     main.getBody().eraseArgument(0);
@@ -289,10 +289,10 @@ int main(int argc, char* argv[]) {
   mlir::thlo::registerAllThloPasses();
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
-  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
 
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::gml_st::GmlStDialect,
+                  mlir::deallocation::DeallocationDialect,
                   mlir::thlo::THLODialect, xla::runtime::RuntimeDialect>();
 
   mlir::MLIRContext context(registry);

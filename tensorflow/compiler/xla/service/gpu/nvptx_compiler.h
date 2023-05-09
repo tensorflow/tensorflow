@@ -44,8 +44,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator,
-      const GpuTargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;

@@ -21,6 +21,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -305,7 +306,7 @@ class Conv2DTransposeTest(test.TestCase):
         [3, 3, 5, 1], mean=0.0, stddev=0.01, dtype=dtypes.float32)
     x = variables.Variable(random_ops.random_normal([3, 10, 5, 1]))
     f = variable_scope.get_variable("f", initializer=initializer)
-    f_shape = array_ops.stack([array_ops.shape(x)[0], 10, 5, 5])
+    f_shape = array_ops_stack.stack([array_ops.shape(x)[0], 10, 5, 5])
     output = nn_ops.conv2d_transpose(
         x, f, f_shape, strides=[1, 1, 1, 1], padding="SAME")
     self.assertEqual(output.get_shape().as_list(), [3, 10, 5, 5])

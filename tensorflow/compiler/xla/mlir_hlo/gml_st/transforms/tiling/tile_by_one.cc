@@ -42,22 +42,6 @@ namespace {
 
 static constexpr llvm::StringRef kTileByOneLabel = "__tile_by_one_label__";
 
-SmallVector<Value> unitTileSizeComputationFunction(OpBuilder &b,
-                                                   Operation *op) {
-  // Determine rank.
-  auto iface = cast<TilingInterface>(op);
-  int64_t rank = iface.getLoopIteratorTypes().size();
-
-  // Build unit tile sizes.
-  auto one = b.create<arith::ConstantIndexOp>(op->getLoc(), 1);
-  OpBuilder::InsertionGuard guard(b);
-  b.setInsertionPointToStart(
-      &op->getParentOfType<func::FuncOp>().getBody().front());
-  SmallVector<Value> tileSize(rank, one);
-
-  return tileSize;
-}
-
 template <typename OpTy>
 struct TileByOnePattern : public OpRewritePattern<OpTy> {
   using OpRewritePattern<OpTy>::OpRewritePattern;
@@ -83,7 +67,8 @@ struct TileByOnePattern : public OpRewritePattern<OpTy> {
 
     // Tile.
     scf::SCFTilingOptions opts;
-    opts.setTileSizeComputationFunction(unitTileSizeComputationFunction);
+    opts.setTileSizes(
+        SmallVector<int64_t>(iface.getLoopIteratorTypes().size(), 1));
     FailureOr<scf::SCFTilingResult> tilingResult =
         tileUsingSCFForOp(rewriter, iface, opts);
     if (failed(tilingResult))
@@ -100,8 +85,6 @@ struct TileByOnePattern : public OpRewritePattern<OpTy> {
 };
 
 struct TileByOnePass : public impl::TileByOnePassBase<TileByOnePass> {
-  TileByOnePass() = default;
-
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<GmlStDialect, arith::ArithDialect, tensor::TensorDialect,
                     scf::SCFDialect>();
@@ -116,7 +99,11 @@ struct TileByOnePass : public impl::TileByOnePassBase<TileByOnePass> {
     RewritePatternSet patterns(ctx);
     // clang-format off
     patterns.add<
+        TileByOnePattern<thlo::ConcatenateOp>,
+        TileByOnePattern<thlo::GatherOp>,
         TileByOnePattern<thlo::ReverseOp>,
+        TileByOnePattern<thlo::ScatterOp>,
+        TileByOnePattern<thlo::SortOp>,
         TileByOnePattern<linalg::MapOp>>(ctx);
     // clang-format on
 

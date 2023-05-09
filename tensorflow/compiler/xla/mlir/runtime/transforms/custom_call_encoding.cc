@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -154,7 +155,7 @@ LLVM::GlobalOp EncodeString(Globals &g, ImplicitLocOpBuilder &b,
 mlir::LLVM::GlobalOp EncodeScalar(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Attribute value,
                                   std::string_view symbol_base) {
-  return g.GetOrCreate(b, value, symbol_base);
+  return g.GetOrCreate(b, cast<TypedAttr>(value), symbol_base);
 }
 
 // Reshape dense elements as a one-dimensional array.
@@ -244,7 +245,7 @@ static LLVM::GlobalOp EncodeArrayAttrData(Globals &g, ImplicitLocOpBuilder &b,
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     Value data = ib.create<LLVM::UndefOp>(arr_type);
     for (int i = 0; i < array.size(); i++) {
-      Value value = ib.create<ConstantOp>(array[i]);
+      Value value = ib.create<ConstantOp>(cast<TypedAttr>(array[i]));
       data = ib.create<LLVM::InsertValueOp>(data, value, i);
     }
     ib.create<LLVM::ReturnOp>(data);
@@ -630,6 +631,7 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
 
   // Floating point types.
   if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
+  if (type.isFloat8E4M3B11FNUZ()) return PrimitiveType::F8E4M3B11FNUZ;
   if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
@@ -977,7 +979,7 @@ FailureOr<LLVM::GlobalOp> EncodeAttributes(
     insert_value(Globals::AddrOf(b, num_attrs), 0);
 
     // Insert encoded attributes into the allocated storage.
-    for (auto &pair : llvm::enumerate(encoded_attrs)) {
+    for (const auto &pair : llvm::enumerate(encoded_attrs)) {
       CustomCallAttrEncoding::Encoded encoded = pair.value().second;
       int64_t offset = 1 + pair.index() * 3;
 
@@ -1153,11 +1155,10 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
     Value offset = b.create<ConstantOp>(i64(memref_offset));
-    Value data = b.create<LLVM::GEPOp>(desc->getElementPtrType(),
-                                       desc->alignedPtr(b, loc), offset);
     auto ptr = LLVM::LLVMPointerType::get(b.getContext());
-    memref = b.create<LLVM::InsertValueOp>(
-        memref, b.create<LLVM::BitcastOp>(ptr, data), 2);
+    Value data = b.create<LLVM::GEPOp>(ptr, memref_ty.getElementType(),
+                                       desc->alignedPtr(b, loc), offset);
+    memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
   }
 
   return memref;
@@ -1300,8 +1301,7 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
 
   // Fill memref descriptor pointers and offset.
   Value gep = b.create<LLVM::GEPOp>(ptr, encoded, alloca, ValueRange({c0, c2}));
-  Value data_ptr = b.create<LLVM::BitcastOp>(memref_desc.getElementPtrType(),
-                                             b.create<LLVM::LoadOp>(ptr, gep));
+  Value data_ptr = b.create<LLVM::LoadOp>(ptr, gep);
   memref_desc.setAllocatedPtr(b, loc, data_ptr);
   memref_desc.setAlignedPtr(b, loc, data_ptr);
 

@@ -964,7 +964,7 @@ def set_other_cuda_vars(environ_cp):
 
 def system_specific_test_config(environ_cp):
   """Add default build and test flags required for TF tests to bazelrc."""
-  write_to_bazelrc('test --flaky_test_attempts=3')
+  write_to_bazelrc('test --flaky_test_attempts=2')
   write_to_bazelrc('test --test_size_filters=small,medium')
 
   # Each instance of --test_tag_filters or --build_tag_filters overrides all
@@ -972,19 +972,19 @@ def system_specific_test_config(environ_cp):
   # single list of filters for the .bazelrc file.
 
   # Filters to use with both --test_tag_filters and --build_tag_filters
-  test_and_build_filters = ['-benchmark-test', '-no_oss']
+  test_and_build_filters = ['-benchmark-test', '-no_oss', '-oss_excluded']
   # Additional filters for --test_tag_filters beyond those in
   # test_and_build_filters
   test_only_filters = ['-oss_serial']
   if is_windows():
-    test_and_build_filters.append('-no_windows')
+    test_and_build_filters += ['-no_windows', '-windows_excluded']
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):
       test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
       test_and_build_filters.append('-gpu')
   elif is_macos():
-    test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
+    test_and_build_filters += ['-gpu', '-nomac', '-no_mac', '-mac_excluded']
   elif is_linux():
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):

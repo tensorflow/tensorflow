@@ -16,7 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_RUNTIME_RUNTIME_H_
 
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -75,6 +78,15 @@ class Runtime {
   // The argument `fn` should be thread-safe.
   void AddCreateRuntimeResourceFn(
       std::function<void(tfrt::ResourceContext*)> fn) {
+    runtime_resource_fns_.emplace_back(
+        [fn = std::move(fn)](const GraphExecutionOptions&,
+                             tfrt::ResourceContext* resource_ctx) {
+          fn(resource_ctx);
+        });
+  }
+  void AddCreateRuntimeResourceFn(
+      std::function<void(const GraphExecutionOptions&, tfrt::ResourceContext*)>
+          fn) {
     runtime_resource_fns_.emplace_back(std::move(fn));
   }
 
@@ -82,9 +94,10 @@ class Runtime {
   // resources.
   //
   // This function is thread-safe.
-  void CreateRuntimeResources(tfrt::ResourceContext* resource_ctx) const {
+  void CreateRuntimeResources(const GraphExecutionOptions& options,
+                              tfrt::ResourceContext* resource_ctx) const {
     for (auto& fn : runtime_resource_fns_) {
-      fn(resource_ctx);
+      fn(options, resource_ctx);
     }
   }
 
@@ -112,9 +125,14 @@ class Runtime {
   std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
       create_request_queue_fn_;
   WorkQueueInterface* work_queue_ = nullptr;
-  std::vector<std::function<void(tfrt::ResourceContext*)>>
+  std::vector<std::function<void(const GraphExecutionOptions& options,
+                                 tfrt::ResourceContext*)>>
       runtime_resource_fns_;
 };
+
+Runtime* GetGlobalRuntime();
+
+void SetGlobalRuntime(Runtime* runtime);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

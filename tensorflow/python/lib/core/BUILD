@@ -39,15 +39,9 @@ cc_library(
     ],
 )
 
-tf_python_pybind_extension(
+alias(
     name = "_pywrap_bfloat16",
-    srcs = ["bfloat16_wrapper.cc"],
-    hdrs = ["bfloat16.h"],
-    deps = [
-        "//tensorflow/tsl/python/lib/core:bfloat16_hdr",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
+    actual = "//tensorflow/tsl/python/lib/core:pywrap_bfloat16",
 )
 
 tf_python_pybind_extension(
@@ -180,11 +174,6 @@ filegroup(
 )
 
 filegroup(
-    name = "safe_ptr_hdr",
-    srcs = ["safe_ptr.h"],
-)
-
-filegroup(
     name = "ndarray_tensor_hdr",
     srcs = ["ndarray_tensor.h"],
 )
@@ -196,7 +185,6 @@ filegroup(
         "ndarray_tensor_bridge.h",
         "py_exception_registry.h",
         "pybind11_status.h",
-        "safe_ptr.h",
         "safe_pyobject_ptr.h",
     ],
 )
@@ -209,7 +197,8 @@ cc_library(
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":py_util",
-        ":safe_ptr",
+        ":safe_pyobject_ptr",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:tfe_context_internal",
@@ -247,23 +236,9 @@ cc_library(
     ],
 )
 
-cc_library(
+filegroup(
     name = "safe_pyobject_ptr_required_hdrs",
-    textual_hdrs = ["safe_pyobject_ptr.h"],
-)
-
-cc_library(
-    name = "safe_ptr",
-    srcs = [
-        "safe_ptr.cc",
-        "//tensorflow/c/eager:headers",
-    ],
-    hdrs = ["safe_ptr.h"],
-    deps = [
-        ":safe_pyobject_ptr",
-        "//tensorflow/c:c_api_no_xla",
-        "//third_party/python_runtime:headers",
-    ],
+    srcs = ["safe_pyobject_ptr.h"],
 )
 
 cc_library(
@@ -271,9 +246,9 @@ cc_library(
     hdrs = [
         "ndarray_tensor.h",
         "ndarray_tensor_bridge.h",
-        "safe_ptr.h",
         "safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
+        "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
@@ -303,13 +278,14 @@ cc_library(
     ]),
     deps = [
         ":ndarray_tensor_bridge",
-        ":safe_ptr",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",
         "//tensorflow/tsl/python/lib/core:float8_lib",
         "//tensorflow/tsl/python/lib/core:numpy",
@@ -325,7 +301,8 @@ cc_library(
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":py_util",
-        ":safe_ptr",
+        ":safe_pyobject_ptr",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:c_api_internal",

@@ -67,6 +67,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -84,6 +85,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
@@ -177,10 +179,16 @@ cc_library(
     name = "tfl_passes",
     srcs = [
         "tfl_passes.cc",
+        "transforms/convert_metadata.cc",
         "transforms/convert_tfl_uint8.cc",
         "transforms/legalize_tfl.cc",
+        "transforms/lower_complex_types.cc",
+        "transforms/lower_global_tensors.cc",
+        "transforms/retain_call_once_funcs.cc",
+        "transforms/strip_metadata.cc",
         "transforms/strip_quant_types.cc",
         "transforms/tfl_legalize_patterns.inc",
+        "transforms/verify_fully_converted.cc",
     ],
     hdrs = [
         "tfl_passes.h",
@@ -200,8 +208,10 @@ cc_library(
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",

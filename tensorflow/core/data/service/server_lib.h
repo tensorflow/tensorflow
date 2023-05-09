@@ -159,6 +159,12 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   void StopServiceInternal() override;
 
  private:
+  // If an alternative data transfer protocol is configured, tries to start a
+  // transfer server for it, adding an entry to `transfer_servers` if
+  // successful.
+  void MaybeStartAlternativeDataTransferServer(
+      std::vector<DataTransferServerInfo>& transfer_servers);
+
   const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;

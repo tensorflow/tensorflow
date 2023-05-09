@@ -25,6 +25,7 @@ REGISTER6(BinaryOp, CPU, "Xlogy", functor::xlogy, Eigen::half, bfloat16, float,
 REGISTER3(BinaryOp, GPU, "Xlogy", functor::xlogy, float, Eigen::half, double);
 REGISTER2(BinaryOp, GPU, "Xlogy", functor::xlogy, complex64, complex128);
 #endif
+REGISTER(BinaryOp, GPU, "Xlogy", functor::xlogy, bfloat16);
 #endif
 
 }  // namespace tensorflow

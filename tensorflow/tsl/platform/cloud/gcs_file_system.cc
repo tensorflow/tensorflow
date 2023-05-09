@@ -645,9 +645,9 @@ class GcsWritableFile : public WritableFile {
     if (errors::IsNotFound(upload_status)) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
-      return errors::Unavailable(strings::StrCat(
-          "Upload to gs://", bucket_, "/", object_,
-          " failed, caused by: ", upload_status.error_message()));
+      return errors::Unavailable(
+          strings::StrCat("Upload to gs://", bucket_, "/", object_,
+                          " failed, caused by: ", upload_status.message()));
     }
     if (upload_status.ok()) {
       if (should_compose) {
@@ -1374,10 +1374,10 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
     if (status.ok()) {
       old_content << read_chunk;
       offset += kReadAppendableFileBufferSize;
-    } else if (status.code() == error::NOT_FOUND) {
+    } else if (status.code() == absl::StatusCode::kNotFound) {
       // New file, there is no existing content in it.
       break;
-    } else if (status.code() == error::OUT_OF_RANGE) {
+    } else if (status.code() == absl::StatusCode::kOutOfRange) {
       // Expected, this means we reached EOF.
       old_content << read_chunk;
       break;
@@ -1564,11 +1564,11 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
 
 Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
   const Status status = GetBucketMetadata(bucket, nullptr);
-  switch (status.code()) {
-    case errors::Code::OK:
+  switch (static_cast<absl::StatusCode>(status.code())) {
+    case absl::StatusCode::kOk:
       *result = true;
       return OkStatus();
-    case errors::Code::NOT_FOUND:
+    case absl::StatusCode::kNotFound:
       *result = false;
       return OkStatus();
     default:
@@ -2074,7 +2074,7 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
   if (!IsDirectory(dirname, token).ok()) {
     *undeleted_dirs = 1;
     return Status(
-        error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         strings::StrCat(dirname, " doesn't exist or not a directory."));
   }
   std::vector<string> all_objects;

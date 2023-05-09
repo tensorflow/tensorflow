@@ -271,8 +271,8 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 42.0"));
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
 XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
@@ -295,8 +295,8 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
 XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
@@ -318,8 +318,8 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
-  EXPECT_THAT(status.error_message(), HasSubstr("Failed: 1.0"));
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), HasSubstr("Failed: 1.0"));
 }
 
 XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
@@ -341,8 +341,8 @@ XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(),
               HasSubstr("Fail with raw backend config str: foo"));
 }
 

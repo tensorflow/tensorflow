@@ -192,7 +192,6 @@ cc_library(
         ":acceleration_test_util",
         ":kernel_util",
         ":test_delegate_providers_lib",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:simple_planner",
@@ -216,6 +215,7 @@ cc_library(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/versioning",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -236,6 +236,7 @@ cc_library(
         "//tensorflow/lite/tools/delegates:hexagon_delegate_provider",
         "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
         "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:delegate_provider",
     ] + select({
         # Metal GPU delegate for iOS has its own setups for kernel tests, so
         # skipping linking w/ the gpu_delegate_provider.
@@ -390,7 +391,7 @@ cc_library(
         "//tensorflow/lite:macros",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "@pthreadpool//:pthreadpool",
+        "@pthreadpool",
     ] + select({
         # This select must match the similar select in `copts`
         "//tensorflow:linux_ppc64le": [],
@@ -473,7 +474,6 @@ cc_library(
 cc_test(
     name = "cpu_backend_gemm_test",
     srcs = ["cpu_backend_gemm_test.cc"],
-    tags = ["notsan"],
     deps = [
         ":cpu_backend_context",
         ":cpu_backend_gemm",
@@ -586,6 +586,8 @@ BUILTIN_KERNEL_SRCS = [
     "batch_to_space_nd.cc",
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
+    "bitcast.cc",
+    "bitwise_xor.cc",
     "broadcast_args.cc",
     "broadcast_to.cc",
     "bucketize.cc",
@@ -655,6 +657,7 @@ BUILTIN_KERNEL_SRCS = [
     "resize_nearest_neighbor.cc",
     "reverse.cc",
     "reverse_sequence.cc",
+    "right_shift.cc",
     "round.cc",
     "scatter_nd.cc",
     "segment_sum.cc",
@@ -753,8 +756,8 @@ cc_library(
         ":variable_op_kernels",
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
-        "//tensorflow/core/lib/random:philox_random",
-        "//tensorflow/core/lib/random:random_distributions_utils",
+        "//tensorflow/tsl/lib/random:philox_random",
+        "//tensorflow/tsl/lib/random:random_distributions_utils",
         "//tensorflow/lite/core/c:c_api_types",
         # TODO(b/179298174): Move out from the experimental directory.
         "//tensorflow/lite/experimental/resource",
@@ -896,9 +899,11 @@ cc_library(
     name = "builtin_ops_list",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["builtin_ops_list.inc"],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+)
+
+exports_files(
+    srcs = ["builtin_ops_list.inc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 # For internal usage by shared libraries only.
@@ -1037,8 +1042,9 @@ cc_test(
 
 cc_test(
     name = "add_test",
-    size = "small",
+    size = "medium",
     srcs = ["add_test.cc"],
+    shard_count = 10,
     tags = [
         "tflite_nnapi",
         "tflite_xnnpack",
@@ -2192,7 +2198,9 @@ cc_test(
     name = "squeeze_test",
     size = "small",
     srcs = ["squeeze_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+    ],
     deps = [
         ":test_main",
         ":test_util",
@@ -2670,18 +2678,6 @@ cc_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_test(
     name = "mirror_pad_test",
     srcs = ["mirror_pad_test.cc"],
@@ -2842,7 +2838,7 @@ exports_files(
         "builtin_op_kernels.h",
         "fully_connected.h",
     ],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 cc_test(
@@ -2974,6 +2970,40 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bitcast_test",
+    size = "small",
+    srcs = ["bitcast_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bitwise_xor_test",
+    size = "small",
+    srcs = ["bitwise_xor_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "right_shift_test",
+    size = "small",
+    srcs = ["right_shift_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

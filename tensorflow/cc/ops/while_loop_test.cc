@@ -42,7 +42,7 @@ class WhileLoopTest : public ::testing::Test {
     Status s =
         ops::BuildWhileLoop(scope_, inputs_, cond, body, kFrameName, &outputs_);
     EXPECT_EQ(s.code(), error_code);
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
 
   template <typename T>

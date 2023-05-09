@@ -137,6 +137,8 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Tmlp",
         "TmlpV2",
         "TmlpV3",
+        "Pmlp",
+        "FastUnsortedSegmentMax",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {
@@ -406,7 +408,6 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "FusedBatchNormGradV3",
                                      "LeakyRelu",
                                      "LeakyReluGrad",
-                                     "Mean",
                                      "Mul",
                                      "Sub",
                                      "Elu",
@@ -447,6 +448,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "Exp",
         "Expm1",
         "L2Loss",
+        "Mean",
         "Pow",
         "SaveV2",
         "SoftmaxCrossEntropyWithLogits",

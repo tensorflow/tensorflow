@@ -21,7 +21,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -95,8 +96,8 @@ def _tf_ag_dataset_for_stmt(
 
     if extra_test is not None:
       extra_cond = extra_test()
-      new_loop_vars = control_flow_ops.cond(extra_cond, main_path,
-                                            lambda: loop_vars)
+      new_loop_vars = cond.cond(extra_cond, main_path,
+                                lambda: loop_vars)
     else:
       # TODO(mdan): the optimizer should be able to remove an invariant cond?
       extra_cond = (constant_op.constant(True),)  # dummy value, unused
@@ -141,7 +142,7 @@ def _tf_ag_dataset_len(s):
   # In case there are more UNKNOWN cases for dataset, we could
   # use dataset.reduce() to find out the length (in an expensive way).
   with ops.control_dependencies([
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.logical_and(
               math_ops.not_equal(l, dataset_ops.INFINITE),
               math_ops.not_equal(l, dataset_ops.UNKNOWN)), [msg])
@@ -155,7 +156,9 @@ def _tf_ag_dataset_enumerate(ds, start=0):
   return ds.enumerate(start)
 
 
-def _tf_ag_dataset_zip(*iterables):
+def _tf_ag_dataset_zip(*iterables, strict=False):
+  if strict:
+    raise ValueError("strict zip not supported by Dataset")
   return dataset_ops.DatasetV2.zip(iterables)
 
 

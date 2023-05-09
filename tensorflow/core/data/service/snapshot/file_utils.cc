@@ -22,11 +22,14 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -91,20 +94,20 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
   return tsl::OkStatus();
 }
 
-tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
-                                    const Tensor& tensor,
-                                    absl::string_view compression,
-                                    tsl::Env* env) {
+tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                     const std::vector<Tensor>& tensors,
+                                     absl::string_view compression,
+                                     tsl::Env* env) {
   auto nonatomically_write = [&](const std::string& uncomitted_filename) {
     snapshot_util::TFRecordWriter writer(uncomitted_filename,
                                          std::string(compression));
     TF_RETURN_IF_ERROR(writer.Initialize(env));
-    TF_RETURN_IF_ERROR(writer.WriteTensors({tensor}));
+    TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
     return tsl::OkStatus();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
-      "Requested to write tensor: ", tensor.DebugString());
+      " Requested file: ", filename);
   return tsl::OkStatus();
 }
 
@@ -118,11 +121,39 @@ tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
   }
 
   for (std::string& file : files) {
-    if (!absl::EndsWith(file, kTempFileSuffix)) {
+    if (!IsTemporaryFile(file)) {
       result.push_back(std::move(file));
     }
   }
   return result;
+}
+
+Status ValidateSnapshot(const std::string& snapshot_path, tsl::Env* env) {
+  if (!env->FileExists(snapshot_path).ok()) {
+    return errors::NotFound("Failed to load tf.data snapshot at ",
+                            snapshot_path,
+                            ": The snapshot directory does not exist.");
+  }
+  if (env->FileExists(SnapshotErrorFilePath(snapshot_path)).ok()) {
+    StatusProto status_proto;
+    TF_RETURN_IF_ERROR(ReadTextProto(env, SnapshotErrorFilePath(snapshot_path),
+                                     &status_proto));
+    Status status = tsl::StatusFromProto(status_proto);
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        status, "Failed to load tf.data snapshot at ", snapshot_path,
+        " since the save job failed to write it.");
+    return status;
+  }
+  if (!env->FileExists(SnapshotDoneFilePath(snapshot_path)).ok()) {
+    return errors::InvalidArgument(
+        "Failed to load tf.data snapshot at ", snapshot_path,
+        ". The save job has not finished writing the snapshot.");
+  }
+  return OkStatus();
+}
+
+bool IsTemporaryFile(absl::string_view filename) {
+  return absl::EndsWith(filename, kTempFileSuffix);
 }
 
 }  // namespace data

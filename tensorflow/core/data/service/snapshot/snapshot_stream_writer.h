@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -30,10 +32,13 @@ limitations under the License.
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
+
+constexpr int64_t kDefaultMaxChunkSizeBytes = 2 * (size_t{1} << 30);  // 2GB
 
 struct SnapshotWriterParams {
   // The directory path of the snapshot. See the comment on SnapshotStreamWriter
@@ -79,31 +84,27 @@ struct SnapshotWriterParams {
         "SnapshotWriterParams { base_path: $0, stream: $1, compression: $2 }",
         snapshot_path, stream_index, compression);
   }
-
- private:
-  static constexpr int64_t kDefaultMaxChunkSizeBytes =
-      10 * (size_t{1} << 30);  // 10GB
 };
 
 // Responsible for writing one snapshot stream, which is organized as following:
 //
 // - snapshot
-//   - LEASE
 //   - DONE
+//   - ERROR
 //   - snapshot.metadata
 //   - dataset_def.proto
 //   - chunks
-//     - chunk_<stream_index>_<chunk_index>
+//     - chunk_<stream_index>_<chunk_index>_<num_elements>
 //   - streams
 //     - stream_0
-//       - LEASE
 //       - DONE
+//       - ERROR
 //       - splits
 //         - split_<local_split_index>_<global_split_index>
 //       - uncommitted chunks
 //         - chunk_<chunk_index>
 //       - checkpoints
-//         - checkpoint_<chunk_index>
+//         - checkpoint_<chunk_index>_<num_elements>
 //
 // This class is thread-safe.
 class SnapshotStreamWriter {
@@ -187,16 +188,23 @@ class SnapshotStreamWriter {
   // Restores from the last checkpoint.
   Status Restore();
 
-  // Returns the index of the last checkpointed chunk.
-  StatusOr<int64_t> LastCheckpointIndex() const;
+  // Returns the filename of the most recent checkpoint.
+  StatusOr<std::string> LastCheckpointName() const;
 
   // Synchronizes the checkpoint with the committed chunks. This is called when
   // the worker restores the snapshot in case the worker fails after writing the
-  // checkpoint but before committing a chunk file.
-  Status SyncCheckpointWithChunks(int64_t checkpoint_index);
+  // checkpoint but before committing a chunk file. If no checkpoint has been
+  // written, `checkpoint_index` is nullopt.
+  Status SyncCheckpointWithChunks(std::optional<int64_t> checkpoint_index,
+                                  int64_t checkpoint_num_elements);
 
-  // Returns the path of the checkpoint for `chunk_index`.
-  std::string CheckpointPath(int64_t chunk_index) const;
+  // Returns the path of the checkpoint for `chunk_index` with
+  // `chunk_num_elements`.
+  std::string CheckpointPath(int64_t chunk_index,
+                             int64_t chunk_num_elements) const;
+
+  // Returns the path of the checkpoint for `checkpoint_name`.
+  std::string CheckpointPath(const std::string& checkpoint_name) const;
 
   const SnapshotWriterParams params_;
 
@@ -207,6 +215,8 @@ class SnapshotStreamWriter {
   int64_t chunk_index_ = 0;
   // Size of the current chunk.
   int64_t chunk_size_bytes_ = 0;
+  // Number of elements in current chunk.
+  int64_t chunk_num_elements_ = 0;
 
   // True if the dataset is exhausted.
   bool end_of_sequence_ = false;

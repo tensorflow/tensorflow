@@ -15,6 +15,7 @@
 """Tests for tensorflow.python.framework.constant_op."""
 
 from absl.testing import parameterized
+import numpy as np
 
 from google.protobuf import text_format
 
@@ -58,29 +59,6 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       constant_op.constant("hello", dtype)
 
-  @parameterized.parameters([
-      dtypes.int32_w,
-      dtypes.int64_w,
-      dtypes.float32_w,
-      dtypes.float64_w,
-      dtypes.complex128_w,
-  ])
-  def test_weak_dtypes(self, dt):
-    res = constant_op.constant(1, dtype=dt)
-    self.assertEqual(res.dtype, dt)
-    self.assertTrue(dtypes.is_weak_type(res.dtype))
-
-  @parameterized.parameters([
-      dtypes.int32_w,
-      dtypes.int64_w,
-      dtypes.float32_w,
-      dtypes.float64_w,
-      dtypes.complex128_w,
-  ])
-  def test_weak_dtype_repr(self, dt):
-    res = constant_op.constant(1, dtype=dt)
-    self.assertIn("weak_type=True", repr(res))
-
   def _make_graph_def(self, text):
     ret = graph_pb2.GraphDef()
     text_format.Parse(text, ret)
@@ -105,6 +83,15 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
       return x_id
 
     self.assertAllClose(3.14, f_using_eagerconst(constant_op.constant(3.14)))
+
+  def test_np_array_memory_not_shared(self):
+    # An arbitrarily large loop number to test memory sharing
+    for _ in range(10000):
+      x = np.arange(10)
+      xt = constant_op.constant(x)
+      x[3] = 42
+      # Changing the input array after `xt` is created should not affect `xt`
+      self.assertEqual(xt.numpy()[3], 3)
 
   def test_eager_const_grad_error(self):
 

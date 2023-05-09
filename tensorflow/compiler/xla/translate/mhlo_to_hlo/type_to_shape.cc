@@ -50,6 +50,8 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     return PrimitiveType::F8E5M2;
   } else if (type.isFloat8E4M3FN()) {
     return PrimitiveType::F8E4M3FN;
+  } else if (type.isFloat8E4M3B11FNUZ()) {
+    return PrimitiveType::F8E4M3B11FNUZ;
   } else if (type.isBF16()) {
     return PrimitiveType::BF16;
   } else if (type.isF16()) {
@@ -72,6 +74,8 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     switch (integer_type.getWidth()) {
       case 1:
         return PrimitiveType::PRED;
+      case 4:
+        return is_unsigned ? PrimitiveType::U4 : PrimitiveType::S4;
       case 8:
         return is_unsigned ? PrimitiveType::U8 : PrimitiveType::S8;
       case 16:
@@ -101,6 +105,9 @@ std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
       return std::make_tuple(DimLevelType::DIM_COMPRESSED, unique, ordered);
     case mlir::sparse_tensor::LevelFormat::Dense:
       return std::make_tuple(DimLevelType::DIM_DENSE, unique, ordered);
+    case mlir::sparse_tensor::LevelFormat::CompressedWithHi:
+      return std::make_tuple(DimLevelType::DIM_COMPRESSED_WITH_HI, unique,
+                             ordered);
     default:
       return std::nullopt;
   }
@@ -203,10 +210,9 @@ Shape TypeToShape(mlir::Type type) {
       // neither does the shape_util MakeShape API.
       if (!t.hasStaticShape()) return {};
 
-      // TODO(atondwal): Handle $pointerBitWidth, $indexBitWidth after they're
+      // TODO(atondwal): Handle $posWidth, $crdWidth after they're
       // added to xla
-      if (sparse.getPointerBitWidth() != 32 || sparse.getIndexBitWidth() != 32)
-        return {};
+      if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
       llvm::SmallVector<DimLevelType, 3> dim_level_types;
       llvm::SmallVector<bool, 3> level_unique;

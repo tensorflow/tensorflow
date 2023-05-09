@@ -58,9 +58,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
   return GetOperatorProperty(op_variant, number_of_bits);
 }
 
-// Update operation defintions in TensorFlow Lite dialect accordingly when there
-// are any needs on updating the kernel support level.
-// LINT.IfChange
+// Update operation definitions in TensorFlow Lite dialect accordingly when
+// there are any needs on updating the kernel support level. LINT.IfChange
 OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
   BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
@@ -124,6 +123,14 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
+      // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
+      property.version = 2;
+      break;
     case BuiltinOperator_SPACE_TO_DEPTH:
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
       property.inputs = {{0, tensor_property_default}};
@@ -233,6 +240,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
         return true;
       };
       property.version = 1;
+      break;
+    case BuiltinOperator_EXP:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
       break;
     case BuiltinOperator_FILL: {
       property.inputs = {{1, tensor_property_default}};

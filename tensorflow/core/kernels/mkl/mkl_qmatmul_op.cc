@@ -89,7 +89,7 @@ limitations under the License.
 //
 // More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -232,6 +232,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       this->ExtendMklDnnMatMulFwdParams(context, matmul_fwd_dims);
 
       // Get a MatMul fwd from primitive pool.
+      MklDnnThreadPool eigen_tp(context);
       matmul_fwd =
           MklDnnMatMulFwdPrimitiveFactory<float, Tinput, Tweight, Tbias,
                                           Toutput>::Get(matmul_fwd_dims, 0);
@@ -291,7 +292,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       }
 
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_fwd->GetEngine()));
 
       UserScratchPad<unsigned char> scratch_pad;
@@ -641,4 +642,4 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndDequantize",
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

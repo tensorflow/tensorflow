@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
@@ -41,15 +41,7 @@ class Sharding {
 
   virtual ~Sharding() = default;
 
-  int num_devices() const {
-    if (num_devices_.has_value()) {
-      return *num_devices_;
-    }
-
-    auto self = pybind11::cast(this);
-    pybind11::set device_set = self.attr("device_set");
-    return device_set.size();
-  }
+  static int SafeNumDevices(pybind11::handle sharding);
 
  private:
   std::optional<int> num_devices_;
@@ -163,7 +155,7 @@ class GSPMDSharding : public XLACompatibleSharding {
   xla::HloSharding hlo_sharding() const {
     auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
     if (!hlo_sharding.ok()) {
-      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+      throw xla::XlaRuntimeError(std::string(hlo_sharding.status().message()));
     }
     return hlo_sharding.value();
   }
@@ -178,7 +170,7 @@ class GSPMDSharding : public XLACompatibleSharding {
     // We only hash `op_sharding_` here for performance.
     auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
     if (!hlo_sharding.ok()) {
-      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+      throw xla::XlaRuntimeError(std::string(hlo_sharding.status().message()));
     }
     return absl::Hash<xla::HloSharding>()(*hlo_sharding);
   }

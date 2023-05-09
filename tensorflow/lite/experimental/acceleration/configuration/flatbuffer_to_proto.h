@@ -15,27 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_FLATBUFFER_TO_PROTO_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_FLATBUFFER_TO_PROTO_H_
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-namespace tflite {
+#include "tensorflow/lite/acceleration/configuration/flatbuffer_to_proto.h"  // IWYU pragma: export
 
-// Converts the provided ComputeSettings from flatbuffer to proto format.
-proto::ComputeSettings ConvertFromFlatbuffer(
-    const ComputeSettings& settings, bool skip_mini_benchmark_settings = false);
-
-proto::ComputeSettings ConvertFromFlatbuffer(
-    const ComputeSettingsT& settings,
-    bool skip_mini_benchmark_settings = false);
-
-// Converts the provided MiniBenchmarkEvent from flatbuffer to proto format.
-proto::MiniBenchmarkEvent ConvertFromFlatbuffer(
-    const MiniBenchmarkEvent& event);
-
-proto::MiniBenchmarkEvent ConvertFromFlatbuffer(
-    const MiniBenchmarkEventT& event);
-
-}  // namespace tflite
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/flatbuffer_to_proto.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_FLATBUFFER_TO_PROTO_H_

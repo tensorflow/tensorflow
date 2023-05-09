@@ -27,10 +27,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/spmd/convolution_handler.h"
@@ -469,8 +469,11 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
 
   // Determine if any of the users have the same shardings that can allow
   // reuse of the resharding for the operand with original_hlo.
-  auto check_users_sharding = [original_hlo, &call_graph](
-                                  const HloInstruction* to_loop_over) {
+  auto check_users_sharding = [original_hlo, &call_graph,
+                               &options](const HloInstruction* to_loop_over) {
+    if (options.skip_checking_windowed_einsum_users) {
+      return true;
+    }
     if (to_loop_over->users().size() <= 1) {
       return true;
     }
@@ -1146,11 +1149,14 @@ StatusOr<HloInstruction*> PartitionBaseCase(
                   ShapeUtil::MakeShape(slice_operand->shape().element_type(),
                                        new_dims),
                   slice_operand));
-          auto min = body_b.AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::MinValue(
-                  reshaped_slice_operand->shape().element_type())));
-          std::vector<int64_t> min_padding(
-              reshaped_slice_operand->shape().rank());
+          auto pad_value = body_b.AddInstruction(HloInstruction::CreateConstant(
+              ShapeUtil::ElementIsFloating(reshaped_slice_operand->shape())
+                  ? LiteralUtil::MinValue(
+                        reshaped_slice_operand->shape().element_type())
+                  : LiteralUtil::Zero(
+                        reshaped_slice_operand->shape().element_type())));
+
+          std::vector<int64_t> padding(reshaped_slice_operand->shape().rank());
           auto padded_slice_operand = reshaped_slice_operand;
           auto padded_shape = padded_slice_operand->shape();
           int64_t padding_dim = slice_sharding_dim;
@@ -1158,25 +1164,25 @@ StatusOr<HloInstruction*> PartitionBaseCase(
           if (ccw) {
             // ccw pad high
             PaddingConfig ccw_pad_config =
-                window_util::MakeSymmetricPadding(min_padding);
+                window_util::MakeSymmetricPadding(padding);
             ccw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_low(0);
             ccw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_high(1);
-            padded_slice_operand =
-                body_b.AddInstruction(HloInstruction::CreatePad(
-                    padded_shape, padded_slice_operand, min, ccw_pad_config));
+            padded_slice_operand = body_b.AddInstruction(
+                HloInstruction::CreatePad(padded_shape, padded_slice_operand,
+                                          pad_value, ccw_pad_config));
           } else {
             // cw pad low
             PaddingConfig cw_pad_config =
-                window_util::MakeSymmetricPadding(min_padding);
+                window_util::MakeSymmetricPadding(padding);
             cw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_low(1);
             cw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_high(0);
-            padded_slice_operand =
-                body_b.AddInstruction(HloInstruction::CreatePad(
-                    padded_shape, padded_slice_operand, min, cw_pad_config));
+            padded_slice_operand = body_b.AddInstruction(
+                HloInstruction::CreatePad(padded_shape, padded_slice_operand,
+                                          pad_value, cw_pad_config));
           }
 
           padded_slice_operand->set_sharding(HloSharding::Replicate());
@@ -1199,7 +1205,11 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         auto ccw_slice = gen_slice(ccw_data_partition_id, true);
         auto cw_slice = gen_slice(cw_data_partition_id, false);
         auto slice = body_b.AddInstruction(HloInstruction::CreateBinary(
-            ccw_slice->shape(), HloOpcode::kMaximum, ccw_slice, cw_slice));
+            ccw_slice->shape(),
+            ShapeUtil::ElementIsFloating(ccw_slice->shape())
+                ? HloOpcode::kMaximum
+                : HloOpcode::kAdd,
+            ccw_slice, cw_slice));
         // Reshape. The reshaped slice will not be used to produce the final
         // result, but used as a hint for the shape inference.
         std::vector<int64_t> reshaped_slice_dims;
@@ -2038,13 +2048,18 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
   auto lhs_sharding_dims_adjusted_to_output =
       lhs.sharding().IsReplicated()
           ? std::vector<int64_t>(lhs.base_shape().rank(), 1)
-          : lhs.sharding().tile_assignment().dimensions();
+          : std::vector<int64_t>(
+                lhs.sharding().tile_assignment().dimensions().begin(),
+                lhs.sharding().tile_assignment().dimensions().end());
   auto rhs_sharding_dims_adjusted_to_output =
       rhs.sharding().IsReplicated()
           ? std::vector<int64_t>(rhs.base_shape().rank(), 1)
-          : rhs.sharding().tile_assignment().dimensions();
-  auto output_sharding_dims_adjusted_to_lhs =
-      output_sharding.tile_assignment().dimensions();
+          : std::vector<int64_t>(
+                rhs.sharding().tile_assignment().dimensions().begin(),
+                rhs.sharding().tile_assignment().dimensions().end());
+  std::vector<int64_t> output_sharding_dims_adjusted_to_lhs(
+      output_sharding.tile_assignment().dimensions().begin(),
+      output_sharding.tile_assignment().dimensions().end());
   bool lhs_rhs_dims_matching = true;
   for (const auto& dim : dims_mapping.batch_dims) {
     lhs_dims.push_back(dim.lhs);
@@ -2252,8 +2267,9 @@ GroupedSharding GetNonContractingPartitionGroupedShardingForMatchedOperand(
     bool lhs_matching, const HloSharding& matching_sharding,
     const HloSharding& output_sharding,
     absl::Span<const DotConvDimsMapping::DimsMapping> partitioned_dims) {
-  std::vector<int64_t> matching_sharding_dims =
-      matching_sharding.tile_assignment().dimensions();
+  std::vector<int64_t> matching_sharding_dims(
+      matching_sharding.tile_assignment().dimensions().begin(),
+      matching_sharding.tile_assignment().dimensions().end());
   std::vector<int64_t> matching_dims;
   std::vector<int64_t> output_dims;
   // Make sure the partitioning on matching's non-contracting dimensions
@@ -2565,10 +2581,12 @@ GetDotGroupPartitionContractingLhsRhsShardings(
         partitioned_contracting_dims) {
   HloSharding lhs_sharding = lhs.sharding();
   HloSharding rhs_sharding = rhs.sharding();
-  std::vector<int64_t> lhs_tile_shape =
-      lhs_sharding.tile_assignment().dimensions();
-  std::vector<int64_t> rhs_tile_shape =
-      rhs_sharding.tile_assignment().dimensions();
+  std::vector<int64_t> lhs_tile_shape(
+      lhs_sharding.tile_assignment().dimensions().begin(),
+      lhs_sharding.tile_assignment().dimensions().end());
+  std::vector<int64_t> rhs_tile_shape(
+      rhs_sharding.tile_assignment().dimensions().begin(),
+      rhs_sharding.tile_assignment().dimensions().end());
   if (ShapeUtil::ByteSizeOf(lhs.hlo()->shape()) >
       ShapeUtil::ByteSizeOf(rhs.hlo()->shape())) {
     for (const auto& dim : partitioned_contracting_dims) {
@@ -3393,7 +3411,7 @@ StatusOr<HloInstruction*> PartitionDot(
   if (lhs.hlo() == rhs.hlo()) {
     auto copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
         rhs.hlo()->shape(), HloOpcode::kCopy, rhs.hlo()));
-    copy_hlo->set_sharding(rhs.sharding());
+    copy_hlo->copy_sharding(rhs.hlo());
     rhs = PartitionedHlo(copy_hlo, rhs.base_shape(), rhs.state());
   }
 

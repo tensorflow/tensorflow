@@ -106,14 +106,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "ScanDatasetOp::Dataset"; }
 
-    int64_t CardinalityInternal() const override {
-      if (preserve_cardinality_) {
-        return input_->Cardinality();
-      } else {
-        return kUnknownCardinality;
-      }
-    }
-
     int64_t CardinalityInternal(CardinalityOptions options) const override {
       if (preserve_cardinality_) {
         return input_->Cardinality(options);
@@ -251,8 +243,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
             // former may be interpreted by a caller as the end of sequence.
             return errors::InvalidArgument(
-                "Function invocation produced OutOfRangeError: ",
-                s.error_message());
+                "Function invocation produced OutOfRangeError: ", s.message());
           } else {
             // `f` may deliberately raise `errors::OutOfRange` to indicate
             // that we should terminate the iteration early.

@@ -98,7 +98,7 @@ tf_module {
   }
   member {
     name: "Graph"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "GraphDef"
@@ -166,7 +166,7 @@ tf_module {
   }
   member {
     name: "Operation"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "OptimizerOptions"
@@ -1549,6 +1549,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "is_symbolic_tensor"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_tensor"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
@@ -1847,6 +1851,14 @@ tf_module {
   member_method {
     name: "quantized_concat"
     argspec: "args=[\'concat_dim\', \'values\', \'input_mins\', \'input_maxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ragged_fill_empty_rows"
+    argspec: "args=[\'value_rowids\', \'values\', \'nrows\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ragged_fill_empty_rows_grad"
+    argspec: "args=[\'reverse_index_map\', \'grad_values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "random_crop"

@@ -236,6 +236,8 @@ class DeviceFinder {
   }
 
   void Start() {
+    LOG(INFO) << "Scanning workers for devices: " << targets_.size()
+              << " total workers";
     {
       mutex_lock l(mu_);
       num_pending_ = targets_.size();
@@ -244,13 +246,14 @@ class DeviceFinder {
       }
     }
     // Talk to all workers to get the list of available devices.
-    using std::placeholders::_1;
-    using std::placeholders::_2;
     for (size_t i = 0; i < targets_.size(); ++i) {
       // TODO(mrry): Propagate a timeout here, since `this->WhenFound()` may
       // never be called.
-      NewRemoteDevices(env_->env, worker_cache_, targets_[i],
-                       std::bind(&ME::WhenFound, this, i, _1, _2));
+      NewRemoteDevices(
+          env_->env, worker_cache_, targets_[i],
+          [this, i](const Status& s, std::vector<Device*>* devices) {
+            WhenFound(i, s, devices);
+          });
     }
   }
 
@@ -360,8 +363,6 @@ void Master::CreateSession(const CreateSessionRequest* req,
   SchedClosure([this, req, resp, done]() {
     Status status;
     WorkerCacheFactoryOptions worker_cache_factory_options;
-    string grpc_protocol("grpc");
-    worker_cache_factory_options.protocol = &grpc_protocol;
     auto call_done = gtl::MakeCleanup([&status, &done] { done(status); });
     status = ValidateExternalGraphDefSyntax(req->graph_def());
     if (!status.ok()) return;

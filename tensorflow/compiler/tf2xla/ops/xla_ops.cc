@@ -1325,6 +1325,7 @@ REGISTER_OP("XlaCallModule")
     .Attr("Tin: list(type) >= 0")
     .Attr("dim_args_spec: list(string) = []")
     .Attr("platforms: list(string) = []")
+    .Attr("function_list: list(func) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
@@ -1347,17 +1348,20 @@ REGISTER_OP("XlaCallModule")
     .Doc(R"doc(
 Invokes a StableHLO module.
 
-This op is experimental and is intended for use with JAX native serialization
-in a TensorFlow context.
+This op is used with JAX native serialization in a TensorFlow context with
+stability guarantees.
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
   to the `module`. These are the actual arguments and do not include the
   platform argument (see `platforms`) nor the dimension arguments (see
   `dim_args_spec`).
 version: Tracks changes the semantics of the op, to support backwards
-  compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+  compatibility. Minimum supported version is 2. From
   version 2, the op carries a StableHLO text or bytecode `module`. From
-  version 3, the op also supports the `platforms` attribute.
+  version 3, the op also supports the `platforms` attribute. From version 4,
+  the op carries a StableHLO module with compatibility guarantees. From version
+  5, XLACallModule can include `stablehlo.custom_call` op to execute tf
+  functions.
 module: A serialized computation, a text or bytecode representation of
   an mlir.Module. The return type must be a tuple if and only if the `Sout` is
   a list with 0 or more than 1 elements. The length of `Tout` and
@@ -1382,6 +1386,11 @@ dim_args_spec: in presence of dynamic shapes, this is the specification for the
   string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
   the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
   where "args" are the actual array arguments.
+function_list: This list contains the TensorFlow FunctionDefs that are used by
+  the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
+  operations, they can call TensorFlow graph functions outside of the
+  XLACallModule. This `function_list` attribute registers the dependency of the
+  XLACallModule on those functions. This attribute was added in version 5.
 )doc");
 
 }  // namespace

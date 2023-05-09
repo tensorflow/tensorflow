@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -77,7 +78,8 @@ def twist_matrix(matrix, permutation_indices):
     for _ in range(2):
       matrix = array_ops.gather_nd(
           matrix,
-          array_ops.stack([batch_indices, permutation_indices_inv], axis=-1))
+          array_ops_stack.stack([batch_indices, permutation_indices_inv],
+                                axis=-1))
       # Transpose the matrix, or equivalently, swap dimensions 1 and 2.
       matrix = array_ops.transpose(matrix, perm=[0, 2, 1])
   else:
@@ -170,22 +172,52 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(a_dense_shape, a_st_rt_value.dense_shape)
 
   def testSparseTensorConversionInvalidInputShapes(self):
-    values = constant_op.constant(
-        0.554979503, shape=[5], dtype=dtypes.float32)
-    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                "must be rank 1"):
+    values = constant_op.constant(0.554979503, shape=[5], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), "must be rank 1"
+    ):
       indices = constant_op.constant(0, shape=[5, 2], dtype=dtypes.int64)
       dense_shape = constant_op.constant(53, shape=[], dtype=dtypes.int64)
       csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
-          indices=indices, values=values, dense_shape=dense_shape)
+          indices=indices, values=values, dense_shape=dense_shape
+      )
       self.evaluate(csr)
 
-    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                "must be rank 2"):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), "must be rank 2"
+    ):
       indices = constant_op.constant(0, shape=[5], dtype=dtypes.int64)
       dense_shape = constant_op.constant(53, shape=[1], dtype=dtypes.int64)
       csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
-          indices=indices, values=values, dense_shape=dense_shape)
+          indices=indices, values=values, dense_shape=dense_shape
+      )
+      self.evaluate(csr)
+
+    int32max = 2**31 - 1
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "batch_size must be < Int32Max",
+    ):
+      indices = constant_op.constant(0, shape=[5, 3], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(
+          [int32max, 1, 1], shape=[3], dtype=dtypes.int64
+      )
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape
+      )
+      self.evaluate(csr)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "csr row index size.*must be <= Int32Max",
+    ):
+      indices = constant_op.constant(0, shape=[5, 3], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(
+          [(int32max // 2), 10, 1], shape=[3], dtype=dtypes.int64
+      )
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape
+      )
       self.evaluate(csr)
 
   # TODO(b/139491352): Add handle_data propagation to array_ops.identity.

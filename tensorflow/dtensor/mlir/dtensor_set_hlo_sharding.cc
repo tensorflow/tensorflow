@@ -16,11 +16,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "llvm/ADT/Optional.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/xla_spmd/layout_to_xla_sharding.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -32,74 +34,77 @@ namespace {
 #define GEN_PASS_DEF_DTENSORSETHLOSHARDINGPASS
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
-mlir::LogicalResult SetHloShardingForInputsAndOps(
-    mlir::ModuleOp module, mlir::OpBuilder builder,
-    bool check_layout_use_xla_spmd) {
-  module.walk([&](mlir::TF::DTensorLayout layout_op) {
-    if (check_layout_use_xla_spmd &&
-        !layout_op.getLayout().mesh().use_xla_spmd()) {
-      layout_op.emitOpError(
-          "Found a layout operation that is not on XLA SPMD mesh during XLA "
-          "SPMD integration.");
-    }
-    StatusOr<::xla::OpSharding> xla_sharding =
-        ConvertLayoutToXlaOpSharding(layout_op.getLayout());
+mlir::LogicalResult SetHloShardingForInputs(mlir::ModuleOp module,
+                                            mlir::OpBuilder builder,
+                                            bool check_layout_use_xla_spmd) {
+  auto result = module.walk([&](mlir::func::FuncOp func_op)
+                                -> mlir::WalkResult {
+    for (int arg_index = 0; arg_index < func_op.getNumArguments();
+         ++arg_index) {
+      mlir::BlockArgument arg = func_op.getArgument(arg_index);
+      for (const auto* user : arg.getUsers()) {
+        auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(*user);
+        if (!layout_op) {
+          continue;
+        }
 
-    if (!xla_sharding.ok())
-      module.emitError(xla_sharding.status().error_message());
+        if (check_layout_use_xla_spmd &&
+            !layout_op.getLayout().mesh().use_xla_spmd()) {
+          return layout_op.emitOpError(
+              "Found a layout operation that is not on XLA SPMD mesh during "
+              "XLA SPMD integration.");
+        }
 
-    mlir::Value operand = layout_op.getOperand();
-
-    if (mlir::BlockArgument block_arg =
-            operand.dyn_cast_or_null<mlir::BlockArgument>()) {
-      mlir::func::FuncOp func_op =
-          layout_op->getParentOfType<mlir::func::FuncOp>();
-      if (!func_op) {
-        module.emitError(
-            "Error finding surrounding FuncOp during "
-            "DTensorXlaSpmdIntegration.");
+        StatusOr<xla::OpSharding> xla_sharding =
+            ConvertLayoutToXlaOpSharding(layout_op.getLayout());
+        if (!xla_sharding.ok()) {
+          return layout_op.emitError(xla_sharding.status().message());
+        }
+        func_op.setArgAttr(
+            arg_index, kXlaShardingAttr,
+            builder.getStringAttr(xla_sharding->SerializeAsString()));
+        break;
       }
-      func_op.setArgAttr(
-          block_arg.getArgNumber(), kXlaShardingAttr,
-          builder.getStringAttr(xla_sharding->SerializeAsString()));
-    } else if (mlir::Operation* producing_op = operand.getDefiningOp()) {
-      producing_op->setAttr(
-          kXlaShardingAttr,
-          builder.getStringAttr(xla_sharding->SerializeAsString()));
     }
+    return mlir::WalkResult::advance();
   });
-  return mlir::success();
+
+  return mlir::failure(result.wasInterrupted());
 }
 
 mlir::LogicalResult SetHloShardingForOutputs(mlir::ModuleOp module,
                                              mlir::OpBuilder builder) {
   // Set output attributes
-  module.walk([&](mlir::func::ReturnOp return_op) {
-    for (auto return_index = 0; return_index < return_op.getNumOperands();
-         ++return_index) {
-      if (auto layout_op = llvm::dyn_cast_or_null<mlir::TF::DTensorLayout>(
-              return_op->getOperand(return_index).getDefiningOp())) {
-        StatusOr<::xla::OpSharding> xla_sharding =
-            ConvertLayoutToXlaOpSharding(layout_op.getLayout());
+  auto result =
+      module.walk([&](mlir::func::ReturnOp return_op) -> mlir::WalkResult {
+        for (int return_index = 0; return_index < return_op.getNumOperands();
+             ++return_index) {
+          auto layout_op = llvm::dyn_cast_or_null<mlir::TF::DTensorLayout>(
+              return_op->getOperand(return_index).getDefiningOp());
+          if (!layout_op) continue;
 
-        if (!xla_sharding.ok())
-          module.emitError(xla_sharding.status().error_message());
+          StatusOr<xla::OpSharding> xla_sharding =
+              ConvertLayoutToXlaOpSharding(layout_op.getLayout());
 
-        mlir::func::FuncOp func_op =
-            layout_op->getParentOfType<mlir::func::FuncOp>();
-        if (!func_op) {
-          module.emitError(
-              "Error finding surrounding FuncOp during "
-              "DTensorXlaSpmdIntegration.");
+          if (!xla_sharding.ok()) {
+            return module.emitError(xla_sharding.status().message());
+          }
+
+          mlir::func::FuncOp func_op =
+              layout_op->getParentOfType<mlir::func::FuncOp>();
+          if (!func_op) {
+            return module.emitError(
+                "Error finding surrounding FuncOp during "
+                "DTensorXlaSpmdIntegration.");
+          }
+
+          func_op.setResultAttr(
+              return_index, kXlaShardingAttr,
+              builder.getStringAttr(xla_sharding->SerializeAsString()));
         }
-
-        func_op.setResultAttr(
-            return_index, kXlaShardingAttr,
-            builder.getStringAttr(xla_sharding->SerializeAsString()));
-      }
-    }
-  });
-  return mlir::success();
+        return mlir::WalkResult::advance();
+      });
+  return mlir::failure(result.wasInterrupted());
 }
 
 class DTensorSetHloShardingPass
@@ -108,7 +113,7 @@ class DTensorSetHloShardingPass
   using DTensorSetHloShardingPassBase::DTensorSetHloShardingPassBase;
 
   explicit DTensorSetHloShardingPass(
-      llvm::Optional<bool> check_layout_use_xla_spmd) {
+      std::optional<bool> check_layout_use_xla_spmd) {
     if (check_layout_use_xla_spmd.has_value()) {
       check_layout_use_xla_spmd_ = *check_layout_use_xla_spmd;
     }
@@ -118,7 +123,7 @@ class DTensorSetHloShardingPass
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);
     mlir::ModuleOp module = getOperation();
-    if (mlir::failed(SetHloShardingForInputsAndOps(
+    if (mlir::failed(SetHloShardingForInputs(
             module, builder, check_layout_use_xla_spmd_.getValue()))) {
       return signalPassFailure();
     }
@@ -132,8 +137,7 @@ class DTensorSetHloShardingPass
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorSetHloShardingPass(
-    llvm::Optional<bool> check_layout_use_xla_spmd) {
+CreateDTensorSetHloShardingPass(std::optional<bool> check_layout_use_xla_spmd) {
   return std::make_unique<DTensorSetHloShardingPass>(check_layout_use_xla_spmd);
 }
 

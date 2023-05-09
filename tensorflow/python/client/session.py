@@ -34,6 +34,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import stack
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
@@ -854,7 +855,7 @@ class BaseSession(SessionInterface):
     Returns:
       A context manager using this session as the default session.
     """
-    return ops.default_session(self)
+    return stack.default_session(self)
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Runs operations and evaluates tensors in `fetches`.
@@ -1388,7 +1389,7 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
-      message = error_interpolation.interpolate(message, self._graph)
+      message = error_interpolation.interpolate_graph(message, self._graph)
       if 'only supports NHWC tensor format' in message:
         message += ('\nA possible workaround: Try disabling Grappler optimizer'
                     '\nby modifying the config for creating the session eg.'

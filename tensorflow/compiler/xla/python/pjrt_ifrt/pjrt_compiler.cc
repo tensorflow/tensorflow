@@ -37,8 +37,8 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
-PjRtCompiler::DeserializeLoadedExecutable(absl::string_view serialized,
-                                          CompileOptions options) {
+PjRtCompiler::DeserializeLoadedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executble,
                       client_->pjrt_client()->DeserializeExecutable(

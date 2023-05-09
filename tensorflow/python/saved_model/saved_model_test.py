@@ -31,11 +31,13 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import fingerprinting
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import main_op
@@ -59,7 +61,7 @@ class SavedModelTestBase(test.TestCase):
     return os.path.join(test.get_temp_dir(), label)
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
-    v = variables.VariableV1(variable_value, name=variable_name)
+    v = variable_v1.VariableV1(variable_value, name=variable_name)
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(variable_value, self.evaluate(v))
 
@@ -510,7 +512,7 @@ class SavedModelTest(SavedModelTestBase):
       # to:
       # - add with weights.
       with self.session(graph=ops.Graph()) as sess:
-        v = variables.VariableV1(42, name="v")
+        v = variable_v1.VariableV1(42, name="v")
         ops.add_to_collection("foo_vars", v)
         self.evaluate(variables.global_variables_initializer())
         self.assertEqual(42, self.evaluate(v))
@@ -520,7 +522,7 @@ class SavedModelTest(SavedModelTestBase):
       # SavedModel invoked to:
       # - simply add the model (weights are not updated).
       with self.session(graph=ops.Graph()) as sess:
-        v = variables.VariableV1(43, name="v")
+        v = variable_v1.VariableV1(43, name="v")
         ops.add_to_collection("bar_vars", v)
         self.evaluate(variables.global_variables_initializer())
         self.assertEqual(43, self.evaluate(v))
@@ -881,11 +883,11 @@ class SavedModelTest(SavedModelTestBase):
     with ops.Graph().as_default():
       with self.session(graph=ops.Graph()) as sess:
         # Add `v1` and `v2` variables to the graph.
-        v1 = variables.VariableV1(1, name="v1")
-        v2 = variables.VariableV1(2, name="v2")
+        v1 = variable_v1.VariableV1(1, name="v1")
+        v2 = variable_v1.VariableV1(2, name="v2")
 
         # Initialize another variable `v3` to 42.
-        v3 = variables.VariableV1(42, name="v3")
+        v3 = variable_v1.VariableV1(42, name="v3")
 
         # Set up an assignment op to be run as part of the main_op.
         with ops.control_dependencies([main_op.main_op()]):
@@ -916,8 +918,8 @@ class SavedModelTest(SavedModelTestBase):
     with ops.Graph().as_default():
       with self.session(graph=ops.Graph()) as sess:
         # Add `v1` and `v2` variables to the graph.
-        v1 = variables.VariableV1(1, name="v1")
-        v2 = variables.VariableV1(2, name="v2")
+        v1 = variable_v1.VariableV1(1, name="v1")
+        v2 = variable_v1.VariableV1(2, name="v2")
 
         self.evaluate(variables.global_variables_initializer())
         train_op = state_ops.assign_add(v1, v2)
@@ -947,8 +949,8 @@ class SavedModelTest(SavedModelTestBase):
     with ops.Graph().as_default():
       with self.session(graph=ops.Graph()) as sess:
         # Add `v1` and `v2` variables to the graph.
-        variables.VariableV1(1, name="v1")
-        variables.VariableV1(2, name="v2")
+        variable_v1.VariableV1(1, name="v1")
+        variable_v1.VariableV1(2, name="v2")
 
         self.evaluate(variables.global_variables_initializer())
         train_op = control_flow_ops.group()
@@ -973,8 +975,8 @@ class SavedModelTest(SavedModelTestBase):
     with ops.Graph().as_default():
       with self.session(graph=ops.Graph()) as sess:
         # Add `v1` and `v2` variables to the graph.
-        v1 = variables.VariableV1(1, name="v1")
-        v2 = variables.VariableV1(2, name="v2")
+        v1 = variable_v1.VariableV1(1, name="v1")
+        v2 = variable_v1.VariableV1(2, name="v2")
 
         self.evaluate(variables.global_variables_initializer())
         builder.add_meta_graph_and_variables(sess, ["pre_foo"])
@@ -1097,13 +1099,14 @@ class SavedModelTest(SavedModelTestBase):
           graph=ops.Graph(),
           config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
         with sess.graph.device("/cpu:0"):
-          v1 = variables.VariableV1(1, name="v1")
+          v1 = variable_v1.VariableV1(1, name="v1")
         with sess.graph.device("/cpu:1"):
-          v2 = variables.VariableV1(2, name="v2")
+          v2 = variable_v1.VariableV1(2, name="v2")
 
         # v3 is an unsaved variable derived from v1 and v2.  It is used to
         # exercise the ability to run an init op when restoring a graph.
-        v3 = variables.VariableV1(1, name="v3", trainable=False, collections=[])
+        v3 = variable_v1.VariableV1(
+            1, name="v3", trainable=False, collections=[])
         assign_v3 = state_ops.assign(v3, math_ops.add(v1, v2))
         control_flow_ops.group(assign_v3, name="init_op")
 
@@ -1162,7 +1165,7 @@ class SavedModelTest(SavedModelTestBase):
 
     with ops.Graph().as_default() as graph:
       with self.session(graph=ops.Graph()) as sess:
-        variables.VariableV1(1, name="v1")
+        variable_v1.VariableV1(1, name="v1")
         self.evaluate(variables.global_variables_initializer())
         custom_saver = training.Saver(name="my_saver")
         builder.add_meta_graph_and_variables(sess, ["tag"], saver=custom_saver)
@@ -1184,7 +1187,7 @@ class SavedModelTest(SavedModelTestBase):
 
     with ops.Graph().as_default() as graph:
       with self.session(graph=ops.Graph()) as sess:
-        variables.VariableV1(1, name="v1")
+        variable_v1.VariableV1(1, name="v1")
         self.evaluate(variables.global_variables_initializer())
         training.Saver(name="my_saver")
         builder.add_meta_graph_and_variables(sess, ["tag"])
@@ -1206,7 +1209,7 @@ class SavedModelTest(SavedModelTestBase):
 
     with ops.Graph().as_default():
       with self.session(graph=ops.Graph()) as sess:
-        variables.VariableV1(1, name="v1")
+        variable_v1.VariableV1(1, name="v1")
         self.evaluate(variables.global_variables_initializer())
         builder.add_meta_graph_and_variables(sess, ["tag_0"])
 
@@ -1314,7 +1317,7 @@ class SavedModelTest(SavedModelTestBase):
     # Add a graph with a single variable and a test op with a defaultless
     # float32 attr, "test_attr".
     with session.Session(graph=ops.Graph()) as sess:
-      variables.VariableV1(1.0, dtype=dtypes.float64, name="var")
+      variable_v1.VariableV1(1.0, dtype=dtypes.float64, name="var")
       test_ops.test_attr(T=dtypes.float32, name="test_attr")
       self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(sess, ["foo"])
@@ -1369,6 +1372,28 @@ class SavedModelTest(SavedModelTestBase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "(?s)No OpKernel was registered.*DOUBLE"):
       loader.load(sess, ["foo"], export_dir)
+
+  def testFingerprint(self):
+    self.skipTest("TF1 fingerprinting disabled in OSS.")
+    export_dir = self._get_export_dir("fingerprint")
+    builder = saved_model_builder._SavedModelBuilder(export_dir)
+
+    with ops.Graph().as_default():
+      with self.session(graph=ops.Graph()) as sess:
+        builder.add_meta_graph_and_variables(sess, ["foo"])
+
+      # Save the SavedModel to disk.
+      builder.save()
+
+      # Restore the graph with tag "foo", whose variables were saved.
+      with self.session(graph=ops.Graph()) as sess:
+        loader.load(sess, ["foo"], export_dir)
+
+        # Load the model's fingerprint.
+        try:
+          fingerprinting.read_fingerprint(export_dir)
+        except ValueError:
+          self.fail("Fingerprint read failed.")
 
 
 class SavedModelV1Test(SavedModelTestBase):
@@ -1444,11 +1469,11 @@ class SavedModelV1Test(SavedModelTestBase):
     with ops.Graph().as_default():
       with self.session() as sess:
         # Initialize variable `v1` to 1.
-        v1 = variables.VariableV1(1, name="v1")
+        v1 = variable_v1.VariableV1(1, name="v1")
         ops.add_to_collection("v", v1)
 
         # Initialize another variable `v2` to 42.
-        v2 = variables.VariableV1(
+        v2 = variable_v1.VariableV1(
             42, name="v2", trainable=False, collections=[])
         ops.add_to_collection("v", v2)
 
@@ -1475,8 +1500,8 @@ class SavedModelV1Test(SavedModelTestBase):
     # Add a graph with two float32 variables and a Complex Op composing them
     # with strip_default_attrs enabled.
     with session.Session(graph=ops.Graph()) as sess:
-      real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
-      imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
+      real_num = variable_v1.VariableV1(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variable_v1.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
       self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(
@@ -1485,8 +1510,8 @@ class SavedModelV1Test(SavedModelTestBase):
     # Add a graph with the same float32 variables and a Complex Op composing
     # them with strip_default_attrs disabled.
     with session.Session(graph=ops.Graph()) as sess:
-      real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
-      imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
+      real_num = variable_v1.VariableV1(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variable_v1.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
       self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph(["bar"], strip_default_attrs=False)
@@ -1543,11 +1568,11 @@ class SavedModelV1Test(SavedModelTestBase):
     with ops.Graph().as_default():
       with self.session(graph=ops.Graph()) as sess:
         # Add `v1` and `v2` variables to the graph.
-        v1 = variables.VariableV1(1, name="v1")
-        v2 = variables.VariableV1(2, name="v2")
+        v1 = variable_v1.VariableV1(1, name="v1")
+        v2 = variable_v1.VariableV1(2, name="v2")
 
         # Initialize another variable `v3` to 42.
-        v3 = variables.VariableV1(42, name="v3", trainable=False)
+        v3 = variable_v1.VariableV1(42, name="v3", trainable=False)
 
         # Set up an assignment op to be run as part of the init_op.
         assign_v3 = state_ops.assign(v3, math_ops.add(v1, v2))

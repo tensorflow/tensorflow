@@ -21,6 +21,7 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
+#include "learning/brain/tfrt/mlrt/application/vrooml/kernel.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -72,11 +73,11 @@ SynchronousGraphExecutor::Create(
   tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
   tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
   tfrt::cpu::RegisterMlrtFallbackCompatKernels(kernel_registry.get());
+  tensorflow::vrooml_mlrt::RegisterDhtResourceKernels(*kernel_registry);
 
   tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::GraphExecutor>>
       graph_executor = tensorflow::tfrt_stub::GraphExecutor::Create(
-          graph_execution_options, *(*fallback_state),
-          /*tpu_model_resource=*/nullptr, std::move(graph),
+          graph_execution_options, *(*fallback_state), std::move(graph),
           std::move(kernel_registry));
   if (!graph_executor.ok()) {
     return absl::InternalError(graph_executor.status().ToString());

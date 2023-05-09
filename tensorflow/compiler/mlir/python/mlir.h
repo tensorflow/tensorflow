@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_PYTHON_MLIR_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -95,7 +96,8 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 //   A string of textual MLIR representing the raw imported SavedModel.
 std::string ExperimentalConvertSavedModelV1ToMlir(
     const std::string &saved_model_path, const std::string &exported_names_str,
-    const std::string &tags, bool lift_variables, bool upgrade_legacy,
+    const std::string &tags, bool lift_variables,
+    bool include_variables_in_initializers, bool upgrade_legacy,
     bool show_debug_info, TF_Status *status);
 
 std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
@@ -106,6 +108,16 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
 // Writes the input textual MLIR as bytecode to output file.
 void ExperimentalWriteBytecode(const std::string &filename,
                                const std::string &mlir_txt, TF_Status *status);
+
+// Loads a TFLite flatbuffer, convert to TOSA for backend compilation and
+// produce an MLIR bytecode file as output.
+// TODO(jpienaar): Refactor this when we use more implicit module passing
+// between calls to avoid serialization overhead.
+void ExperimentalTFLiteToTosaBytecode(
+    const std::string &flatbuffer_file, const std::string &tosa_bytecode_file,
+    bool use_external_constant,
+    const std::vector<std::string> &ordered_input_arrays,
+    const std::vector<std::string> &ordered_output_arrays, TF_Status *status);
 
 }  // namespace tensorflow
 

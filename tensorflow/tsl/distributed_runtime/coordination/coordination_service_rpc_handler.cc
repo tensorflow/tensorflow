@@ -141,7 +141,7 @@ void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
     return;
   }
   const CoordinationServiceError& error_payload = request->error_payload();
-  Status error(static_cast<error::Code>(request->error_code()),
+  Status error(static_cast<absl::StatusCode>(request->error_code()),
                strings::StrCat("Error reported from /job:",
                                error_payload.source_task().job_name(),
                                "/task:", error_payload.source_task().task_id(),
@@ -163,7 +163,7 @@ void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
   done(service_->ReportTaskError(
       request->error_origin(),
       MakeCoordinationError(
-          Status{static_cast<error::Code>(request->error_code()),
+          Status{static_cast<absl::StatusCode>(request->error_code()),
                  request->error_message()},
           request->error_origin(),
           /*is_reported_error=*/true)));

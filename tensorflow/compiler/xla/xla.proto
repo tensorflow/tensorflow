@@ -165,6 +165,13 @@ message DebugOptions {
   // above!
   bool xla_gpu_enable_fast_min_max = 100;
 
+  // Defines the number of CUDA threads that can be used to accelerate
+  // a sparse computation compiled for the XLA Runtime and CPU backend.
+  // By default (value 0), no acceleration is used. Otherwise, this
+  // many threads may be used to accelerate sparse operations, typically
+  // useful when accelerating structured sparsity.
+  int32 xla_cpu_sparse_cuda_threads = 207;
+
   // Allows xla to increase the output precision of floating point operations.
   bool xla_allow_excess_precision = 122;
 
@@ -217,9 +224,7 @@ message DebugOptions {
   // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
   bool xla_gpu_enable_mlir_lowering = 173;
 
-  // If true, generate softmax fusion nodes which are used in the MLIR lowering
-  // to generate device code for softmax.
-  bool xla_gpu_enable_softmax_fusion = 179;
+  reserved 179;  // Was xla_gpu_enable_softmax_fusion
 
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
@@ -364,11 +369,12 @@ message DebugOptions {
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
-  // Convert synchronous all-reduces ops into asynchronous.
+  // Convert synchronous collective ops into asynchronous.
   bool xla_gpu_enable_async_all_reduce = 152;
-
-  // Convert synchronous collective-permute ops into asynchronous.
   bool xla_gpu_enable_async_collective_permute = 183;
+  bool xla_gpu_enable_async_all_gather = 199;
+  bool xla_gpu_enable_async_reduce_scatter = 200;
+  bool xla_gpu_enable_async_all_to_all = 201;
 
   // Size threshold (in bytes) for the GPU all-reduce combiner.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
@@ -376,12 +382,22 @@ message DebugOptions {
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
 
+  // Enable allreduce reassociation on allreduces that are converted to a wider
+  // type. The resulting allreduce will be promoted to a wider-typed allreduce.
+  bool xla_gpu_enable_reassociation_for_converted_ar = 209;
+
   // Number of devices per host for first stage of BlueConnect decomposition
   // pass. The pass will attempt to decompose all-reduces ops into a
   // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
   // being performed over all of the devices in the same host. Set to < 1 to
   // disable all-reduce decomposition.
   int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
+
+  // Enable hoisting of reduce-scatter out of while loops.
+  bool xla_gpu_enable_while_loop_reduce_scatter_code_motion = 203;
+
+  // Inflate collective cost by running each collective multiple times.
+  int32 xla_gpu_collective_inflation_factor = 205;
 
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
@@ -415,14 +431,34 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  // Whether XLA is allowed to use CUDA Graphs.
-  bool xla_gpu_enable_cuda_graphs = 180;
+  // 0:   Disable CUDA graph capture.
+  // 1:   Enable cuda graphs for fusions and memcpy (safest ones).
+  // 2:   Enable cuda graphs for gemms and convs.
+  // 3+   Enable cuda graphs for collectives.
+  //
+  // Default: 0.
+  int32 xla_gpu_cuda_graph_level = 194;
+
+  // Only instantiates a CUDA graph after the captured function execution count
+  // reaches the threshold. This constant is a heuristic to avoid creating a
+  // large number of CUDA graph instances in memory.
+  int32 xla_gpu_cuda_graph_instantiation_threshold = 202;
+
+  // This number determines how many moved instructions like fusion kernels are
+  // required for a region to be captured as a function to be launched as a cuda
+  // graph.
+  int32 xla_gpu_cuda_graph_capture_threshold = 208;
+
+  // Allocate temp buffers once during the first execution of an executable.
+  // Reuse the allocated buffers in subsequent executions. Executables cannot
+  // run concurrently if this is enabled.
+  bool xla_gpu_enable_persistent_temp_buffers = 206;
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
   // Allows all floating-point conversions to be simplified, including those
-  // that affect the numerics. The `BFloat16Normalization` pass inserts many
+  // that affect the numerics. The `FloatNormalization` pass inserts many
   // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
   // `AlgebraicSimplifier`, as that will only simplify conversions that are
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
@@ -452,13 +488,26 @@ message DebugOptions {
   // instead.
   bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
 
+  // XLA:CPU-Next tiling parameters for matmul.
+  bool xla_cpu_enable_custom_matmul_tiling = 195;
+  int64 xla_cpu_matmul_tiling_m_dim = 196;
+  int64 xla_cpu_matmul_tiling_n_dim = 197;
+  int64 xla_cpu_matmul_tiling_k_dim = 198;
+
+  bool xla_cpu_enable_mlir_fusion_outlining = 192;
+
   // If set, use the experimental deallocation pass from mlir-hlo.
   bool xla_cpu_enable_experimental_deallocation = 191;
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
+  bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
+  string xla_gpu_pgle_profile_file_or_directory_path = 210;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
+    PARTITIONING_ALGORITHM_EXP0 = 1;
+    PARTITIONING_ALGORITHM_EXP1 = 2;
+    PARTITIONING_ALGORITHM_EXP2 = 3;
   }
   // The partitioning algorithm to be used in the PartitionAssignment pass.
   PartitioningAlgorithm xla_partitioning_algorithm = 187;
@@ -469,7 +518,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 192
+  // Next id: 211
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -479,7 +528,9 @@ message DebugOptions {
   // xla_gpu_use_horizontal_fusion,
   // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
   // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
-  reserved 5, 117, 133, 139, 176, 178;
+  // xla_gpu_enable_cuda_graphs
+  // xla_gpu_allow_all_reduce_kernel
+  reserved 5, 117, 133, 139, 176, 178, 180, 193;
 }
 
 message ShardableValueUpdatePairProto {
@@ -856,4 +907,18 @@ message ScheduleProto {
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
+}
+
+message ProfiledInstructionsProto {
+  message InstructionCost {
+    string name = 1;
+    double cost_us = 2;
+  }
+  message Latency {
+    string source = 1;
+    string target = 2;
+    double latency_us = 3;
+  }
+  repeated InstructionCost costs = 1;
+  repeated Latency latencies = 2;
 }

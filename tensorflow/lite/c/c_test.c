@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_experimental.h"
+#include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 
 // This file exists just to verify that the above header files above can build,
 // link, and run as "C" code.
@@ -31,6 +31,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 static void CheckFailed(const char *expression, const char *filename,
                         int line_number) {
@@ -343,12 +344,95 @@ static void TestTfLiteOpaqueContextGetExecutionPlan(void) {
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
+static void TestTfLiteOpaqueContextReportErrorMacros(
+    TfLiteStatus (*Prepare)(TfLiteOpaqueContext* context,
+                            TfLiteOpaqueDelegate* delegate, void* data)) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared_called = false;
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder = { NULL };
+  opaque_delegate_builder.data = &delegate_prepared_called;
+  opaque_delegate_builder.Prepare = Prepare;
+  TfLiteOpaqueDelegate* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // The delegate's prepare function should have been called, even though it
+  // returned an error code.
+  CHECK(delegate_prepared_called);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
+TfLiteStatus TfLiteOpaqueContextReportErrorMacros_EnsureMsg_Prepare(
+    TfLiteOpaqueContext* context,
+    TfLiteOpaqueDelegate* opaque_delegate, void* data) {
+    bool* delegate_prepared = (bool*) data;
+    *delegate_prepared = true;
+    TF_LITE_OPAQUE_ENSURE_MSG(context, false, "false was not true!!!");
+    return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueContextReportErrorMacros_Ensure_Prepare(
+    TfLiteOpaqueContext* context,
+    TfLiteOpaqueDelegate* opaque_delegate, void* data) {
+    bool* delegate_prepared = (bool*) data;
+    *delegate_prepared = true;
+    TF_LITE_OPAQUE_ENSURE(context, false);
+    return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueContextReportErrorMacros_EnsureEq_Prepare(
+    TfLiteOpaqueContext* context,
+    TfLiteOpaqueDelegate* opaque_delegate, void* data) {
+    bool* delegate_prepared = (bool*) data;
+    *delegate_prepared = true;
+    TF_LITE_OPAQUE_ENSURE_EQ(context, 1, 2);
+    return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueContextReportErrorMacros_EnsureTypesEq_Prepare(
+    TfLiteOpaqueContext* context,
+    TfLiteOpaqueDelegate* opaque_delegate, void* data) {
+    bool* delegate_prepared = (bool*) data;
+    *delegate_prepared = true;
+    TF_LITE_OPAQUE_ENSURE_TYPES_EQ(context, '1', 2);
+    return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueContextReportErrorMacros_EnsureNear_Prepare(
+    TfLiteOpaqueContext* context,
+    TfLiteOpaqueDelegate* opaque_delegate, void* data) {
+    bool* delegate_prepared = (bool*) data;
+    *delegate_prepared = true;
+    TF_LITE_OPAQUE_ENSURE_NEAR(context, 3, 10, 1);
+    return kTfLiteOk;
+}
+
 static void RunTests(void) {
   TestVersion();
   TestInferenceUsingSignature();
   TestRepeatResizeInputTensor();
   TestInferenceUsingInterpreter();
   TestTfLiteOpaqueContextGetExecutionPlan();
+  TestTfLiteOpaqueContextReportErrorMacros(
+      TfLiteOpaqueContextReportErrorMacros_Ensure_Prepare);
+  TestTfLiteOpaqueContextReportErrorMacros(
+      TfLiteOpaqueContextReportErrorMacros_EnsureMsg_Prepare);
+  TestTfLiteOpaqueContextReportErrorMacros(
+      TfLiteOpaqueContextReportErrorMacros_EnsureEq_Prepare);
+  TestTfLiteOpaqueContextReportErrorMacros(
+      TfLiteOpaqueContextReportErrorMacros_EnsureTypesEq_Prepare);
+  TestTfLiteOpaqueContextReportErrorMacros(
+      TfLiteOpaqueContextReportErrorMacros_EnsureNear_Prepare);
 }
 
 int main(void) {

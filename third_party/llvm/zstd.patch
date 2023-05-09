@@ -1,0 +1,15 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index 80d5d677c537..5e47b681052f 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -283,10 +283,6 @@ cc_library(
+         # be an empty library unless zlib is enabled, in which case it will
+         # both provide the necessary dependencies and configuration defines.
+         "@llvm_zlib//:zlib",
+-        # We unconditionally depend on the custom LLVM zstd wrapper. This will
+-        # be an empty library unless zstd is enabled, in which case it will
+-        # both provide the necessary dependencies and configuration defines.
+-        "@llvm_zstd//:zstd",
+     ],
+ )
+ 

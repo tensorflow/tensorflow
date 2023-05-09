@@ -43,6 +43,11 @@ std::optional<ReductionKind> MatchReductionInstruction(
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
+// Returns the reduction identity value for a certain ReductionKind and
+// PrimitiveType.
+std::optional<Literal> GetReductionIdentity(ReductionKind kind,
+                                            PrimitiveType type);
+
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
@@ -224,7 +229,7 @@ void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
   LOG(ERROR) << "This thread has been waiting for " << timeout.count()
              << "ms for and may be stuck: " << desc_fn();
   counter->Wait();
-  LOG(ERROR) << "Thread is unstuck!  Warning above was a false-positive.  "
+  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
                 "Perhaps the timeout is too short: "
              << desc_fn();
 }
@@ -271,6 +276,7 @@ struct AllReduceParticipantData : ParticipantData {
 
   std::string ToString() const override {
     std::vector<std::string> buffer_strs;
+    buffer_strs.reserve(buffers.size());
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(
           absl::StrFormat("{element_count=%d}", buffer.element_count));
@@ -367,7 +373,7 @@ class Rendezvous {
       if (!participants_.empty() &&
           participants_.back().rendezvous_key != participant.rendezvous_key) {
         return InvalidArgument(
-            "Mismatch among all-reduce participants.  Expected same "
+            "Mismatch among all-reduce participants. Expected same "
             "replica-count, element-count, and rendezvous-key but were %s and "
             "%s",
             participants_.back().ToString(), participant.ToString());

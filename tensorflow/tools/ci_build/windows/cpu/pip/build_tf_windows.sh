@@ -138,7 +138,7 @@ run_configure_for_cpu_build
 
 bazel build ${EXTRA_BUILD_FLAGS}  \
   --experimental_cc_shared_library \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
+  --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu \
   --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
@@ -174,10 +174,10 @@ bazel test --announce_rc --config=opt -k --test_output=errors \
   --experimental_cc_shared_library \
   ${EXTRA_TEST_FLAGS} \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu,-v1only \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu --build_tests_only \
+  --test_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu,-v1only \
+  --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu --build_tests_only \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
-  --flaky_test_attempts=3 \
+  --flaky_test_attempts=2 \
   --output_filter=^$ \
   ${TEST_TARGET}

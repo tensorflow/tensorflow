@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -39,21 +40,23 @@ namespace data {
 // The on-disk state has this structure:
 // - snapshot_path
 //   - DONE
+//   - ERROR
 //   - snapshot.metadata
 //   - dataset_def.proto
 //   - dataset_spec.pb
 //   - chunks
-//     - chunk_<stream_index>_<chunk_index>
+//     - chunk_<stream_index>_<stream_chunk_index>_<num_elements>
 //   - streams
 //     - stream_0
 //       - DONE
+//       - ERROR
 //       - splits
 //         - source_0
 //           - split_<local_split_index>_<global_split_index>
-//       - uncommitted_chucnks
+//       - uncommitted_chunks
 //         - chunk_<chunk_index>
 //       - checkpoints
-//         - checkpoint_<chunk_index>
+//         - checkpoint_<chunk_index>_<num_elements>
 //
 class SnapshotManager {
  public:
@@ -78,13 +81,6 @@ class SnapshotManager {
   tsl::Status GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                                GetSnapshotSplitResponse& response);
   tsl::Status GetSnapshotStreams(GetSnapshotStreamsResponse& response);
-
-  // Checks for a stream that should move from `assignments_` to `orphans_` due
-  // to its assigned worker having stopped heartbeating.
-  void HandleMissingWorker(absl::string_view worker_address);
-  // Checks for streams that should move from `unknowns_` to `orphans_` due to
-  // the dispatcher not having gotten a heartbeat from an assigned worker.
-  void UpdateStreams();
 
  private:
   SnapshotManager(
@@ -112,14 +108,16 @@ class SnapshotManager {
   tsl::StatusOr<std::optional<int64_t>> MaybeGetOrCreateStreamAssignment(
       absl::string_view worker_address,
       const SnapshotTaskProgress* snapshot_progress);
-  tsl::Status ReassignPreviouslyAssignedStream(
-      int64_t stream_index, absl::string_view worker_address);
   tsl::Status HandleStreamCompletion(int64_t stream_index,
                                      absl::string_view worker_address);
+  void ReassignPreviouslyAssignedStream(int64_t stream_index,
+                                        absl::string_view worker_address);
   std::optional<int64_t> MaybeAssignOrphanStream(
       absl::string_view worker_address);
   tsl::StatusOr<int64_t> CreateAndAssignNewStream(
       absl::string_view worker_address);
+  Status HandleStreamError(absl::string_view worker_address,
+                           const StatusProto& status_proto);
 
   // The filepath of the on-disk state.
   const std::string path_;
@@ -130,6 +128,10 @@ class SnapshotManager {
   // If `Resume`d, the timestamp of the resumption of the snapshot.
   std::optional<absl::Duration> resume_time_micros_;
 
+  // The addresses of all workers considered to be dead based on heartbeat
+  // timeout.
+  absl::flat_hash_set<std::string> dead_workers_;
+
   // A split provider for each input source of the dataset being snapshotted.
   std::vector<std::unique_ptr<SplitProvider>> split_providers_;
   int64_t num_sources() const { return split_providers_.size(); }
@@ -137,31 +139,22 @@ class SnapshotManager {
   struct Stream {
     explicit Stream(int64_t num_sources) : num_assigned_splits(num_sources) {}
 
+    enum class State {
+      // The stream is not finished and the worker is heartbeating.
+      kActive,
+      // The stream is finished.
+      kDone,
+    };
+
     // A counter of assigned splits for each source.
     std::vector<int64_t> num_assigned_splits;
-    // If `true`, there are no more splits to be processed for this stream.
-    bool done = false;
+    State state = State::kActive;
   };
 
   // All streams for this snapshot.
   std::vector<Stream> streams_;
-  // Indices of all "assigned" streams, keyed by worker address. A stream is
-  // considered to be assigned if the dispatcher knows of a worker
-  // processing the stream and that worker is heartbeating.
+  // A mapping of assigned worker to stream index.
   absl::flat_hash_map<std::string, int64_t> assignments_;
-  // Indices of all "orphan" streams. A stream is considered to be an orphan if
-  // the dispatcher believes that there is no worker currently processing the
-  // stream. Orphans are eventually assigned to unoccupied workers.
-  absl::flat_hash_set<int64_t> orphans_;
-  // Indices of all "unknown" streams. A stream is considered to be an unknown
-  // if the dispatcher recently restarted and has no idea whether or not there
-  // is a worker currently processing the stream. Unknown streams are eventually
-  // (1) reassigned to the worker processing the stream or (2) considered to be
-  // orphans.
-  absl::flat_hash_set<int64_t> unknowns_;
-  bool stream_available(int64_t stream_index) const {
-    return orphans_.contains(stream_index) || unknowns_.contains(stream_index);
-  }
 
   // A counter of assigned aplits for this snapshot.
   int64_t num_assigned_splits_ = 0;
@@ -173,11 +166,17 @@ class SnapshotManager {
     kWindingDown,
     // All streams are done.
     kDone,
+    // If any stream fails, the snapshot is in an error state. `status_` will
+    // contain the error status.
+    kError,
   };
 
   // If not `kActive`, at least one source has finished processing and no new
   // streams are created or assigned.
   Mode mode_ = Mode::kActive;
+
+  // If `mode_` is in an error state, `status_` will contain the error status.
+  Status status_;
 };
 
 }  // namespace data

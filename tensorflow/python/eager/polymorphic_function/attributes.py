@@ -39,6 +39,7 @@ ORIGINAL_FUNCTION_NAME = "_original_func_name"
 OUTPUTS_ON_OP_DEVICE = "_OutputsOnOpDevice"
 QUANTIZED_COMPOSITE_FUNCTION = "tf_quant.composite_function"
 QUANTIZED_OPS = "tf_quant.quantized_ops"
+RUNTIME_CONSTANT_OPTIMIZATION = "runtime_constant_optimization"
 SHARED_RENDEZVOUS = "shared_rendezvous"
 TF_DATA_FUNCTION = "_tf_data_function"
 TFTRT_ALLOW_BUILD_AT_RUNTIME = "_tftrt_allow_build_at_runtime"
@@ -62,19 +63,20 @@ XLA_SEPERATE_COMPILED_GRADIENTS = "_XlaSeparateCompiledGradients"
 POLYMORPHIC_FUNCTION_ALLOWLIST = frozenset({
     API_IMPLEMENTS,
     API_PREFERRED_DEVICE,
+    GO_BACKWARDS,
     IMPLEMENTS,
+    INTS_ON_DEVICE,
+    NO_INLINE,
+    RUNTIME_CONSTANT_OPTIMIZATION,
+    TF_DATA_FUNCTION,
+    TIME_MAJOR,
+    OUTPUTS_ON_OP_DEVICE,
 })
 
 TRACING_COMPILER_ALLOWLIST = frozenset().union(
     POLYMORPHIC_FUNCTION_ALLOWLIST,
     {
-        GO_BACKWARDS,
-        INTS_ON_DEVICE,
-        NO_INLINE,
-        OUTPUTS_ON_OP_DEVICE,
         SHARED_RENDEZVOUS,
-        TF_DATA_FUNCTION,
-        TIME_MAJOR,
         XLA_COMPILE,
     },
 )

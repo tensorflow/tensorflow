@@ -66,6 +66,32 @@ def sanitize_spec_name(name: str) -> str:
     return "tensor_" + swapped
 
 
+def get_op_name(tensor_name):
+  """Extract the Op name from a Tensor name.
+
+  The Op name is everything before a colon, if present,
+  not including any ^ prefix denoting a control dependency.
+
+  Args:
+    tensor_name: the full name of a Tensor in the graph.
+  Returns:
+    The name of the Op of which the given Tensor is an output.
+  Raises:
+    ValueError: if tensor_name is None or empty.
+  """
+  if not tensor_name:
+    raise ValueError(
+        f"Tensor name cannot be empty or None. Received: {tensor_name}.")
+
+  # Control dependency inputs start with ^.
+  if tensor_name.startswith("^"):
+    tensor_name = tensor_name[1:]
+  if ":" in tensor_name:
+    op_name, _ = tensor_name.split(":")
+    return op_name
+  return tensor_name
+
+
 class DenseSpec(type_spec.TypeSpec):
   """Describes a dense object with shape, dtype, and name."""
 
@@ -235,22 +261,38 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
-    placeholder = self._graph_placeholder(context_graph, name=name)
+    if placeholder_context.with_none_control_dependencies:
+      # Note: setting ops.control_dependencies(None) ensures we always put
+      # capturing placeholders outside of any control flow context.
+      with context_graph.control_dependencies(None):
+        placeholder = self._graph_placeholder(context_graph, name=name)
+    else:
+      placeholder = self._graph_placeholder(context_graph, name=name)
+
     if name is not None:
       # Record the requested/user-specified name in case it's different than
       # the uniquified name, for validation when exporting signatures.
       placeholder.op._set_attr(  # pylint: disable=protected-access
           "_user_specified_name",
           attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
-    # TODO(b/263894631): Add an assertion for a TensorSpec of type resource or
-    # variant which must have handle data associated with it.
-    if ((self.dtype == dtypes.resource or self.dtype == dtypes.variant)
-        and placeholder_context.has_handledata(id(self))):
-      handle_data = placeholder_context.get_handledata(id(self))
-      if (handle_data is not None
-          and handle_data.is_set
-          and handle_data.shape_and_type):
-        handle_data_util.set_handle_data(placeholder, handle_data)
+
+    handle_data = self.dtype._handle_data  # pylint: disable=protected-access
+    if (
+        handle_data is not None
+        and handle_data.is_set
+        and handle_data.shape_and_type
+    ):
+      handle_data_util.set_handle_data(placeholder, handle_data)
+
+    # Record the composite device as an attribute to the placeholder.
+    # This attribute would be propagated into the arg_attr of the FunctionDef.
+    # Currently, a packed eager tensor is always placed on a CompositeDevice.
+    if placeholder_context.composite_device_name is not None:
+      placeholder.op._set_attr(  # pylint: disable=protected-access
+          "_composite_device",
+          attr_value_pb2.AttrValue(s=compat.as_bytes(
+              placeholder_context.composite_device_name)))
+
     return placeholder
 
   def _graph_placeholder(self, graph, name=None):
@@ -287,6 +329,9 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   def _to_tensors(self, value):
     assert isinstance(value, ops.Tensor)
     return [value]
+
+  def _flatten(self):
+    return [self]
 
   def _cast(self, value, casting_context):
     """Cast value to a tensor that is a subtype of this TensorSpec."""

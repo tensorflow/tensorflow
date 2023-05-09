@@ -74,7 +74,8 @@ class MklLayerNormOp : public OpKernel {
           static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
       auto src_mem = memory(src_md, cpu_engine, src_buf);
 
-      // oneDNN requires scale-shift as a combined array in float32 type.
+#ifndef ENABLE_ONEDNN_V3
+      // oneDNN v2.x requires scale-shift as a combined array in float32 type.
       memory::dims scale_shift_dims = {
           2, static_cast<dnnl_dim_t>(num_elements_scale)};
       auto scale_shift_md =
@@ -89,15 +90,43 @@ class MklLayerNormOp : public OpKernel {
           static_cast<void*>(scale_shift_tensor.flat<float>().data());
       auto scale_shift_mem =
           memory(scale_shift_md, cpu_engine, scale_shift_buf);
+      void* scale_buf_dst = scale_shift_buf;
+      void* shift_buf_dst = static_cast<char*>(scale_shift_buf) +
+                            sizeof(float) * num_elements_scale;
+#else
+      // oneDNN v3.x requires scale and shift as separate float32 arrays
+      memory::dims scale_shift_dims = {
+          static_cast<dnnl_dim_t>(num_elements_scale)};
+      auto scale_shift_md =
+          memory::desc(static_cast<memory::dims>(scale_shift_dims),
+                       MklDnnType<float>(), memory::format_tag::x);
 
-      // Copy of reorder scale and shift tensor data into scale_shift_tensor.
+      const int64_t scale_shift_tensor_shape =
+          scale_shift_md.get_size() / sizeof(float);
+
+      Tensor scale_buf_tensor;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<float>::v(),
+                                             {scale_shift_tensor_shape},
+                                             &scale_buf_tensor));
+      void* scale_buf_dst =
+          static_cast<void*>(scale_buf_tensor.flat<float>().data());
+      auto scale_mem = memory(scale_shift_md, cpu_engine, scale_buf_dst);
+
+      Tensor shift_buf_tensor;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<float>::v(),
+                                             {scale_shift_tensor_shape},
+                                             &shift_buf_tensor));
+      void* shift_buf_dst =
+          static_cast<void*>(shift_buf_tensor.flat<float>().data());
+      auto shift_mem = memory(scale_shift_md, cpu_engine, shift_buf_dst);
+#endif  // !ENABLE_ONEDNN_V3
+
       void* scale_buf_src =
           static_cast<void*>(const_cast<T*>(scale_tensor.flat<T>().data()));
       auto scale_mem_src = memory({{static_cast<ptrdiff_t>(num_elements_scale)},
                                    MklDnnType<T>(),
                                    memory::format_tag::x},
                                   cpu_engine, scale_buf_src);
-      void* scale_buf_dst = scale_shift_buf;
       auto scale_mem_dst = memory({{static_cast<ptrdiff_t>(num_elements_scale)},
                                    MklDnnType<float>(),
                                    memory::format_tag::x},
@@ -114,8 +143,6 @@ class MklLayerNormOp : public OpKernel {
                                    MklDnnType<T>(),
                                    memory::format_tag::x},
                                   cpu_engine, shift_buf_src);
-      void* shift_buf_dst = static_cast<char*>(scale_shift_buf) +
-                            sizeof(float) * num_elements_scale;
       auto shift_mem_dst = memory({{static_cast<ptrdiff_t>(num_elements_shift)},
                                    MklDnnType<float>(),
                                    memory::format_tag::x},
@@ -127,11 +154,18 @@ class MklLayerNormOp : public OpKernel {
       shift_reorder_prim.execute(*cpu_stream, shift_reorder_args);
 
       // Create layer_normalization primitive
+#ifndef ENABLE_ONEDNN_V3
       auto lnorm_desc = layer_normalization_forward::desc(
           prop_kind::forward_inference, src_md, epsilon_,
           normalization_flags::use_scale_shift);
       auto lnorm_pd =
           layer_normalization_forward::primitive_desc(lnorm_desc, cpu_engine);
+#else
+      auto dst_md = src_md;
+      auto lnorm_pd = layer_normalization_forward::primitive_desc(
+          cpu_engine, prop_kind::forward_inference, src_md, dst_md, epsilon_,
+          normalization_flags::use_scale | normalization_flags::use_shift);
+#endif  // !ENABLE_ONEDNN_V3
       auto lnorm_prim = layer_normalization_forward(lnorm_pd);
 
       // mean and variance memory
@@ -150,7 +184,12 @@ class MklLayerNormOp : public OpKernel {
       lnorm_args.insert({DNNL_ARG_SRC, src_mem});
       lnorm_args.insert({DNNL_ARG_MEAN, mean_mem});
       lnorm_args.insert({DNNL_ARG_VARIANCE, variance_mem});
+#ifndef ENABLE_ONEDNN_V3
       lnorm_args.insert({DNNL_ARG_SCALE_SHIFT, scale_shift_mem});
+#else
+      lnorm_args.insert({DNNL_ARG_SCALE, scale_mem});
+      lnorm_args.insert({DNNL_ARG_SHIFT, shift_mem});
+#endif  // !ENABLE_ONEDNN_V3
       lnorm_args.insert({DNNL_ARG_DST, dst_mem});
       lnorm_prim.execute(*cpu_stream, lnorm_args);
     } catch (dnnl::error& e) {

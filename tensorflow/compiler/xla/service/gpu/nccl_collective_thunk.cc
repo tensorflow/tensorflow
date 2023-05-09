@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 
-#include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,6 +29,39 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+bool IsTypeSupportedByNccl(PrimitiveType element_type,
+                           Thunk::Kind reduction_op) {
+  switch (element_type) {
+    case S8:
+    case PRED:
+    case U8:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+#if defined(__CUDA_BF16_TYPES_EXIST__)
+    case BF16:
+#endif
+    case C64:
+    case C128:
+      return true;
+    case S16:
+    case U16:
+      // 16-bit integer reductions are not directly supported by NCCL and cannot
+      // be implicitly converted into other 16-bit types like ncclFloat16 as
+      // they involve actual computation and not just data movement.
+      return !IsReductionCollective(reduction_op);
+    default:
+      return false;
+  }
+}
+
+}  // namespace
 
 // This file runs collective ops (i.e. ops that communicate between multiple
 // GPUs) using NCCL.
@@ -107,6 +138,13 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
 #endif
 }
 
+/* static */ Status NcclCollectiveThunk::CheckImplementable() {
+  if (!NcclIsEnabled()) {
+    return tsl::errors::Unimplemented("NCCL is not enabled");
+  }
+  return OkStatus();
+}
+
 #if XLA_ENABLE_XCCL
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
@@ -146,8 +184,7 @@ StatusOr<NcclComm::Lock> LockNcclComm(
       const NcclUniqueIdCallback* unique_id_callback,
       GetNcclUniqueIdCallback(params.nccl_unique_id_callback, is_local));
 
-  se::StreamExecutor* executor = params.stream->parent();
-  se::gpu::ScopedActivateExecutorContext scoped_context(executor);
+  se::gpu::ScopedActivateExecutorContext scoped_context(params.stream_executor);
 
   return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
                          num_local_participants, *unique_id_callback, rank);
@@ -201,7 +238,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 std::string NcclCollectiveThunk::GetDeviceString(
     const NcclExecuteParams& nccl_params) {
-  int device_ordinal = nccl_params.stream->parent()->device_ordinal();
+  int device_ordinal = nccl_params.stream_executor->device_ordinal();
   GlobalDeviceId global_device_id = nccl_params.GetGlobalDeviceId().value();
   DeviceAssignment::LogicalID logical_id =
       nccl_params.device_assn->LogicalIdForDevice(global_device_id).value();
@@ -252,34 +289,19 @@ Status NcclCollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   return async_.Await(params);
 }
 
-bool IsTypeSupportedByNccl(PrimitiveType element_type,
-                           Thunk::Kind reduction_op) {
-  switch (element_type) {
-    case S8:
-    case PRED:
-    case U8:
-    case S32:
-    case U32:
-    case S64:
-    case U64:
-    case F16:
-    case F32:
-    case F64:
-#if defined(__CUDA_BF16_TYPES_EXIST__)
-    case BF16:
-#endif
-    case C64:
-    case C128:
-      return true;
-    case S16:
-    case U16:
-      // 16-bit integer reductions are not directly suppored by NCCL and cannot
-      // be implicitly converted into other 16-bit types like ncclFloat16 as
-      // they involve actual comptation andn not just data movement.
-      return !IsReductionCollective(reduction_op);
-    default:
-      return false;
+Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
+  Shape shape = GetShape(operand);
+  if (!LayoutUtil::IsDenseArray(shape)) {
+    return tsl::errors::Unimplemented(
+        absl::StrFormat("input is not a dense array: %s",
+                        shape.ToString(/*print_layout=*/true)));
   }
+  if (!IsTypeSupportedByNccl(shape.element_type(), reduction_op)) {
+    return tsl::errors::Unimplemented(absl::StrFormat(
+        "element type %s not suppored by NCCL",
+        primitive_util::LowercasePrimitiveTypeName(shape.element_type())));
+  }
+  return OkStatus();
 }
 
 }  // namespace gpu

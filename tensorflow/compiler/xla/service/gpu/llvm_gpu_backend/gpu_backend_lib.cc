@@ -52,7 +52,6 @@ limitations under the License.
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
@@ -357,9 +356,10 @@ const llvm::Module* GetModule(llvm::Any IR) {
   return nullptr;
 }
 
-auto DumpCallbackForModule(std::string module_identifier) {
+auto DumpCallbackForModule(std::string module_identifier,
+                           std::string outputs_dir) {
   int i = 0;
-  return [module_identifier, i](llvm::StringRef pass, llvm::Any ir) mutable {
+  return [=](llvm::StringRef pass, llvm::Any ir) mutable {
     const llvm::Module* module = GetModule(ir);
     if (!module) {
       return;
@@ -369,8 +369,6 @@ auto DumpCallbackForModule(std::string module_identifier) {
         absl::string_view(tsl::io::Basename(module_identifier)),
         absl::StrFormat("pass-%02d.before.%s.ll", i++,
                         absl::string_view(pass.str())));
-    std::string outputs_dir;
-    tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
     DumpModule(tsl::io::JoinPath(outputs_dir, basename), module);
   };
 }
@@ -399,7 +397,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   llvm::PassInstrumentationCallbacks pic;
 
   llvm::StandardInstrumentations si(module->getContext(), false);
-  si.registerCallbacks(pic, &fam);
+  si.registerCallbacks(pic, &mam);
 
   llvm::PassBuilder pb(target_machine, pto, std::nullopt, &pic);
   pb.registerModuleAnalyses(mam);
@@ -409,8 +407,18 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   pb.crossRegisterProxies(lam, fam, cgam, mam);
 
   if (hlo_module_config.debug_options().xla_gpu_dump_llvmir()) {
-    pic.registerBeforeNonSkippedPassCallback(
-        DumpCallbackForModule(module->getModuleIdentifier()));
+    std::string outputs_dir;
+    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
+      outputs_dir = hlo_module_config.debug_options().xla_dump_to();
+    }
+    if (!outputs_dir.empty()) {
+      pic.registerBeforeNonSkippedPassCallback(
+          DumpCallbackForModule(module->getModuleIdentifier(), outputs_dir));
+    } else {
+      LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
+                 << "variable TEST_UNDECLARED_OUTPUTS_DIR nor the flag "
+                 << "--xla_dump_to is set, so the llvm dumps are disabled.";
+    }
   }
 
   int32_t opt_level =

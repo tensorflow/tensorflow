@@ -226,7 +226,7 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
     if (!status.ok()) {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation ",
-                                  node->name(), ": ", status.error_message()),
+                                  node->name(), ": ", status.message()),
           *node);
     }
 
@@ -276,7 +276,7 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
     if (!status.ok()) {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation ",
-                                  node->name(), ": ", status.error_message()),
+                                  node->name(), ": ", status.message()),
           *node);
     }
 

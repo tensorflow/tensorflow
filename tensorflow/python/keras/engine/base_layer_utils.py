@@ -18,7 +18,7 @@ import functools
 import threading
 
 from tensorflow.python import tf2
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +30,7 @@ from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.trackable import base as tracking
@@ -124,7 +125,7 @@ def make_variable(name,
   # TODO(apassos,rohanj) figure out how to remove collections from here so we
   # can remove the V1.
   variable_shape = tensor_shape.TensorShape(shape)
-  return tf_variables.VariableV1(
+  return variable_v1.VariableV1(
       initial_value=init_val,
       name=name,
       trainable=trainable,
@@ -247,7 +248,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
           # Treat any value not originating from a `keras.Input` as
           # a constant. Variables cannot be supported.
           ds_with_session = (
-              distribution_strategy_context.in_cross_replica_context() and
+              distribute_lib.in_cross_replica_context() and
               not ops.executing_eagerly_outside_functions())
           using_xla = control_flow_util.GraphOrParentsInXlaContext(
               ops.get_default_graph())
@@ -790,7 +791,7 @@ class TrackableWeightHandler(object):
     if not isinstance(trackable, tracking.Trackable):
       raise ValueError('%s is not a Trackable object.' % (trackable,))
     self._trackable = trackable
-    self._distribute_strategy = distribution_strategy_context.get_strategy()
+    self._distribute_strategy = distribute_lib.get_strategy()
 
     saveables = saveable_object_util.saveable_objects_from_trackable(
         trackable).values()
@@ -863,7 +864,7 @@ class StaticTableHandler(TrackableWeightHandler):
   def __init__(self, getter_lambda):  # pylint: disable=super-init-not-called
     self._num_tensors = 2
     self._getter = getter_lambda
-    self._distribute_strategy = distribution_strategy_context.get_strategy()
+    self._distribute_strategy = distribute_lib.get_strategy()
 
     def raise_error(_):
       raise RuntimeError('This layer contains a static lookup table, which '

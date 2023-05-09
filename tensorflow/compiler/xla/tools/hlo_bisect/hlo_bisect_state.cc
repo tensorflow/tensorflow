@@ -41,8 +41,9 @@ namespace {
 // instructions in the front and the rest are in post order.
 std::vector<HloInstruction*> GetModifiedInstructionPostOrder(
     HloComputation* computation) {
-  std::vector<HloInstruction*> instructions =
-      computation->parameter_instructions();
+  std::vector<HloInstruction*> instructions(
+      computation->parameter_instructions().begin(),
+      computation->parameter_instructions().end());
   absl::c_copy_if(computation->MakeInstructionPostOrder(),
                   std::back_inserter(instructions),
                   [&](const HloInstruction* instr) {
@@ -182,7 +183,7 @@ StatusOr<bool> HloBisectState::RunModule(const HloModule& module) {
   // Update foldable instructions data.
   if (!bug_result.value()) {
     for (HloInstruction* instr : module.entry_computation()->instructions()) {
-      foldable_instructions_.insert(instr->name());
+      foldable_instructions_.emplace(instr->name());
     }
     for (auto& [key, value] : bug_checker_->GetResults()) {
       foldable_instructions_values_[key] = std::move(value);

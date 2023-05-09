@@ -141,8 +141,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
@@ -2563,7 +2564,7 @@ class FeatureTransformationCache(object):
             message='Feature (key: {}) cannot have rank 0. Given: {}'.format(
                 key, feature_tensor))
     ]):
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(1, array_ops.rank(feature_tensor)),
           lambda: expand_dims(feature_tensor), lambda: feature_tensor)
 
@@ -2896,9 +2897,9 @@ class BucketizedColumn(
                           (-1,)) + (len(self.boundaries) + 1) * i2)
 
     indices = math_ops.cast(
-        array_ops.transpose(array_ops.stack((i1, i2))), dtypes.int64)
+        array_ops.transpose(array_ops_stack.stack((i1, i2))), dtypes.int64)
     dense_shape = math_ops.cast(
-        array_ops.stack([batch_size, source_dimension]), dtypes.int64)
+        array_ops_stack.stack([batch_size, source_dimension]), dtypes.int64)
     sparse_tensor = sparse_tensor_lib.SparseTensor(
         indices=indices, values=bucket_indices, dense_shape=dense_shape)
     return CategoricalColumn.IdWeightPair(sparse_tensor, None)

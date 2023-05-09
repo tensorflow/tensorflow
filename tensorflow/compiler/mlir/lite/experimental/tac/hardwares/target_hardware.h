@@ -94,6 +94,8 @@ class TargetHardware {
   // Usually should be something like mlir::TypeID::get<MyType>()
   virtual mlir::TypeID GetTypeId() const = 0;
 
+  virtual void GetDependentDialects(mlir::DialectRegistry& registry) const {}
+
  protected:
   // All registered hardware ops.
   std::vector<std::unique_ptr<TargetHardwareOperation>> hardware_ops_;

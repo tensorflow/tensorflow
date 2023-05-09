@@ -701,6 +701,7 @@ func.func @testConv2D(%arg0: tensor<256x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) 
 // -----
 
 func.func @testConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+2 {{'tf.Conv3D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x32x32x32x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
@@ -757,6 +758,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x16x11x16xf32>' are incompatible with return type(s) of operation 'tensor<256x30x30x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
   func.return %0 : tensor<256x30x30x16xf32>
@@ -765,6 +767,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x16x11x16xf32>' are incompatible with return type(s) of operation 'tensor<256x16x30x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32>
   func.return %0 : tensor<256x16x30x16xf32>
@@ -773,6 +776,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x6x6x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "EXPLICIT", dilations = [1, 2, 3, 4], explicit_paddings = [1, 2, 3, 4, 5, 6, 7, 8], strides = [5, 6, 7, 8]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
@@ -781,6 +785,7 @@ func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32
 // -----
 
 func.func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+2 {{'tf.Conv2D' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<256x30x30x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
@@ -2554,6 +2559,7 @@ func.func @testConst() -> tensor<f32> {
 
 // Test invalid tf.ToBool
 func.func @testInvalidToBool(%arg0: tensor<i32>) -> tensor<1xi1> {
+  // expected-error @+2 {{'tf.ToBool' op failed to infer returned types}}
   // expected-error @+1 {{op inferred type(s) 'tensor<i1>' are incompatible with return type(s) of operation 'tensor<1xi1>'}}
   %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<1xi1>
   func.return %0 : tensor<1xi1>
@@ -2631,6 +2637,17 @@ func.func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
   // expected-error @+1 {{expected perm to be a 1-D Tensor of size equal to the rank of x, got perm of size 3, and x of rank 2}}
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<3x2xf32>
   func.return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid index of perm
+func.func @testTranspose(tensor<2x2xf32>) -> tensor<2x2xf32> {
+^bb0(%arg0: tensor<2x2xf32>):
+  %cst = arith.constant dense<[1, -3]> : tensor<2xi32>
+  // expected-error @+1 {{'tf.Transpose' op perm[1]=-3 must be in range [-2, 2)}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
 }
 
 // -----
@@ -4330,6 +4347,7 @@ func.func @testVarHandleOp() -> tensor<*x!tf_type.resource> {
 
 func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
   %0 = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+  // expected-error @+2 {{'tf.XlaBroadcastHelper' op failed to infer returned types}}
   // expected-error @+1 {{broadcast_dims must have size equal to the smaller argument rank}}
   %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<1xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
   func.return
@@ -4339,6 +4357,7 @@ func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi3
 
 func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
   %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+  // expected-error @+2 {{'tf.XlaBroadcastHelper' op failed to infer returned types}}
   // expected-error @+1 {{if broadcast_dims is empty, both arguments must have equal rank or at least one argument must be a scalar}}
   %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<0xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
   func.return
@@ -4348,6 +4367,7 @@ func.func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi3
 
 func.func @testXlaBroadcastHelper(%arg0: tensor<5x2xi32>, %arg1: tensor<2x3x5xi32>) -> () {
   %0 = "tf.Const"() {value = dense<0> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+2 {{'tf.XlaBroadcastHelper' op failed to infer returned types}}
   // expected-error @+1 {{broadcast_dims has duplicates}}
   %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<5x2xi32>, tensor<2x3x5xi32>, tensor<2xi64>) -> (tensor<2x1x5xi32>, tensor<2x3x5xi32>)
   func.return
@@ -4663,6 +4683,7 @@ func.func @testReluStaticShapeInputAndDynamicShapeOutput(%arg0: tensor<8x16xf32>
 
 func.func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf16> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // expected-error @+2 {{'tf.XlaSetDynamicDimensionSize' op failed to infer returned types}}
   // expected-error @+1 {{dim_index (1) is out of range [0, 1)}}
   %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf16>
   func.return %0 : tensor<?xf16>
@@ -5009,6 +5030,52 @@ func.func @testUniformQuantizedConvolution(
         tensor<f32>, tensor<i32>,
         tensor<2xf32>, tensor<i32>,
         tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedAdd(
+  %input: tensor<2x2x!tf_type.qint32>, %bias: tensor<2x!tf_type.qint32>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %bias_scales: tensor<f32>, %bias_zps: tensor<i32>,
+  %output_scales: tensor<2xf32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedAdd' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedAdd"(
+    %input, %bias,
+    %input_scales, %input_zps,
+    %bias_scales, %bias_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -2147483648 : i64,
+      lhs_quantization_max_val = 2147483647 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -2147483648 : i64,
+      rhs_quantization_max_val = 2147483647 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<2x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>) -> tensor<2x2x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedClipByValue(
+    %operand: tensor<*x!tf_type.qint32>, %min: tensor<!tf_type.qint32>, %max: tensor<!tf_type.qint32>, 
+    %scales: tensor<2xf32>, %zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedClipByValue' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformQuantizedClipByValue"(%operand, %min, %max, %scales, %zps) {
+    quantization_axis = -1 : i64,
+    quantization_min_val = -2147483648 : i64,
+    quantization_max_val = 2147483647 : i64
+  } : (
+    tensor<*x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>,
+    tensor<2xf32>, tensor<i32>
+  ) -> tensor<*x!tf_type.qint32>
   func.return
 }
 

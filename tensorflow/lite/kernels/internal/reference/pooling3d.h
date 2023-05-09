@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_POOLING3D_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_POOLING3D_H_
 
+#include <algorithm>
+#include <limits>
+
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {

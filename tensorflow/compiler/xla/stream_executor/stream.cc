@@ -289,7 +289,7 @@ tsl::Status Stream::RefreshStatus() {
   tsl::Status status = parent_->GetStatus(this);
   // We should not put the stream in an error state, just because the GetStatus
   // method is unimplemented.
-  if (status != tsl::Status(tsl::error::UNIMPLEMENTED,
+  if (status != tsl::Status(absl::StatusCode::kUnimplemented,
                             "GetStatus is not supported on this executor.")) {
     CheckStatus(status);
   }
@@ -333,7 +333,7 @@ Stream &Stream::ThenRecordEvent(Event *event) {
 
   tsl::Status status = parent_->RecordEvent(this, event);
   if (!status.ok()) {
-    LOG(ERROR) << "Error recording event in stream: " << status.error_message()
+    LOG(ERROR) << "Error recording event in stream: " << status.message()
                << "; not marking stream as bad, as the Event object may be "
                << "at fault. Monitor for further errors.";
   }
@@ -1117,8 +1117,7 @@ Stream &Stream::ThenWaitFor(Event *event) {
   if (ok()) {
     tsl::Status status = parent_->WaitForEvent(this, event);
     if (!status.ok()) {
-      LOG(ERROR) << "Error waiting for event in stream: "
-                 << status.error_message()
+      LOG(ERROR) << "Error waiting for event in stream: " << status.message()
                  << "; not marking stream as bad, as the Event object may be "
                  << "at fault. Monitor for further errors.";
     }
@@ -1444,184 +1443,6 @@ struct ThenBlasWithProfileImpl {
   }
 };
 }  // anonymous namespace
-
-Stream &Stream::ThenBlasGemvWithProfiling(
-    blas::Transpose trans, uint64_t m, uint64 n, float alpha,
-    const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &x,
-    int incx, float beta, DeviceMemory<float> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(trans), PARAM(m), PARAM(n), PARAM(alpha), PARAM(a),
-            PARAM(lda), PARAM(x), PARAM(incx), PARAM(beta), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, uint64_t, uint64_t, float, const DeviceMemory<float> &,
-      int, const DeviceMemory<float> &, int, float, DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemvWithProfiling, trans, m, n,
-              alpha, a, lda, x, incx, beta, y, incy, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemvWithProfiling(
-    blas::Transpose trans, uint64_t m, uint64 n, double alpha,
-    const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &x,
-    int incx, double beta, DeviceMemory<double> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(trans), PARAM(m), PARAM(n), PARAM(alpha), PARAM(a),
-            PARAM(lda), PARAM(x), PARAM(incx), PARAM(beta), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasWithProfileImpl<blas::Transpose, uint64_t, uint64_t, double,
-                          const DeviceMemory<double> &, int,
-                          const DeviceMemory<double> &, int, double,
-                          DeviceMemory<double> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemvWithProfiling, trans, m, n,
-              alpha, a, lda, x, incx, beta, y, incy, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemvWithProfiling(
-    blas::Transpose trans, uint64_t m, uint64 n, std::complex<float> alpha,
-    const DeviceMemory<std::complex<float>> &a, int lda,
-    const DeviceMemory<std::complex<float>> &x, int incx,
-    std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(trans), PARAM(m), PARAM(n), PARAM(alpha), PARAM(a),
-            PARAM(lda), PARAM(x), PARAM(incx), PARAM(beta), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, uint64_t, uint64_t, std::complex<float>,
-      const DeviceMemory<std::complex<float>> &, int,
-      const DeviceMemory<std::complex<float>> &, int, std::complex<float>,
-      DeviceMemory<std::complex<float>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemvWithProfiling, trans, m, n,
-              alpha, a, lda, x, incx, beta, y, incy, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemvWithProfiling(
-    blas::Transpose trans, uint64_t m, uint64 n, std::complex<double> alpha,
-    const DeviceMemory<std::complex<double>> &a, int lda,
-    const DeviceMemory<std::complex<double>> &x, int incx,
-    std::complex<double> beta, DeviceMemory<std::complex<double>> *y, int incy,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(trans), PARAM(m), PARAM(n), PARAM(alpha), PARAM(a),
-            PARAM(lda), PARAM(x), PARAM(incx), PARAM(beta), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, uint64_t, uint64_t, std::complex<double>,
-      const DeviceMemory<std::complex<double>> &, int,
-      const DeviceMemory<std::complex<double>> &, int, std::complex<double>,
-      DeviceMemory<std::complex<double>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemvWithProfiling, trans, m, n,
-              alpha, a, lda, x, incx, beta, y, incy, output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithProfiling(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha, const DeviceMemory<Eigen::half> &a, int lda,
-    const DeviceMemory<Eigen::half> &b, int ldb, float beta,
-    DeviceMemory<Eigen::half> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc));
-
-  ThenBlasWithProfileImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t,
-                          uint64_t, float, const DeviceMemory<Eigen::half> &,
-                          int, const DeviceMemory<Eigen::half> &, int, float,
-                          DeviceMemory<Eigen::half> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithProfiling, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-              output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithProfiling(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, float alpha, const DeviceMemory<float> &a, int lda,
-    const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
-    int ldc, blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc));
-
-  ThenBlasWithProfileImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t,
-                          uint64_t, float, const DeviceMemory<float> &, int,
-                          const DeviceMemory<float> &, int, float,
-                          DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithProfiling, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-              output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithProfiling(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, double alpha, const DeviceMemory<double> &a, int lda,
-    const DeviceMemory<double> &b, int ldb, double beta,
-    DeviceMemory<double> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc));
-
-  ThenBlasWithProfileImpl<blas::Transpose, blas::Transpose, uint64_t, uint64_t,
-                          uint64_t, double, const DeviceMemory<double> &, int,
-                          const DeviceMemory<double> &, int, double,
-                          DeviceMemory<double> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithProfiling, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-              output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithProfiling(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, std::complex<float> alpha,
-    const DeviceMemory<std::complex<float>> &a, int lda,
-    const DeviceMemory<std::complex<float>> &b, int ldb,
-    std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
-      std::complex<float>, const DeviceMemory<std::complex<float>> &, int,
-      const DeviceMemory<std::complex<float>> &, int, std::complex<float>,
-      DeviceMemory<std::complex<float>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithProfiling, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-              output_profile_result);
-}
-
-Stream &Stream::ThenBlasGemmWithProfiling(
-    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-    uint64_t k, std::complex<double> alpha,
-    const DeviceMemory<std::complex<double>> &a, int lda,
-    const DeviceMemory<std::complex<double>> &b, int ldb,
-    std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
-            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
-            PARAM(beta), PARAM(c), PARAM(ldc));
-
-  ThenBlasWithProfileImpl<
-      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64,
-      std::complex<double>, const DeviceMemory<std::complex<double>> &, int,
-      const DeviceMemory<std::complex<double>> &, int, std::complex<double>,
-      DeviceMemory<std::complex<double>> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasGemmWithProfiling, transa, transb,
-              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-              output_profile_result);
-}
 
 Stream &Stream::ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
                              blas::Transpose transa, blas::Diagonal diag,
@@ -2331,6 +2152,7 @@ Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
                             absl::Span<const int> labels_data,
                             absl::Span<const int> labels_lengths_data,
                             absl::Span<const int> input_lengths_data,
+                            const NumericOptions &numeric_options,
                             DeviceMemory<float> *costs_data,
                             const dnn::RnnStateTensorDescriptor &grads_desc,
                             DeviceMemory<float> *grads_data,
@@ -2339,10 +2161,10 @@ Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
     DeviceMemory<uint8_t> scratch_memory;
     int ctc_loss_algo_id;
     auto status =
-        dnn->PrepareForCtcLoss(this, probs_desc, probs_data, grads_desc,
-                               labels_data, labels_lengths_data,
-                               input_lengths_data, workspace_allocator,
-                               &scratch_memory, &ctc_loss_algo_id)
+        dnn->PrepareForCtcLoss(
+               this, probs_desc, probs_data, grads_desc, labels_data,
+               labels_lengths_data, input_lengths_data, numeric_options,
+               workspace_allocator, &scratch_memory, &ctc_loss_algo_id)
             .ok();
     if (status) {
       status = dnn->DoCtcLoss(this, probs_desc, probs_data, labels_data,
@@ -2534,7 +2356,7 @@ tsl::Status Stream::BlockHostUntilDone() {
     absl::MutexLock lock(&mu_);
     LOG(INFO) << status_.ToString();
     tsl::Status status = tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "stream did not block host until done; was already in an error state");
     LOG(INFO) << DebugStreamPointers() << " " << status;
     return status;

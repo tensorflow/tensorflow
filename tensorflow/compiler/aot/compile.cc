@@ -68,7 +68,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
       client->GetComputationShape(computation);
   if (!pshape_or.ok()) {
     return errors::Unknown("Couldn't get XLA program shape: ",
-                           pshape_or.status().error_message());
+                           pshape_or.status().message());
   }
   compile_result->program_shape = pshape_or.value()->ToProto();
   xla::ProgramShapeProto* pshape = &compile_result->program_shape;
@@ -91,7 +91,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
       aot_or = client->CompileAheadOfTime({instance}, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
-                           aot_or.status().error_message());
+                           aot_or.status().message());
   }
   compile_result->aot =
       xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
@@ -147,7 +147,7 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
     // Serialize the HloSnapshot deterministically so that all the outputs of a
     // tf_library genrule are deterministic.
     const size_t size = module->ByteSizeLong();
-    auto serialized = absl::make_unique<char[]>(size);
+    auto serialized = std::make_unique<char[]>(size);
     TF_RET_CHECK(
         SerializeToBufferDeterministic(*module, serialized.get(), size));
     TF_RETURN_IF_ERROR(
@@ -185,25 +185,30 @@ static void InitializeTargets() {
   LLVMInitializeAArch64Target();
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
   LLVMInitializeAArch64AsmPrinter();
 #endif
 #if TF_LLVM_S390X_AVAILABLE
   LLVMInitializeSystemZTarget();
   LLVMInitializeSystemZTargetInfo();
   LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmParser();
   LLVMInitializeSystemZAsmPrinter();
 #endif
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
   LLVMInitializeARMAsmPrinter();
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmParser();
   LLVMInitializePowerPCAsmPrinter();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
   LLVMInitializeX86AsmPrinter();
 }
 
@@ -255,7 +260,7 @@ Status Main(const MainFlags& flags) {
       CompileGraph(std::move(graph_def), config, flags, &compile_result);
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, InterpolateErrorMessage(status.error_message()));
+        status, InterpolateErrorMessage(std::string(status.message())));
   }
 
   // Write output files.

@@ -44,7 +44,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
         mlir::mhlo::createLegalizeSparseChloToLinalgPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass(
-            /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
+            /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.

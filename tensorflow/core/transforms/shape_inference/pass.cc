@@ -110,28 +110,28 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   } else if (op_name == "Rank") {
     ShapedType operand_shape = op->getOperand(0).getType().cast<ShapedType>();
     if (!operand_shape.hasRank()) return;
-    ShapedType return_shape = op->getResultTypes()[0];
+    ShapedType return_shape = op->getResultTypes()[0].cast<ShapedType>();
     DenseElementsAttr tensor_value;
     if (return_shape.getElementType().isInteger(32)) {
       tensor_value = DenseElementsAttr::get(
-          op->getResultTypes()[0], ArrayRef<int>(operand_shape.getRank()));
+          return_shape, ArrayRef<int>(operand_shape.getRank()));
     } else {
       tensor_value = DenseElementsAttr::get(
-          op->getResultTypes()[0], ArrayRef<int64_t>(operand_shape.getRank()));
+          return_shape, ArrayRef<int64_t>(operand_shape.getRank()));
     }
     cached_tensor_values_[op->getResult(0)] = tensor_value;
   } else if (op_name == "Size") {
     ShapedType operand_shape = op->getOperand(0).getType().cast<ShapedType>();
     if (!operand_shape.hasStaticShape()) return;
-    ShapedType return_shape = op->getResultTypes()[0];
+    ShapedType return_shape = op->getResultTypes()[0].cast<ShapedType>();
     DenseElementsAttr tensor_value;
     if (return_shape.getElementType().isInteger(32)) {
       tensor_value =
-          DenseElementsAttr::get(op->getResultTypes()[0],
+          DenseElementsAttr::get(return_shape,
                                  ArrayRef<int>(operand_shape.getNumElements()));
     } else {
       tensor_value = DenseElementsAttr::get(
-          op->getResultTypes()[0],
+          return_shape,
           ArrayRef<int64_t>(operand_shape.getNumElements()));
     }
     cached_tensor_values_[op->getResult(0)] = tensor_value;
@@ -144,16 +144,16 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
       if (!operand_shape.hasStaticShape()) continue;
 
       int idx = operand.getOperandNumber();
-      ShapedType return_shape = op->getResultTypes()[idx];
+      ShapedType return_shape = op->getResultTypes()[idx].cast<ShapedType>();
       DenseElementsAttr tensor_value;
       if (return_shape.getElementType().isInteger(32)) {
         tensor_value = DenseElementsAttr::get<int>(
-            op->getResultTypes()[idx],
+            return_shape,
             SmallVector<int>(llvm::map_range(
                 operand_shape.getShape(),
                 [](int64_t dim) { return static_cast<int>(dim); })));
       } else {
-        tensor_value = DenseElementsAttr::get(op->getResultTypes()[idx],
+        tensor_value = DenseElementsAttr::get(return_shape,
                                               operand_shape.getShape());
       }
       cached_tensor_values_[op->getResult(idx)] = tensor_value;
@@ -306,7 +306,7 @@ void ShapeInference::runOnOperation() {
     Operation *return_op = func.SingleBlock::getBody()->getTerminator();
 
     bool types_updated = false;
-    for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {
+    for (const auto &indexed_type : llvm::enumerate(func_type.getResults())) {
       int res_num = indexed_type.index();
       Type return_arg_type = return_op->getOperand(res_num).getType();
       if (return_arg_type != indexed_type.value()) {

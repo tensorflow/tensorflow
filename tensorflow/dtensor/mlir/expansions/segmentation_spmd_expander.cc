@@ -42,10 +42,10 @@ UnsortedSegmentSumSPMDExpander::ComputeLayoutForward(
     const int segment_ids_rank =
         ValueRank(unsorted_segmented_sum.getSegmentIds());
 
+    Layout input_layout_truncated =
+        input_layouts.lookup(0).Truncate(segment_ids_rank, /*end=*/true);
     return llvm::DenseMap<int, Layout>(
-        {{0, input_layouts.lookup(0)
-                 .Truncate(segment_ids_rank, /*end=*/true)
-                 .LeftPad(output_rank)}});
+        {{0, input_layout_truncated.LeftPad(output_rank)}});
   }
 
   // When we don't have a data layout we can only output a replicated layout.
@@ -66,11 +66,12 @@ UnsortedSegmentSumSPMDExpander::ComputeLayoutBackward(
     // If we have an output layout, we can send it backwards to the last few
     // dimension
     const int data_rank = ValueRank(unsorted_segmented_sum.getData());
-    return llvm::DenseMap<int, Layout>({{0, output_layouts.lookup(0)
-                                                .Truncate(1, /*end=*/true)
-                                                .LeftPad(data_rank)},
-                                        {1, segment_ids_layout},
-                                        {2, num_segments_layout}});
+    Layout output_layout_truncated =
+        output_layouts.lookup(0).Truncate(1, /*end=*/true);
+    return llvm::DenseMap<int, Layout>(
+        {{0, output_layout_truncated.LeftPad(data_rank)},
+         {1, segment_ids_layout},
+         {2, num_segments_layout}});
   }
   return llvm::DenseMap<int, Layout>(
       {{0, Layout::ReplicatedOnMesh(
@@ -121,9 +122,10 @@ StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
 
   InferSPMDExpandedLocalShape(new_sum_op);
 
-  Layout result_output_layout =
-      data_layout.Truncate(segment_ids_rank, /*end=*/true)
-          .LeftPad(data_rank - segment_ids_rank + 1);  // This is output rank.
+  Layout data_layout_truncated =
+      data_layout.Truncate(segment_ids_rank, /*end=*/true);
+  Layout result_output_layout = data_layout_truncated.LeftPad(
+      data_rank - segment_ids_rank + 1);  // This is output rank.
 
   TF_ASSIGN_OR_RETURN(
       new_sum_op, EmitAllReduce(builder, result_output_layout,

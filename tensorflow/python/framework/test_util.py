@@ -48,7 +48,6 @@ from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
@@ -961,15 +960,13 @@ def assert_no_garbage_created(f):
     The decorated function.
   """
 
+  # FIXME(power) -- Update documentation, we no longer care if garbage is
+  # created, we only want to verify we don't have memory leaks.
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
-    # Force-load `distribution_strategy_context` to prevent GC at
-    # test time when using eager. Remove once b/117329403 is resolved.
-    tape.distribution_strategy_context.get_strategy()
-
     gc.disable()
     previous_debug_flags = gc.get_debug()
-    gc.set_debug(gc.DEBUG_SAVEALL)
+    gc.set_debug(gc.DEBUG_UNCOLLECTABLE)
     gc.collect()
     previous_garbage = len(gc.garbage)
     result = f(self, **kwargs)
@@ -2541,7 +2538,7 @@ class TensorFlowTestCase(googletest.TestCase):
       os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
-  def _AssertProtoEquals(self, a, b, msg=None):
+  def _AssertProtoEquals(self, a, b, msg=None, relative_tolerance=None):
     """Asserts that a and b are the same proto.
 
     Uses ProtoEq() first, as it returns correct results
@@ -2552,11 +2549,28 @@ class TensorFlowTestCase(googletest.TestCase):
       a: a proto.
       b: another proto.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if not compare.ProtoEq(a, b):
-      compare.assertProtoEqual(self, a, b, normalize_numbers=True, msg=msg)
+      compare.assertProtoEqual(
+          self,
+          a,
+          b,
+          normalize_numbers=True,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
 
-  def assertProtoEquals(self, expected_message_maybe_ascii, message, msg=None):
+  def assertProtoEquals(
+      self,
+      expected_message_maybe_ascii,
+      message,
+      msg=None,
+      relative_tolerance=None,
+  ):
     """Asserts that message is same as parsed expected_message_ascii.
 
     Creates another prototype of message, reads the ascii message into it and
@@ -2566,17 +2580,31 @@ class TensorFlowTestCase(googletest.TestCase):
       expected_message_maybe_ascii: proto message in original or ascii form.
       message: the message to validate.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,
           expected_message,
           descriptor_pool=descriptor_pool.Default())
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     else:
       assert False, ("Can't compare protos of type %s and %s." %
                      (type(expected_message_maybe_ascii), type(message)))

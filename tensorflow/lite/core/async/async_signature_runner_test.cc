@@ -22,14 +22,14 @@ limitations under the License.
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/task.h"
 #include "tensorflow/lite/core/async/c/types.h"
-#include "tensorflow/lite/core/async/common.h"
 #include "tensorflow/lite/core/async/testing/mock_async_kernel.h"
 #include "tensorflow/lite/core/async/testing/test_backend.h"
+#include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/interpreter_test_util.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 
 namespace tflite {
 namespace async {
@@ -83,7 +83,8 @@ TEST_F(AsyncSignatureRunnerTest, InputsTest) {
   EXPECT_EQ(1, signature_runner_->input_size());
   auto* input_name = signature_runner_->input_names()[0];
   EXPECT_STREQ("input", input_name);
-  EXPECT_STREQ("x", signature_runner_->input_tensor(input_name)->name);
+  EXPECT_STREQ(
+      "x", TfLiteOpaqueTensorName(signature_runner_->input_tensor(input_name)));
 }
 
 TEST_F(AsyncSignatureRunnerTest, OutputsTest) {
@@ -91,21 +92,22 @@ TEST_F(AsyncSignatureRunnerTest, OutputsTest) {
   EXPECT_EQ(1, signature_runner_->output_size());
   auto* output_name = signature_runner_->output_names()[0];
   EXPECT_STREQ("output", output_name);
-  EXPECT_STREQ("a", signature_runner_->output_tensor(output_name)->name);
+  EXPECT_STREQ("a", TfLiteOpaqueTensorName(
+                        signature_runner_->output_tensor(output_name)));
 }
 
 TEST_F(AsyncSignatureRunnerTest, InputNameTest) {
   signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
-  EXPECT_EQ(0, GetTensorIndex(TfLiteIoType::kTfLiteIoInput, "input"));
-  EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoInput, "output"));
-  EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoInput, "foo"));
+  EXPECT_EQ(0, GetTensorIndex(kTfLiteIoTypeInput, "input"));
+  EXPECT_EQ(-1, GetTensorIndex(kTfLiteIoTypeInput, "output"));
+  EXPECT_EQ(-1, GetTensorIndex(kTfLiteIoTypeInput, "foo"));
 }
 
 TEST_F(AsyncSignatureRunnerTest, OutputNameTest) {
   signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
-  EXPECT_EQ(1, GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, "output"));
-  EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, "input"));
-  EXPECT_EQ(-1, GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, "foo"));
+  EXPECT_EQ(1, GetTensorIndex(kTfLiteIoTypeOutput, "output"));
+  EXPECT_EQ(-1, GetTensorIndex(kTfLiteIoTypeOutput, "input"));
+  EXPECT_EQ(-1, GetTensorIndex(kTfLiteIoTypeOutput, "foo"));
 }
 
 TEST_F(AsyncSignatureRunnerTest, CreateTaskTest) {
@@ -115,9 +117,8 @@ TEST_F(AsyncSignatureRunnerTest, CreateTaskTest) {
   auto* task = signature_runner_->CreateTask();
   EXPECT_NE(nullptr, task);
 
-  TfLiteExecutionTaskSetBuffer(task, TfLiteIoType::kTfLiteIoInput, "input", 24);
-  TfLiteExecutionTaskSetBuffer(task, TfLiteIoType::kTfLiteIoOutput, "output",
-                               12);
+  TfLiteExecutionTaskSetBuffer(task, kTfLiteIoTypeInput, "input", 24);
+  TfLiteExecutionTaskSetBuffer(task, kTfLiteIoTypeOutput, "output", 12);
   TfLiteBufferHandle input_buffer, output_buffer;
   input_buffer = TfLiteExecutionTaskGetBufferByIndex(task, 0);
   output_buffer = TfLiteExecutionTaskGetBufferByIndex(task, 1);

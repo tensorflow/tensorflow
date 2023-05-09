@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GRAPH_LAUNCH_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GRAPH_LAUNCH_H_
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -39,6 +40,11 @@ void RegisterGraphLaunchCustomCalls(
 
 struct GraphInstance;                // Forward declare
 class StreamExecutorGraphInstances;  // Forward declare
+
+// A state vector that keeps track of the number of times a capture function
+// gets executed. Graph capture function ordinal is the key in this container.
+class CapturedFunctionExecutionCount
+    : public runtime::StateVector<std::unique_ptr<std::atomic<uint64_t>>> {};
 
 #if GOOGLE_CUDA
 
@@ -81,6 +87,36 @@ class GraphInstances {
   mutable absl::Mutex mutex_;
   absl::node_hash_map<se::StreamExecutor*, StreamExecutorGraphInstances> graphs_
       ABSL_GUARDED_BY(mutex_);
+};
+
+// Xla executable keeps a mapping from stream executors to execution counts.
+class CapturedFunctionExecutionCounts {
+ public:
+  CapturedFunctionExecutionCount* operator()(se::StreamExecutor* executor);
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl::node_hash_map<se::StreamExecutor*, CapturedFunctionExecutionCount>
+      counts_ ABSL_GUARDED_BY(mutex_);
+};
+
+class ConcurrentRegionStatus {
+ public:
+  ConcurrentRegionStatus(bool is_in_concurrent_region, int32_t stream_index)
+      : is_in_concurrent_region_(is_in_concurrent_region),
+        stream_index_(stream_index) {}
+
+  ConcurrentRegionStatus()
+      : is_in_concurrent_region_(false), stream_index_(0) {}
+
+  void StartConcurrentRegion();
+  void EndConcurrentRegion();
+  int32_t GetAndIncrementStreamIndex();
+  bool is_in_concurrent_region();
+
+ private:
+  bool is_in_concurrent_region_;
+  int32_t stream_index_;
 };
 
 }  // namespace gpu

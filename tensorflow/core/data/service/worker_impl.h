@@ -127,7 +127,7 @@ class DataServiceWorkerImpl {
   Status ValidateWorkerConfig() const;
   // Creates and initializes a dispatcher client.
   StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
-  CreateDispatcherClient() const;
+  CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_);
   // Sends task status to the dispatcher and checks for dispatcher commands.
   Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
@@ -150,7 +150,8 @@ class DataServiceWorkerImpl {
   void UpdateTasks(const WorkerHeartbeatResponse& response)
       TF_LOCKS_EXCLUDED(mu_);
   // Updates the distributed snapshot tasks according to the heartbeat response.
-  Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response);
+  Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response)
+      TF_LOCKS_EXCLUDED(mu_);
   // Creates an dataset iterator for snapshot writers.
   StatusOr<std::unique_ptr<StandaloneTaskIterator>> MakeSnapshotTaskIterator(
       const SnapshotTaskDef& snapshot_task,
@@ -197,7 +198,7 @@ class DataServiceWorkerImpl {
 
   absl::flat_hash_map<SnapshotTask, std::unique_ptr<SnapshotStreamWriter>,
                       absl::Hash<SnapshotTask>>
-      snapshot_writers_;
+      snapshot_writers_ TF_GUARDED_BY(mu_);
 
   // A thread for notifying the dispatcher when tasks complete.
   std::unique_ptr<Thread> task_completion_thread_;

@@ -83,6 +83,18 @@ class MMAPAllocation : public Allocation {
 
   int fd() const { return mmap_fd_; }
 
+  // The start address of the mmapped buffer.
+  // This will be base() rounded down to the nearest page boundary.
+  const void* mmapped_buffer() const { return mmapped_buffer_; }
+
+  // The size of the mmapped buffer.
+  size_t mmapped_buffer_size() const { return bytes() + offset_in_buffer_; }
+
+  // Offset of mmapped_buffer() in the file referenced by the file descriptor.
+  size_t mmapped_buffer_offset_in_file() const {
+    return offset_of_buffer_in_file_;
+  }
+
   static bool IsSupported();
 
  protected:
@@ -92,6 +104,7 @@ class MMAPAllocation : public Allocation {
   size_t buffer_size_bytes_ = 0;
   // Used when the address to mmap is not page-aligned.
   size_t offset_in_buffer_ = 0;
+  size_t offset_of_buffer_in_file_ = 0;
 
  private:
   // Assumes ownership of the provided `owned_fd` instance.

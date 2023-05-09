@@ -137,13 +137,15 @@ aar_with_jni(
     name = "tensorflow-lite",
     android_library = ":tensorflowlite",
     headers = [
-        # TODO(b/175298345): Clean up and if possible remove common.h here.
+        # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:c_api_experimental.h",
+        "//tensorflow/lite/c:c_api_opaque.h",
         "//tensorflow/lite/c:c_api_types.h",
         "//tensorflow/lite/c:common.h",
         "//tensorflow/lite/core/c:c_api.h",
+        "//tensorflow/lite/core/c:c_api_opaque.h",
         "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/core/c:c_api_experimental.h",
         "//tensorflow/lite/core/c:common.h",
@@ -164,6 +166,8 @@ aar_with_jni(
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/c:c_api.h",
         "//tensorflow/lite/core/c:c_api_types.h",
         # TODO(b/175298345): move the stable parts of common.h into
         # a separate header file that contains no experimental APIs
@@ -359,7 +363,7 @@ android_library(
     name = "tensorflowlite_gpu_api",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestGpu.xml",
     proguard_specs = ["proguard.flags"],
     deps = [":tensorflowlite_api"],
 )
@@ -489,7 +493,9 @@ java_test_with_tflite(
     # run every test case in this test in a separate shard, which ensures that
     # they run in a separate process that doesn't have the native libraries
     # loaded yet.
-    shard_count = 3,
+    # LINT.IfChange(TensorFlowLiteTestShardCount)
+    shard_count = 5,  # grep -c @Test src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java
+    # LINT.ThenChange(src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java)
     tags = [
         "v1only",
     ],
@@ -743,7 +749,6 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
@@ -954,7 +959,7 @@ jni_binary_with_tflite(
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
 jni_binary_with_tflite(
     name = "libtensorflowlite_gpu_jni.so",
-    linkopts = tflite_jni_linkopts(),
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":gpu_version_script.lds",
     tflite_deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",

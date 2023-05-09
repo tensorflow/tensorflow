@@ -24,7 +24,6 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import mirrored_strategy
@@ -32,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -69,6 +69,15 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertIsInstance(v, d_variable.DVariable)
     self.assertIsNotNone(v.layout)
     self.assertEqual(v.layout, layout.Layout.replicated(self.mesh, rank=1))
+
+  def test_variable_creation_with_dtype(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    with strategy.scope():
+      v = variables.Variable(
+          0, dtype='int64',
+          aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
+    self.assertIsInstance(v, d_variable.DVariable)
+    self.assertEqual(v.dtype, dtypes.int64)
 
   def test_mesh(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
@@ -132,17 +141,47 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     def replica_fn(inputs):
       return inputs * 2.0
 
-    result = strategy.run(replica_fn, args=(tensor_input,))
-    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
-    self.assertLen(result.values, 2)
-    self.assertAllClose(result.values[0], constant_op.constant([6.0]))
-    self.assertAllClose(result.values[1], constant_op.constant([6.0]))
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.run(replica_fn, args=(tensor_input,))
+
+  def test_run_with_graph_tensor_inputs(self):
+    # Note that this is potentially a sharp edge for the user, since the eager
+    # test case was raising an error, but the graph context will run, by treat
+    # the inputs as a global inputs.
+    # TODO(scottzhu): Mitigate this eager/graph behavior difference in future.
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+
+    @def_function.function
+    def replica_fn(inputs):
+      return inputs * 2.0
+
+    @def_function.function
+    def run_fn():
+      tensor_input = constant_op.constant(3.0)
+      return strategy.run(replica_fn, args=(tensor_input,))
+
+    with strategy.scope():
+      result = run_fn()
+    self.assertEqual(result, constant_op.constant(6.0))
+
+  def test_run_with_unsupported_input_types(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    random_inputs = [123, '456']
+
+    @def_function.function
+    def replica_fn(inputs):
+      return inputs * 2.0
+
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.run(replica_fn, args=(random_inputs,))
 
   def test_run_with_distribute_value_input(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
 
     def value_fn(value_context):
-      return value_context.num_replicas_in_sync
+      return value_context.replica_id_in_sync_group
     distributed_values = (
         strategy.experimental_distribute_values_from_function(
             value_fn))
@@ -157,9 +196,9 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     # Note that the scalar value from
     # experimental_distribute_values_from_function will be up rank to 1D since
     # batched shared dtensor need at least be 1D. So the result from the
-    # strategy.run is [4], instead of just 4.
-    self.assertAllClose(result.values[0], constant_op.constant([4]))
-    self.assertAllClose(result.values[1], constant_op.constant([4]))
+    # strategy.run is [0], instead of just 0.
+    self.assertAllClose(result.values[0], constant_op.constant([0]))
+    self.assertAllClose(result.values[1], constant_op.constant([2]))
 
   def test_nested_structure_output(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
@@ -202,8 +241,10 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
 
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     tensor_input = constant_op.constant(3.0)
+    d_tensor_input = strategy.experimental_distribute_values_from_function(
+        lambda _: tensor_input)
 
-    result_1 = strategy.run(replica_fn_1, args=(tensor_input,))
+    result_1 = strategy.run(replica_fn_1, args=(d_tensor_input,))
     self.assertIsInstance(result_1, dtensor_util.DTensorDistributedValue)
     self.assertLen(result_1.values, 2)
     self.assertAllClose(result_1.values[0], constant_op.constant([6.0]))
@@ -215,23 +256,38 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result_2.values[0], constant_op.constant([7.0]))
     self.assertAllClose(result_2.values[1], constant_op.constant([7.0]))
 
+  def test_run_with_nullary_ops(self):
+
+    @def_function.function
+    def replica_fn():
+      return constant_op.constant([3.0])
+
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    result = strategy.run(replica_fn)
+
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertAllClose(result.values[0], constant_op.constant([3.0]))
+    self.assertAllClose(result.values[1], constant_op.constant([3.0]))
+
   def test_get_replica_context(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
 
     tensor_input = constant_op.constant(3)
+    d_tensor_input = strategy.experimental_distribute_values_from_function(
+        lambda _: tensor_input)
 
     @def_function.function
     def replica_fn(inputs):
-      replica_context = distribution_strategy_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       self.assertIsInstance(replica_context, dtensor_util.DTensorReplicaContext)
       return inputs * replica_context.num_replicas_in_sync
 
     # Default replica context
-    self.assertIsNotNone(distribution_strategy_context.get_replica_context())
+    self.assertIsNotNone(distribute_lib.get_replica_context())
     with strategy.scope():
-      self.assertIsNone(distribution_strategy_context.get_replica_context())
+      self.assertIsNone(distribute_lib.get_replica_context())
 
-      result = strategy.run(replica_fn, args=(tensor_input,))
+      result = strategy.run(replica_fn, args=(d_tensor_input,))
 
     self.assertLen(result.values, 2)
     self.assertAllClose(result.values[0], constant_op.constant([6]))
@@ -269,28 +325,17 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
 
-    result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=None)
-    self.assertAllClose(result, tensor_input)
-
-    result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=0)
-    self.assertAllClose(result, constant_op.constant([5.0, 6.0]))
-
-    result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=1)
-    self.assertAllClose(result, constant_op.constant([3.5, 5.5, 7.5]))
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=0)
 
   def test_reduce_sum_non_dtensor_value(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
 
     with self.assertRaisesRegex(
-        ValueError, 'cannot be reduced with the given reduce op ReduceOp.SUM'):
-      strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=None)
-
-    result = strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=0)
-    self.assertAllClose(result, constant_op.constant([30.0, 36.0]))
-
-    result = strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=1)
-    self.assertAllClose(result, constant_op.constant([14.0, 22.0, 30.0]))
+        ValueError, 'Unsupported input types for MirroredStrategy.'):
+      strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=0)
 
   def test_reduce_mean_distribute_value(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
@@ -379,6 +424,49 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=None)
     self.assertIn('CPU:0', result.device)
 
+  def test_experimental_local_results(self):
+    @def_function.function
+    def replica_fn():
+      return constant_op.constant([3.0])
+
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    result = strategy.run(replica_fn)
+    local_result = strategy.experimental_local_results(result)
+
+    self.assertIsInstance(local_result, tuple)
+    self.assertLen(local_result, 2)
+    self.assertEqual(local_result[0], constant_op.constant([3.0]))
+    self.assertEqual(local_result[1], constant_op.constant([3.0]))
+
+  def test_experimental_local_results_with_inputs(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    array_value = np.array([3., 2.])
+    def value_fn(ctx):
+      value = array_value[ctx.replica_id_in_sync_group]
+      return {'a': value,
+              'b': constant_op.constant([value + 1.0, value + 2.0])}
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+
+    @def_function.function
+    def replica_fn(inputs):
+      result = {}
+      for key in inputs:
+        result[key] = inputs[key] * 2.0
+      return result
+
+    result = strategy.run(replica_fn, args=(distributed_values,))
+    local_result = strategy.experimental_local_results(result)
+    self.assertIsInstance(local_result, tuple)
+    self.assertLen(local_result, 2)
+    self.assertDictEqual(local_result[0],
+                         {'a': constant_op.constant([6.0]),
+                          'b': constant_op.constant([8.0, 10.0])})
+    self.assertDictEqual(local_result[1],
+                         {'a': constant_op.constant([4.0]),
+                          'b': constant_op.constant([6.0, 8.0])})
+
 
 class InvalidMeshTest(test_util.DTensorBaseTest):
 
@@ -409,7 +497,6 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.device_type = device_type
 
   def test_explicit_device_list(self):
-
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]
     strategy = mirrored_strategy.MirroredStrategy(devices=device_list)
     mesh = strategy._mesh
@@ -422,6 +509,8 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.assertIn(
         f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
         mesh.local_devices()[1])
+    # Also make sure the host mesh works since it is required by dataset
+    self.assertIsNotNone(mesh.host_mesh())
 
   def test_implicit_device_list(self):
     strategy = mirrored_strategy.MirroredStrategy()
@@ -434,6 +523,8 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.assertIn(
         f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
         mesh.local_devices()[1])
+    # Also make sure the host mesh works since it is required by dataset
+    self.assertIsNotNone(mesh.host_mesh())
 
   def test_mesh_with_device_list(self):
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]
@@ -532,9 +623,16 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     distributed_dataset = strategy.distribute_datasets_from_function(
         dataset_fn, None)
+    iterator = iter(distributed_dataset)
 
-    element = next(iter(distributed_dataset))
-    batched_image, batched_label = element
+    self.assertEqual(distributed_dataset.element_spec,
+                     (tensor_spec.TensorSpec(shape=(8, 8, 8, 3),
+                                             dtype=dtypes.float32, name=None),
+                      tensor_spec.TensorSpec(shape=(8, 1),
+                                             dtype=dtypes.float32, name=None)))
+    self.assertEqual(distributed_dataset.element_spec, iterator.element_spec)
+
+    batched_image, batched_label = next(iterator)
     self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
     self.assertEqual(batched_label.shape, [global_batch_size, 1])
 
@@ -585,7 +683,26 @@ class StrategyDatasetTest(test_util.DTensorBaseTest):
         layout.Layout.batch_sharded(self.mesh, batch_dim='batch', rank=1),
         distributed_values['b'])
 
-  # TODO(scottzhu): Add test for unpacking the dataset in tf.function
+  def test_distribute_dataset_in_tf_function(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    local_batch_size = 4
+    global_batch_size = 8
+    dataset = self.dataset.batch(global_batch_size).prefetch(2)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(iterator):
+      images, labels = next(iterator)
+      del labels
+      return images
+
+    result = strategy.run(step_fn, args=(iter(distributed_dataset),))
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result.values, self.mesh.num_local_devices())
+    self.assertEqual(result.values[0].shape, [local_batch_size, 8, 8, 3])
+    self.assertEqual(result.values[1].shape, [local_batch_size, 8, 8, 3])
+
 
 if __name__ == '__main__':
   test.main()

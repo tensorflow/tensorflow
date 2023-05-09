@@ -50,7 +50,7 @@ class FunctionTest
   impl::TaggedValueTensor CreateScalarTensor(T val) {
     AbstractTensorHandle* raw = nullptr;
     Status s = TestScalarTensorHandle<T, datatype>(ctx_.get(), val, &raw);
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
     return impl::TaggedValueTensor(raw, /*add_ref=*/false);
   }
 
@@ -64,12 +64,12 @@ class FunctionTest
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = tensorflow::StatusFromTF_Status(status.get());
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
 
     // Set the runtime impl, Core RT vs TFRT.
     AbstractContext* ctx_raw = nullptr;
     s = BuildImmediateExecutionContext(UseTfrt(), &ctx_raw);
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
     ctx_.reset(ctx_raw);
   }
 };
@@ -139,7 +139,7 @@ template <typename T>
 void ExpectEquals(AbstractTensorHandle* t, T expected) {
   TF_Tensor* result_t;
   Status s = tensorflow::GetValue(t, &result_t);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   auto value = static_cast<T*>(TF_TensorData(result_t));
   EXPECT_EQ(*value, expected);
   TF_DeleteTensor(result_t);
@@ -156,10 +156,10 @@ TEST_P(FunctionTest, Square) {
   PartialTensorShape unknown_shape;
   TaggedValue signature(unknown_shape, DT_FLOAT);
   Status s = tf_function.RegisterTrace(std::move(trace), signature, signature);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   TaggedValue args(std::move(x));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
-  ASSERT_TRUE(v.ok()) << v.status().error_message();
+  ASSERT_TRUE(v.ok()) << v.status().message();
   const TaggedValue& result = v.value();
   AbstractTensorHandle* t = result.tensor().get();
   ExpectEquals(t, 4.0f);
@@ -178,12 +178,12 @@ TEST_P(FunctionTest, Add) {
   input_signature.tuple().emplace_back(tensor_spec);
   Status s =
       tf_function.RegisterTrace(std::move(trace), input_signature, tensor_spec);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(x));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
-  ASSERT_TRUE(v.ok()) << v.status().error_message();
+  ASSERT_TRUE(v.ok()) << v.status().message();
   const TaggedValue& result = v.value();
   ExpectEquals(result.tensor().get(), 4.0f);
 }
@@ -200,12 +200,12 @@ TEST_P(FunctionTest, IdentityN) {
   signature.tuple().emplace_back(tensor_spec);
   signature.tuple().emplace_back(tensor_spec);
   Status s = tf_function.RegisterTrace(std::move(trace), signature, signature);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(y));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
-  ASSERT_TRUE(v.ok()) << v.status().error_message();
+  ASSERT_TRUE(v.ok()) << v.status().message();
   const TaggedValue& result = v.value();
   ExpectEquals(result.tuple()[0].tensor().get(), 2.0f);
   ExpectEquals(result.tuple()[1].tensor().get(), 4.0f);
@@ -220,13 +220,13 @@ TEST_P(FunctionTest, UnaryFuncCalledWithMultipleArgsFails) {
   PartialTensorShape unknown_shape;
   TaggedValue signature(unknown_shape, DT_FLOAT);
   Status s = tf_function.RegisterTrace(std::move(trace), signature, signature);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(x));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(tensorflow::errors::IsInvalidArgument(v.status()));
-  ASSERT_TRUE(absl::StrContains(v.status().error_message(), "No match"));
+  ASSERT_TRUE(absl::StrContains(v.status().message(), "No match"));
 }
 
 TEST_P(FunctionTest, IncorrectArityOfOutputSignatureFails) {
@@ -248,13 +248,13 @@ TEST_P(FunctionTest, IncorrectArityOfOutputSignatureFails) {
   TaggedValue output_signature(unknown_shape, DT_FLOAT);
   Status s = tf_function.RegisterTrace(std::move(trace), input_signature,
                                        output_signature);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(y));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(tensorflow::errors::IsInvalidArgument(v.status())) << v.status();
-  ASSERT_TRUE(absl::StrContains(v.status().error_message(),
+  ASSERT_TRUE(absl::StrContains(v.status().message(),
                                 "Expecting 2 outputs, but *num_retvals is 1"));
 }
 
@@ -273,15 +273,15 @@ TEST_P(FunctionTest, IncorrectDtypeInOutputSignatureFails) {
   TaggedValue output_tensor_spec(unknown_shape, tensorflow::DT_INT64);
   Status s = tf_function.RegisterTrace(std::move(trace), input_signature,
                                        output_tensor_spec);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(x));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(tensorflow::errors::IsInternal(v.status())) << v.status();
-  ASSERT_TRUE(absl::StrContains(v.status().error_message(),
-                                "Shape and dtype of tensor"));
-  ASSERT_TRUE(absl::StrContains(v.status().error_message(),
+  ASSERT_TRUE(
+      absl::StrContains(v.status().message(), "Shape and dtype of tensor"));
+  ASSERT_TRUE(absl::StrContains(v.status().message(),
                                 "does not match that in signature"));
 }
 

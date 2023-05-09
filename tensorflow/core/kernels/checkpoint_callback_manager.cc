@@ -24,11 +24,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace tensorflow {
 namespace checkpoint {
@@ -38,7 +36,7 @@ const absl::string_view kCheckpointCallbackManagerResourceName =
 
 namespace {
 
-const absl::string_view kCheckpointFileRegex = "^part-[0-9]*-of-[0-9]*$";
+const absl::string_view kCheckpointFileRegex = "^part-[0-9]*-of-[0-9]*";
 const absl::string_view kCheckpointTempDirRegex = "-[0-9]*_temp$";
 const absl::string_view kCheckpointDirRegex = "-[0-9]*$";
 const absl::string_view kCheckpointTempDirSuffix = "_temp";
@@ -243,6 +241,10 @@ void CheckpointCallbackManager::Restore(absl::string_view prefix) {
   absl::flat_hash_map<std::string, RestoreCallback> copy_of_restore_callbacks;
   {
     mutex_lock l(mu_);
+    if (*id_and_dir == last_restored_checkpoint_id_and_dir_) {
+      // We don't want to trigger restore callback function multiple times.
+      return;
+    }
     last_restored_checkpoint_id_and_dir_ = *id_and_dir;
     copy_of_restore_callbacks = restore_callbacks_;
   }

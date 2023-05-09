@@ -428,8 +428,19 @@ bool IsValidTileAssignment(const HloSharding& spec);
 // -1 means the tensor is replicated on the whole the mesh.
 int64_t NumTileDimensions(const HloSharding& spec);
 
+// When fixing mixed mesh resharding (see below), compute the correct
+// intermediate shape in order to insert copies.
+Shape ComputeIntermediateShape(const HloSharding& src_sharding,
+                               const HloSharding& dst_sharding,
+                               const Shape& shape,
+                               const Array<int64_t>& device_mesh);
+
 // Forcibly set the sharding of the operand of inst.
 // Also fix the resharding between 1d and 2d logical mesh.
+void FixMixedMeshShapeReshardingGetTupleElement(
+    HloInstruction* inst, const HloSharding& dst_sharding,
+    const Array<int64_t>& device_mesh);
+
 void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const HloSharding& dst_sharding,
                                  const Array<int64_t>& device_mesh,
@@ -507,6 +518,10 @@ std::vector<int64_t> GetTensorDimToMeshDim(const int64_t tensor_shape_rank,
                                            const HloSharding& spec,
                                            const Array<int64_t>& device_mesh);
 
+absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
+    int64_t tensor_shape_rank, const HloSharding& spec,
+    const Array<int64_t>& device_mesh);
+
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
@@ -522,7 +537,8 @@ AliasSet BuildAliasSet(const HloModule* module,
 template <typename T>
 Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
   // Computes transposed array's size.
-  std::vector<int64_t> transposed_array_dimensions(array.dimensions());
+  std::vector<int64_t> transposed_array_dimensions(array.dimensions().begin(),
+                                                   array.dimensions().end());
   for (size_t i = 0; i < axes.size(); i++) {
     transposed_array_dimensions[i] = array.dimensions()[axes[i]];
   }
@@ -538,11 +554,11 @@ Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
 }
 
 // Used to determine whether a sharding or mesh shape is 1D, 2D, or 3D.
-size_t VectorGreaterThanOneElementCount(const std::vector<int64_t>& vector,
+size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
                                         bool omit_last_dim = false);
 
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
-    const std::vector<int64_t>& vector, bool omit_last_dim = false);
+    absl::Span<const int64_t> span, bool omit_last_dim = false);
 
 int64_t GetInstructionSize(const Shape& shape);
 
@@ -581,6 +597,12 @@ bool OutputInputSameShapes(const HloInstruction* ins);
 
 bool IsEntryComputationInputOrOutput(const HloModule* module,
                                      const HloInstruction* ins);
+
+// Given a number of devices (`num_devices`), create a list different mesh
+// shapes of a given rank (`num_mesh_dims`) to try, if the option to try
+// multiple mesh shapes is enabled.
+std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
+    int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims);
 }  // namespace spmd
 }  // namespace xla
 

@@ -98,11 +98,22 @@ TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
   return ret;
 }
 
+TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
+  if (!src) return nullptr;
+  TfLiteFloatArray* ret = TfLiteFloatArrayCreate(src->size);
+  if (ret) {
+    memcpy(ret->data, src->data, src->size * sizeof(float));
+  }
+  return ret;
+}
+
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic ||
-      t->allocation_type == kTfLitePersistentRo) {
+  if (t->allocation_type == kTfLiteVariantObject) {
+    delete reinterpret_cast<VariantData*>(t->data.data);
+  } else if (t->allocation_type == kTfLiteDynamic ||
+             t->allocation_type == kTfLitePersistentRo) {
     if (t->data.raw) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
       tflite::PauseHeapMonitoring(/*pause=*/true);
@@ -207,11 +218,16 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   if (!src || !dst) return kTfLiteOk;
   if (src->bytes != dst->bytes) return kTfLiteError;
   if (src == dst) return kTfLiteOk;
-
   dst->type = src->type;
   if (dst->dims) TfLiteIntArrayFree(dst->dims);
   dst->dims = TfLiteIntArrayCopy(src->dims);
-  memcpy(dst->data.raw, src->data.raw, src->bytes);
+  if (src->allocation_type == kTfLiteVariantObject) {
+    if (dst->allocation_type != kTfLiteVariantObject) return kTfLiteError;
+    dst->data.data =
+        reinterpret_cast<VariantData*>(src->data.data)->Clone(dst->data.raw);
+  } else {
+    memcpy(dst->data.raw, src->data.raw, src->bytes);
+  }
   dst->buffer_handle = src->buffer_handle;
   dst->data_is_stale = src->data_is_stale;
   dst->delegate = src->delegate;

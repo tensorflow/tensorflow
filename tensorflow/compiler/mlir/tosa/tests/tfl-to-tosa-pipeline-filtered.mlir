@@ -26,7 +26,7 @@ func.func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 
 // CHECK-LABEL: test_matmul
 // CHECK-DAG: %[[VAR0:.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<28xf32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<28xf32>}>
 // CHECK: %[[VAR2:.*]] = "tosa.transpose"(%arg1, %[[VAR0]])
 // CHECK: %[[VAR3:.*]] = "tosa.fully_connected"(%arg0, %[[VAR2]], %[[VAR1]])
 func.func @test_matmul(%arg0: tensor<14x19xf32>, %arg1: tensor<19x28xf32>) -> tensor<*xf32> {

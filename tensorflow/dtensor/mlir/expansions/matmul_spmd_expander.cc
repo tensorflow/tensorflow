@@ -416,8 +416,9 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // other may be shorter.
   Layout left = output_layout.Truncate(output_layout.rank() - left_shape.size(),
                                        /*end=*/true);
-  Layout right = output_layout.Truncate(
-      output_layout.rank() - right_shape.size(), /*end=*/true);
+  Layout right =
+      output_layout.Truncate(output_layout.rank() - right_shape.size(),
+                             /*end=*/true);
 
   // Make sure necessary dimensions are replicated.
   //

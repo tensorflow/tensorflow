@@ -56,7 +56,7 @@ def _save(input_dataset,
   else:
     dataset, shard_func, use_shard_func, path = set_save_dataset_attributes(
         input_dataset, shard_func, path)
-    ged_ops.save_dataset(
+    return ged_ops.save_dataset(
         dataset._variant_tensor,   # pylint: disable=protected-access
         path=path,
         shard_func_other_args=shard_func.captured_inputs,

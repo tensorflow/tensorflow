@@ -1,344 +1,302 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -53,6 +53,7 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -33,8 +33,8 @@
+ def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
+ def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
  
- gentbl_cc_library(
-     name = "base_attr_interfaces_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-attr-interface-decls"],
-@@ -65,7 +66,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/Base.td",
--    strip_include_prefix = ".",
-     deps = [":stablehlo_ops_td_files"],
- )
+-def HLO_Float : AnyTypeOf<[F8E4M3FN, F8E5M2, F8E4M3FNUZ, F8E5M2FNUZ,
+-                           F8E4M3B11FNUZ, F16, F32, F64, BF16]>;
++def HLO_Float : AnyTypeOf<[F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ, F8E5M2,
++                           F8E5M2FNUZ, F16, F32, F64, BF16]>;
+ def HLO_Float32Or64 : AnyTypeOf<[F32, F64]>;
  
-@@ -100,6 +100,7 @@
+ def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+@@ -17,3 +17,10 @@
+ # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
+ from ._stablehlo_ops_gen import *
+ from .._mlir_libs._stablehlo import *
++
++
++def get_earliest_forward_compatible_version():
++  """Return the earliest StableHLO version that the current StableHLO version
++    is still forward compatible with.
++  """
++  return "0.9.0"
+diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
+--- stablehlo/stablehlo/reference/Tensor.cpp
++++ stablehlo/stablehlo/reference/Tensor.cpp
+@@ -100,14 +100,24 @@
+       getSizeInBytes(elementType) * flattenIndex(getShape(), index);
  
- gentbl_cc_library(
-     name = "chlo_attrs_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-attrdef-decls"],
-@@ -112,7 +113,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/ChloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":chlo_ops_td_files",
-     ],
-@@ -164,6 +164,7 @@
+   // Handle floating-point types.
++  if (elementType.isFloat8E4M3B11FNUZ()) {
++    auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
++    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3B11FNUZ(),
++                                        APInt(8, *elementData)));
++  }
++  if (elementType.isFloat8E4M3FN()) {
++    auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
++    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3FN(),
++                                        APInt(8, *elementData)));
++  }
+   if (elementType.isFloat8E4M3FNUZ()) {
+     auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
+     return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3FNUZ(),
+                                         APInt(8, *elementData)));
+   }
+-  if (elementType.isFloat8E4M3B11FNUZ()) {
++  if (elementType.isFloat8E5M2()) {
+     auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
+-    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3B11FNUZ(),
++    return Element(elementType, APFloat(llvm::APFloatBase::Float8E5M2(),
+                                         APInt(8, *elementData)));
+   }
+   if (elementType.isFloat8E5M2FNUZ()) {
+@@ -222,7 +232,8 @@
+       getSizeInBytes(elementType) * flattenIndex(getShape(), index);
  
- gentbl_cc_library(
-     name = "chlo_enums_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-enum-decls"],
-@@ -176,7 +177,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/ChloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":chlo_ops_td_files",
-     ],
-@@ -184,6 +184,7 @@
+   // Handle floating-point types.
+-  if (elementType.isFloat8E4M3FNUZ() || elementType.isFloat8E4M3B11FNUZ() ||
++  if (elementType.isFloat8E4M3B11FNUZ() || elementType.isFloat8E4M3FN() ||
++      elementType.isFloat8E4M3FNUZ() || elementType.isFloat8E5M2() ||
+       elementType.isFloat8E5M2FNUZ()) {
+     auto elementData = reinterpret_cast<uint8_t *>(elementPtr);
+     auto value = element.getFloatValue();
+@@ -377,16 +388,17 @@
+   auto elemType = type.getElementType();
  
- gentbl_cc_library(
-     name = "chlo_ops_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-op-decls"],
-@@ -196,7 +197,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/ChloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":chlo_ops_td_files",
-     ],
-@@ -233,7 +233,10 @@
-     srcs = [
-         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
-     ],
--    includes = ["include", "."],
-+    includes = [
-+        ".",
-+        "include",
-+    ],
-     deps = [
-         ":chlo_ops_td_files",
-         "@llvm-project//mlir:OpBaseTdFiles",
-@@ -358,9 +361,9 @@
-     deps = [
-         ":reference_axes",
-         ":reference_element",
--        ":reference_sizes",
-         ":reference_errors",
-         ":reference_scope",
-+        ":reference_sizes",
-         ":reference_tensor",
-         ":reference_types",
-         ":stablehlo_ops",
-@@ -473,6 +476,7 @@
+   // Handle floating-point types.
+-  if (elemType.isFloat8E4M3FNUZ() || elemType.isFloat8E4M3B11FNUZ() ||
++  if (elemType.isFloat8E4M3B11FNUZ() || elemType.isFloat8E4M3FN() ||
++      elemType.isFloat8E4M3FNUZ() || elemType.isFloat8E5M2() ||
+       elemType.isFloat8E5M2FNUZ()) {
+     auto floatValues = llvm::to_vector(llvm::map_range(
+         attr.getValues<APFloat>(), [&](APFloat value) -> uint8_t {
+           return value.bitcastToAPInt().getZExtValue();
+         }));
  
- gentbl_cc_library(
-     name = "stablehlo_attrs_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-attrdef-decls"],
-@@ -485,7 +489,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/StablehloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":stablehlo_ops_td_files",
-     ],
-@@ -539,6 +542,7 @@
+-    // For f8E4M3FNUZ, f8E4M3B11FNUZ, and f8E5M2FNUZ floating-point types, we
+-    // use uint8_t as their storage type because there are no builtin types for
+-    // those.
++    // For f8E4M3B11FNUZ, f8E4M3FN, f8E4M3FNUZ, f8E5M2, and f8E5M2FNUZ
++    // floating-point types, we use uint8_t as their storage type because there
++    // are no builtin types for those.
+     return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
+                             floatValues));
+   }
+@@ -398,7 +410,7 @@
+         }));
  
- gentbl_cc_library(
-     name = "stablehlo_enums_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-enum-decls"],
-@@ -551,7 +555,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/StablehloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":stablehlo_ops_td_files",
-     ],
-@@ -559,6 +562,7 @@
- 
- gentbl_cc_library(
-     name = "stablehlo_ops_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-op-decls"],
-@@ -571,7 +575,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/StablehloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":stablehlo_ops_td_files",
-     ],
-@@ -634,6 +637,7 @@
- 
- gentbl_cc_library(
-     name = "stablehlo_pass_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             [
-@@ -644,7 +648,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/transforms/Passes.td",
--    strip_include_prefix = ".",
-     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
- )
- 
-@@ -672,13 +675,13 @@
-         ":vhlo_types",
-         "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:FuncDialect",
-+        "@llvm-project//mlir:IR",
-         "@llvm-project//mlir:InferTypeOpInterface",
--        "@llvm-project//mlir:IR",
-         "@llvm-project//mlir:Pass",
-         "@llvm-project//mlir:Support",
-         "@llvm-project//mlir:TensorDialect",
-+        "@llvm-project//mlir:TransformUtils",
-         "@llvm-project//mlir:Transforms",
--        "@llvm-project//mlir:TransformUtils",
-     ],
- )
- 
-@@ -775,6 +778,7 @@
- 
- gentbl_cc_library(
-     name = "test_utils_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             [
-@@ -786,7 +790,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/tests/TestUtils.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":test_utils_td_files",
-     ],
-@@ -915,7 +918,10 @@
-     srcs = [
-         "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
-     ],
--    includes = ["include", "."],
-+    includes = [
-+        ".",
-+        "include",
-+    ],
-     deps = [
-         ":vhlo_ops_td_files",
-         "@llvm-project//mlir:OpBaseTdFiles",
-@@ -924,6 +930,7 @@
- 
- gentbl_cc_library(
-     name = "vhlo_attr_interfaces_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-attr-interface-decls"],
-@@ -936,7 +943,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/VhloAttrs.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":vhlo_ops_td_files",
-     ],
-@@ -944,6 +950,7 @@
- 
- gentbl_cc_library(
-     name = "vhlo_attrs_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-attrdef-decls"],
-@@ -956,7 +963,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/VhloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":vhlo_ops_td_files",
-     ],
-@@ -964,6 +970,7 @@
- 
- gentbl_cc_library(
-     name = "vhlo_enums_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-enum-decls"],
-@@ -976,7 +983,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/VhloEnums.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":vhlo_ops_td_files",
-     ],
-@@ -984,6 +990,7 @@
- 
- gentbl_cc_library(
-     name = "vhlo_op_interfaces_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-op-interface-decls"],
-@@ -996,7 +1003,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/VhloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":vhlo_ops_td_files",
-     ],
-@@ -1033,6 +1039,7 @@
- 
- gentbl_cc_library(
-     name = "vhlo_ops_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-op-decls"],
-@@ -1045,7 +1052,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/VhloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":vhlo_ops_td_files",
-     ],
-@@ -1094,6 +1100,7 @@
- 
- gentbl_cc_library(
-     name = "vhlo_type_interfaces_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-type-interface-decls"],
-@@ -1106,7 +1113,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/VhloTypes.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":vhlo_ops_td_files",
-     ],
-@@ -1114,6 +1120,7 @@
- 
- gentbl_cc_library(
-     name = "vhlo_types_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-typedef-decls"],
-@@ -1126,7 +1133,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/dialect/VhloOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":vhlo_ops_td_files",
-     ],
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
---- stablehlo/stablehlo/dialect/ChloOps.td
-+++ stablehlo/stablehlo/dialect/ChloOps.td
-@@ -53,7 +53,6 @@
-     and provide conversion patterns to fully materialize into lower level
-     dialects.
-   }];
--  let useFoldAPI = kEmitFoldAdaptorFolder;
+     // For both f16 and bf16 floating-point types, we use uint16_t as their
+-    // storage type because there are no buitin types for those.
++    // storage type because there are no builtin types for those.
+     return Tensor(
+         type,
+         HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(floatValues));
+diff --ruN a/stablehlo/stablehlo/reference/Types.cpp b/stablehlo/stablehlo/reference/Types.cpp
+--- stablehlo/stablehlo/reference/Types.cpp
++++ stablehlo/stablehlo/reference/Types.cpp
+@@ -44,7 +44,8 @@
  }
  
- class CHLO_Op<string mnemonic, list<Trait> traits> :
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
---- stablehlo/stablehlo/dialect/StablehloOps.td
-+++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -37,7 +37,6 @@
+ bool isSupportedFloatType(Type type) {
+-  return type.isFloat8E4M3FNUZ() || type.isFloat8E4M3B11FNUZ() ||
++  return type.isFloat8E4M3B11FNUZ() || type.isFloat8E4M3FN() ||
++         type.isFloat8E4M3FNUZ() || type.isFloat8E5M2() ||
+          type.isFloat8E5M2FNUZ() || type.isF16() || type.isBF16() ||
+          type.isF32() || type.isF64();
+ }
+diff --ruN a/stablehlo/stablehlo/tests/interpret_constant.mlir b/stablehlo/stablehlo/tests/interpret_constant.mlir
+--- stablehlo/stablehlo/tests/interpret_constant.mlir
++++ stablehlo/stablehlo/tests/interpret_constant.mlir
+@@ -80,24 +80,41 @@
  
-   let useDefaultAttributePrinterParser = 0;
-   let useDefaultTypePrinterParser = 0;
--  let useFoldAPI = kEmitFoldAdaptorFolder;
+ // -----
+ 
+-func.func @constant_op_test_f8_e4m3_fnuz() {
+-  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FNUZ>
+-  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.25, 240.0, -240.0, 0.000976562, -0.000976562]> : tensor<10xf8E4M3FNUZ>
++func.func @constant_op_test_f8_e4m3b11_fnuz() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3B11FNUZ>
++  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.101563, 3.25, 30.0, -30.0, 0.00012207, -0.00012207]> : tensor<10xf8E4M3B11FNUZ>
+   func.return
  }
  
- class StableHLO_Op<string mnemonic, list<Trait> traits> :
-diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
---- stablehlo/stablehlo/dialect/VhloDialect.td
-+++ stablehlo/stablehlo/dialect/VhloDialect.td
-@@ -38,7 +38,6 @@
+ // -----
  
-   let useDefaultAttributePrinterParser = 0;
-   let useDefaultTypePrinterParser = 0;
--  let useFoldAPI = kEmitFoldAdaptorFolder;
+-func.func @constant_op_test_f8_e4m3b11_fnuz() {
+-  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3B11FNUZ>
+-  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.25, 30.0, -30.0, 0.0001220703125, -0.0001220703125]> : tensor<10xf8E4M3B11FNUZ>
++func.func @constant_op_test_f8_e4m3_fn() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FN>
++  check.expect_almost_eq_const %0, dense<[0.0, -0.0, 1.0, 0.125, 0.1015630, 3.25, 0x7F, 0xFF, 0.001953130, -0.001953130]> : tensor<10xf8E4M3FN>
+   func.return
  }
  
- #endif
+ // -----
++
++func.func @constant_op_test_f8_e4m3_fnuz() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FNUZ>
++  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.101563, 3.25, 240.0, -240.0, 0.000976562, -0.0009765620]> : tensor<10xf8E4M3FNUZ>
++  func.return
++}
++
++// -----
++
++func.func @constant_op_test_f8_e5m2() {
++  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E5M2>
++  check.expect_almost_eq_const %0, dense<[0.0, -0.0, 1.0, 0.125, 0.09375, 3.0, 0x7F, 0xFF, 0.0000152588, -0.0000152588]> : tensor<10xf8E5M2>
++  func.return
++}
++
++// -----
++
+ func.func @constant_op_test_f8_e5m2_fnuz() {
+   %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E5M2FNUZ>
+-  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.0, 57344.0, -57344.0, 7.62939e-06, -7.62939e-06]> : tensor<10xf8E5M2FNUZ>
++  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.09375, 3.0, 57344.0, -57344.0, 0.00000762939, -0.00000762939]> : tensor<10xf8E5M2FNUZ>
+   func.return
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -1474,7 +1474,7 @@
+ // -----
+ 
+ func.func @cholesky_invalid_elt(%arg0: tensor<1x2x2xi32>) -> tensor<1x2x2xi32> {
+-  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<1x2x2xi32>}}
++  // expected-error@+1 {{operand #0 must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<1x2x2xi32>}}
+   %0 = "stablehlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xi32>) -> tensor<1x2x2xi32>
+   func.return %0: tensor<1x2x2xi32>
+ }
+@@ -1957,7 +1957,7 @@
+ 
+ func.func @rng_normal_invalid_mu_rank(%mu: tensor<1xf32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%mu, %sigma, %shape) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -1966,7 +1966,7 @@
+ 
+ func.func @rng_normal_invalid_sigma_rank(%mu: tensor<f32>, %sigma: tensor<1xf32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{#1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{#1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%mu, %sigma, %shape) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -1984,7 +1984,7 @@
+ 
+ func.func @rng_normal_invalid_type(%arg0: tensor<complex<f32>>, %arg1: tensor<f32>) {
+   %cst = "stablehlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
+-  // expected-error @+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
++  // expected-error @+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
+   %0 = "stablehlo.rng"(%arg0, %arg1, %cst) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<complex<f32>>, tensor<f32>, tensor<1xi64>) -> tensor<7xf32>
+   func.return
+ }
+@@ -2027,7 +2027,7 @@
+ 
+ func.func @rng_uniform_invalid_a_rank(%a: tensor<1xf32>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -2037,7 +2037,7 @@
+ 
+ func.func @rng_uniform_invalid_b_rank(%a: tensor<f32>, %b: tensor<1xf32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{operand #1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
++  // expected-error@+1 {{operand #1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
+   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -2055,7 +2055,7 @@
+ 
+ func.func @rng_uniform_invalid_type(%a: tensor<complex<f32>>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
+   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+-  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
++  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
+   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+   func.return %0 : tensor<2x3x5xf32>
+ }
+@@ -2698,7 +2698,7 @@
+ // -----
+ 
+ func.func @floor_invalid_i32_type(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+-  // expected-error@+1 {{must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<4xi32>'}}
++  // expected-error@+1 {{must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<4xi32>'}}
+   %0 = "stablehlo.floor"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+   func.return %0 : tensor<4xi32>
+ }
+@@ -4912,7 +4912,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xi32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
+-  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2x2x2xi32>'}}
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2x2x2xi32>'}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xi32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+ }
+@@ -4945,7 +4945,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
+-  // expected-error@+1 {{result #1 must be 1D tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2xf32>'}}
++  // expected-error@+1 {{result #1 must be 1D tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2xf32>'}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2x2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<2x2x2x2xf32>
+ }
+@@ -4953,7 +4953,7 @@
+ // -----
+ 
+ func.func @error_batch_norm_grad(%input: tensor<*xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<*xf32> {
+-  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<*xf32>'}}
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<*xf32>'}}
+   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<*xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<*xf32>, tensor<2xf32>, tensor<2xf32>)
+   func.return %0#0 : tensor<*xf32>
+ }
+@@ -5691,7 +5691,7 @@
+ // -----
+ 
+ func.func @is_finite_int_input(%arg0: tensor<3xi32>) -> tensor<3xi1> {
+-  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<3xi32>'}}
++  // expected-error@+1 {{operand #0 must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<3xi32>'}}
+   %0 = "stablehlo.is_finite"(%arg0) {} : (tensor<3xi32>) -> tensor<3xi1>
+   func.return %0 : tensor<3xi1>
+ }
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+@@ -179,13 +179,15 @@
+   %cst_4 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+   %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
+   %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+-  %cst_7 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2FNUZ>
+-  %cst_8 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FNUZ>
+-  %cst_9 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3B11FNUZ>
+-  %cst_10 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
+-  %cst_11 = arith.constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
+-  %cst_12 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+-  %cst_13 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
++  %cst_7 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3B11FNUZ>
++  %cst_8 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FN>
++  %cst_9 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FNUZ>
++  %cst_10 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2>
++  %cst_11 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2FNUZ>
++  %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
++  %cst_13 = arith.constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
++  %cst_14 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
++  %cst_15 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+   func.return
+ }
+ 
 

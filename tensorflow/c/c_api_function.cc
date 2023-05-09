@@ -16,11 +16,13 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/strings/match.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 
 using tensorflow::errors::InvalidArgument;
 
@@ -203,22 +206,30 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
   }
 
   // Do the actual function creation.
-  TF_Function* tf_function = new TF_Function();
   DCHECK(append_hash_to_fn_name <= 1);
+  tensorflow::FunctionDef fdef;
   status->status = tensorflow::GraphToFunctionDef(
       fn_body->graph, fn_name, append_hash_to_fn_name != 0,
       /*set_stateful_from_nodes=*/true,
       /*copy_placeholder_attrs_from_nodes=*/true, body_nodes, input_tensors,
       output_tensors, output_names_vec, control_output_nodes,
-      control_output_names_vec, description, &tf_function->fdef);
+      control_output_names_vec, description, &fdef);
   if (TF_GetCode(status) != TF_OK) {
-    TF_DeleteFunction(tf_function);
     return nullptr;
   }
 
+  // Dump the op creation stacktraces for debugging purpose.
+  DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
+      fn_name, kDebugGroupOpStacktrace, "initial", &fn_body->graph);
+
+  tensorflow::StackTracesMap stack_traces;
   for (const Node* n : fn_body->graph.nodes()) {
-    tf_function->stack_traces[n->name()] = n->GetStackTrace();
+    stack_traces[n->name()] = n->GetStackTrace();
   }
+
+  TF_Function* tf_function = new TF_Function();
+  tf_function->record = new tensorflow::FunctionRecord(
+      std::move(fdef), std::move(stack_traces), false);
 
   return tf_function;
 }
@@ -238,7 +249,7 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
 }
 
 const char* TF_FunctionName(TF_Function* func) {
-  return func->fdef.signature().name().c_str();
+  return func->record->fdef().signature().name().c_str();
 }
 
 void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
@@ -249,19 +260,20 @@ void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
     return;
   }
 
-  // TODO(iga): Add AddFunctionDef() and AddGradientDef() methods to graph
-  // to avoid the extra copy here.
-  tensorflow::FunctionDefLibrary fdef_lib;
-  *fdef_lib.add_function() = func->fdef;
-  if (grad) {
-    *fdef_lib.add_function() = grad->fdef;
-    tensorflow::GradientDef* gdef = fdef_lib.add_gradient();
-    gdef->set_function_name(func->fdef.signature().name());
-    gdef->set_gradient_func(grad->fdef.signature().name());
-  }
-
   tensorflow::mutex_lock l(g->mu);
-  status->status = g->graph.AddFunctionLibrary(fdef_lib);
+  status->status = g->graph.AddFunctionDef(func->record->fdef(),
+                                           func->record->stack_traces());
+  if (TF_GetCode(status) != TF_OK) return;
+  if (!grad) return;
+
+  status->status = g->graph.AddFunctionDef(grad->record->fdef(),
+                                           grad->record->stack_traces());
+  if (TF_GetCode(status) != TF_OK) return;
+
+  tensorflow::GradientDef gdef;
+  gdef.set_function_name(func->record->fdef().signature().name());
+  gdef.set_gradient_func(grad->record->fdef().signature().name());
+  status->status = g->graph.AddGradientDef(std::move(gdef));
 }
 
 int TF_GraphNumFunctions(TF_Graph* g) {
@@ -279,7 +291,7 @@ int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
   const auto len = std::min(max_func, static_cast<int>(lib.function_size()));
   for (int i = 0; i < len; ++i) {
     TF_Function* func = new TF_Function();
-    func->fdef = lib.function(i);
+    func->record = new tensorflow::FunctionRecord(lib.function(i), {}, false);
     funcs[i] = func;
   }
   status->status = ::tensorflow::OkStatus();
@@ -288,18 +300,21 @@ int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
 
 void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,
                               TF_Status* status) {
-  status->status = MessageToBuffer(func->fdef, output_func_def);
+  status->status = MessageToBuffer(func->record->fdef(), output_func_def);
 }
 
 TF_Function* TF_FunctionImportFunctionDef(const void* proto, size_t proto_len,
                                           TF_Status* status) {
-  TF_Function* func = new TF_Function();
-  if (!func->fdef.ParseFromArray(proto, proto_len)) {
+  tensorflow::FunctionDef fdef;
+  bool success = fdef.ParseFromArray(proto, proto_len);
+  if (!success) {
     status->status = InvalidArgument(
         "Invalid FunctionDef given to TF_FunctionImportFunctionDef");
-    TF_DeleteFunction(func);
     return nullptr;
   }
+
+  TF_Function* func = new TF_Function();
+  func->record = new tensorflow::FunctionRecord(std::move(fdef), {}, false);
   status->status = ::tensorflow::OkStatus();
   return func;
 }
@@ -314,21 +329,37 @@ void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
         "TF_FunctionSetAttrValueProto");
     return;
   }
-  (*func->fdef.mutable_attr())[string(attr_name)] = attr_value;
+
+  auto fdef_or = func->record->mutable_fdef();
+  if (!fdef_or.ok()) {
+    status->status = fdef_or.status();
+    return;
+  }
+
+  (*(fdef_or.value()->mutable_attr()))[string(attr_name)] = attr_value;
+
   status->status = ::tensorflow::OkStatus();
 }
 
 void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,
                                   TF_Buffer* output_attr_value,
                                   TF_Status* status) {
-  const auto& it = func->fdef.attr().find(attr_name);
-  if (it == func->fdef.attr().end()) {
+  const auto& it = func->record->fdef().attr().find(attr_name);
+  if (it == func->record->fdef().attr().end()) {
     status->status =
-        InvalidArgument("Function '", func->fdef.signature().name(),
+        InvalidArgument("Function '", func->record->fdef().signature().name(),
                         "' has no attr named '", attr_name, "'.");
     return;
   }
   status->status = MessageToBuffer(it->second, output_attr_value);
 }
 
-void TF_DeleteFunction(TF_Function* func) { delete func; }
+void TF_DeleteFunction(TF_Function* func) {
+  if (func == nullptr) {
+    return;
+  }
+
+  func->record->Unref();
+  func->record = nullptr;
+  delete func;
+}

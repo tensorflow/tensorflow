@@ -15,12 +15,13 @@
 # pylint: disable=protected-access
 """Utilities related to loss functions."""
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
@@ -116,9 +117,11 @@ def remove_squeezable_dimensions(
   """
   with backend.name_scope(name or 'remove_squeezable_dimensions'):
     if not isinstance(predictions, ragged_tensor.RaggedTensor):
-      predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
+      predictions = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          predictions
+      )
     if not isinstance(labels, ragged_tensor.RaggedTensor):
-      labels = ops.convert_to_tensor_v2_with_dispatch(labels)
+      labels = tensor_conversion.convert_to_tensor_v2_with_dispatch(labels)
     predictions_shape = predictions.shape
     predictions_rank = predictions_shape.ndims
     labels_shape = labels.shape
@@ -138,13 +141,13 @@ def remove_squeezable_dimensions(
     rank_diff = array_ops.rank(predictions) - array_ops.rank(labels)
     if (predictions_rank is None) or (
         predictions_shape.dims[-1].is_compatible_with(1)):
-      predictions = control_flow_ops.cond(
+      predictions = cond.cond(
           math_ops.equal(expected_rank_diff + 1, rank_diff),
           lambda: array_ops.squeeze(predictions, [-1]),
           lambda: predictions)
     if (labels_rank is None) or (
         labels_shape.dims[-1].is_compatible_with(1)):
-      labels = control_flow_ops.cond(
+      labels = cond.cond(
           math_ops.equal(expected_rank_diff - 1, rank_diff),
           lambda: array_ops.squeeze(labels, [-1]),
           lambda: labels)
@@ -196,9 +199,9 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
       squeeze_dims = lambda: remove_squeezable_dimensions(  # pylint: disable=g-long-lambda
           y_true, y_pred)
       is_last_dim_1 = math_ops.equal(1, array_ops.shape(y_pred)[-1])
-      maybe_squeeze_dims = lambda: control_flow_ops.cond(  # pylint: disable=g-long-lambda
+      maybe_squeeze_dims = lambda: cond.cond(  # pylint: disable=g-long-lambda
           is_last_dim_1, squeeze_dims, lambda: (y_true, y_pred))
-      y_true, y_pred = control_flow_ops.cond(
+      y_true, y_pred = cond.cond(
           math_ops.equal(1, rank_diff), maybe_squeeze_dims, squeeze_dims)
 
   if sample_weight is None:
@@ -224,17 +227,17 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
 
   def _maybe_expand_weights():
     expand_weights = lambda: array_ops.expand_dims(sample_weight, [-1])
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(rank_diff, -1), expand_weights, lambda: sample_weight)
 
   def _maybe_adjust_weights():
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(rank_diff, 1), maybe_squeeze_weights,
         _maybe_expand_weights)
 
   # squeeze or expand last dim of `sample_weight` if its rank differs by 1
   # from the new rank of `y_pred`.
-  sample_weight = control_flow_ops.cond(
+  sample_weight = cond.cond(
       math_ops.equal(weights_rank_tensor, 0), lambda: sample_weight,
       _maybe_adjust_weights)
   return y_pred, y_true, sample_weight
@@ -310,11 +313,13 @@ def compute_weighted_loss(losses,
 
     if not isinstance(losses,
                       (keras_tensor.KerasTensor, ragged_tensor.RaggedTensor)):
-      losses = ops.convert_to_tensor_v2_with_dispatch(losses)
+      losses = tensor_conversion.convert_to_tensor_v2_with_dispatch(losses)
     input_dtype = losses.dtype
 
     if not isinstance(sample_weight, keras_tensor.KerasTensor):
-      sample_weight = ops.convert_to_tensor_v2_with_dispatch(sample_weight)
+      sample_weight = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          sample_weight
+      )
 
     # TODO(psv): Handle casting here in a better way, eg. if losses is float64
     # we do not want to lose precision.
@@ -335,7 +340,7 @@ def compute_weighted_loss(losses,
 def scale_loss_for_distribution(loss_value):
   """Scales and returns the given loss value by the number of replicas."""
   num_replicas = (
-      distribution_strategy_context.get_strategy().num_replicas_in_sync)
+      distribute_lib.get_strategy().num_replicas_in_sync)
   if num_replicas > 1:
     loss_value *= (1. / num_replicas)
   return loss_value

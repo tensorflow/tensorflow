@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -86,19 +90,28 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   tsl::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(
       const xla::HloInstruction* instr);
 
-  tsl::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
+  template <typename OpT>
+  tsl::StatusOr<OpT> EmitDoneOp(const xla::HloInstruction* instr);
+
+  tsl::StatusOr<lmhlo_gpu::AllToAllStartOp> EmitAllToAllStartOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
+  tsl::StatusOr<lmhlo_gpu::AllToAllDoneOp> EmitAllToAllDoneOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
+  tsl::StatusOr<lmhlo_gpu::AllGatherStartOp> EmitAllGatherStartOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::AllGatherDoneOp> EmitAllGatherDoneOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllReduceStartOp> EmitAllReduceStartOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp> EmitAllReduceDoneOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::ReduceScatterOp> EmitReduceScatterOp(
+  tsl::StatusOr<mlir::Operation*> EmitAsyncStartOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
+  tsl::StatusOr<mlir::Operation*> EmitAsyncDoneOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::ReduceScatterStartOp> EmitReduceScatterStartOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::ReduceScatterDoneOp> EmitReduceScatterDoneOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::CollectivePermuteStartOp>
   EmitCollectivePermuteStartOp(const xla::HloInstruction* instr);

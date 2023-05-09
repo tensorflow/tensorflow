@@ -797,6 +797,7 @@ def tsl_cc_test(
                 # granularly
                 clean_dep("//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl"),
                 clean_dep("//tensorflow/tsl/protobuf:histogram_proto_cc_impl"),
+                clean_dep("//tensorflow/tsl/protobuf:status_proto_cc_impl"),
                 clean_dep("//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl"),
                 clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl"),
             ],
@@ -805,7 +806,7 @@ def tsl_cc_test(
     )
 
 def tf_portable_proto_lib():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return ["//tensorflow/core:protos_all_cc_impl", "//tensorflow/tsl/protobuf:protos_all_cc_impl"]
 
 def tf_protobuf_compiler_deps():
     return if_static(

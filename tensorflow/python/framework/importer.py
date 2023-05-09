@@ -278,7 +278,7 @@ def _ProcessNewOps(graph):
     # implementing a compatibility function for device specs in python.
     for coloc_op_name in coloc_op_list:
       try:
-        coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
+        coloc_op = graph._get_operation_by_name(coloc_op_name)  # pylint: disable=protected-access
       except KeyError:
         # Do not error in TF2 if the colocation cannot be guaranteed
         if tf2.enabled() or control_flow_util.EnableControlFlowV2(graph):

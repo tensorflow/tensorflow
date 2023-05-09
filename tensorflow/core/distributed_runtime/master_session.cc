@@ -527,18 +527,17 @@ class RunManyGraphs {
     Call* call = get(index);
     call->done = true;
     auto resp = call->resp.get();
-    if (resp->status_code() != error::Code::OK) {
+    if (resp->status_code() != absl::StatusCode::kOk) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
       Status resp_status = call->resp->status();
       ReportBadStatus(errors::CreateWithUpdatedMessage(
           resp_status, strings::StrCat("From ", *call->worker_name, ":\n",
-                                       resp_status.error_message())));
+                                       resp_status.message())));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
       ReportBadStatus(errors::CreateWithUpdatedMessage(
-          s, strings::StrCat("From ", *call->worker_name, ":\n",
-                             s.error_message())));
+          s, strings::StrCat("From ", *call->worker_name, ":\n", s.message())));
     }
     pending_.DecrementCount();
   }

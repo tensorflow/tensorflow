@@ -32,6 +32,8 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.coordinator import cluster_coordinator
+from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
@@ -46,16 +48,15 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tsl.protobuf import coordination_config_pb2
 
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
-
-cluster_coordinator = LazyLoader(
-    "cluster_coordinator", globals(),
-    "tensorflow.python.distribute.coordinator.cluster_coordinator"
-)
+# This sets the coordination service's internal heartbeat timeout. In testing, a
+# value of 1 led to some spurious reports of unavailability, so a higher value
+# is used. Refer to the discussion in b/249134783 for more.
+_HEARTBEAT_TIMEOUT_SECS = 5
 
 
 @tf_export(
@@ -472,6 +473,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
         "`tf.distribute.experimental.ParameterServerStrategy` is initialized "
         "with cluster_spec: %s", cluster_resolver.cluster_spec())
 
+    if os.getenv("TF_PSS_ENABLE_COORDINATION_SERVICE"):
+      self._configure_coordination_service(cluster_resolver.cluster_spec())
     # TODO(b/167894802): Make coordinator, worker, and ps names customizable.
     self._connect_to_cluster(coordinator_name="chief")
     self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
@@ -482,6 +485,25 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     self._should_use_with_coordinator = True
     # Used while constructing distributed iterators.
     self._canonicalize_devices = False
+    # Used to check if isinstance() without having to import this module
+    self._is_parameter_server_strategy_v2 = True
+
+  def _configure_coordination_service(self, cluster_spec):
+    if context.context().coordination_service is None:
+      coordinated_jobs = ["worker", "ps"]
+      coordinated_job_config = []
+      for job in coordinated_jobs:
+        if job in cluster_spec.jobs:
+          coordinated_job_config.append(
+              coordination_config_pb2.CoordinatedJob(
+                  name=job,
+                  num_tasks=cluster_spec.num_tasks(job)))
+      context.context().configure_coordination_service(
+          service_type="standalone",
+          service_leader=multi_worker_util.coordination_leader(
+              cluster_spec),
+          heartbeat_timeout_in_ms=_HEARTBEAT_TIMEOUT_SECS * 1000,
+          allow_new_incarnation_to_reconnect=True)
 
   def _connect_to_cluster(self, coordinator_name):
     if coordinator_name in ["worker", "ps"]:
@@ -626,6 +648,11 @@ class ParameterServerStrategyV2Extended(
 
       return variable_creator_single_replica
 
+  def _create_per_worker_variable(self, next_creator, **kwargs):
+    """Create an unsynced, unaggregated variable on each worker."""
+    return ps_values.PerWorkerVariable(
+        self._container_strategy(), next_creator, **kwargs)
+
   def _create_variable(self, next_creator, **kwargs):
     """Implements StrategyExtendedV2._create_variable.
 
@@ -645,6 +672,9 @@ class ParameterServerStrategyV2Extended(
     Returns:
       A `Variable` or `ShardedVariable`.
     """
+    if kwargs.pop("per_worker_variable", False):
+      logging.info("Creating per worker variable")
+      return self._create_per_worker_variable(next_creator, **kwargs)
 
     var_creator = self._create_var_creator(next_creator, **kwargs)
     if "colocate_with" in kwargs:  # Never partition colocated_with variables.

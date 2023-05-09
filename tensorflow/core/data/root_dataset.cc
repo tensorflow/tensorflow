@@ -79,9 +79,19 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
     }
     params->autotune_cpu_budget = value_or_default(
         options.autotune_options().cpu_budget(), 0, GetCpuBudget());
-    params->autotune_ram_budget =
-        value_or_default(options.autotune_options().ram_budget(), 0,
-                         model::kRamBudgetShare * port::AvailableRam());
+    if (experiments.contains("autotune_buffer_optimization")) {
+      // When running this experiment, increase the ram_budget since it already
+      // takes into account the ram usage in buffer sizing, which is not the
+      // case for prefetch autotuner. Without this, we see degradation in some
+      // jobs for lack of buffers while ram usage is low.
+      params->autotune_ram_budget =
+          value_or_default(options.autotune_options().ram_budget(), 0,
+                           0.90 * port::AvailableRam());
+    } else {
+      params->autotune_ram_budget =
+          value_or_default(options.autotune_options().ram_budget(), 0,
+                           model::kRamBudgetShare * port::AvailableRam());
+    }
   }
 }
 
@@ -283,7 +293,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
                                  dataset()->params_.autotune_ram_budget,
                                  cancellation_manager_.get());
         if (!status.ok()) {
-          LOG(WARNING) << "Optimization loop failed: " << status.ToString();
+          LOG(WARNING) << "Optimization loop failed: " << status;
         }
       });
     }
@@ -343,10 +353,6 @@ const std::vector<PartialTensorShape>& RootDataset::output_shapes() const {
 
 string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
-}
-
-int64_t RootDataset::CardinalityInternal() const {
-  return input_->Cardinality();
 }
 
 int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
@@ -409,14 +415,14 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   };
   core::RefCountPtr<DatasetBase> rewritten_output;
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/true, &rewritten_output);
+                            /*record_fingerprint=*/false, &rewritten_output);
 
   *output = rewritten_output.get();
   bool rewritten = (*output != input);
   if (errors::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
-    LOG(WARNING) << s.ToString();
+    LOG(WARNING) << s;
   } else if (!s.ok()) {
     return s;
   }

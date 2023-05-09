@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -115,19 +116,21 @@ TEST(CustomDevice, TestTensorHandle) {
                                        /*length=*/3));
   Status s;
   std::string device_type = tensor->DeviceType(&s);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ("CUSTOM", device_type);
   int device_index = tensor->DeviceId(&s);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ(15, device_index);
   int64_t num_elements = 0;
   s = tensor->NumElements(&num_elements);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ(3, num_elements);
   EXPECT_THAT(
       tensor->DebugString(),
       ContainsRegex(
           R"re(TensorHandle\(TestValue, shape=\[3\], dtype=DT_FLOAT, device=.*\))re"));
+  const FullTypeDef& ft = tensor->FullType();
+  EXPECT_EQ(ft.type_id(), TFT_UNSET);
 }
 
 TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
@@ -146,7 +149,7 @@ TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
   int64_t num_elements;
   Status s = tensor->NumElements(&num_elements);
   EXPECT_FALSE(s.ok());
-  EXPECT_THAT(s.error_message(), HasSubstr("representing varying shapes"));
+  EXPECT_THAT(s.message(), HasSubstr("representing varying shapes"));
 }
 
 TEST(CustomDevice, TestResourcePlacement) {

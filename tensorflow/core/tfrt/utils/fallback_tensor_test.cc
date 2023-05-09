@@ -61,6 +61,26 @@ TEST(FallbackTensorTest, FallbackTensor) {
     ASSERT_EQ(fallback_tensor.tensor().dtype(), tensorflow::DT_INT32);
     auto flat = fallback_tensor.tensor().flat<int32_t>();
     EXPECT_EQ(flat(0), 123);
+
+    FallbackTensor copy(fallback_tensor);
+    FallbackTensor assign;
+    assign = fallback_tensor;
+
+    ASSERT_EQ(copy.tensor().NumElements(), 1);
+    ASSERT_EQ(copy.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(copy.tensor().flat<int32_t>()(0), 123);
+    ASSERT_EQ(assign.tensor().NumElements(), 1);
+    ASSERT_EQ(assign.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(assign.tensor().flat<int32_t>()(0), 123);
+
+    fallback_tensor = {};
+
+    ASSERT_EQ(copy.tensor().NumElements(), 1);
+    ASSERT_EQ(copy.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(copy.tensor().flat<int32_t>()(0), 123);
+    ASSERT_EQ(assign.tensor().NumElements(), 1);
+    ASSERT_EQ(assign.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(assign.tensor().flat<int32_t>()(0), 123);
   }
 
   auto immutable_tensor = ImmutableTensor::Create(tensor);
@@ -73,6 +93,49 @@ TEST(FallbackTensorTest, FallbackTensor) {
     ASSERT_EQ(fallback_tensor.tensor().dtype(), tensorflow::DT_INT32);
     auto flat = fallback_tensor.tensor().flat<int32_t>();
     EXPECT_EQ(flat(0), 123);
+
+    FallbackTensor copy(fallback_tensor);
+    FallbackTensor assign;
+    assign = fallback_tensor;
+
+    ASSERT_EQ(copy.tensor().NumElements(), 1);
+    ASSERT_EQ(copy.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(copy.tensor().flat<int32_t>()(0), 123);
+    ASSERT_EQ(assign.tensor().NumElements(), 1);
+    ASSERT_EQ(assign.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(assign.tensor().flat<int32_t>()(0), 123);
+
+    fallback_tensor = {};
+
+    ASSERT_EQ(copy.tensor().NumElements(), 1);
+    ASSERT_EQ(copy.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(copy.tensor().flat<int32_t>()(0), 123);
+    ASSERT_EQ(assign.tensor().NumElements(), 1);
+    ASSERT_EQ(assign.tensor().dtype(), tensorflow::DT_INT32);
+    EXPECT_EQ(assign.tensor().flat<int32_t>()(0), 123);
+  }
+}
+
+TEST(FallbackTensorTest, FallbackTensorCopy) {
+  int32_t scalar = 123;
+  tensorflow::Tensor tensor(scalar);
+
+  {
+    FallbackTensor fallback_tensor(tensor);
+    EXPECT_FALSE(fallback_tensor.is_immutable());
+
+    auto copy = fallback_tensor;
+    EXPECT_TRUE(copy.is_immutable());
+  }
+
+  auto immutable_tensor = ImmutableTensor::Create(tensor);
+
+  {
+    FallbackTensor fallback_tensor(&immutable_tensor);
+    EXPECT_TRUE(fallback_tensor.is_immutable());
+
+    auto copy = fallback_tensor;
+    EXPECT_TRUE(copy.is_immutable());
   }
 }
 

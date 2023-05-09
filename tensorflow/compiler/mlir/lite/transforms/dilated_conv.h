@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_DILATED_CONV_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -71,7 +72,7 @@ class ConvertTFDilatedConvOp : public OpRewritePattern<Conv2dOpTy> {
   using OpRewritePattern<Conv2dOpTy>::OpRewritePattern;
 
   // Extract the dilation factor from `block_shape` and pack it in an ArrayAttr.
-  llvm::Optional<ArrayAttr> ExtractDilationsAttrFromBlockShape(
+  std::optional<ArrayAttr> ExtractDilationsAttrFromBlockShape(
       Value stb_block_shape, Value bts_block_shape, int64_t expand_axis,
       PatternRewriter& rewriter) const;
 
@@ -310,7 +311,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
         consumer_op, "next op is neither BiasAdd nor BatchToSpaceND");
   }
 
-  llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
+  std::optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
       stb_op.getBlockShape(), bts_op.getBlockShape(), expand_axis, rewriter);
   if (!dilations_attr.has_value()) {
     return rewriter.notifyMatchFailure(op, "failed to extract dilation rate");
@@ -367,7 +368,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
         "SpaceToBatchND op's padding doesn't have same shape/type with "
         "BatchToSpaceND op's crops");
   }
-  int64_t m = stb_paddings_attr.getType().getDimSize(0);
+  int64_t m = stb_paddings_attr.getShapedType().getDimSize(0);
   // padding - crop.
   for (uint64_t i = 0; i < m; ++i) {
     for (uint64_t j = 0; j < 2; ++j) {
@@ -445,7 +446,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 }
 
 template <typename Conv2dOpTy>
-llvm::Optional<ArrayAttr>
+std::optional<ArrayAttr>
 ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
     Value stb_block_shape, Value bts_block_shape, int64_t expand_axis,
     PatternRewriter& rewriter) const {

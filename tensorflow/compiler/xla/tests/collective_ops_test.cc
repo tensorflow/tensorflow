@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -49,14 +48,17 @@ class CollectiveOpsTest : public HloTestBase {
   CollectiveOpsTest() : num_devices_(backend().device_count()) {
     VLOG(1) << "Running with " << num_devices_ << " devices";
   }
-  static void SetUpTestSuite() {
-    // Not needed structly, since this test exercises cross replica collective
-    // permute which does not use NCCL. But keeping it here for testing.
-    tsl::setenv("NCCL_LAUNCH_MODE", "PARALLEL", /*overwrite=*/1);
-    HloTestBase::SetUpTestSuite();
-  }
 
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    // Disable async->sync collective conversion pass to enable unit testing
+    // of async collectives.
+    debug_options.add_xla_disable_hlo_passes(
+        "gpu-convert-async-collectives-to-sync");
+    return debug_options;
+  }
+
   std::unique_ptr<HloModule> MakeCrsModule(
       const Shape& shape, std::vector<std::vector<int64_t>> replica_groups,
       const HloModuleConfig& config, std::string op = "add",
@@ -283,10 +285,11 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
 
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {},
-                                            /*num_replicas=*/2,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {},
+                        /*num_replicas=*/2,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({false}),
                                        results[replica_idx]));
@@ -323,10 +326,11 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
 
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {},
-                                            /*num_replicas=*/2,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {},
+                        /*num_replicas=*/2,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({true}),
                                        results[replica_idx]));
@@ -440,7 +444,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
                         /*num_replicas=*/kNumReplicas,
-                        /*use_threads=*/true));
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
   auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
   std::vector<float> expected1_vec = {14., 6., 8., 2., 4.};
@@ -1043,7 +1047,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
                         /*num_replicas=*/kNumReplicas,
-                        /*use_threads=*/true));
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
   auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
   std::vector<float> expected1_vec = {14., 6., 8., 2., 4., 6., 8.};
@@ -1581,6 +1585,144 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceBFloat16Min) {
   const bfloat16 one = static_cast<bfloat16>(1.0f);
   for (const Literal& result : results) {
     LiteralTestUtil::ExpectR1Equal<bfloat16>({one, one}, result);
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllGather)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 2] broadcast(id), dimensions={}
+    a0 = u32[1, 2] constant({{10, 15}})
+    a1 = u32[1, 2] add(id2, a0)
+    ags = (u32[1, 2], u32[2, 2]) all-gather-start(a1), dimensions={0}
+    allgather = u32[2,2] all-gather-done(ags)
+    ROOT out = u32[4] reshape(allgather)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, result);
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncReduceScatter)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    lhs = u32[] parameter(0)
+    rhs = u32[] parameter(1)
+    ROOT add = u32[] add(lhs, rhs)
+  }
+
+  // XLA HLO does not have reduce-scatter-start/reduce-scatter-done op, but
+  // uses the generic async-start/async-done ops.
+  reduce_scatter {
+    p0 = u32[8] parameter(0)
+    ROOT result = u32[4] reduce-scatter(p0), replica_groups={},
+                      dimensions={0}, to_apply=add
+  }
+
+  ENTRY main {
+    c0 = u32[8] constant({1, 2, 3, 4, 5, 6, 7, 8})
+    c1 = u32[8] constant({10, 11, 12, 13, 14, 15, 16, 17})
+    zero = u32[] constant(0)
+    id = u32[] replica-id()
+    p = pred[] compare(id, zero), direction=EQ
+    pb = pred[8] broadcast(p), dimensions={}
+    // data = c0 for replica 0 and c1 for replica 1
+    data = u32[8] select(pb, c0, c1)
+    rs-start = ((u32[8]{0}), u32[4]{0}) async-start(u32[8]{0} %data), calls=reduce_scatter
+    ROOT %ars = u32[4]{0} async-done(((u32[8]{0}), u32[4]{0}) %rs-start), calls=reduce_scatter
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 13, 15, 17}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllToAll)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  all_to_all {
+    p0 = u32[2] parameter(0)
+    ROOT result = u32[2] all-to-all(p0), dimensions={0}
+  }
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 15})
+    a1 = u32[2] add(id2, a0)
+    a2a-start = ((u32[2]), u32[2]) async-start(u32[2] %a1), calls=all_to_all
+    ROOT a2s = u32[2] async-done(a2a-start), calls=all_to_all
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 11}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
+}
+
+// Test for all-gather with unit dims to verify that dimension check works
+// correctly in the presence of unit dimensions.
+XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1UnitDimensions) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 1, 2, 1, 2] broadcast(id), dimensions={}
+    offset = u32[4] iota(), iota_dimension=0
+    offset_reshape = u32[1, 1, 2, 1, 2] reshape(offset)
+    agi = u32[1, 1, 2, 1, 2] add(id2, offset_reshape)
+    allgather = u32[1, 1, 4, 1, 2] all-gather(agi), dimensions={2}
+    ROOT out = u32[8] reshape(allgather)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 1, 2, 3, 1, 2, 3, 4}, result);
   }
 }
 

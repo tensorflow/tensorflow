@@ -25,11 +25,9 @@ add_public_tablegen_target(LMHLOGPUTransformsPassIncGen)
 add_mlir_library(MLIRBufferTransforms
   alloc_to_arg_pass.cc
   buffer_packing.cc
-  buffer_reuse.cc
   bufferize.cc
   bufferize_pass.cc
   collapse_parallel_loops_to_1d_pass.cc
-  copy_removal.cc
   detensorize_scf_ops.cc
   generic_host_to_llvm.cc
   lower_index_cast_pass.cc
@@ -41,12 +39,14 @@ add_mlir_library(MLIRBufferTransforms
 
   DEPENDS
   LMHLOTransformsPassIncGen
+  MLIRDeallocationPassesIncGen
 
   LINK_COMPONENTS
   Core
 
   LINK_LIBS PUBLIC
   ChloOps
+  GmlStBufferizableOpInterface
   GmlStDialect
   MLIRGPUOps
   MLIRHLOAnalysis
@@ -58,6 +58,8 @@ add_mlir_library(MLIRBufferTransforms
   MLIRShapeDialect
   MLIRTransformDialectTransforms
   MLIRTransforms
+  MLIRX86VectorDialect
+  MLIRX86VectorTransforms
   MhloDialect
   THLODialect
   ThloBufferizableOpInterface

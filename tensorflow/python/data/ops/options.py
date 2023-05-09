@@ -15,6 +15,7 @@
 """API for specifying `tf.data` options."""
 
 import enum
+import platform
 
 from absl import logging
 
@@ -468,7 +469,7 @@ class ThreadingOptions(options_lib.OptionsBase):
   """Represents options for dataset threading.
 
   You can set the threading options of a dataset through the
-  `experimental_threading` property of `tf.data.Options`; the property is
+  `threading` property of `tf.data.Options`; the property is
   an instance of `tf.data.ThreadingOptions`.
 
   ```python
@@ -637,6 +638,11 @@ class Options(options_lib.OptionsBase):
       #                 "Use options.deterministic instead.")
       super(Options, self).__setattr__("deterministic", value)
       return
+    if name == "experimental_symbolic_checkpoint":
+      # TODO(b/276269493): Add support for MacOS.
+      if platform.system() == "Darwin":
+        logging.warning("Symbolic checkpointing is not supported on MacOS.")
+        return
     super(Options, self).__setattr__(name, value)
 
   def _to_proto(self):

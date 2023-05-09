@@ -28,14 +28,15 @@ from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
-from tensorflow.python.distribute.coordinator import values as values_lib
+from tensorflow.python.distribute.coordinator import coordinator_context
+from tensorflow.python.distribute.coordinator import remote_value
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -43,12 +44,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -357,7 +358,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2.output_remote_value._status,
-                     values_lib.RemoteValueStatus.READY)
+                     remote_value.RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2.output_remote_value.fetch()
 
@@ -488,15 +489,71 @@ def make_coordinator(num_workers, num_ps):
   cluster_def['chief'] = [
       'localhost:%d' % test_util.pick_unused_port()
   ]
-  cluster_resolver = SimpleClusterResolver(
+  cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer='grpc')
   strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
       cluster_resolver)
   return coordinator_lib.ClusterCoordinator(strategy)
 
 
-class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
-                             parameterized.TestCase):
+class CoordinatorContextTest(test.TestCase, parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(CoordinatorContextTest, cls).setUpClass()
+    cls.coordinator = make_coordinator(num_workers=5, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
+
+  def testWorkerIndexDatasetFn(self):
+    def dataset_fn(context):
+      del context
+      dataset = dataset_ops.DatasetV2.range(10)
+      worker_index = coordinator_context.get_current_worker_index()
+      dataset = dataset.shard(
+          num_shards=self.strategy._extended._num_workers,
+          index=worker_index,
+      )
+      return dataset
+
+    @def_function.function
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(dataset_fn)
+
+    @def_function.function
+    def train_fn(iterator):
+      total = constant_op.constant(0, dtype=dtypes.int64)
+      for batch in iterator:
+        total += math_ops.reduce_sum(batch)
+      return total
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    with self.strategy.scope():
+      iterator = iter(per_worker_dataset)
+      ret_vals = []
+      # Use private APIs to schedule in tagged queues to ensure each worker
+      # executes only one closure.
+      for ix in range(5):
+        closure = coordinator_lib.Closure(
+            train_fn,
+            self.coordinator._cluster.closure_queue._cancellation_mgr,
+            args=(iterator,))
+        ret = closure.build_output_remote_value()
+        # The queue doesn't keep track of tagged closures as inflight by
+        # default, so hack around this for the test.
+        self.coordinator._cluster.closure_queue._inflight_closure_count += 1
+        self.coordinator._cluster.closure_queue.put(closure, tag=ix)
+        ret_vals.append(ret)
+    self.coordinator.join()
+
+    fetched_vals = [rv.fetch() for rv in ret_vals]
+    expected_results = [5, 7, 9, 11, 13]
+    self.assertAllClose(sorted(fetched_vals), expected_results)
+
+
+class ClusterCoordinatorTest(
+    TestCaseWithErrorReportingThread, parameterized.TestCase
+):
 
   @classmethod
   def setUpClass(cls):
@@ -676,11 +733,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     self.assertNotAllEqual(elements_in_iterator_1, elements_in_iterator_2)
 
   def testPerWorkerValue(self):
-    self.skipTest('b/168569314')
     var_shape = tuple()
     var_dtype = dtypes.float32
     var_name = 'var'
 
+    # This should not be a tf.function, as variable creation is prohibited in
+    # tf.functions in general.
     def create_var():
       var = variables.Variable(
           initial_value=0.0, dtype=var_dtype, name=var_name)
@@ -688,16 +746,17 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
       return var
 
     worker_local_var = self.coordinator._create_per_worker_resources(create_var)
-
     # The following is a workaround to allow `worker_local_var` to be passed in
-    # as args to the `coordinator.schedule` method which requires tensor specs
-    # to trace tf.function but _create_worker_resources' return values don't
-    # have tensor specs. We can get rid of this workaround once
-    # _create_worker_resources is able to infer the tensor spec of the return
-    # value of the function passed in. See b/154675763.
+    # as args to the `coordinator.schedule` method which requires specs
+    # to trace a tf.function, but _create_worker_resources' return values don't
+    # have specs when its input function is not a tf.function. We can get rid of
+    # this workaround once _create_worker_resources is able to infer the tensor
+    # spec of the return value of the (non-tf) function passed in. See
+    # b/154675763.
     for var in worker_local_var._values:
-      var._type_spec = tensor_spec.TensorSpec(var_shape, var_dtype, var_name)
+      var._type_spec = resource_variable_ops.VariableSpec(var_shape, var_dtype)
 
+    @def_function.function
     def worker_fn(var):
       var.assign_add(1.0)
 
@@ -710,8 +769,36 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     var_sum = sum(self.coordinator.fetch(worker_local_var._values))
     self.assertEqual(var_sum, 10.0)
 
-  def testDisallowRemoteValueAsInput(self):
+  def testPerWorkerVariableCreation(self):
+    var_dtype = dtypes.float32
+    var_name = 'var'
 
+    with self.strategy.scope():
+      var = variables.Variable(
+          initial_value=0.0, dtype=var_dtype, name=var_name,
+          per_worker_variable=True)
+
+    # Use per-worker variable as a capture
+    @def_function.function
+    def worker_fn():
+      var.assign_add(1.0)
+      return var
+
+    num_closures = 10
+    for _ in range(num_closures):
+      self.coordinator.schedule(worker_fn)
+    self.coordinator.join()
+
+    # Verify placement of variables
+    devices = [wv._get_values().device for wv in var._per_worker_vars._values]
+    expected_devices = [f'/job:worker/replica:0/task:{ix}/device:CPU:0'
+                        for ix in range(self.strategy._num_workers)]  # pylint: disable=protected-access
+    self.assertAllEqual(devices, expected_devices)
+
+    result_sum = sum(var.read_all()).numpy()
+    self.assertEqual(result_sum, num_closures)
+
+  def testDisallowRemoteValueAsInput(self):
     @def_function.function
     def func_0():
       return 1.0
@@ -1127,9 +1214,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(v2.read_value().numpy(), 0.8, delta=1e-6)
 
   def testRunAndReduce(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(initial_value=1.)
 
       expected_result = (4. * self.strategy.num_replicas_in_sync,
@@ -1141,7 +1228,7 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
         def replica_fn(input_tensor):
           # Within `replica_fn`, it has to be in a replica context.
           self.assertFalse(
-              distribution_strategy_context.in_cross_replica_context())
+              distribute_lib.in_cross_replica_context())
           return input_tensor + v, input_tensor - v
 
         run_result = self.strategy.run(replica_fn, args=(input_tensor,))
@@ -1161,9 +1248,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(result.fetch(), expected_result)
 
   def testRunAndReduceWithAssignAdd(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(initial_value=1.)
       v1 = variables.Variable(
           initial_value=0.,
@@ -1178,7 +1265,7 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
         def replica_fn(input_tensor):
           # Within `replica_fn`, it has to be in a replica context.
           self.assertFalse(
-              distribution_strategy_context.in_cross_replica_context())
+              distribute_lib.in_cross_replica_context())
 
           v1.assign_add(input_tensor)
           return input_tensor + v, input_tensor - v
@@ -1201,9 +1288,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(v1, 6.)
 
   def testVariableAggregation(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(
           initial_value=1.,
           aggregation=variable_scope.VariableAggregation.SUM)
@@ -1213,7 +1300,7 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
 
         def replica_fn():
           value = math_ops.cast(
-              distribution_strategy_context.get_replica_context()
+              distribute_lib.get_replica_context()
               .replica_id_in_sync_group + 1, v.dtype)
           v.assign(value)
 
@@ -1227,9 +1314,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(v, expected_result)
 
   def testVariableCaching(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(
           initial_value=1.,
           aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
@@ -1513,8 +1600,8 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(result, dataset_vals[0])
 
     # Test that the build() output type specs match the input Dataset spec.
-    for remote_value in per_worker_dataset._values:
-      self.assertEqual(remote_value._type_spec, dataset._type_spec)
+    for value in per_worker_dataset._values:
+      self.assertEqual(value._type_spec, dataset._type_spec)
 
 
 if __name__ == '__main__':

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
 #include <memory>
-#include <optional>
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
-#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -356,7 +354,8 @@ KernelAndDeviceFunc::PrepareForRun(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    tsl::CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent,
+    tsl::core::RefCountPtr<Rendezvous>* rendezvous) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (eager_func_params.has_value()) {
     const EagerFunctionParams& params = eager_func_params.value();
@@ -384,9 +383,8 @@ KernelAndDeviceFunc::PrepareForRun(
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
   // of the same multi-device function concurrently.
-  Rendezvous* rendezvous = nullptr;
-  TF_CHECK_OK(rendezvous_factory_(opts->step_id, nullptr, &rendezvous));
-  opts->rendezvous = rendezvous;
+  TF_CHECK_OK(rendezvous_factory_(opts->step_id, nullptr, rendezvous));
+  opts->rendezvous = rendezvous->get();
   opts->create_rendezvous = false;
 
   // Create a cancellation manager to be used by FLR options if caller does not
@@ -434,9 +432,10 @@ Status KernelAndDeviceFunc::Run(
     n.WaitForNotification();
     return status;
   }
-  std::shared_ptr<FunctionLibraryRuntime::Options> opts =
-      PrepareForRun(step_container, outputs, cancellation_manager,
-                    eager_func_params, stack_trace, coordination_service_agent);
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
+  std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
+      step_container, outputs, cancellation_manager, eager_func_params,
+      stack_trace, coordination_service_agent, &created_rendezvous);
 
   std::vector<Tensor> rets;
   Status s;
@@ -448,11 +447,6 @@ Status KernelAndDeviceFunc::Run(
 
   if (cancellation_manager == nullptr) {
     delete opts->cancellation_manager;
-  }
-  static_cast<Rendezvous*>(opts->rendezvous)->Unref();
-  if (opts->cleanup_rendezvous_after_run) {
-    // Clean up the rendezvous created in PrepareForRun.
-    TF_RETURN_IF_ERROR(rendezvous_factory_.CleanUp(opts->step_id));
   }
   outputs->reserve(rets.size());
   for (auto& v : rets) {
@@ -468,39 +462,27 @@ void KernelAndDeviceFunc::RunAsync(
     const absl::optional<EagerFunctionParams>& eager_func_params,
     tsl::CoordinationServiceAgent* coordination_service_agent,
     std::function<void(const Status&)> done) {
-  tsl::profiler::TraceMeProducer activity(
+  profiler::TraceMe activity(
       [] {
         return profiler::TraceMeEncode("KernelAndDeviceFunc::RunAsync",
                                        {{"_r", 1}});
       },
-      tsl::profiler::ContextType::kTfExecutor,
-      /*context_id=*/std::nullopt, profiler::TraceMeLevel::kInfo);
+      profiler::TraceMeLevel::kInfo);
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,
-      absl::nullopt, coordination_service_agent);
+      absl::nullopt, coordination_service_agent, &created_rendezvous);
 
-  pflr_->Run(*opts, handle_, inputs, outputs,
-             [this, opts, cancellation_manager, done = std::move(done),
-              trace_context_id = activity.GetContextId()](const Status& s) {
-               tsl::profiler::TraceMeConsumer activity(
-                   [] {
-                     return profiler::TraceMeEncode(
-                         "KernelAndDeviceFunc::RunAsync::DoneCallback",
-                         {{"_r", 1}});
-                   },
-                   tsl::profiler::ContextType::kTfExecutor, trace_context_id,
-                   profiler::TraceMeLevel::kInfo);
-               if (cancellation_manager == nullptr) {
-                 delete opts->cancellation_manager;
-               }
-               static_cast<Rendezvous*>(opts->rendezvous)->Unref();
-               Status status = s;
-               if (opts->cleanup_rendezvous_after_run) {
-                 // Clean up the rendezvous created in PrepareForRun.
-                 status.Update(rendezvous_factory_.CleanUp(opts->step_id));
-               }
-               done(status);
-             });
+  pflr_->Run(
+      *opts, handle_, inputs, outputs,
+      [opts, cancellation_manager, done = std::move(done),
+       created_rendezvous = created_rendezvous.release()](const Status& s) {
+        if (cancellation_manager == nullptr) {
+          delete opts->cancellation_manager;
+        }
+        created_rendezvous->Unref();
+        done(s);
+      });
 }
 
 tensorflow::Device* KernelAndDeviceOp::OutputDevice(int idx) const {

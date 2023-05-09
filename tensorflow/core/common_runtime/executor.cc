@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -81,8 +80,6 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
-#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
-#include "tensorflow/tsl/profiler/lib/context_types.h"
 
 namespace tensorflow {
 
@@ -299,7 +296,7 @@ class ExecutorState {
   struct AsyncState;
 
   // Process a ready node in current thread.
-  void Process(TaggedNode node, int64_t scheduled_nsec);
+  void Process(const TaggedNode& node, int64_t scheduled_nsec);
 
   void ProcessInline(TaggedNodeReadyQueue* inline_ready,
                      int64_t scheduled_nsec);
@@ -631,61 +628,47 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
   DCHECK(async_kernel != nullptr);
   AsyncState* state =
       new AsyncState(params, tagged_node, &item, first_input, stats);
+
+  auto done = [this, state, activity_id]() {
+    Device* device = immutable_state_.params().device;
+    NodeExecStatsInterface* stats = state->stats;  // Shorthand
+    Entry* first_input = state->first_input;       // Shorthand
+
+    nodestats::SetOpEnd(stats);
+    EntryVector outputs(state->item->num_outputs);
+    Status s = ProcessOutputs(*state->item, &state->ctx, outputs.data(), stats);
+    nodestats::SetMemory(stats, &state->ctx);
+    if (vlog_) {
+      VLOG(2) << "Async kernel done: " << state->item->node_id << " step "
+              << step_id_ << " " << SummarizeNodeDef(state->item->kernel->def())
+              << (state->tagged_node.get_is_dead() ? " is dead" : "")
+              << " device: " << device->name();
+    }
+
+    // Clears inputs.
+    const int num_inputs = state->item->num_inputs;
+    for (int i = 0; i < num_inputs; ++i) {
+      (first_input + i)->ClearVal();
+    }
+    propagator_.MaybeMarkCompleted(state->tagged_node);
+    activity_watcher::ActivityEnd(activity_id);
+    TaggedNodeSeq ready;
+    if (s.ok()) {
+      propagator_.PropagateOutputs(state->tagged_node, &outputs, &ready);
+    }
+    outputs.clear();
+    const bool completed = NodeDone(s, &ready, stats, nullptr);
+    delete state;
+    if (completed) ScheduleFinish();
+  };
   nodestats::SetOpStart(stats);
   {
-    bool is_expensive = kernel_stats_->IsExpensive(item);
-    profiler::AnnotatedTraceMeProducer activity(
+    profiler::AnnotatedTraceMe activity(
         [async_kernel, state] {
           return async_kernel->TraceString(
               state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
-        tsl::profiler::ContextType::kTfExecutor,
-        /*context_id=*/std::nullopt, profiler::GetTFTraceMeLevel(is_expensive));
-
-    auto done = [this, async_kernel, state, activity_id, is_expensive,
-                 trace_context_id = activity.GetContextId()]() {
-      tsl::profiler::TraceMeConsumer activity(
-          [async_kernel, state] {
-            return absl::StrCat(
-                "AsyncDone ",
-                async_kernel->TraceString(
-                    state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled()));
-          },
-          tsl::profiler::ContextType::kTfExecutor, trace_context_id,
-          profiler::GetTFTraceMeLevel(is_expensive));
-      Device* device = immutable_state_.params().device;
-      NodeExecStatsInterface* stats = state->stats;  // Shorthand
-      Entry* first_input = state->first_input;       // Shorthand
-
-      nodestats::SetOpEnd(stats);
-      EntryVector outputs(state->item->num_outputs);
-      Status s =
-          ProcessOutputs(*state->item, &state->ctx, outputs.data(), stats);
-      nodestats::SetMemory(stats, &state->ctx);
-      if (vlog_) {
-        VLOG(2) << "Async kernel done: " << state->item->node_id << " step "
-                << step_id_ << " "
-                << SummarizeNodeDef(state->item->kernel->def())
-                << (state->tagged_node.get_is_dead() ? " is dead" : "")
-                << " device: " << device->name();
-      }
-
-      // Clears inputs.
-      const int num_inputs = state->item->num_inputs;
-      for (int i = 0; i < num_inputs; ++i) {
-        (first_input + i)->ClearVal();
-      }
-      propagator_.MaybeMarkCompleted(state->tagged_node);
-      activity_watcher::ActivityEnd(activity_id);
-      TaggedNodeSeq ready;
-      if (s.ok()) {
-        propagator_.PropagateOutputs(state->tagged_node, &outputs, &ready);
-      }
-      outputs.clear();
-      const bool completed = NodeDone(s, &ready, stats, nullptr);
-      delete state;
-      if (completed) ScheduleFinish();
-    };
+        profiler::GetTFTraceMeLevel(kernel_stats_->IsExpensive(item)));
     immutable_state_.params().device->ComputeAsync(async_kernel, &state->ctx,
                                                    std::move(done));
   }
@@ -710,7 +693,7 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 }
 
 template <class PropagatorStateType>
-void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
+void ExecutorState<PropagatorStateType>::Process(const TaggedNode& tagged_node,
                                                  int64_t scheduled_nsec) {
   profiler::TraceMe traceme("ExecutorState::Process Scheduled",
                             profiler::TraceMeLevel::kVerbose);
@@ -1077,15 +1060,15 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
     }
     if (s.code() == error::RESOURCE_EXHAUSTED) {
       if (stats_collector_) {
-        string err = stats_collector_->ReportAllocsOnResourceExhausted(
-            s.error_message());
-        s = errors::CreateWithUpdatedMessage(
-            s, strings::StrCat(s.error_message(), err));
+        string err =
+            stats_collector_->ReportAllocsOnResourceExhausted(s.message());
+        s = errors::CreateWithUpdatedMessage(s,
+                                             strings::StrCat(s.message(), err));
       } else {
         s = errors::CreateWithUpdatedMessage(
             s,
             strings::StrCat(
-                s.error_message(),
+                s.message(),
                 "\nHint: If you want to see a list of allocated tensors when "
                 "OOM happens, add report_tensor_allocations_upon_oom "
                 "to RunOptions for current allocation info. This isn't "

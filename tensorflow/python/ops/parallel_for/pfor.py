@@ -38,7 +38,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_image_ops
@@ -63,6 +67,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -574,8 +579,8 @@ class WhileOp:
     for i, out_ta in enumerate(output_tas):
       inp = inputs[i]
       new_output_tas.append(
-          control_flow_ops.cond(not_all_done, lambda: out_ta,
-                                lambda: out_ta.write(0, inp)))
+          tf_cond.cond(not_all_done, lambda: out_ta,
+                       lambda: out_ta.write(0, inp)))
     # pylint: enable=cell-var-from-loop
     return not_all_done, indices, inputs, new_output_tas
 
@@ -647,7 +652,7 @@ class WhileOp:
       # not be used. Notice that the value returned by the loop is based on
       # TensorArrays and not directly on these returned values.
       # pylint: disable=cell-var-from-loop
-      new_output = control_flow_ops.cond(
+      new_output = tf_cond.cond(
           not_all_done,
           lambda: true_fn(control_inp, body_pfor, body_output, stacked),
           lambda: constant_op.constant([], dtype=out_dtype))
@@ -760,7 +765,7 @@ class WhileOp:
                   list(new_inputs[num_outputs:]) + new_output_tas)
       return tuple(new_args)
 
-    while_outputs = control_flow_ops.while_loop(
+    while_outputs = while_loop.while_loop(
         cond, body, init_values, shape_invariants=shape_invariants)
     output_tas = while_outputs[-len(self._outputs):]
     outputs = []
@@ -1112,7 +1117,7 @@ def _fallback_converter(pfor_input, root_cause="", warn=False):
       outputs.append(ta.write(i, out))
     return tuple([i + 1] + outputs)
 
-  ta_list = control_flow_ops.while_loop(
+  ta_list = while_loop.while_loop(
       lambda i, *ta: i < iters, while_body, [0] +
       [tensor_array_ops.TensorArray(dtype, iters) for dtype in output_dtypes
       ])[1:]
@@ -2040,7 +2045,7 @@ def _convert_conv2d_backprop_filter(pfor_input):
       return i + 1, ta.write(i, output)
 
     n = array_ops.reshape(pfor_input.pfor.loop_len_vector, [])
-    _, ta = control_flow_ops.while_loop(
+    _, ta = while_loop.while_loop(
         lambda i, ta: i < n, while_body,
         (0, tensor_array_ops.TensorArray(inputs.dtype, n)))
     output = ta.stack()
@@ -2416,7 +2421,7 @@ def _convert_pack(pfor_input):
   if axis >= 0:
     axis += 1
   return wrap(
-      array_ops.stack([x.t for x in pfor_input.inputs], axis=axis), True)
+      array_ops_stack.stack([x.t for x in pfor_input.inputs], axis=axis), True)
 
 
 @RegisterPFor("Unpack")
@@ -2426,7 +2431,8 @@ def _convert_unpack(pfor_input):
   if axis >= 0:
     axis += 1
   num = pfor_input.get_attr("num")
-  return [wrap(x, True) for x in array_ops.unstack(value, axis=axis, num=num)]
+  return [wrap(x, True) for x
+          in array_ops_stack.unstack(value, axis=axis, num=num)]
 
 
 @RegisterPFor("Pad")
@@ -2756,7 +2762,7 @@ def _convert_matmul(pfor_input):
       min_dim = math_ops.minimum(b_shape[0], b_shape[1])
       perm = array_ops.where(
           math_ops.equal(min_dim, 1), [0, 1, 2], [1, 0, 2])
-      new_shape = array_ops.stack([b_shape[1], b_shape[0], b_shape[2]])
+      new_shape = array_ops_stack.stack([b_shape[1], b_shape[0], b_shape[2]])
       b = array_ops.transpose(b, perm)
       b = array_ops.reshape(b, new_shape)
 
@@ -3876,7 +3882,7 @@ def _stack_tensor_list_shape(shape, first_dim):
       return first_dim
   else:
     shape = array_ops.reshape(shape, [-1])
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         math_ops.reduce_any(shape < 0),
         lambda: constant_op.constant(-1),
         lambda: array_ops.concat([first_dim, shape], axis=0))
@@ -3986,8 +3992,8 @@ def _stack_tensor_list(handle, dtype, loop_len_vector, element_shape=None):
     elem = _stack(elem, loop_len_vector).t
     return i + 1, list_ops.tensor_list_set_item(h, i, elem)
 
-  return control_flow_ops.while_loop(lambda i, _: i < length, _body_fn,
-                                     [0, new_handle])[1]
+  return while_loop.while_loop(lambda i, _: i < length, _body_fn,
+                               [0, new_handle])[1]
 
 
 @RegisterPFor("TensorListGetItem")
@@ -4111,7 +4117,7 @@ def _convert_tensor_list_concat_v2(pfor_input):
   # Note that element_shape attribute can have incomplete shapes. This doesn't
   # seem to work well when creating another list and then doing a concat on it.
   # Hence we try to find the dynamic shape here.
-  element_shape = control_flow_ops.cond(
+  element_shape = tf_cond.cond(
       length > 0, lambda: array_ops.shape(
           list_ops.tensor_list_get_item(handle, 0, element_dtype, None)),
       lambda: constant_op.constant([0, 0], dtype=dtypes.int32))
@@ -4128,8 +4134,8 @@ def _convert_tensor_list_concat_v2(pfor_input):
 
   new_handle = list_ops.tensor_list_reserve(new_element_shape, length,
                                             element_dtype)
-  new_handle = control_flow_ops.while_loop(lambda i, _: i < length,
-                                           _transpose_elem, [0, new_handle])[1]
+  new_handle = while_loop.while_loop(lambda i, _: i < length, _transpose_elem,
+                                     [0, new_handle])[1]
   output, lengths = gen_list_ops.tensor_list_concat_v2(
       input_handle=new_handle,
       element_dtype=element_dtype,
@@ -4242,7 +4248,7 @@ def _convert_tensor_list_scatter(pfor_input):
 
     unique_indices_loop_idx = array_ops.reshape(array_ops.tile(
         loop_idx[None, :], [scatters_per_op, 1]), [-1])
-    scatter_indices = array_ops.stack(
+    scatter_indices = array_ops_stack.stack(
         [unique_indices.idx, unique_indices_loop_idx],
         axis=1)
     # This op does *not* guarantee last-update-wins on GPU, so semantics may not
@@ -4482,6 +4488,7 @@ def _convert_function_call(func, converter, inputs):
   assert isinstance(func.graph, func_graph.FuncGraph), func
   assert isinstance(converter, PFor)
 
+  graph_outputs = func.graph.outputs[:len(func.function_type.flat_outputs)]
   # TODO(agarwal): consider caching this function definition.
   @def_function.function
   def f(*args):
@@ -4491,17 +4498,16 @@ def _convert_function_call(func, converter, inputs):
     for inp, arg in zip(func.graph.inputs, args):
       converter._add_conversion(inp, arg)
     # Convert output tensors.
-    return tuple(
-        [converter._convert_helper(x).t for x in func._func_graph_outputs])
+    return tuple([converter._convert_helper(x).t for x in graph_outputs])
 
   call_outputs = f(*inputs)
-  assert len(call_outputs) == len(func._func_graph_outputs)
+  assert len(call_outputs) == len(graph_outputs)
   outputs = []
-  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
+  for call_output, output_tensor in zip(call_outputs, graph_outputs):
     func_output = converter._convert_helper(output_tensor)
     outputs.append(
-        wrap(call_output, func_output.is_stacked,
-             func_output.is_sparse_stacked))
+        wrap(call_output, func_output.is_stacked, func_output.is_sparse_stacked)
+    )
   return outputs
 
 
@@ -4609,7 +4615,7 @@ def _convert_if(pfor_input):
       outputs.append(wrap(out, True))
     return outputs
   else:
-    outputs = control_flow_ops.cond(
+    outputs = tf_cond.cond(
         cond,
         lambda: _outputs_for_branch(then_branch.name, None, pfor_input, inputs),
         lambda: _outputs_for_branch(else_branch.name, None, pfor_input, inputs))
@@ -4657,7 +4663,7 @@ def _convert_stateless_case(pfor_input):
       new_branches.append(new_function)
 
     outputs = []
-    outputs = control_flow_ops.switch_case(branch_idx, new_branches)
+    outputs = control_flow_switch_case.switch_case(branch_idx, new_branches)
     return [wrap(t, True) for t in outputs]
 
 
@@ -4750,7 +4756,7 @@ class WhileV2:
           if inp.is_stacked:
             # Shapes may be tf.constant(-1) for fully dynamic, in which case
             # slicing is an error.
-            element_shape = control_flow_ops.cond(
+            element_shape = tf_cond.cond(
                 math_ops.equal(array_ops.rank(element_shape), 0),
                 lambda: element_shape,
                 lambda: element_shape[1:])
@@ -4768,10 +4774,8 @@ class WhileV2:
             size=length,
             dynamic_size=True,
             infer_shape=False)
-          _, output_ta = control_flow_ops.while_loop(
-              lambda index, _: index < length,
-              _init_loop_body,
-              [0, output_ta])
+          _, output_ta = while_loop.while_loop(lambda index, _: index < length,
+                                               _init_loop_body, [0, output_ta])
         else:
           output_ta = tensor_array_ops.TensorArray(
             inp.t.dtype,
@@ -4831,10 +4835,9 @@ class WhileV2:
             tensor_shape.TensorShape([None])
             + tensor_shape.TensorShape(shape_and_type.shape)[1:],
             user_list_len, shape_and_type.dtype)
-        _, new_inp, out_ta = control_flow_ops.while_loop(
+        _, new_inp, out_ta = while_loop.while_loop(
             lambda index, unused_new_inp, unused_new_out_ta: index < length,
-            _split_vectorized_ta_element,
-            [0, new_inp, output_tas[i]])
+            _split_vectorized_ta_element, [0, new_inp, output_tas[i]])
       else:
         # Partition the inputs.
         if stacked:
@@ -4911,15 +4914,16 @@ class WhileV2:
             # should not get executed. Hence we simply return `new_inputs` to
             # make sure the graph construction code completes.
             with ops.control_dependencies([
-                control_flow_ops.Assert(
-                    False, ["pfor ERROR: this branch should never execute"])]):
+                control_flow_assert.Assert(
+                    False, ["pfor ERROR: this branch should never execute"])
+            ]):
               return [array_ops.identity(x) for x in new_inputs]
           else:
             return [out.t for out in outputs]
 
     # If all are done, we simply return `new_inputs`. Else we need to run the
     # body function.
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         not_all_done,
         true_fn,
         lambda: list(new_inputs)), mismatching_stacked_indices
@@ -5032,8 +5036,10 @@ class WhileV2:
           [tensor_shape.TensorShape([]), tensor_shape.TensorShape([None])]
           + output_shapes + ta_shape_invariants)
 
-      while_outputs = control_flow_ops.while_loop(
-          cond, body, init_values,
+      while_outputs = while_loop.while_loop(
+          cond,
+          body,
+          init_values,
           shape_invariants=shape_invariants,
           parallel_iterations=self._parallel_iterations)
       if indices_to_stack:
@@ -5075,9 +5081,8 @@ class WhileV2:
                 output_list = list_ops.tensor_list_reserve(
                     tensor_shape.TensorShape(shape_and_type.shape), length,
                     shape_and_type.dtype)
-                _, output_list = control_flow_ops.while_loop(
-                    lambda index, _: index < length,
-                    _stack_loop_body,
+                _, output_list = while_loop.while_loop(
+                    lambda index, _: index < length, _stack_loop_body,
                     [0, output_list])
                 outputs.append(output_list)
               else:

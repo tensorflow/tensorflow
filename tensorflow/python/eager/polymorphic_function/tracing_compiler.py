@@ -30,6 +30,8 @@ from tensorflow.python.eager.polymorphic_function import attributes as attribute
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import tf_method_target
+from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -37,7 +39,7 @@ from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
+
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -110,8 +112,11 @@ class TracingCompiler:
     """
     self._python_function = python_function
     pure_function = attributes and attributes_lib.IMPLEMENTS in attributes
-    self._function_spec = function_spec.FunctionSpec.from_function_and_signature(
-        python_function, input_signature, is_pure=pure_function)
+    self._function_spec = (
+        function_spec.FunctionSpec.from_function_and_signature(
+            python_function, input_signature, is_pure=pure_function
+        )
+    )
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
@@ -298,19 +303,22 @@ class TracingCompiler:
     else:
       arg_names = base_arg_names
 
+    traced_func_graph = func_graph_module.func_graph_from_py_func(
+        self._name,
+        self._python_function,
+        args,
+        kwargs,
+        None,
+        func_graph=func_graph,
+        arg_names=arg_names,
+        capture_by_value=self._capture_by_value,
+        create_placeholders=False,
+    )
+
+    transform.apply_func_graph_transforms(traced_func_graph)
+
     concrete_function = monomorphic_function.ConcreteFunction(
-        func_graph_module.func_graph_from_py_func(
-            self._name,
-            self._python_function,
-            args,
-            kwargs,
-            None,
-            func_graph=func_graph,
-            autograph=self._autograph,
-            autograph_options=self._autograph_options,
-            arg_names=arg_names,
-            capture_by_value=self._capture_by_value,
-            create_placeholders=False),
+        traced_func_graph,
         self._function_attributes,
         spec=self.function_spec,
         # Tell the ConcreteFunction to clean up its graph once it goes out of
@@ -318,6 +326,9 @@ class TracingCompiler:
         # places (like Keras) where the FuncGraph lives longer than the
         # ConcreteFunction.
         shared_func_graph=False)
+
+    transform.call_concrete_function_callbacks(concrete_function)
+
     return concrete_function
 
   def _maybe_define_function(self, args, kwargs):
@@ -385,10 +396,9 @@ class TracingCompiler:
                 current_func_context, lookup_func_type)
           else:
             target_func_type = lookup_func_type
-          handledata_mapping = lookup_func_context.get_handledata_mapping()
           placeholder_mapping = lookup_func_context.get_placeholder_mapping()
           placeholder_context = trace_type.InternalPlaceholderContext(
-              func_graph, placeholder_mapping, handledata_mapping)
+              func_graph, placeholder_mapping)
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)
@@ -399,7 +409,7 @@ class TracingCompiler:
               args, kwargs, func_graph)
 
           # TODO(b/263520817): Remove access to private attribute.
-          graph_capture_container = concrete_function.graph._function_captures  # pylint: disable=protected-access
+          graph_capture_container = concrete_function.graph.function_captures
           # Maintain the list of all captures
           self._func_captures.merge_by_ref_with(graph_capture_container)
           # Get current active captures snapshot
@@ -415,38 +425,6 @@ class TracingCompiler:
           return concrete_function, filtered_flat_args
 
 
-# When a method is bound to objects of this type, it allows AutoGraph to
-# recover a weak reference the original method's self pointer, so that it can
-# execute it consistent with class_method_to_instance_method's
-# bound_method_wrapper.
-# TODO(b/119246461): This is not pretty. Use a descriptor instead?
-class TfMethodTarget:
-  """Binding target for methods replaced by function and defun."""
-
-  __slots__ = ("weakrefself_target__", "weakrefself_func__")
-
-  def __init__(self, target, original_python_function):
-    self.weakrefself_target__ = target
-    self.weakrefself_func__ = weakref.ref(original_python_function)
-
-  @property
-  def target(self):
-    return self.weakrefself_target__()
-
-  @property
-  def target_class(self):
-    true_self = self.weakrefself_target__()
-    if tf_inspect.isclass(true_self):
-      # Class method
-      return true_self
-    else:
-      return true_self.__class__
-
-  def call(self, args, kwargs):
-    wrapped_fn = self.weakrefself_func__()
-    return wrapped_fn(self.weakrefself_target__(), *args, **kwargs)
-
-
 def class_method_to_instance_method(original_function, instance):
   """Constructs a new `TracingCompiler` with `self` bound."""
   weak_instance = weakref.ref(instance)
@@ -455,7 +433,8 @@ def class_method_to_instance_method(original_function, instance):
   # bound method to be unhashable.
   bound_method = types_lib.MethodType(
       original_function.python_function,
-      TfMethodTarget(weak_instance, original_function.python_function))
+      tf_method_target.TfMethodTarget(weak_instance,
+                                      original_function.python_function))
 
   # original_function is expected to be either `TracingCompiler` or
   # def_function.Function

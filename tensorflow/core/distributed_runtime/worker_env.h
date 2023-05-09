@@ -49,11 +49,6 @@ struct WorkerEnv {
   // session_mgr encapsulates state for each session.
   SessionMgr* session_mgr = nullptr;
 
-  // The local devices of this worker. Devices are owned by the device_mgr.
-  //
-  // REQUIRES: !local_devices.empty().
-  std::vector<Device*> local_devices;
-
   // In large scaled distributed training, many singleton components (e.g.
   // Rendezvous) can becomes the bottleneck of the system. This field allows
   // us to shard the single components. This number will scale up with number

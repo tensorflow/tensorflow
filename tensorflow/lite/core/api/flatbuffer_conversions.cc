@@ -256,6 +256,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseElu(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      return ParseEmbeddingLookup(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_EXP: {
       return ParseExp(op, error_reporter, allocator, builtin_data);
     }
@@ -540,6 +544,14 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
 
     case BuiltinOperator_ZEROS_LIKE: {
       return ParseZerosLike(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_BITWISE_XOR: {
+      return ParseBitwiseXor(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_RIGHT_SHIFT: {
+      return ParseRightShift(op, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_CAST: {
@@ -873,7 +885,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-    case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
     case BuiltinOperator_HASHTABLE_FIND:
     case BuiltinOperator_HASHTABLE_IMPORT:
@@ -903,6 +914,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_UNSORTED_SEGMENT_SUM:
     case BuiltinOperator_ATAN2:
     case BuiltinOperator_SIGN:
+    case BuiltinOperator_BITCAST:
     case BuiltinOperator_WHERE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
@@ -1350,6 +1362,14 @@ TfLiteStatus ParseDiv(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseElu(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                       void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseEmbeddingLookup(const Operator*, ErrorReporter*,
+                                  BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 
@@ -2456,6 +2476,22 @@ TfLiteStatus ParseWhile(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseZerosLike(const Operator*, ErrorReporter*,
                             BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseBitwiseXor(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseRightShift(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 

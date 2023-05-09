@@ -66,7 +66,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   if (s.ok()) {
     return ::testing::AssertionSuccess();
   }
-  return ::testing::AssertionFailure() << s.error_message();
+  return ::testing::AssertionFailure() << s.message();
 }
 
 }  // namespace

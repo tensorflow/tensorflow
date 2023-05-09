@@ -5,29 +5,13 @@ package(
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
-)
-
 # Important: this is a leaf library. It may not have any new dependencies inside TF proper.
 # The sole exception is tf_export, to allow exporting symbols into the public namespace.
 pytype_strict_library(
-    name = "types",
+    name = "core",
     srcs = [
         "__init__.py",
         "core.py",
-        "data.py",
-        "distribute.py",
-        "internal.py",
-        "trace.py",
     ],
     srcs_version = "PY3",
     visibility = [
@@ -37,8 +21,54 @@ pytype_strict_library(
     deps = [
         ":doc_typealias",
         "//tensorflow/python/util:tf_export",
-        "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
+        "@typing_extensions_archive//:typing_extensions",
+    ],
+)
+
+pytype_strict_library(
+    name = "data",
+    srcs = ["data.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    deps = ["//tensorflow/python/util:tf_export"],
+)
+
+pytype_strict_library(
+    name = "distribute",
+    srcs = ["distribute.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
+    ],
+)
+
+pytype_strict_library(
+    name = "internal",
+    srcs = ["internal.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+)
+
+pytype_strict_library(
+    name = "trace",
+    srcs = ["trace.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        ":core",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
         "@typing_extensions_archive//:typing_extensions",
     ],
 )

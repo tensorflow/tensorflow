@@ -136,7 +136,7 @@ Status GetSignatureDefMap(const Model* model,
     auto status = ReadSignatureDefMap(model, metadata, &signature_defs);
     if (status != ::tensorflow::OkStatus()) {
       return tensorflow::errors::Internal("Error reading signature def map: ",
-                                          status.error_message());
+                                          status.message());
     }
     for (const auto& entry : signature_defs) {
       tensorflow::SignatureDef signature_def;

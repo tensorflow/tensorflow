@@ -1090,7 +1090,7 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
     if (!status_or_shape.status().ok()) {
       return InvalidArgument(
           "%s Input scalar shapes may have been changed to non-scalar shapes.",
-          status_or_shape.status().error_message());
+          status_or_shape.status().message());
     }
 
     return AddOpWithShape(triop, status_or_shape.value(),
@@ -2603,30 +2603,15 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
     Shape output_shape = shape;
-    switch (output_shape.element_type()) {
-      case PrimitiveType::S8:
-      case PrimitiveType::U8:
-        output_shape.set_element_type(PrimitiveType::U8);
-        break;
-      case PrimitiveType::BF16:
-      case PrimitiveType::F16:
-      case PrimitiveType::S16:
-      case PrimitiveType::U16:
-        output_shape.set_element_type(PrimitiveType::U16);
-        break;
-      case PrimitiveType::F32:
-      case PrimitiveType::S32:
-      case PrimitiveType::U32:
-        output_shape.set_element_type(PrimitiveType::U32);
-        break;
-      case PrimitiveType::F64:
-      case PrimitiveType::S64:
-      case PrimitiveType::U64:
-        output_shape.set_element_type(PrimitiveType::U64);
-        break;
-      default:
-        return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
-                               PrimitiveType_Name(output_shape.element_type()));
+    output_shape.set_element_type(PRIMITIVE_TYPE_INVALID);
+    if (primitive_util::IsArrayType(shape.element_type())) {
+      output_shape.set_element_type(
+          primitive_util::UnsignedIntegralTypeForBitWidth(
+              primitive_util::BitWidth(shape.element_type())));
+    }
+    if (!primitive_util::IsUnsignedIntegralType(output_shape.element_type())) {
+      return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
+                             PrimitiveType_Name(shape.element_type()));
     }
     return RngBitGeneratorInternal(
         ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &output_shape}),
@@ -4044,7 +4029,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
         *const_instr.mutable_shape() = instr_proto->shape();
       }
-      *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+      *const_instr.mutable_opcode() =
+          std::string(HloOpcodeString(HloOpcode::kConstant));
       const_instr.set_id(handle);
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
@@ -4220,7 +4206,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
 
   const int64_t handle = GetNextId();
   instr.set_id(handle);
-  instr.set_opcode(HloOpcodeString(opcode));
+  *instr.mutable_opcode() = std::string(HloOpcodeString(opcode));
   if (instr.name().empty()) {
     instr.set_name(instr.opcode());
   }

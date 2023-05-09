@@ -39,7 +39,6 @@ py_strict_test(
     tags = [
         "no_oss",
         "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
-        "nomsan",
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
@@ -55,7 +54,6 @@ py_strict_test(
     tags = [
         "no_oss",
         "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
-        "nomsan",  # TODO(b/210849019)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
