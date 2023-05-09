@@ -405,7 +405,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
       HloPrintOptions::Canonical().set_print_backend_config(true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   FrontendAttributes attributes;
-  (*attributes.mutable_map())[kFingerprintBeforeLHS] = fingerprint;
+  (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
   root->add_frontend_attributes(attributes);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
