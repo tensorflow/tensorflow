@@ -1160,6 +1160,11 @@ Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   return OkStatus();
 }
 
+Status HloCostAnalysis::HandleTopK(const HloInstruction* topk) {
+  // TODO(cheshire): Cost analysis for TopK.
+  return OkStatus();
+}
+
 Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   // Since the number of iterations of the while node will not always be
   // something that we can statically analyze, we cannot precisely compute the

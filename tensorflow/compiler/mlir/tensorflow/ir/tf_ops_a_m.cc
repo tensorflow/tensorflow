@@ -3214,6 +3214,16 @@ LogicalResult LegacyCallOp::verifySymbolUses(
   return success();
 }
 
+void LegacyCallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+  // Direct call.
+  if (SymbolRefAttr fAttr = getFAttr()) {
+    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    return setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<Value>());
+}
+
 //===----------------------------------------------------------------------===//
 // LogOp
 //===----------------------------------------------------------------------===//

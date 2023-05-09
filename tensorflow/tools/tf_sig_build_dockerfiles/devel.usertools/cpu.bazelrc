@@ -51,7 +51,7 @@ test --test_summary=short
 # bazel test invocation as normal.
 test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
+test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # "pip tests" run a similar suite of tests the "nonpip" tests, but do something
@@ -75,7 +75,7 @@ test:pip --config=pip_venv
 # Yes, we don't exclude the gpu tests on pip for some reason.
 test:pip_filters --test_tag_filters=-nopip,-no_pip,-no_oss,-oss_excluded,-oss_serial,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:pip_filters --build_tag_filters=-nopip,-no_pip,-no_oss,-oss_excluded,-oss_serial,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:pip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
+test:pip_filters --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium
 test:pip --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # For building libtensorflow archives
@@ -91,7 +91,7 @@ build:rbe --bes_backend=buildeventservice.googleapis.com
 build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
 build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
-build:rbe --flaky_test_attempts=3
+build:rbe --flaky_test_attempts=2
 build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:rbe --remote_timeout=3600
@@ -113,5 +113,5 @@ build:rbe --project_id="tensorflow-testing"
 # For continuous builds
 test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium
+test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=2 --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...

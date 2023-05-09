@@ -873,6 +873,7 @@ tf_python_pybind_extension(
     features = ["-layering_check"],
     visibility = [
         "//tensorflow/python/checkpoint:__subpackages__",
+        "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/training:__subpackages__",
     ],
     deps = [

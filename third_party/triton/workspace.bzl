@@ -17,5 +17,6 @@ def repo():
         patch_file = [
             "//third_party/triton:cl526173620.patch",
             "//third_party/triton:cl528701873.patch",
+            "//third_party/triton:cl530389221.patch",
         ],
     )

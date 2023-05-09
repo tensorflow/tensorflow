@@ -100,6 +100,25 @@ class CapturedFunctionExecutionCounts {
       counts_ ABSL_GUARDED_BY(mutex_);
 };
 
+class ConcurrentRegionStatus {
+ public:
+  ConcurrentRegionStatus(bool is_in_concurrent_region, int32_t stream_index)
+      : is_in_concurrent_region_(is_in_concurrent_region),
+        stream_index_(stream_index) {}
+
+  ConcurrentRegionStatus()
+      : is_in_concurrent_region_(false), stream_index_(0) {}
+
+  void StartConcurrentRegion();
+  void EndConcurrentRegion();
+  int32_t GetAndIncrementStreamIndex();
+  bool is_in_concurrent_region();
+
+ private:
+  bool is_in_concurrent_region_;
+  int32_t stream_index_;
+};
+
 }  // namespace gpu
 }  // namespace xla
 

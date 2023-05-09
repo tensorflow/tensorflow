@@ -49,7 +49,7 @@ def op_resolver_internal_visibility_allowlist():
     return []
 
 def nnapi_plugin_impl_visibility_allowlist():
-    """Returns a list of packages that can depend on tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin_impl.
+    """Returns a list of packages that can depend on tensorflow/lite/acceleration/configuration:nnapi_plugin_impl.
 
     This is a no-op outside of Google."""
     return []

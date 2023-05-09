@@ -244,6 +244,10 @@ class TfrtCpuClient final : public PjRtClient {
     return pjrt_client_thread_pool_.get();
   }
 
+  AsyncWorkRunner* async_work_runner() const {
+    return async_work_runner_.get();
+  }
+
   Eigen::ThreadPoolDevice* eigen_intraop_device() const {
     return eigen_intraop_device_.get();
   }
@@ -273,6 +277,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   // Thread pool for running PjRtClient tasks.
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
+  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 
   // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
@@ -313,8 +318,6 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
 
   TfrtCpuDevice* device() const override { return device_; }
   TfrtCpuClient* client() const override { return client_; }
-
-  StatusOr<Shape> logical_on_device_shape() override;
 
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;

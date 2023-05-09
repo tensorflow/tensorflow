@@ -85,6 +85,9 @@ LogicalResult outlineFusionOpPattern(func::FuncOp funcOp,
     // TODO(shyshkov): Enable outlining for elementwise clusters.
     if (hasLabel(fusionOp, kElementwiseLabel)) return;
 
+    // Outline only outermost cluster.
+    if (fusionOp->getParentOfType<gml_st::FusionOp>()) return;
+
     outlineFusionOp(funcOp, fusionOp, numOutlinedFusions++, rewriter);
   });
 

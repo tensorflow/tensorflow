@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 
@@ -48,6 +49,15 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
   switch (type) {
     case PRED:
       return ConstantR0<bool>(builder, static_cast<bool>(value));
+    case F8E5M2:
+      return ConstantR0<tsl::float8_e5m2>(builder,
+                                          static_cast<tsl::float8_e5m2>(value));
+    case F8E4M3FN:
+      return ConstantR0<tsl::float8_e4m3fn>(
+          builder, static_cast<tsl::float8_e4m3fn>(value));
+    case F8E4M3B11FNUZ:
+      return ConstantR0<tsl::float8_e4m3b11>(
+          builder, static_cast<tsl::float8_e4m3b11>(value));
     case F16:
       return ConstantR0<half>(builder, static_cast<half>(value));
     case BF16:

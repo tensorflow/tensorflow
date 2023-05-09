@@ -55,7 +55,7 @@ static llvm::SmallVector<Tensor> GetInputTensors(
 
   for (const InputTensorSpec& spec : input_specs) {
     TensorShape shape;
-    CHECK(TensorShapeUtils::MakeShape(spec.dims, &shape).ok());
+    CHECK_OK(TensorShapeUtils::MakeShape(spec.dims, &shape));
     input_tensors.emplace_back(spec.dtype, shape);
 
     // Initialize tensors with random data.

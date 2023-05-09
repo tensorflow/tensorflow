@@ -146,10 +146,8 @@ tensorflow::Status RunMlrtFunction(
   execution_context.set_exit_handler(
       [chain = chain.get()]() { chain->SetStateConcrete(); });
 
-  std::vector<uint8_t> last_uses;
-  execution_context.Call(function, last_uses, absl::Span<mlrt::Value>(),
-                         absl::MakeSpan(mlrt_inputs),
-                         absl::MakeSpan(mlrt_outputs));
+  execution_context.CallByMove(function, absl::MakeSpan(mlrt_inputs),
+                               absl::MakeSpan(mlrt_outputs));
 
   // TODO(chky): Set up cancellation.
 
@@ -880,9 +878,7 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
       loaded_client_graph.name());
   DCHECK(serving_function);
 
-  std::vector<uint8_t> last_uses;
-  execution_context.Call(serving_function, last_uses, absl::Span<mlrt::Value>(),
-                         input_values, outputs);
+  execution_context.CallByMove(serving_function, input_values, outputs);
   mlrt::Execute(execution_context);
   return tsl::FromAbslStatus(execution_context.status());
 }

@@ -133,6 +133,7 @@ class DfsHloVisitorBase {
   /* go/keep-sorted start */
   virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
+  virtual Status HandleTopK(HloInstructionPtr hlo) = 0;
   virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
   /* go/keep-sorted end */
 

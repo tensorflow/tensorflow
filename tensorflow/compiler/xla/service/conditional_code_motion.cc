@@ -1772,9 +1772,6 @@ class GroupConnectedBoundaries {
       if (hlo->shape().IsTuple()) {
         return 0;
       }
-      if (hlo->opcode() == HloOpcode::kGetTupleElement) {
-        return 0;
-      }
       return ShapeUtil::ByteSizeOf(hlo->shape(), 1) >> 9;
     };
     BoundaryVisitor visitor;
@@ -1793,7 +1790,8 @@ class GroupConnectedBoundaries {
         boundary_index++;
         auto output_size = calc_memory_size(b.operands()[0]);
         connected_boundaries_memory_increase_ -= output_size;
-        VLOG(1) << "memory incr = " << connected_boundaries_memory_increase_;
+        VLOG(1) << "memory incr = " << connected_boundaries_memory_increase_
+                << " after subtracting output size.\n";
         VLOG(1) << "boundary can be moved.";
         int64_t operand_count =
             (b.IsInsideBranch() || b.IsOutsideBranchOperand())
@@ -1803,12 +1801,10 @@ class GroupConnectedBoundaries {
           Boundary next_boundary = GetNextBoundary(b, i);
           VLOG(1) << "Add operand/user " << i << " to visit later\n";
           visitor.AddToWorkList(next_boundary);
-          if (output_size > 0) {
-            connected_boundaries_memory_increase_ +=
-                calc_memory_size(next_boundary.operands()[0]);
-            VLOG(1) << "memory incr = "
-                    << connected_boundaries_memory_increase_;
-          }
+          connected_boundaries_memory_increase_ +=
+              calc_memory_size(next_boundary.operands()[0]);
+          VLOG(1) << "memory incr = " << connected_boundaries_memory_increase_
+                  << " after adding shape size of operand " << i << "\n";
         }
       } else if (b.IsOutsideBranchOperand() &&
                  b.operands()[0]->opcode() == HloOpcode::kBroadcast &&
