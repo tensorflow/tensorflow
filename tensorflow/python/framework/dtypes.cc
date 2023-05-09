@@ -121,6 +121,12 @@ PYBIND11_MODULE(_dtypes, m) {
           },
           "Returns whether this is a boolean data type.")
       .def_property_readonly(
+          "is_numeric",
+          [](tensorflow::DataType self) {
+            return tensorflow::DataTypeIsNumeric(tensorflow::BaseType(self));
+          },
+          "Returns whether this is a numeric data type.")
+      .def_property_readonly(
           "is_complex",
           [](tensorflow::DataType self) {
             return tensorflow::DataTypeIsComplex(tensorflow::BaseType(self));
