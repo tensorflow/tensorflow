@@ -1713,6 +1713,15 @@ TEST(Elementwise, Sin) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(Elementwise, Cos) {
+  ElementwiseOpFloatModel m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1.0, -1, -1, 0.54030})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
 TEST(Elementwise, Sqrt) {
   ElementwiseOpFloatModel m(BuiltinOperator_SQRT, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 1, 2, 4});

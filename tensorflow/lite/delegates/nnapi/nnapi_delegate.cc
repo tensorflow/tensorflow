@@ -1456,6 +1456,23 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
+  TfLiteStatus TransformCosIntoSupportedOps(int lite_node_index,
+                                            TfLiteNode* node,
+                                            TfLiteRegistration* reg) {
+    const TfLiteTensor& theta = context_->tensors[node->inputs->data[0]];
+
+    // NNAPI only supports float sin
+    auto tensor_size = theta.bytes / sizeof(float);
+
+    // Convert cos to sin: $cos(x) = sin(\pi - x)$
+    auto data = theta.data.f;
+    for (int i = 0; i < tensor_size; i++) {
+      data[i] = M_PI - data[i];
+    }
+
+    return kTfLiteOk;
+  }
+
   // Finish emitting the op (of type `type`) into the NN API.
   TfLiteStatus FinalizeAddOperation(ANeuralNetworksOperationType type,
                                     int lite_node_index) {
@@ -2940,6 +2957,7 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedInputType,
              "Size type should be Int32", &val_ctx);
     } break;
+    case kTfLiteBuiltinCos:
     case kTfLiteBuiltinSin: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
@@ -3966,6 +3984,9 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     } break;
     case kTfLiteBuiltinSlice: {
       *nn_op_type = ANEURALNETWORKS_SLICE;
+    } break;
+    case kTfLiteBuiltinCos: {
+      *nn_op_type = ANEURALNETWORKS_SIN;
     } break;
     case kTfLiteBuiltinSin: {
       *nn_op_type = ANEURALNETWORKS_SIN;
@@ -5594,6 +5615,12 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     if (reg->builtin_code == kTfLiteBuiltinSquaredDifference) {
       TF_LITE_ENSURE_STATUS(builder.TransformSquaredDifferenceIntoSupportedOps(
           node_index, node, reg));
+      continue;
+    }
+    // Delegate COS by lowering it into SIN.
+    if (reg->builtin_code == kTfLiteBuiltinCos) {
+      TF_LITE_ENSURE_STATUS(
+          builder.TransformCosIntoSupportedOps(node_index, node, reg));
       continue;
     }
     // Fully quantized full LSTM.
