@@ -132,25 +132,10 @@ distribute_py_strict_test(
     ],
 )
 
-<<<<<<< HEAD
-tf_py_test(
-    name = "fault_tolerance_test",
-    srcs = ["fault_tolerance_test.py"],
-    flaky = True,
-    python_version = "PY3",
-    shard_count = 40,  # = number of tests, so one shard = one test
-    tags = [
-        "no_oss",  # TODO(b/219580021)
-        "noasan",  # Multi-process runner does not work with test sanitizers
-        "nomac",  # TODO(b/177065434)
-        "no_rocm", # Added SR 01/12/2021
-    ],
-=======
 py_strict_library(
     name = "fault_tolerance_test_base",
     srcs = ["fault_tolerance_test_base.py"],
     srcs_version = "PY3",
->>>>>>> upstream/master
     deps = [
         ":cluster_coordinator",
         "//tensorflow/python:array_ops",

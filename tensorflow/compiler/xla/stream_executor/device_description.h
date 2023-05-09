@@ -126,13 +126,8 @@ class RocmComputeCapability {
   explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
-<<<<<<< HEAD
-  RocmComputeCapability() {}
-  ~RocmComputeCapability() {}
-=======
   RocmComputeCapability() = default;
   ~RocmComputeCapability() = default;
->>>>>>> upstream/master
 
   std::string gcn_arch_name() { return gcn_arch_name_; }
 

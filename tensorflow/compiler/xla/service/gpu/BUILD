@@ -903,7 +903,6 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
-	"//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/profiler/lib:scoped_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/algorithm:container",
@@ -1084,7 +1083,6 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service/gpu:gpu_types", 
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/stream_executor:blas",
@@ -1111,11 +1109,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla/service/gpu:gpu_types",  
-=======
         "//tensorflow/compiler/xla/service/gpu:gpu_types",
->>>>>>> upstream/master
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
@@ -3164,11 +3158,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla/service/gpu:gpu_types",  
-=======
         "//tensorflow/compiler/xla/service/gpu:gpu_types",
->>>>>>> upstream/master
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",

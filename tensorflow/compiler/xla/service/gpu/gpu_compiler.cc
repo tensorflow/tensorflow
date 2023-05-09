@@ -848,7 +848,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
-<<<<<<< HEAD
 #if GOOGLE_CUDA
     const stream_executor::CudaComputeCapability& compute_capability =
         std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
@@ -858,8 +857,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 #endif
 
 #if GOOGLE_CUDA
-=======
->>>>>>> upstream/master
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
         std::holds_alternative<se::CudaComputeCapability>(
@@ -1198,11 +1195,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
-<<<<<<< HEAD
-#if GOOGLE_CUDA  
-=======
 #if GOOGLE_CUDA
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
                       CanUseLinkModules(module_config));
   if (!can_use_link_modules) {
@@ -1211,11 +1204,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 #elif TENSORFLOW_USE_ROCM
   return compile_single_module(llvm_module.get(), /*relocatable=*/false,
-<<<<<<< HEAD
-                              /*shard_number=*/std::nullopt);
-=======
                                /*shard_number=*/std::nullopt);
->>>>>>> upstream/master
 #endif
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   int num_functions = 0;

@@ -363,12 +363,7 @@ auto OptionalConvert(HloInstruction **optional_convert, Pattern pattern) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-<<<<<<< HEAD
-  explicit GemmRewriterVisitor(
-      GpuVersion gpu_version)
-=======
   explicit GemmRewriterVisitor(GpuVersion gpu_version)
->>>>>>> upstream/master
       : gpu_version_(gpu_version) {}
 
   Status HandleDot(HloInstruction *instr) override {
@@ -648,16 +643,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                     bool b_mult_scale,
                                     std::vector<HloInstruction *> a_unary_ops,
                                     std::vector<HloInstruction *> b_unary_ops) {
-<<<<<<< HEAD
-    auto cuda_compute_capability =
-          std::get<se::CudaComputeCapability>(gpu_version_);
-
-=======
     auto cuda_compute_capability_ =
         std::get<se::CudaComputeCapability>(gpu_version_);
->>>>>>> upstream/master
     // FP8 GEMM kernels are only available on Hopper and newer architectures.
-    if (!cuda_compute_capability.IsAtLeast(
+    if (!cuda_compute_capability_.IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
       VLOG(1) << "FP8 Custom Calls require Hopper or newer architecture.";
       return false;
@@ -1557,15 +1546,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-<<<<<<< HEAD
-    auto cuda_compute_capability =
-          std::get<se::CudaComputeCapability>(gpu_version_);
-    if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-=======
     auto cuda_compute_capability_ =
         std::get<se::CudaComputeCapability>(gpu_version_);
     if (cuda_compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
->>>>>>> upstream/master
       // cuBlasLt has an implementation for complex data with compute type
       // 32F_FAST_32TF that uses tensor cores and that is free from the
       // restriction. This implementation only works on Ampere
@@ -1636,14 +1619,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-<<<<<<< HEAD
-StatusOr<bool> RunOnComputation(
-    HloComputation *computation,
-    GpuVersion gpu_version) {
-=======
 StatusOr<bool> RunOnComputation(HloComputation *computation,
                                 GpuVersion gpu_version) {
->>>>>>> upstream/master
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -1660,13 +1637,8 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-<<<<<<< HEAD
-    TF_ASSIGN_OR_RETURN(
-        bool result, RunOnComputation(computation, gpu_version_));
-=======
     TF_ASSIGN_OR_RETURN(bool result,
                         RunOnComputation(computation, gpu_version_));
->>>>>>> upstream/master
     changed |= result;
   }
   return changed;
