@@ -39,10 +39,11 @@ namespace logging {
 class LoggingWrapper {
  public:
   enum class LogSeverity : int {
-    INFO = 0,
-    WARN = 1,
-    ERROR = 2,
-    FATAL = 3,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR,
+    FATAL,
   };
   explicit LoggingWrapper(LogSeverity severity)
       : severity_(severity), should_log_(true) {}
@@ -55,6 +56,10 @@ class LoggingWrapper {
       // in the app use case.
 #ifdef __ANDROID__
       switch (severity_) {
+        case LogSeverity::DEBUG:
+          __android_log_print(ANDROID_LOG_DEBUG, "tflite", "%s",
+                              stream_.str().c_str());
+          break;
         case LogSeverity::INFO:
           __android_log_print(ANDROID_LOG_INFO, "tflite", "%s",
                               stream_.str().c_str());
@@ -73,6 +78,11 @@ class LoggingWrapper {
       }
 #endif
       switch (severity_) {
+        case LogSeverity::DEBUG:
+#ifndef NDEBUG
+          std::cout << "DEBUG: " << stream_.str() << std::endl;
+#endif
+          break;
         case LogSeverity::INFO:
           std::cout << "INFO: " << stream_.str() << std::endl;
           break;
