@@ -915,6 +915,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     int64_t memory_bandwidth = 2 * (int64_t(prop.memoryBusWidth) / 8) *
                                (int64_t(prop.memoryClockRate) * 1000);
     builder.set_memory_bandwidth(memory_bandwidth);
+    
+    builder.set_l2_cache_size(prop.l2CacheSize);
   }
 
   {

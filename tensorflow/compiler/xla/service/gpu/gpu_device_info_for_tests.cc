@@ -41,5 +41,28 @@ GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
   return info;
 }
 
+GpuDeviceInfo TestGpuDeviceInfo::AMDMI210DeviceInfo() {
+  GpuDeviceInfo info;
+  info.name = "AMD Instinct MI210";
+  info.threads_per_block_limit = 1024;
+  info.threads_per_warp = 64;
+  info.shared_memory_per_block = 64 * 1024;
+  info.shared_memory_per_block_optin = 0;
+  info.shared_memory_per_core = 64 * 1024;
+  info.threads_per_core_limit = 2048;
+  info.core_count = 104;
+  info.fpus_per_core = 0;
+  info.block_dim_limit_x = 2'147'483'647;
+  info.block_dim_limit_y = 2'147'483'647;
+  info.block_dim_limit_z = 2'147'483'647;
+  info.memory_bandwidth = 1'638'400'000'000; 
+  info.l2_cache_size = 8 * 1024 * 1024;
+  info.clock_rate_ghz = 1.7;
+  info.device_memory_size = 67'628'957'696;
+  return info;
+}
+
+
+
 }  // namespace gpu
 }  // namespace xla
