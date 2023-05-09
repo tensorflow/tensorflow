@@ -469,6 +469,11 @@ inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }
 
+// Returns true iff 'dt' is a numeric type.
+inline bool DataTypeIsNumeric(DataType dt) {
+  return kNumberTypes.Contains(dt);
+}
+
 // Returns true iff 'dt' is a complex type.
 constexpr DataTypeSet kDataTypeIsComplex =
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128);
