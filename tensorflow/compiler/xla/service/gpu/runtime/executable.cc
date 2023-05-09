@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
@@ -372,6 +373,12 @@ Status GpuRuntimeExecutable::Execute(
       captured_function_counts_(executor)->snapshot();
 #endif  // GOOGLE_CUDA
 
+  // Kernels in concurrent regions should be launched on borrowed stream, so
+  // that the cuda graph won't record dependencies between kernels.
+  // This state stores if the kernel being run is in a concurrent region and
+  // the index of the next borrowed stream to be used.
+  ConcurrentRegionStatus concurrent_region_status;
+
   // State cached globally for gpu executable.
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
@@ -393,6 +400,7 @@ Status GpuRuntimeExecutable::Execute(
       // Auxiliary data that is available only if compiled with CUDA support.
       &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA
+      &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
