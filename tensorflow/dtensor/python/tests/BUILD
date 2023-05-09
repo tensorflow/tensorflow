@@ -178,6 +178,7 @@ dtensor_test(
 
 py_strict_test(
     name = "input_util_test",
+    size = "medium",
     srcs = ["input_util_test.py"],
     shard_count = 8,
     deps = [
