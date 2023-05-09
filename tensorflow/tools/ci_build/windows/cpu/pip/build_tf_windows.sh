@@ -178,6 +178,6 @@ bazel test --announce_rc --config=opt -k --test_output=errors \
   --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu --build_tests_only \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
-  --flaky_test_attempts=3 \
+  --flaky_test_attempts=2 \
   --output_filter=^$ \
   ${TEST_TARGET}

@@ -178,7 +178,7 @@ bazel test \
   --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,-oss_excluded,gpu --build_tests_only \
   --test_size_filters=small,medium \
   --local_test_jobs=$TF_GPU_COUNT --test_timeout="300,450,1200,3600" \
-  --flaky_test_attempts=3 \
+  --flaky_test_attempts=2 \
   --output_filter=^$ \
   -- ${TEST_TARGET} -//${PY_TEST_DIR}/tensorflow/python/client:timeline_test_gpu
 # TODO(b/140106487): apply https://developer.nvidia.com/ERR_NVGPUCTRPERM to the
