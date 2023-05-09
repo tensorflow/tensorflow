@@ -2261,6 +2261,12 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     // before the buffer is mutated. Usage holds are excluded during a donation
     // hold so we know that the set of usage events won't be modified while we
     // are enqueueing.
+    if (device_state->allocation_model() ==
+        LocalDeviceState::kComputeSynchronized) {
+      GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/false,
+                            &events);
+    }
+
     GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/must_donate,
                           &events);
   }
