@@ -231,6 +231,14 @@ mlir::LogicalResult DisassembleOp::verify() {
 mlir::CallInterfaceCallable CallOp::getCallableForCallee() {
   return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
 }
+void CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+  // Direct call
+  if ((*this)->getAttrOfType<mlir::SymbolRefAttr>("callee")) {
+    (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<mlir::Value>());
+}
 
 mlir::Operation::operand_range CallOp::getArgOperands() { return getInputs(); }
 
@@ -304,6 +312,15 @@ mlir::LogicalResult CallOp::verify() {
 
 mlir::CallInterfaceCallable CallLoadedExecutableOp::getCallableForCallee() {
   return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+}
+void CallLoadedExecutableOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  // Direct call
+  if ((*this)->getAttrOfType<mlir::SymbolRefAttr>("callee")) {
+    (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<mlir::Value>());
 }
 
 mlir::Operation::operand_range CallLoadedExecutableOp::getArgOperands() {
