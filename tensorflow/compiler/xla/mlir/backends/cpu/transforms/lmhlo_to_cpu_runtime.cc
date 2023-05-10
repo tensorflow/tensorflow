@@ -49,8 +49,6 @@ namespace {
 using namespace mlir;  // NOLINT
 
 using mlir::lmhlo::CustomCallOp;
-using mlir::lmhlo::InfeedOp;
-using mlir::lmhlo::OutfeedOp;
 
 using xla_cpu::PartitionIdOp;
 using xla_cpu::ReplicaIdOp;
@@ -235,38 +233,6 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         op, callee.getName(), TypeRange(), operands);
     AppendCustomCallAttrs(call, custom_call_attrs);
 
-    return success();
-  }
-
- private:
-  CustomCallDeclarations& custom_calls_;
-};
-
-//===----------------------------------------------------------------------===//
-
-class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
- private:
-  static constexpr const char kCallTarget[] = "xla.cpu.infeed";
-
- public:
-  InfeedOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
-
-  LogicalResult matchAndRewrite(InfeedOp op,
-                                PatternRewriter& rewriter) const override {
-    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
-
-    // By default all operands are passed to the custom call handler.
-    llvm::SmallVector<Value> operands = op->getOperands();
-
-    // Create a custom call function declaration.
-    func::FuncOp callee =
-        custom_calls_.GetOrCreate(b, StringRef(kCallTarget),
-                                  TypeRange(ValueRange(operands)), TypeRange());
-
-    // Call the runtime intrinsic with the original operands.
-    rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(), TypeRange(),
-                                              operands);
     return success();
   }
 
@@ -576,11 +542,11 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<AllReduceLowering, AllToAllLowering,
-                  CollectivePermuteLowering, ConvolutionLowering,
-                  CustomCallOpLowering, FftLowering, InfeedOpLowering,
-                  InfeedLowering, OutfeedLowering, RngBitGeneratorLowering>(
-      ctx, custom_calls);
+  patterns
+      .insert<AllReduceLowering, AllToAllLowering, CollectivePermuteLowering,
+              ConvolutionLowering, CustomCallOpLowering, FftLowering,
+              InfeedLowering, OutfeedLowering, RngBitGeneratorLowering>(
+          ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",

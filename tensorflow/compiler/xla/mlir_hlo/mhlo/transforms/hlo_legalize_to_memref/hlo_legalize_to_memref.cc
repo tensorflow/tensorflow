@@ -164,68 +164,6 @@ struct CustomCallOpInterface
   }
 };
 
-struct InfeedOpInterface
-    : public BufferizableOpInterface::ExternalModel<InfeedOpInterface,
-                                                    mhlo::InfeedOp> {
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    // Allocate buffers for the outputs of infeed.
-    SmallVector<Value> bufferArgs;
-    for (OpResult result : op->getOpResults()) {
-      if (!result.getType().isa<TensorType>()) continue;
-      AnalysisState analysisState(options);
-      auto tensorType = result.getType().cast<TensorType>();
-      FailureOr<Value> tensorAlloc =
-          bufferization::allocateTensorForShapedValue(
-              rewriter, op->getLoc(), result,
-              analysisState.isTensorYielded(result), options);
-      if (failed(tensorAlloc)) return failure();
-      auto memrefType =
-          MemRefType::get(tensorType.getShape(), tensorType.getElementType());
-      bufferArgs.push_back(rewriter.create<bufferization::ToMemrefOp>(
-          op->getLoc(), memrefType, *tensorAlloc));
-    }
-    rewriter.create<lmhlo::InfeedOp>(op->getLoc(), std::nullopt, bufferArgs,
-                                     op->getAttrs());
-    // Pass the token along.
-    bufferArgs.push_back((op->getOperand(0)));
-    bufferization::replaceOpWithBufferizedValues(rewriter, op, bufferArgs);
-    return success();
-  }
-};
-
-struct OutfeedOpInterface
-    : public BufferizableOpInterface::ExternalModel<OutfeedOpInterface,
-                                                    mhlo::OutfeedOp> {
-  bool bufferizesToMemoryRead(Operation *, OpOperand &,
-                              const AnalysisState &) const {
-    return true;
-  }
-
-  bool bufferizesToMemoryWrite(Operation *, OpOperand &,
-                               const AnalysisState &) const {
-    return false;  // Arguments are read-only.
-  }
-
-  AliasingOpResultList getAliasingOpResults(Operation *, OpOperand &,
-                                            const AnalysisState &) const {
-    return {};
-  }
-
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    // Outfeed trivially bufferizes to lmhlo. Just pass the token operand along.
-    FailureOr<Value> operandBuffer =
-        getBuffer(rewriter, op->getOperand(0), options);
-    if (failed(operandBuffer)) return failure();
-    rewriter.create<lmhlo::OutfeedOp>(op->getLoc(), std::nullopt,
-                                      *operandBuffer, op->getAttrs());
-    bufferization::replaceOpWithBufferizedValues(rewriter, op,
-                                                 {op->getOperand(1)});
-    return success();
-  }
-};
-
 struct ReshapeOpInterface
     : public BufferizableOpInterface::ExternalModel<ReshapeOpInterface,
                                                     mhlo::ReshapeOp> {
@@ -487,8 +425,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
 void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, MhloDialect * /*dialect*/) {
     CustomCallOp::attachInterface<CustomCallOpInterface>(*ctx);
-    InfeedOp::attachInterface<InfeedOpInterface>(*ctx);
-    OutfeedOp::attachInterface<OutfeedOpInterface>(*ctx);
     ReshapeOp::attachInterface<ReshapeOpInterface>(*ctx);
     DynamicReshapeOp::attachInterface<DynamicReshapeOpInterface>(*ctx);
     DynamicBroadcastInDimOp::attachInterface<DynamicBroadcastInDimOpInterface>(
