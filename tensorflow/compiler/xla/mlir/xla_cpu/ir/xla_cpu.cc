@@ -55,7 +55,11 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
   std::optional<Value> token = std::nullopt;
   for (auto operand : op.getOperands()) {
     if (operand.getType().template isa<TokenType>()) {
+      assert(operand == op.getOperands().back() &&
+             "Expect token type only for last operand");
+      assert(!token && "Expect at most only one token-typed operand");
       token = operand;
+      continue;
     }
     FailureOr<Value> maybe_buffer = getBuffer(rewriter, operand, options);
     if (failed(maybe_buffer)) {
