@@ -77,6 +77,8 @@ from tensorflow.python.types import core as types_core
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
+# Placeholder for protosplitter import.
+
 
 _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
 
@@ -1341,14 +1343,19 @@ def save_and_return_nodes(obj,
   # as we build up the C++ API.
   pywrap_saved_model.Save(export_dir)
 
-  saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+  if options.experimental_image_format:
+    prefix = file_io.join(
+        compat.as_str(export_dir),
+        "saved_model")
+    proto_splitter.SavedModelSplitter(saved_model).write(prefix)
+  else:
+    saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+    fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
 
-  fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
-
-  path = file_io.join(
-      compat.as_str(export_dir),
-      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
-  file_io.atomic_write_string_to_file(path, saved_model_serialized)
+    path = file_io.join(
+        compat.as_str(export_dir),
+        compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
+    file_io.atomic_write_string_to_file(path, saved_model_serialized)
 
   # Save debug info, if requested.
   if options.save_debug_info:

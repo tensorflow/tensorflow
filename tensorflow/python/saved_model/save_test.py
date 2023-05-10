@@ -17,6 +17,7 @@
 import os
 
 from absl.testing import parameterized
+import numpy as np
 
 from google.protobuf import text_format
 from tensorflow.core.config import flags
@@ -59,6 +60,10 @@ from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import saver
 from tensorflow.python.util import compat
+# Placeholder for protosplitter constants import.
+
+
+is_oss = True  # Updated by copybara.
 
 
 def _run_signature(
@@ -1089,6 +1094,41 @@ class SavingOptionsTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
       options = save_options.SaveOptions(
           experimental_variable_policy="not_a_valid_value")
+
+  def test_save_experimental_image_format(self):
+    if is_oss:
+      self.skipTest("Experimental image format disabled in OSS.")
+    root = module.Module()
+    root.c = constant_op.constant(np.random.random_sample([150, 150]))
+    root.get_c = def_function.function(lambda: root.c)
+    save_dir = os.path.join(self.get_temp_dir(), "chunked_model")
+    constants.debug_set_max_size(80000)
+    options = save_options.SaveOptions(experimental_image_format=True)
+    save.save(
+        root,
+        save_dir,
+        signatures=root.get_c.get_concrete_function(),
+        options=options,
+    )
+    self.assertTrue(os.path.exists(save_dir + "/saved_model.cpb"))
+
+  def test_save_experimental_image_format_not_chunked(self):
+    if is_oss:
+      self.skipTest("Experimental image format disabled in OSS.")
+    root = module.Module()
+    root.c = constant_op.constant(np.random.random_sample([150, 150]))
+    root.get_c = def_function.function(lambda: root.c)
+    save_dir = os.path.join(self.get_temp_dir(), "not_chunked_model")
+    constants.debug_set_max_size(1 << 31)  # 2GB
+    options = save_options.SaveOptions(experimental_image_format=True)
+    save.save(
+        root,
+        save_dir,
+        signatures=root.get_c.get_concrete_function(),
+        options=options,
+    )
+    # Should save an unchunked proto (.pb) and not .cpb
+    self.assertTrue(os.path.exists(save_dir + "/saved_model.pb"))
 
 
 class AssetTests(test.TestCase):
