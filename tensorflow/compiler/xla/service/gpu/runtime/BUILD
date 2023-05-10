@@ -345,6 +345,21 @@ cc_library(
 )
 
 cc_library(
+    name = "concurrent_region",
+    srcs = ["concurrent_region.cc"],
+    hdrs = ["concurrent_region.h"],
+    deps = [
+        ":graph_launch",
+        ":support",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/stream_executor",
+    ],
+)
+
+cc_library(
     name = "io_feed",
     srcs = ["io_feed.cc"],
     hdrs = ["io_feed.h"],
