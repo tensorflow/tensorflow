@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -253,7 +254,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2))
+    EXPECT_TRUE(absl::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
@@ -312,7 +313,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2));
+    EXPECT_TRUE(absl::IsNotFound(status2));
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
