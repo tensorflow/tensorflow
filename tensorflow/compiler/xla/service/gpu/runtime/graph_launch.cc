@@ -67,30 +67,6 @@ CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
 }
 
 //===----------------------------------------------------------------------===//
-// CUDA graphs for concurrent execution.
-//===----------------------------------------------------------------------===//
-
-bool ConcurrentRegionStatus::is_in_concurrent_region() {
-  return is_in_concurrent_region_;
-}
-
-int32_t ConcurrentRegionStatus::GetAndIncrementStreamIndex() {
-  int32_t index = stream_index_;
-  stream_index_++;
-  return index;
-}
-
-void ConcurrentRegionStatus::StartConcurrentRegion() {
-  CHECK(!is_in_concurrent_region_);
-  is_in_concurrent_region_ = true;
-}
-
-void ConcurrentRegionStatus::EndConcurrentRegion() {
-  CHECK(is_in_concurrent_region_);
-  is_in_concurrent_region_ = false;
-}
-
-//===----------------------------------------------------------------------===//
 // Helper structure to hash the remaining arguments' memref pointers.
 //===----------------------------------------------------------------------===//
 
