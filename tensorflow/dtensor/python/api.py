@@ -21,6 +21,7 @@ from typing import Any, Callable, Optional, Sequence
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -53,9 +54,12 @@ def call_with_layout(fn: Callable[...,
     The return value of `fn` transformed to a DTensor if requested.
   """
   if layout is not None:
-    with default_mesh(layout.mesh):
-      with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
-        return fn(*args, **kwargs)
+    if context.executing_eagerly():
+      with default_mesh(layout.mesh):
+        with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
+          return fn(*args, **kwargs)
+    else:
+      return relayout(fn(*args, **kwargs), layout)
   return fn(*args, **kwargs)
 
 

@@ -215,6 +215,7 @@ dtensor_test(
         ":test_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/eager:backprop",

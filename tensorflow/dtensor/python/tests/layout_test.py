@@ -30,6 +30,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
@@ -539,6 +540,33 @@ class RelayoutTest(test_util.DTensorBaseTest):
       return t
 
     func_with_relayout(sharded_w)
+
+  @combinations.generate(
+      combinations.combine(size=[16, 4096], is_graph=[False, True])
+  )
+  def test_call_with_layout(self, size, is_graph):
+    layout_x = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_X, rank=1
+    )
+    layout_y = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_Y, rank=1
+    )
+
+    expected = array_ops.zeros(shape=[size])
+
+    def func():
+      tensor_x = api.call_with_layout(array_ops.zeros, layout_x, shape=[size])
+      tensor_y = api.call_with_layout(array_ops.zeros, layout_y, shape=[size])
+      return tensor_x, tensor_y
+
+    if is_graph:
+      func = polymorphic_function.function(func)
+
+    with api.default_mesh(self.mesh):
+      tensor_x, tensor_y = func()
+
+    self.assertDTensorEqual(expected, layout_x, tensor_x)
+    self.assertDTensorEqual(expected, layout_y, tensor_y)
 
 
 if __name__ == '__main__':
