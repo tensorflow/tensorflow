@@ -1650,8 +1650,10 @@ TfLiteStatus Subgraph::ResizeTensor(TfLiteContext* context,
                                   new_size->data)) {
     // A number of clients assume |new_size| remains valid upon success, so
     // swap it in as the new (but logically identical) tensor dims.
-    TfLiteIntArrayFree(tensor->dims);
-    tensor->dims = new_size;
+    if (new_size != tensor->dims) {
+      TfLiteIntArrayFree(tensor->dims);
+      tensor->dims = new_size;
+    }
     return kTfLiteOk;
   }
 
@@ -1873,7 +1875,9 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       TfLiteTensorResizeMaybeCopy(bytesRequired, tensor, false);
       tensor->bytes = bytesRequired;
     }
-    if (tensor->dims) TfLiteIntArrayFree(tensor->dims);
+    if (tensor->dims && tensor->dims != new_size) {
+      TfLiteIntArrayFree(tensor->dims);
+    }
     tensor->dims = new_size;
 
     // Reset arena-allocated tensors; they will be allocated later.
