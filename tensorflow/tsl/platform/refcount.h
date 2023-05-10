@@ -77,7 +77,7 @@ class RefCounted {
   void operator=(const RefCounted&) = delete;
 };
 
-// A deleter class to form a std::unique_ptr that unrefs objects.
+// A delete class to form a std::unique_ptr that unrefs objects.
 struct RefCountDeleter {
   void operator()(const RefCounted* o) const { o->Unref(); }
 };
