@@ -657,6 +657,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:tpu",
         "//tensorflow/core/grappler/verifiers:graph_verifier",
         "//tensorflow/core/grappler/verifiers:structure_verifier",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + select({
         #TODO(b/200087693): LLVM does not build on Fuchsia.

@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/core/kernels/data:shard_dataset_op",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
@@ -756,6 +757,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:functions",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
@@ -984,6 +986,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/kernels/data",
+        "@com_google_absl//absl/status",
     ],
 )
 
