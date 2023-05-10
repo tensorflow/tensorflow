@@ -629,11 +629,19 @@ message CPUSettings {
   optional int32 num_threads = 1 [default = -1];
 }
 
-// Arm NN Delegate Settings
-// More information about Arm NN delegate options can be found in https://arm-software.github.io/armnn/latest/delegate.xhtml
+// Arm NN Delegate Settings.
+// More information about Arm NN delegate options can be found in
+// https://arm-software.github.io/armnn/latest/delegate.xhtml#delegateoptions
 message ArmNNSettings {
+  // A comma separated list without whitespaces of backends
+  // which should be used for execution. Falls back to next backend in list
+  // if previous does not provide support for operation.
   optional string backends = 1;
+  // Allows the use of optimisation techniques e.g. Winograd that
+  // will reduce execution time with the possibility of a drop in accuracy.
   optional bool fastmath = 2;
+  // Additional Arm NN delegate options. See
+  // https://arm-software.github.io/armnn/latest/delegate.xhtml#delegateoptions
   optional string additional_parameters = 3;
 }
 
