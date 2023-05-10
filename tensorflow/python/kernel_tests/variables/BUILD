@@ -115,6 +115,7 @@ cuda_py_strict_test(
     name = "variable_ops_test",
     size = "small",
     srcs = ["variable_ops_test.py"],
+    tags = ["nomsan"],  # TODO(b/281849652): Re-enable.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
