@@ -13,6 +13,8 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        "//learning/serving/...",
+        "//quality/webanswers/...",
         "//smartass/brain/inference/...",
         # copybara:uncomment "//smartass/brain/ops/...",
         "//tensorflow/c/eager/...",
@@ -20,9 +22,18 @@ package_group(
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/python/...",
-        # copybara:uncomment "//tensorflow_serving/batching/google/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
+        # copybara:uncomment "//tensorflow_serving/...",
         # copybara:uncomment "//third_party/tf_runtime_google/...",
+    ],
+)
+
+cc_library(
+    name = "tfrt_runtime",
+    srcs = ["tfrt_runtime.cc"],
+    hdrs = ["tfrt_runtime.h"],
+    deps = [
+        "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
