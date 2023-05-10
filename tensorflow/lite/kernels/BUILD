@@ -1982,18 +1982,6 @@ cc_test(
 )
 
 cc_test(
-    name = "fully_connected_4bit_test",
-    size = "small",
-    srcs = ["fully_connected_4bit_test.cc"],
-    deps = [
-        ":builtin_ops",
-        ":test_main",
-        ":test_util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "local_response_norm_test",
     size = "small",
     srcs = ["local_response_norm_test.cc"],

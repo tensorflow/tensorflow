@@ -293,7 +293,6 @@ cc_library(
         "optimized/depthwiseconv_multithread.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
-        "optimized/fully_connected_4bit.h",
         "optimized/im2col_utils.h",
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
@@ -325,7 +324,6 @@ cc_library(
         ":compatibility",
         ":cppmath",
         ":cpu_check",
-        ":optimized_4bit",
         ":quantization_util",
         ":reduce_utils",
         ":reference_base",
@@ -399,126 +397,6 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "reference_fully_connected_4bit",
-    srcs = [
-        "optimized/4bit/fully_connected_common.h",
-        "optimized/4bit/fully_connected_reference.cc",
-    ],
-    hdrs = [
-        "optimized/4bit/fully_connected_reference_impl.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
-    deps = [
-        ":cppmath",
-    ],
-)
-
-cc_library(
-    name = "neon_fully_connected_4bit",
-    srcs = ["optimized/4bit/fully_connected_common.h"] + select({
-        "//tensorflow:android_arm64": [
-            "optimized/4bit/neon_fully_connected.cc",
-            "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
-            "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
-        ],
-        "//tensorflow:android_arm": [
-            "optimized/4bit/neon_fully_connected.cc",
-            "optimized/4bit/neon_fully_connected_arm32.cc",
-        ],
-        "//conditions:default": [],
-    }),
-    hdrs = [
-        "optimized/4bit/neon_fully_connected_impl.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + select({
-        "//tensorflow:android_arm64": [
-            "-march=armv8.2-a+dotprod",
-            "-mfpu=neon-fp-armv8",
-        ],
-        "//tensorflow:android_arm": [],
-        "//conditions:default": [],
-    }) + NEON_FLAGS_IF_APPLICABLE,
-    deps = [
-        ":cppmath",
-        "@cpuinfo//:cpuinfo_with_unstripped_include_path",
-    ],
-)
-
-cc_library(
-    name = "sse_fully_connected_4bit",
-    srcs = [
-        "optimized/4bit/fully_connected_common.h",
-        "optimized/4bit/sse_fully_connected.cc",
-    ],
-    hdrs = [
-        "optimized/4bit/sse_fully_connected_impl.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
-    deps = [
-        ":cppmath",
-    ],
-)
-
-selects.config_setting_group(
-    name = "linux_x86_64_opt",
-    match_all = [
-        "//tensorflow:linux_x86_64",
-        "//tensorflow:optimized",
-    ],
-)
-
-selects.config_setting_group(
-    name = "android_arm_any",
-    match_any = [
-        "//tensorflow:android_arm",
-        "//tensorflow:android_arm64",
-    ],
-)
-
-cc_library(
-    name = "optimized_4bit",
-    hdrs = [
-        "optimized/fully_connected_4bit.h",
-    ] + select({
-        ":linux_x86_64_opt": ["optimized/4bit/sse_fully_connected.h"],
-        ":android_arm_any": ["optimized/4bit/neon_fully_connected.h"],
-        "//conditions:default": ["optimized/4bit/fully_connected_reference.h"],
-    }),
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
-    defines = select({
-        ":android_arm_any": [
-            "FC_4BIT_NEON",
-        ],
-        ":linux_x86_64_opt": [
-            "FC_4BIT_SSE",
-        ],
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":cppmath",
-        ":cpu_check",
-    ] + select({
-        ":linux_x86_64_opt": [":sse_fully_connected_4bit"],
-        ":android_arm_any": [":neon_fully_connected_4bit"],
-        "//conditions:default": [":reference_fully_connected_4bit"],
-    }),
-)
-
-cc_test(
-    name = "optimized_4bit_test",
-    srcs = ["optimized/optimized_4bit_test.cc"],
-    deps = [
-        ":common",
-        ":optimized_4bit",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1519,7 +1397,7 @@ genrule(
     cmd = """
     mkdir $@
     for f in $(SRCS); do
-      d="$${f%/*}"<
+      d="$${f%/*}"
       d="$${d#bazel-out*genfiles/}"
       d="$${d#*external/eigen_archive/}"
 
