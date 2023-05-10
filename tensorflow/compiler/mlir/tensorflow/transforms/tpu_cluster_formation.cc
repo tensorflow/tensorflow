@@ -17,7 +17,9 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <ostream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -36,10 +38,12 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -82,6 +86,14 @@ using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 
 #define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+std::string OpString(Operation& op) {
+  std::string out;
+  llvm::raw_string_ostream op_stream(out);
+  op.print(op_stream,
+           OpPrintingFlags().enableDebugInfo(true, /*prettyForm=*/true));
+  return out;
+}
 
 struct TPUClusterFormationPass
     : public impl::TPUClusterFormationPassBase<TPUClusterFormationPass> {
@@ -213,14 +225,14 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
             device2.find(device1) == std::string::npos) {
           Operation* previous_op = devices[device_local_name].op;
           has_local_device_name_collisions = true;
+
           LOG(WARNING) << "Found two devices with same local name "
                        << device_local_name
                        << " but conflicting fullname: " << device1 << " and "
                        << device2 << ".";
           LOG(WARNING) << "Previous assignment came from op: "
-                       << previous_op->getName().getStringRef().str()
-                       << ". Current op is: "
-                       << op.getName().getStringRef().str();
+                       << OpString(*previous_op)
+                       << ". Current op is: " << OpString(op);
         }
         // Always keep the longer name.
         if (devices[device_local_name].device.size() <

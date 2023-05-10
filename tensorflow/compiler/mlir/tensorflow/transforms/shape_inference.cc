@@ -530,7 +530,7 @@ struct ValuePortHasher {
 };
 
 using ValuePortResultMap =
-    std::unordered_map<ValuePort, Attribute, ValuePortHasher>;
+    absl::flat_hash_map<ValuePort, Attribute, ValuePortHasher>;
 using ComputedQueryFn = function_ref<bool(ValuePort)>;
 using ValueQueryFn = function_ref<Attribute(const ValuePort&)>;
 using ValuePortInputs = SmallVectorImpl<ValuePort>;
