@@ -755,6 +755,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_RANGE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt64) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_BATCH_MATMUL: {
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {

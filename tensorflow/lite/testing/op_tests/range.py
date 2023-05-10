@@ -24,7 +24,7 @@ def make_range_tests(options):
   """Make a set of tests to do range."""
 
   test_parameters = [{
-      "dtype": [tf.int32, tf.float32],
+      "dtype": [tf.int32, tf.float32, tf.int64],
       "offset": [10, 100, 1000, 0],
       "delta": [1, 2, 3, 4, -1, -2, -3, -4],
   }]

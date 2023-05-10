@@ -274,6 +274,16 @@ TEST(OpVersionTest, VersioningUnpackTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
+TEST(OpVersionTest, VersioningRangeTest) {
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_RANGE;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt64);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
+
 TEST(OpVersionTest, VersioningReluTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RELU,

@@ -255,6 +255,7 @@ This release contains contributions from many people at Google, as well as:
 
 *   `tf.lite`:
     *   Add UINT32 support to tfl.pack
+    *   Add INT64 support to tfl.range
 
 ## Thanks to our Contributors
 

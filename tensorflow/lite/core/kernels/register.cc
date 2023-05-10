@@ -273,7 +273,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_RANGE, Register_RANGE());
+  AddBuiltin(BuiltinOperator_RANGE, Register_RANGE(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_LEAKY_RELU, Register_LEAKY_RELU(),
              /* min_version = */ 1,
              /* max_version = */ 2);

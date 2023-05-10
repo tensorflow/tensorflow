@@ -3063,11 +3063,11 @@ def TFL_RangeOp: TFL_Op<"range", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I32, F32]>:$start,
-    TFL_TensorOf<[I32, F32]>:$limit,
-    TFL_TensorOf<[I32, F32]>:$delta);
+    TFL_TensorOf<[I32, F32, I64]>:$start,
+    TFL_TensorOf<[I32, F32, I64]>:$limit,
+    TFL_TensorOf<[I32, F32, I64]>:$delta);
 
-  let results = (outs TFL_TensorOf<[I32, F32]>:$result);
+  let results = (outs TFL_TensorOf<[I32, F32, I64]>:$result);
 
   let hasFolder = 1;
 }
