@@ -2,7 +2,7 @@
 
 <table class="tfo-notebook-buttons" align="left">
   <td>
-    <a target="_blank" href="https://www.tensorflow.org/third_party/devsite/tensorflow/en/lite/examples/auto_complete/overview"><img src="https://www.tensorflow.org/images/tf_logo_32px.png" />View on TensorFlow.org</a>
+    <a target="_blank" href="https://www.tensorflow.org/lite/examples/auto_complete/overview"><img src="https://www.tensorflow.org/images/tf_logo_32px.png" />View on TensorFlow.org</a>
   </td>
   <td>
     <a target="_blank" href="https://colab.sandbox.google.com/github/tensorflow/codelabs/blob/main/KerasNLP/io2023_workshop.ipynb"><img src="https://www.tensorflow.org/images/colab_logo_32px.png" />Run in Google Colab</a>
@@ -25,6 +25,33 @@ This runbook shows you how to build an Android app with TensorFlow Lite to run a
 Keras LLM and provides suggestions for model optimization using quantizing
 techniques, which otherwise would require a much larger amount of memory and
 greater computational power to run.
+
+We have open sourced our
+[Android app framework](https://github.com/tensorflow/examples/tree/master/lite/examples/generative_ai/)
+that any compatible TFLite LLMs can plug into. Here are two demos:
+
+*   In Figure 1, we used a Keras GPT-2 model to perform text completion tasks on
+    device.
+*   In Figure 2, we converted a version of instruction-tuned
+    [PaLM model](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)
+    (1.5 billion parameters) to TFLite and executed through TFLite runtime.
+
+<center>
+![Autocomplete with PaLM](https://storage.googleapis.com/download.tensorflow.org/tflite/examples/autocomplete_fig1.gif){: width="400px"}
+<figcaption><b>Figure 1: </b>Example of running the Keras GPT-2 model (converted
+from this [Codelab](https://codelabs.developers.google.com/kerasnlp-tflite)) on
+device to perform text completion on Pixel 7. Demo shows the real latency with
+no speedup.</figcaption>
+</center>
+
+<center>
+![Autocomplete with PaLM](https://storage.googleapis.com/download.tensorflow.org/tflite/examples/autocomplete_fig2.gif){: width="400px"}
+</p>
+<figcaption><b>Figure 2: </b>Example of running a version of
+[PaLM model](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)
+with 1.5 billion parameters. Demo is recorded on Pixel 7 Pro without playback
+speedup.</figcaption>
+</center>
 
 ## Guides
 
