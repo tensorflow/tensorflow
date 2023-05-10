@@ -42,6 +42,10 @@
       `tf.config.experimental.enable_tensor_float_32_execution(False)` will
       cause TPUs to use float32 precision for such ops instead of bfloat16.
 
+*  `tf.experimental.dtensor`
+    * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
+      relayouting a tensor according to the layout of another tensor. 
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

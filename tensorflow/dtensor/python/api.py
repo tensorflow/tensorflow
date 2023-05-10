@@ -389,7 +389,9 @@ def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
 
 
 @tf_export("experimental.dtensor.relayout", v1=[])
-def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
+def relayout(
+    tensor: ops.Tensor, layout: layout_lib.Layout, name: Optional[str] = None
+) -> ops.Tensor:
   """Changes the layout of `tensor`.
 
   Changes the layout of `tensor` to `layout`. This is used to fine-tune the
@@ -415,13 +417,65 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
   Args:
     tensor: A DTensor to specify a new layout for.
     layout: A Layout object specifying a new sharding spec.
+    name: name of the Op.
 
   Returns:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
   with default_mesh(layout.mesh):
-    return gen_dtensor_ops.relayout(tensor, layout_str)
+    return gen_dtensor_ops.relayout(tensor, layout_str, name=name)
+
+
+@tf_export("experimental.dtensor.relayout_like", v1=[])
+def relayout_like(
+    tensor: ops.Tensor, layout_tensor: ops.Tensor, name: Optional[str] = None
+) -> ops.Tensor:
+  """Changes the layout of `tensor` to the same as `layout_tensor`.
+
+  `relayout_like` is often used inside a `tf.function`, to ensure a tensor is
+  placed to the same mesh and with the same layout as another tensor.
+
+  The backward gradient of a `relayout` is a `relayout_like` operation, to
+  ensure the backward tensor has the same layout as the forward input tensor:
+
+  ```
+  @ops.RegisterGradient("Relayout")
+  def _relayout_gradient(op, grad):
+    return relayout_like(grad, layout_input=op.inputs[0])
+  ```
+
+  Here is another illustrative example:
+
+  ```
+  @tf.function
+  def func(x):
+    z = tf.ones(x.shape)
+    z = dtensor.relayout_like(z, x)
+    return x + z
+
+  with dtensor.default_mesh(cpu_mesh):
+    x = tf.ones((4, 4))
+
+  with dtensor.default_mesh(gpu_mesh):
+    y = func(x)
+
+  # y would be on the cpu mesh, following the mesh of x.
+  ```
+
+  Args:
+    tensor: A DTensor to specify a new layout for.
+    layout_tensor: A Tensor object whose layout will be used for the layout of
+      result. The shape and type of layout_tensor are irrelevant.
+    name: name of the Op.
+
+  Returns:
+    A DTensor output from the RelayoutLike op.
+  """
+
+  return gen_dtensor_ops.relayout_like(
+      input=tensor, layout_input=layout_tensor, name=name
+  )
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
