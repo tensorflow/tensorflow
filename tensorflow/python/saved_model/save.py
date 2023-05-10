@@ -1074,18 +1074,16 @@ def _export_debug_info(exported_graph, export_dir):
     exported_graph: A Graph that has been created by tracing a saveable view.
     export_dir: SavedModel directory in which to write the debug info.
   """
-  exported_operations = []
+  per_fn_info = []
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
     fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
     if not isinstance(fn, defun.AtomicFunction):  # pylint: disable=protected-access
       continue
 
-    fn_graph = fn.graph
-    for fn_op in fn_graph.get_operations():
-      exported_operations.append((fn_name, fn_op))
+    per_fn_info.append((fn_name, fn.graph_debug_info))
 
-  graph_debug_info = error_interpolation.create_graph_debug_info_def(
-      exported_operations)
+  graph_debug_info = error_interpolation.merge_graph_debug_info_def(
+      per_fn_info)
   file_io.atomic_write_string_to_file(
       file_io.join(
           path_helpers.get_or_create_debug_dir(export_dir),
