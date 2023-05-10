@@ -347,6 +347,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:op_requires",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -2333,6 +2334,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -3185,13 +3187,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "text_line_reader_op",
     prefix = "text_line_reader_op",
-    deps = IO_DEPS,
+    deps = IO_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
     name = "tf_record_reader_op",
     prefix = "tf_record_reader_op",
-    deps = IO_DEPS,
+    deps = IO_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(

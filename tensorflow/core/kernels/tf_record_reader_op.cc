@@ -16,6 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -54,7 +56,7 @@ class TFRecordReader : public ReaderBase {
                     bool* at_end) override {
     *key = strings::StrCat(current_work(), ":", offset_);
     Status status = reader_->ReadRecord(&offset_, value);
-    if (errors::IsOutOfRange(status)) {
+    if (absl::IsOutOfRange(status)) {
       *at_end = true;
       return OkStatus();
     }

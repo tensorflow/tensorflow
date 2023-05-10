@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -386,7 +387,7 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   // aggregating errors across devices: this allows us to prefer our original
   // status message over any cancellation related errors.
   Status derived_status = s;
-  if (errors::IsCancelled(s) || errors::IsAborted(s)) {
+  if (absl::IsCancelled(s) || absl::IsAborted(s)) {
     derived_status = StatusGroup::MakeDerived(s);
   }
 
