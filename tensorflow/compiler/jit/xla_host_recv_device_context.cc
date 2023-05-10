@@ -38,7 +38,7 @@ void XlaHostRecvDeviceContext::CopyDeviceTensorToCPU(
   if (auto st = stream_->BlockHostUntilDone(); !st.ok()) {
     done_event_.SetError(absl::InternalError(absl::StrFormat(
         "failed to synchronize send operation with a stream: %s",
-        st.error_message())));
+        st.ToString())));
     return;
   }
 

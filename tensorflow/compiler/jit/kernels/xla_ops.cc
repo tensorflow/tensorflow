@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
+#include "tensorflow/compiler/jit/xla_host_recv_device_context.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -185,6 +188,63 @@ XlaComputationLaunchContext GetLaunchContext(
   return launch_context;
 }
 
+Status GetTaskName(const std::string_view device_name, std::string* task_name) {
+  string ignored;
+  if (!DeviceNameUtils::SplitDeviceName(device_name, task_name, &ignored)) {
+    return errors::InvalidArgument("Unable to parse device name: ",
+                                   device_name);
+  }
+
+  return OkStatus();
+}
+
+// Provide SendDeviceMemoryFunction for XLA host callbacks.  This callback
+// handles transferring from device to host.
+xla::SendDeviceMemoryFunction GetSendDeviceMemoryFunction(
+    OpKernelContext* ctx) {
+  return
+      [ctx](int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
+            const se::DeviceMemoryBase& device_memory_base,
+            const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
+          -> StatusOr<tsl::AsyncValueRef<se::Event>> {
+        auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
+
+        // Generate the Rendezvous key.
+        const std::string& rendezvous_key_base = iter->second;
+        const std::string& src_device = ctx->device()->name();
+
+        std::string task_prefix;
+        TF_RETURN_IF_ERROR(GetTaskName(src_device, &task_prefix));
+        const std::string dst_device =
+            absl::StrCat(task_prefix, "/device:CPU:0");
+        const std::string& rendezvous_key =
+            Rendezvous::CreateKey(src_device, /*src_incarnation=*/1, dst_device,
+                                  rendezvous_key_base, FrameAndIter(0, 0));
+        VLOG(2) << "Rendezvous Key for receiving at host: " << rendezvous_key;
+
+        RendezvousInterface::ParsedKey parsed_key;
+        TF_RETURN_IF_ERROR(Rendezvous::ParseKey(rendezvous_key, &parsed_key));
+
+        tsl::AsyncValueRef<se::Event> done_event =
+            tsl::MakeConstructedAsyncValueRef<se::Event>(stream->parent());
+        if (!done_event->Init()) {
+          return errors::Internal(
+              "Failed to initialize done event (channel_id=%d)", channel_id);
+        }
+
+        Rendezvous::Args args;
+        // Rendezvous::Args owns the device context pointer.
+        args.device_context = new XlaHostRecvDeviceContext(
+            stream, device_memory_base, shape, done_event);
+
+        Tensor host_tensor;
+        TF_RETURN_IF_ERROR(
+            ctx->rendezvous()->Send(parsed_key, args, host_tensor, false));
+
+        return std::move(done_event);
+      };
+}
+
 StatusOr<xla::ExecutionOutput> RunExecutable(
     const XlaPlatformInfo& platform_info,
     const XlaComputationLaunchContext& launch_context,
@@ -200,6 +260,12 @@ StatusOr<xla::ExecutionOutput> RunExecutable(
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
+
+  // Host callbacks used for HLO send/recv.
+  xla::SendDeviceMemoryFunction send_function =
+      GetSendDeviceMemoryFunction(ctx);
+  run_options.set_send_device_memory_function(&send_function);
+
   StatusOr<xla::ExecutionOutput> execution_output;
   bool run_synchronous =
       !stream || platform_info.platform_id() == se::host::kHostPlatformId;
