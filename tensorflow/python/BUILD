@@ -877,7 +877,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "random_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/kernel_tests/random:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -887,7 +890,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "stateful_random_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/kernel_tests/random:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -914,6 +920,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "random_index_shuffle_ops_gen",
+    visibility = visibility + ["//tensorflow/python/kernel_tests/random:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
