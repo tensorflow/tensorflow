@@ -276,7 +276,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
-  @test_util.disable_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_two_conv2d_fusions(self):
     """Test two Conv2D patterns and only the second is fusable."""
     if not test_util.is_gpu_available(
