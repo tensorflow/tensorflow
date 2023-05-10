@@ -117,23 +117,5 @@ class TFStackTest(test.TestCase):
     with self.assertRaises(IndexError):
       del trace[len(trace)]
 
-  def testWipeCache(self):
-    def func(n):
-      if n == 0:
-        return tf_stack.extract_stack()  # COMMENT
-      else:
-        return func(n - 1)
-
-    trace = func(5)
-    full_list = list(trace)
-    del trace[-1]
-    self.assertLess(len(trace), len(full_list))
-
-    # Wiping the "cache" restores the stack trace to its
-    # original representation.
-    trace.wipe_cache()
-    self.assertEqual(len(trace), len(full_list))
-
-
 if __name__ == "__main__":
   test.main()

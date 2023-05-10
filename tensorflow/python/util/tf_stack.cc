@@ -200,11 +200,6 @@ class StackTraceWrapper : public AbstractStackTrace {
     return *stack_frames_cache_;
   }
 
-  void WipeCache() override {
-    tensorflow::mutex_lock lock(mu_);
-    stack_frames_cache_ = {};
-  }
-
   int get_stacklevel() const { return stacklevel_; }
 
   void set_stacklevel(int stacklevel) { stacklevel_ = stacklevel; }
@@ -496,9 +491,6 @@ PYBIND11_MODULE(_tf_stack, m) {
             return StackTraceWrapper{self.GetUserFrames()};
           },
           "Returns the non-framework frames as a new trace object.")
-      .def(
-          "wipe_cache", [](StackTraceWrapper& self) { self.WipeCache(); },
-          "Remove all cached or generated data.")
       .def(
           "last_user_frame",
           [](const StackTraceWrapper& self) { return self.LastUserFrame(); },
