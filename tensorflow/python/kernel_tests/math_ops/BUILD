@@ -354,7 +354,6 @@ cuda_py_strict_test(
     srcs = ["matmul_op_test.py"],
     shard_count = 20,
     tags = [
-        "no_armv7",  # b/280582913
         "no_mac_arm64",
     ],
     deps = [
