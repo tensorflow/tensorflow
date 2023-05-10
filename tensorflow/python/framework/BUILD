@@ -420,6 +420,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_dtypes",
+        # copybara:uncomment_begin(google-only)
+        # ":cpp_shape_inference_proto_py_pb2",
+        # copybara:uncomment_end
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
