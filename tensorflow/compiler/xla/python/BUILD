@@ -456,6 +456,19 @@ cc_library(
 )
 
 cc_library(
+    name = "inspect_sharding",
+    srcs = ["inspect_sharding.cc"],
+    hdrs = ["inspect_sharding.h"],
+    deps = [
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
+        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
+    ],
+    # Always register 'InspectSharding' custom partitioning handler.
+    alwayslink = 1,
+)
+
+cc_library(
     name = "custom_call_sharding",
     srcs = ["custom_call_sharding.cc"],
     hdrs = ["custom_call_sharding.h"],
@@ -467,6 +480,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":inspect_sharding",
         ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -826,6 +840,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@pybind11",

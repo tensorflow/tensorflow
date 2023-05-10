@@ -69,7 +69,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 
 /// Pass to gradually lower vector ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
-    bool enableAVX2 = true);
+    bool enableAVX2 = true, bool flatten = false);
 
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
@@ -152,10 +152,9 @@ struct GmlStCPUTilingOptions
     this->reduction2DReductionDimTileSize =
         opts.reduction2DReductionDimTileSize;
     this->vectorSize = opts.vectorSize;
-    this->enableFusionClusters = opts.enableFusionClusters;
     this->statsDetailLevel = opts.statsDetailLevel;
-    this->enableFusionClusterOutlining = opts.enableFusionClusterOutlining;
     this->cpuName = opts.cpuName;
+    this->inlineFusionClusters = opts.inlineFusionClusters;
   }
 
   Option<int64_t> vectorSize{*this, "vector-size",
@@ -208,17 +207,6 @@ struct GmlStCPUTilingOptions
                      "operations."),
       llvm::cl::init(false)};
 
-  Option<bool> enableFusionClusters{
-      *this, "enable-fusion-clusters",
-      llvm::cl::desc("Enable the pass to create gml_st.fusion clusters."),
-      llvm::cl::init(false)};
-
-  Option<bool> enableFusionClusterOutlining{
-      *this, "enable-fusion-cluster-outlining",
-      llvm::cl::desc(
-          "Enable passes to outline and deduplicate gml_st.fusion clusters."),
-      llvm::cl::init(false)};
-
   Option<StringRef> cpuName{
       *this, "cpu",
       llvm::cl::desc("CPU name, similar to llc's -mcpu flag. e.g. 'znver2', "
@@ -234,6 +222,11 @@ struct GmlStCPUTilingOptions
       *this, "fuse-degenerate-reshapes",
       llvm::cl::desc("Fuse through tensor.expand/collapse_shape"),
       llvm::cl::init(false)};
+
+  Option<bool> inlineFusionClusters{
+      *this, "inline-fusion-clusters",
+      llvm::cl::desc("Inline fusion clusters at the end of the pipeline."),
+      llvm::cl::init(true)};
 };
 
 // Returns default "optimized" tiling parameters.

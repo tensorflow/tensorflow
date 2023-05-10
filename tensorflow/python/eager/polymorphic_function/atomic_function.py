@@ -15,29 +15,60 @@
 """Implementation for AtomicFunction."""
 
 import dataclasses
+import traceback
 from typing import Any
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 
 
-class _InterpolateFunctionError(object):
-  """Context Manager that interpolates the exception from 'top_level_func'."""
+class InterpolateRuntimeError(object):
+  """Context Manager that interpolates exceptions received by AtomicFunction."""
 
-  __slots__ = ["_func"]
+  DENY_LIST_PHRASES = ["<embedded"]
 
   def __init__(self, top_level_func):
     self._func = top_level_func
+
+  def interpolate(self, message, node_names, graph_debug_info):
+    """Uses the GraphDebugInfo to generate an error message."""
+    error_message = ["Graph execution error:", ""]
+    for node_name in node_names:
+      error_message.append(
+          f"Detected at node {node_name} defined at (most recent call last):"
+      )
+      if node_name in graph_debug_info.traces:
+        stack_trace = graph_debug_info.traces[node_name]
+        tb_frames = []
+        for frame in stack_trace.file_line_cols:
+          tb_frames.append(
+              traceback.FrameSummary(
+                  graph_debug_info.files[frame.file_index],
+                  frame.line,
+                  frame.func,
+              )
+          )
+          for formatted_frame in traceback.format_list(tb_frames):
+            if not any(p in formatted_frame for p in self.DENY_LIST_PHRASES):
+              error_message.append(formatted_frame)
+      else:
+        error_message.append("<stack traces unavailable>")
+
+    error_message.append(message.strip())
+    return "\n".join(error_message)
 
   def __enter__(self):
     pass
@@ -46,18 +77,24 @@ class _InterpolateFunctionError(object):
     if not exc or not isinstance(exc, errors.OpError):
       return False
     message = compat.as_text(exc.message)
-    _, func_tags, _ = error_interpolation.parse_message(message)
-    g = None
+    parsed_message, func_tags, node_tags = error_interpolation.parse_message(
+        message
+    )
+    deepest_func = None
     for func_tag in func_tags:
       # TODO(mdan): Tests should cover this.
       if func_tag.name == compat.as_str(self._func.name):
-        g = self._func.graph
-      elif g:
-        next_func = g._get_function(func_tag.name)  # pylint: disable=protected-access
+        deepest_func = self._func
+      elif deepest_func:
+        next_func = deepest_func.graph._get_function(func_tag.name)  # pylint: disable=protected-access
         if next_func is not None and isinstance(next_func, AtomicFunction):
-          g = next_func.graph
-    if g:
-      exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
+          deepest_func = next_func
+    if deepest_func:
+      exc._message = self.interpolate(
+          parsed_message,
+          [t.name for t in node_tags],
+          deepest_func.graph_debug_info,
+      )
     return False
 
 
@@ -68,14 +105,7 @@ function_callbacks = set()
 # TODO(fmuham): Lower to FunctionRecord or remove otherwise.
 @dataclasses.dataclass(frozen=True)
 class GraphArtifacts:
-  inputs: Any
-  outputs: Any
-  num_outputs: Any
-  output_types: Any
-  output_shapes: Any
   control_captures: Any
-  func_graph_outputs: Any
-  attrs: Any
   graph: Any
   stateful_ops: Any
 
@@ -94,13 +124,15 @@ class AtomicFunction:
   __slots__ = [
       "_name",
       "_bound_context",
+      "_function_type",
       "_graph_artifacts",
       "_cached_definition",
   ]
 
-  def __init__(self, name, bound_context, graph_artifacts):
+  def __init__(self, name, bound_context, function_type, graph_artifacts):
     self._name = compat.as_bytes(name)
     self._bound_context = bound_context
+    self._function_type = function_type
     self._graph_artifacts = graph_artifacts
     self._cached_definition = None
 
@@ -113,6 +145,10 @@ class AtomicFunction:
   @property
   def _c_func(self):
     return context.get_c_function(self.name)
+
+  @property
+  def function_type(self):
+    return self._function_type
 
   # TODO(fmuham): Remove this property.
   @property
@@ -139,6 +175,10 @@ class AtomicFunction:
     return self._cached_definition
 
   @property
+  def graph_debug_info(self):
+    return self._bound_context.get_graph_debug_info(self.name)
+
+  @property
   def name(self):
     """Name represented in UTF-8 encoded bytes."""
     return self._name
@@ -148,7 +188,9 @@ class AtomicFunction:
     """Returns a dictionary of attributes needed to add a call in graph."""
     attrs = {
         "is_stateful": len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
-        "tout": self._graph_artifacts.output_types,
+        "tout": [
+            o.dtype.as_datatype_enum for o in self.function_type.flat_outputs
+        ],
         "xla_compile_attr": self.cached_definition.attr.get(
             attributes_lib.XLA_COMPILE, None
         ),
@@ -180,32 +222,32 @@ class AtomicFunction:
           f" got: {len(args)}."
       )
 
-    with _InterpolateFunctionError(self):
+    with InterpolateRuntimeError(self):
       with ops.control_dependencies(self._graph_artifacts.control_captures):
         # The caller must use record_operation to record this operation in the
         # eager case, so we enforce the same requirement for the non-eager
         # case by explicitly pausing recording. We don't have a gradient
         # registered for PartitionedCall, so recording this operation confuses
         # forwardprop code (GradientTape manages to ignore it).
-        with tape.stop_recording():
+        with record.stop_recording():
           if self._bound_context.executing_eagerly():
             outputs = self._bound_context.call_function(
                 self.name,
                 list(args),
-                self._graph_artifacts.num_outputs,
+                len(self.function_type.flat_outputs),
             )
           else:
             outputs = make_call_op_in_graph(self, list(args))
 
-    for i, func_graph_output in enumerate(
-        self._graph_artifacts.func_graph_outputs
-    ):
-      handle_data_util.copy_handle_data(func_graph_output, outputs[i])
+    for i, output_type in enumerate(self.function_type.flat_outputs):
+      handle_data = output_type.dtype._handle_data
+      if handle_data:
+        handle_data_util.set_handle_data(outputs[i], handle_data)
 
     # TODO(fmuham): Use FunctionType cast here for all cases.
     if not self._bound_context.executing_eagerly():
-      for i, shape in enumerate(self._graph_artifacts.output_shapes):
-        outputs[i].set_shape(shape)
+      for i, output_type in enumerate(self.function_type.flat_outputs):
+        outputs[i].set_shape(output_type.shape)
 
     return outputs
 
@@ -343,25 +385,8 @@ def make_call_op_in_graph(atomic, tensor_inputs):
     )
   return op.outputs if op.outputs else op
 
-# List of AtomicFunction -> AtomicFunction transformation functions.
-FUNCTION_TRANSFORMS = []
 
-
-def from_func_graph(name, graph, inputs, outputs, attrs):
-  """Initializes an AtomicFunction from FuncGraph with transforms."""
-
-  atomic = from_func_graph_no_transforms(name, graph, inputs, outputs, attrs)
-  for transform in FUNCTION_TRANSFORMS:
-    atomic = transform(atomic)
-    if not isinstance(atomic, AtomicFunction):
-      raise TypeError(
-          f"Transformation {transform} did not return an AtomicFunction."
-      )
-
-  return atomic
-
-
-def from_func_graph_no_transforms(
+def from_func_graph(
     name, graph, inputs, outputs, attrs, overwrite=False
 ):
   """Initializes an AtomicFunction from FuncGraph.
@@ -423,18 +448,29 @@ def from_func_graph_no_transforms(
   bound_context.add_c_function(fn)
   pywrap_tf_session.TF_DeleteFunction(fn)
 
-  signature = bound_context.get_function_def(name).signature
   graph_artifacts = GraphArtifacts(
-      inputs=inputs,
-      outputs=outputs,
-      num_outputs=len(signature.output_arg),
-      output_types=[o.type for o in signature.output_arg],
-      output_shapes=[o.shape for o in outputs],
       control_captures=graph.function_captures.control,
-      func_graph_outputs=list(outputs),
-      attrs=attrs,
       graph=graph,
       stateful_ops=tuple(op for op in operations if op._is_stateful),  # pylint: disable=protected-access
   )
 
-  return AtomicFunction(name, bound_context, graph_artifacts)
+  if graph.structured_input_signature is not None:
+    input_signature = graph.structured_input_signature
+  else:
+    input_signature = (
+        tuple(tensor_spec.TensorSpec.from_tensor(i) for i in inputs),
+        {},
+    )
+
+  # TODO(fmuham): Include output structure info from structured_outputs
+  output_signature = tuple(
+      trace_type.from_value(o) for o in outputs
+  )
+
+  function_type = function_type_lib.from_structured_signature(
+      input_signature,
+      output_signature,
+      graph.function_captures.capture_types,
+  )
+
+  return AtomicFunction(name, bound_context, function_type, graph_artifacts)

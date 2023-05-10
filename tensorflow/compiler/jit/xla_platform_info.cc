@@ -197,6 +197,18 @@ Status BuildPjRtDeviceCompiler(const XlaPlatformInfo& platform_info,
         persistor_config, compilation_device_type, pjrt_client);
     return OkStatus();
   }
+  if (platform_info.pjrt_device_metadata()) {
+    VLOG(2) << "Building PjRtDeviceCompiler using "
+               "platform_info.pjrt_device_metadata().";
+
+    DeviceType compilation_device_type =
+        platform_info.pjrt_device_metadata()->jit_device_type();
+    TF_ASSIGN_OR_RETURN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
+
+    *pjrt_device_compiler = CreatePjRtDeviceCompiler(
+        persistor_config, compilation_device_type, pjrt_client);
+    return OkStatus();
+  }
 
   // TFRT-TPU is used if device_type is `DEVICE_TPU` and platform_info does not
   // have `xla_device_metadata`.

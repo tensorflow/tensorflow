@@ -137,13 +137,15 @@ aar_with_jni(
     name = "tensorflow-lite",
     android_library = ":tensorflowlite",
     headers = [
-        # TODO(b/175298345): Clean up and if possible remove common.h here.
+        # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:c_api_experimental.h",
+        "//tensorflow/lite/c:c_api_opaque.h",
         "//tensorflow/lite/c:c_api_types.h",
         "//tensorflow/lite/c:common.h",
         "//tensorflow/lite/core/c:c_api.h",
+        "//tensorflow/lite/core/c:c_api_opaque.h",
         "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/core/c:c_api_experimental.h",
         "//tensorflow/lite/core/c:common.h",
@@ -164,6 +166,8 @@ aar_with_jni(
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/c:c_api.h",
         "//tensorflow/lite/core/c:c_api_types.h",
         # TODO(b/175298345): move the stable parts of common.h into
         # a separate header file that contains no experimental APIs
@@ -489,7 +493,9 @@ java_test_with_tflite(
     # run every test case in this test in a separate shard, which ensures that
     # they run in a separate process that doesn't have the native libraries
     # loaded yet.
-    shard_count = 3,
+    # LINT.IfChange(TensorFlowLiteTestShardCount)
+    shard_count = 5,  # grep -c @Test src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java
+    # LINT.ThenChange(src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java)
     tags = [
         "v1only",
     ],

@@ -923,8 +923,6 @@ def func_graph_from_py_func(name,
                             kwargs,
                             signature=None,
                             func_graph=None,
-                            autograph=False,
-                            autograph_options=None,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None,
@@ -947,10 +945,6 @@ def func_graph_from_py_func(name,
       inputs.
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
-    autograph: whether to use autograph to compile `python_func`.
-      See https://www.tensorflow.org/guide/autograph for more information.
-    autograph_options: additional knobs to control when `autograph=True`.
-      See https://www.tensorflow.org/guide/autograph for more information.
     add_control_dependencies: If True, automatically adds control dependencies
       to ensure program order matches execution order and stateful ops always
       execute.
@@ -1057,62 +1051,28 @@ def func_graph_from_py_func(name,
         x = deps_ctx.mark_as_return(x)
       return x
 
-    try:
-      if autograph:
-        from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
-        _, original_func = tf_decorator.unwrap(python_func)
+    _, original_func = tf_decorator.unwrap(python_func)
+    func_outputs = python_func(*func_args, **func_kwargs)
 
-        def autograph_handler(*args, **kwargs):
-          """Calls a converted version of original_func."""
-          # TODO(mdan): Push this block higher in tf.function's call stack.
-          try:
-            return autograph.converted_call(
-                original_func,
-                args,
-                kwargs,
-                options=autograph.ConversionOptions(
-                    recursive=True,
-                    optional_features=autograph_options,
-                    user_requested=True,
-                ))
-          except Exception as e:  # pylint:disable=broad-except
-            if hasattr(e, "ag_error_metadata"):
-              raise e.ag_error_metadata.to_exception(e)
-            else:
-              raise
+    # invariant: `func_outputs` contains only Tensors, CompositeTensors,
+    # TensorArrays and `None`s.
+    func_outputs = variable_utils.convert_variables_to_tensors(func_outputs)
+    func_outputs = nest.map_structure(
+        convert, func_outputs, expand_composites=True)
 
-        # Wrapping around a decorator allows checks like tf_inspect.getargspec
-        # to be accurate.
-        converted_func = tf_decorator.make_decorator(original_func,
-                                                     autograph_handler)
-        python_func = tf_decorator.rewrap(python_func, original_func,
-                                          converted_func)
-
-      else:
-        _, original_func = tf_decorator.unwrap(python_func)
-
-      func_outputs = python_func(*func_args, **func_kwargs)
-
-      # invariant: `func_outputs` contains only Tensors, CompositeTensors,
-      # TensorArrays and `None`s.
-      func_outputs = variable_utils.convert_variables_to_tensors(func_outputs)
-      func_outputs = nest.map_structure(
-          convert, func_outputs, expand_composites=True)
-
-      # flatten and unflatten func_args and func_kwargs to maintain parity
-      # from flattening which sorts by key
-      func_args = nest.pack_sequence_as(
-          func_args,
-          nest.flatten(func_args, expand_composites=True),
-          expand_composites=True)
-      func_kwargs = nest.pack_sequence_as(
-          func_kwargs,
-          nest.flatten(func_kwargs, expand_composites=True),
-          expand_composites=True)
-      check_func_mutation(func_args_before, func_kwargs_before, func_args,
-                          func_kwargs, original_func)
-    finally:
-      current_scope.set_use_resource(default_use_resource)
+    # flatten and unflatten func_args and func_kwargs to maintain parity
+    # from flattening which sorts by key
+    func_args = nest.pack_sequence_as(
+        func_args,
+        nest.flatten(func_args, expand_composites=True),
+        expand_composites=True)
+    func_kwargs = nest.pack_sequence_as(
+        func_kwargs,
+        nest.flatten(func_kwargs, expand_composites=True),
+        expand_composites=True)
+    check_func_mutation(func_args_before, func_kwargs_before, func_args,
+                        func_kwargs, original_func)
+    current_scope.set_use_resource(default_use_resource)
 
     inputs = []
     for arg in composite_tensor_utils.flatten_with_variables([func_args,
@@ -1271,10 +1231,9 @@ def _create_placeholders(args, kwargs, arg_names=None):
   arg_trace_types = trace_type.from_value(tuple(args), signature_context)
   kwarg_trace_types = trace_type.from_value(kwargs, signature_context)
 
-  handledata_mapping = signature_context.get_handledata_mapping()
   placeholder_mapping = signature_context.get_placeholder_mapping()
   placeholder_context = trace_type.InternalPlaceholderContext(
-      ops.get_default_graph(), handledata_mapping, placeholder_mapping)
+      ops.get_default_graph(), placeholder_mapping)
 
   if arg_names is None:
     arg_names = [None] * len(arg_trace_types.components)

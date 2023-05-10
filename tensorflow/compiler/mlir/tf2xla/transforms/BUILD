@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -159,6 +160,7 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/tsl/platform:bfloat16",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:Dialect",
@@ -171,7 +173,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:chlo_ops",
-    ],
+    ] + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 cc_library(
@@ -351,6 +353,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_module_importer",

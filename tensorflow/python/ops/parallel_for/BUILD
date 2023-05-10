@@ -184,7 +184,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:while_loop",
-        "//tensorflow/python/compiler/xla",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

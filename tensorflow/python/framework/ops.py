@@ -44,7 +44,7 @@ from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import monitoring
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as pydev
@@ -83,9 +83,6 @@ from tensorflow.python.util.tf_export import tf_export
 tensor_spec = LazyLoader(
     "tensor_spec", globals(),
     "tensorflow.python.framework.tensor_spec")
-ag_ctx = LazyLoader(
-    "ag_ctx", globals(),
-    "tensorflow.python.autograph.core.ag_ctx")
 
 
 # Temporary global switches determining if we should enable the work-in-progress
@@ -287,25 +284,8 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
-# Tensor subclassing has historically been a mess.
-#
-# There is no "Tensor" base class for Graph & Eager tensors. Instead, when we
-# introduced EagerTensor, we had it subclass the graph "Tensor" class, and
-# override a bunch of behavior. Introducing a proper subclassing relationship
-# is complicated because many users check for type(t) == Tensor of isinstance.
-#
-# This is done internally for "bad" reasons as a way to separate out Graph and
-# Eager tensors, or subclasses which "look like" Tensor, e.g. distribute.Value.
-#
-# For now, we work around this by deferring initialization of graph tensors to
-# a separate `_init` method. `GraphTensor` is a free function, not a class, that
-# returns a Tensor object.
-#
-# b(XXX) -- fix type(t) == Tensor checks in the code base
 @tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
-class Tensor(
-    pywrap_tf_session.PyTensor, internal.NativeObject, core_tf_types.Symbol
-):
+class Tensor(internal.NativeObject, core_tf_types.Symbol):
   """A `tf.Tensor` represents a multidimensional array of elements.
 
   All elements are of a single known data type.
@@ -424,8 +404,7 @@ class Tensor(
       raise AttributeError(
           f"{type(self).__name__} object has no attribute '{name}'. " + """
         If you are looking for numpy-related methods, please run the following:
-        from tensorflow.python.ops.numpy_ops import np_config
-        np_config.enable_numpy_behavior()
+        tf.experimental.numpy.experimental_enable_numpy_behavior()
       """)
     self.__getattribute__(name)
 
@@ -436,10 +415,6 @@ class Tensor(
 
   @property
   def name(self):
-    """The string name of this tensor."""
-    if self._name is None:
-      assert self._op.name
-      self._name = "%s:%d" % (self._op.name, self.value_index)
     return self._name
 
   @property
@@ -473,55 +448,24 @@ class Tensor(
   def ndim(self):
     return self.shape.rank
 
-  def _disallow_when_autograph_unavailable(self, task):
+  def _disallow(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph is unavailable in this runtime. See"
+        f"{task} is not allowed."
+        " You can attempt the following resolutions to the problem:"
+        " If you are running in Graph mode, use Eager execution mode"
+        " or decorate this function with @tf.function."
+        " If you are using AutoGraph, you can try decorating this function"
+        " with @tf.function. If that does not work, then you may be using"
+        " an unsupported feature or your source code may not be visible"
+        " to AutoGraph. See"
         " https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code"
         " for more information.")
 
-  def _disallow_when_autograph_disabled(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph is disabled in this function."
-        " Try decorating it directly with @tf.function.")
-
-  def _disallow_when_autograph_enabled(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed: AutoGraph did convert this function. This"
-        " might indicate you are trying to use an unsupported feature.")
-
-  def _disallow_in_graph_mode(self, task):
-    raise errors.OperatorNotAllowedInGraphError(
-        f"{task} is not allowed in Graph execution. Use Eager execution or"
-        " decorate this function with @tf.function.")
-
   def _disallow_bool_casting(self):
-    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
-      self._disallow_when_autograph_unavailable(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_disabled(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_enabled(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
-    else:
-      # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode(
-          "Using a symbolic `tf.Tensor` as a Python `bool`")
+    self._disallow("Using a symbolic `tf.Tensor` as a Python `bool`")
 
   def _disallow_iteration(self):
-    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
-      self._disallow_when_autograph_unavailable(
-          "Iterating over a symbolic `tf.Tensor`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_disabled(
-          "Iterating over a symbolic `tf.Tensor`")
-    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_enabled(
-          "Iterating over a symbolic `tf.Tensor`")
-    else:
-      # Default: V1-style Graph execution.
-      self._disallow_in_graph_mode("Iterating over a symbolic `tf.Tensor`")
+    self._disallow("Iterating over a symbolic `tf.Tensor`")
 
   def __iter__(self):
     if not context.executing_eagerly():
@@ -551,7 +495,7 @@ class Tensor(
 
   def _record_tape(self, capture):
     """Connect this graph tensor with capture for gradients calculation."""
-    tape.record_operation(
+    record.record_operation(
         "captured_value",
         [self], [capture],
         backward_function=lambda x: [x],
@@ -808,20 +752,11 @@ class Tensor(
 
   def __hash__(self):
     g = getattr(self, "graph", None)
-    if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
-        (g is None or g.building_function)):
+    if (Tensor._USE_EQUALITY and (g is None or g.building_function)):
       raise TypeError("Tensor is unhashable. "
                       "Instead, use tensor.ref() as the key.")
     else:
       return id(self)
-
-  def __copy__(self):
-    # TODO(b/77597810): get rid of Tensor copies.
-    cls = self.__class__
-    result = cls.__new__(cls)
-    result._init(self.op, self.value_index, self.dtype)
-    result.__dict__.update(self.__dict__)
-    return result
 
   # NOTE(mrry): This enables the Tensor's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -951,13 +886,12 @@ class Tensor(
     return object_identity.Reference(self)
 
   def __tf_tracing_type__(self, signature_context):
-    spec = tensor_spec.TensorSpec(
-        self.shape, self.dtype).__tf_tracing_type__(signature_context)
-    # TODO(b/263894631): Store handle data in the TensorSpec itself. Once
-    # implemented, the following section under the if condition can be removed.
     if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
       handle_data = handle_data_util.get_handle_data(self)
-      signature_context.add_handledata(id(spec), handle_data)
+      dtype = dtypes.DType(self.dtype._type_enum, handle_data)
+    else:
+      dtype = self.dtype
+    spec = tensor_spec.TensorSpec(self.shape, dtype)
     return spec
 
   def __tf_tensor__(
@@ -972,32 +906,22 @@ class Tensor(
     return self
 
 
-def GraphTensor(op, value_index, dtype):
-  """Creates a new `Tensor` in a graph.
+@tf_export("__internal__.SymbolicTensor")
+class SymbolicTensor(pywrap_tf_session.PyTensor, Tensor):
+  """A symbolic tensor from a graph or tf.function."""
 
-  Args:
-    op: An `Operation`. `Operation` that computes this tensor.
-    value_index: An `int`. Index of the operation's endpoint that produces this
-      tensor.
-    dtype: A `DType`. Type of elements stored in this tensor.
+  def __new__(cls, op, value_index, dtype, unique_id=None):
+    if unique_id is None:
+      unique_id = uid()
+    return pywrap_tf_session.PyTensor.__new__(
+        SymbolicTensor, op, value_index, dtypes.as_dtype(dtype), unique_id
+    )
 
-  Returns:
-    A Tensor object.
-
-  Raises:
-    TypeError: If the op is not an `Operation`.
-  """
-  self = Tensor()
-  # pylint: disable=protected-access
-  self._init(op, value_index, dtype)
-  self._dtype = dtypes.as_dtype(dtype)
-
-  # This will be set by self.shape().
-  self._shape_val = None
-  self._name = None
-  self._id = uid()
-  # pylint: enable=protected-access
-  return self
+  def __copy__(self):
+    cls = self.__class__
+    result = cls.__new__(cls, self.op, self.value_index, self.dtype, self._id)
+    result.__dict__.update(self.__dict__)
+    return result
 
 
 def _create_graph_constant(
@@ -1233,7 +1157,7 @@ class _EagerTensorBase(Tensor, internal.NativeObject, core_tf_types.Value):
             if hasattr(dresult, "_copy") else dresult
         ]
 
-      tape.record_operation("_copy", [new_tensor], [self], grad_fun)
+      record.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
 
@@ -1421,8 +1345,8 @@ def pack_eager_tensors(tensors, ctx=None):
     raise ValueError(
         "Computing gradients through pack_eager_tensors is not supported.")
 
-  tape.record_operation("pack_eager_tensors", [packed_tensor], tensors,
-                        grad_fun)
+  record.record_operation("pack_eager_tensors", [packed_tensor], tensors,
+                          grad_fun)
 
   return packed_tensor
 
@@ -1889,7 +1813,7 @@ class Operation(pywrap_tf_session.PyOperation):
 
     # Initialize c_op from node_def and other inputs
     c_op = _create_c_op(g, node_def, inputs, control_input_ops, op_def=op_def)
-    self = Operation(c_op, GraphTensor)
+    self = Operation(c_op, SymbolicTensor)
     self._init(g)
 
     self._original_op = original_op
@@ -1919,7 +1843,7 @@ class Operation(pywrap_tf_session.PyOperation):
     Returns:
       an Operation object.
     """
-    self = Operation(c_op, GraphTensor)
+    self = Operation(c_op, SymbolicTensor)
     self._init(g)
     return self
 
@@ -5446,7 +5370,7 @@ def init_scope():
 
   if context.executing_eagerly():
     # Fastpath.
-    with tape.stop_recording():
+    with record.stop_recording():
       yield
   else:
     # Retrieve the active name scope: entering an `init_scope` preserves
@@ -5465,7 +5389,7 @@ def init_scope():
     try:
       with outer_context(), name_scope(
           scope, skip_on_eager=False), control_dependencies(
-              None), tape.stop_recording():
+              None), record.stop_recording():
         context_manager = NullContextmanager
         context_manager_input = None
         if not context.executing_eagerly():
@@ -5897,13 +5821,8 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   #    informative error if a mismatch is found.
   original_graph_element = None
   for op_input in op_input_list:
-    # Determine if this is a valid graph_element.
-    # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
-    # up.
     graph_element = None
-    if isinstance(op_input, (Operation, internal.NativeObject)) and (
-        (not isinstance(op_input, Tensor)) or type(op_input) == Tensor  # pylint: disable=unidiomatic-typecheck
-    ):
+    if isinstance(op_input, (Operation, SymbolicTensor)):
       graph_element = op_input
     else:
       graph_element = _as_graph_element(op_input)
@@ -6212,9 +6131,9 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   if values:
     # The presence of a graph tensor in `values` overrides the context.
     # TODO(slebedev): this is Keras-specific and should be removed.
-    # pylint: disable=unidiomatic-typecheck
-    graph_value = next((value for value in values if type(value) == Tensor),
-                       None)
+    graph_value = next(
+        (value for value in values if is_symbolic_tensor(value)), None
+    )
     # pylint: enable=unidiomatic-typecheck
     if graph_value is not None:
       return graph_value.graph.name_scope(name)
@@ -6805,12 +6724,6 @@ def _copy_handle_data_to_arg_def(tensor, arg_def):
     proto.shape.CopyFrom(handle_data.shape_and_type[0].shape)
 
 
-# This will be replaced by a concrete implementation in a future CL.
-@tf_export("__internal__.SymbolicTensor")
-class SymbolicTensor(object):
-  """Stub class for symbolic tensors."""
-
-
 @tf_export("is_symbolic_tensor", v1=["is_symbolic_tensor"])
 def is_symbolic_tensor(tensor):
   """Test if `tensor` is a symbolic Tensor.
@@ -6821,4 +6734,4 @@ def is_symbolic_tensor(tensor):
   Returns:
     True if `tensor` is a symbolic tensor (not an eager tensor).
   """
-  return type(tensor) == Tensor  # pylint: disable=unidiomatic-typecheck
+  return isinstance(tensor, SymbolicTensor)

@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/framework/graph_debug_info.proto";
 import "tensorflow/core/framework/tensor.proto";
-import "tensorflow/core/protobuf/graph_debug_info.proto";
 
 option cc_enable_arenas = true;
 option java_outer_classname = "DebugEventProtos";

@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
@@ -63,6 +64,30 @@ CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(&mutex_);
   return &counts_[executor];
+}
+
+//===----------------------------------------------------------------------===//
+// CUDA graphs for concurrent execution.
+//===----------------------------------------------------------------------===//
+
+bool ConcurrentRegionStatus::is_in_concurrent_region() {
+  return is_in_concurrent_region_;
+}
+
+int32_t ConcurrentRegionStatus::GetAndIncrementStreamIndex() {
+  int32_t index = stream_index_;
+  stream_index_++;
+  return index;
+}
+
+void ConcurrentRegionStatus::StartConcurrentRegion() {
+  CHECK(!is_in_concurrent_region_);
+  is_in_concurrent_region_ = true;
+}
+
+void ConcurrentRegionStatus::EndConcurrentRegion() {
+  CHECK(is_in_concurrent_region_);
+  is_in_concurrent_region_ = false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -112,9 +137,10 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 
   // Initialize (with memoization) BlasSupport here because cublasCreate fails
   // during cuda graph capturing.
-  // TODO(b/272559361): The initialization should be conditional.
-  if (!executor->AsBlas()) {
-    return absl::InternalError("Failed to initialize BLAS support");
+  if (function_ref.RequiresBlas()) {
+    if (!executor->AsBlas()) {
+      return absl::InternalError("Failed to initialize BLAS support");
+    }
   }
 
   StatusOr<StreamPool::Ptr> capture_stream =
@@ -253,18 +279,11 @@ static absl::Status LaunchGraph(
   // Compute the hash of the buffer arguments.
   size_t ptrs_hash = absl::HashOf(RemainingArgsPtrs{fwd_args, temp_buffer});
 
-  CapturingCudaGraph not_capturing(false);
-  CapturingCudaGraph capturing(true);
   // Forwards user data required for launching kernels.
-  auto user_data_no_capture = [&] {
+  auto user_data = [&] {
     return CustomCall::UserData(run_options, debug_options, ptx, cubin,
                                 temp_buffer, kernels, convs, executable,
-                                gemm_config, gpu_lock, &not_capturing);
-  };
-  auto user_data_capture = [&] {
-    return CustomCall::UserData(run_options, debug_options, ptx, cubin,
-                                temp_buffer, kernels, convs, executable,
-                                gemm_config, gpu_lock, &capturing);
+                                gemm_config, gpu_lock);
   };
 
   absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>*> get_count =
@@ -279,16 +298,15 @@ static absl::Status LaunchGraph(
       debug_options->xla_gpu_cuda_graph_instantiation_threshold();
   if (count < instantiation_threshold) {
     // Run captured graph directly.
-    absl::Status result = RunGraphWithoutCapture(
-        run_options, function_ref, fwd_args, user_data_no_capture());
+    absl::Status result = RunGraphWithoutCapture(run_options, function_ref,
+                                                 fwd_args, user_data());
     if (!result.ok()) return result;
     return absl::OkStatus();
   }
 
   absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
       capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
-        auto g = CaptureGraph(run_options, function_ref, fwd_args,
-                              user_data_capture());
+        auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
         if (!g.ok()) return g.status();
 
         auto e = se::gpu::InstantiateCudaGraph(std::move(*g));
@@ -312,8 +330,7 @@ static absl::Status LaunchGraph(
   VLOG(3) << "Update cached graph instance";
 
   // Capture CUDA graph by running capture function.
-  auto g =
-      CaptureGraph(run_options, function_ref, fwd_args, user_data_capture());
+  auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
   if (!g.ok()) return g.status();
 
   // Update captured graph executable.

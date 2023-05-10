@@ -50,7 +50,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
         "//tensorflow/python/util:tf_export",

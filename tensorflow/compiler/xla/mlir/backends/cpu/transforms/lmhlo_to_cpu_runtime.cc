@@ -143,9 +143,9 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
 
     // Forward backend config to the custom call implementation.
-    auto dict = op.getBackendConfig()
-                    ? op.getBackendConfig()->cast<mlir::DictionaryAttr>()
-                    : nullptr;
+    auto config = op.getBackendConfig();
+    if (!config) return op.emitOpError("Failed to get backend config");
+    auto dict = config->cast<mlir::DictionaryAttr>();
     llvm::SmallVector<NamedAttribute> backend_config(dict.begin(), dict.end());
 
     // Call the custom call function forwarding user-defined attributes.
@@ -224,6 +224,11 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         {b.getStringAttr("output_tuple"), b.getBoolAttr(output_tuple)},
         {b.getStringAttr("api_version"), api_version},
         {b.getStringAttr("call_target_name"), op.getCallTargetNameAttr()}};
+
+    if (auto backend_config = op.getBackendConfigAttr()) {
+      custom_call_attrs.emplace_back(b.getStringAttr("backend_config"),
+                                     op.getBackendConfigAttr());
+    }
 
     // Call the runtime intrinsic with the original operands.
     auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
@@ -383,20 +388,40 @@ class CollectivePermuteLowering
 
 //===----------------------------------------------------------------------===//
 
-class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
+class ConvolutionLowering : public OpRewritePattern<xla_cpu::ConvolutionOp> {
  public:
-  FftLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+  ConvolutionLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
-  LogicalResult matchAndRewrite(xla_cpu::FftOp op,
+  LogicalResult matchAndRewrite(xla_cpu::ConvolutionOp op,
                                 PatternRewriter& rewriter) const override {
-    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
-                                 rewriter);
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+    b.setInsertionPoint(op);
+
+    // Subview ops result in strided Memrefs. The runtime can't deal with them,
+    // so we copy everything that doesn't have the default layout.
+    SmallVector<Value> new_operands = EnsureFlatMemrefs(op->getOperands(), b);
+
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, kCallTarget, TypeRange(ValueRange(new_operands)), TypeRange());
+    auto call =
+        b.create<func::CallOp>(callee.getName(), TypeRange(), new_operands);
+
+    // Copy attributes from original op.
+    for (auto name :
+         {"inputBatchDimension", "inputSpatialDimensions",
+          "inputFeatureDimension", "kernelSpatialDimensions",
+          "kernelInputFeatureDimension", "kernelOutputFeatureDimension",
+          "outputSpatialDimensions", "window_strides", "padding",
+          "lhs_dilation", "rhs_dilation", "feature_group_count"}) {
+      call->setAttr(name, op->getAttr(name));
+    }
+    rewriter.eraseOp(op);
     return success();
   }
 
  private:
-  static constexpr const char kCallTarget[] = "xla.cpu.fft";
+  static constexpr const char kCallTarget[] = "xla.cpu.convolution";
 
   CustomCallDeclarations& custom_calls_;
 };
@@ -427,6 +452,46 @@ class RngBitGeneratorLowering
  private:
   static constexpr const char kThreeFryTarget[] = "xla.cpu.rng.three_fry";
   static constexpr const char kPhiloxTarget[] = "xla.cpu.rng.philox";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class InfeedLowering : public OpRewritePattern<xla_cpu::InfeedOp> {
+ public:
+  InfeedLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::InfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+    // By default all operands are passed to the custom call handler.
+    llvm::SmallVector<Value> operands = EnsureFlatMemrefs(op->getOperands(), b);
+
+    // For infeed with empty tuples, bufferizer does not run, thus the token is
+    // left as the only operand. Remove it.
+    if (operands.back().getType().isa<mlir::mhlo::TokenType>()) {
+      assert(operands.size() == 1 && "Expect token only with empty tuples");
+      operands.pop_back();
+    }
+
+    // Create a custom call function declaration.
+    func::FuncOp callee =
+        custom_calls_.GetOrCreate(b, StringRef(kCallTarget),
+                                  TypeRange(ValueRange(operands)), TypeRange());
+
+    // Call the runtime intrinsic with the original operands.
+    b.create<func::CallOp>(op->getLoc(), callee.getName(), TypeRange(),
+                           operands);
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.infeed";
 
   CustomCallDeclarations& custom_calls_;
 };
@@ -481,6 +546,26 @@ class OutfeedLowering : public OpRewritePattern<xla_cpu::OutfeedOp> {
 
 //===----------------------------------------------------------------------===//
 
+class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
+ public:
+  FftLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::FftOp op,
+                                PatternRewriter& rewriter) const override {
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.fft";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -492,8 +577,9 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<AllReduceLowering, AllToAllLowering,
-                  CollectivePermuteLowering, CustomCallOpLowering, FftLowering,
-                  InfeedOpLowering, OutfeedLowering, RngBitGeneratorLowering>(
+                  CollectivePermuteLowering, ConvolutionLowering,
+                  CustomCallOpLowering, FftLowering, InfeedOpLowering,
+                  InfeedLowering, OutfeedLowering, RngBitGeneratorLowering>(
       ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);

@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -29,7 +31,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-void PrintDims(mlir::AsmPrinter& os, llvm::ArrayRef<int64_t> dims) {
+void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<int64_t> dims) {
   os << dims[0];
   for (int i = 1; i < dims.size(); ++i) {
     os << "x" << dims[i];
@@ -62,10 +64,10 @@ void PopulateDevices(llvm::ArrayRef<int64_t> permutation,
 
 mlir::LogicalResult ShardingParam::MinorToMajor::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
-  if (permutation.size() != axis_sizes.size()) {
-    return emit_error()
-           << "Expect same size for `permutation` and `axis_sizes`. Actual "
-           << permutation.size() << " vs " << axis_sizes.size();
+  if (permutation.size() != axis_sizes.size() || axis_sizes.empty()) {
+    return emit_error() << "Expect same non-zero size for `permutation` and "
+                           "`axis_sizes`. Actual "
+                        << permutation.size() << " vs " << axis_sizes.size();
   }
   return mlir::success();
 }
@@ -114,6 +116,9 @@ mlir::LogicalResult ShardingParam::verify(
   if (mlir::failed(minor_to_major().verify(emit_error))) {
     return mlir::failure();
   }
+  if (dim_shards().empty()) {
+    return emit_error() << "Dim shards is empty";
+  }
 
   int64_t dim_index = 0;
   int64_t cum_size = 1;
@@ -147,15 +152,28 @@ mlir::LogicalResult ShardingParam::verify(
   return mlir::success();
 }
 
+std::string ShardingParam::DebugString() const {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  os << *this;
+  return result;
+}
+
 llvm::hash_code hash_value(ShardingParam sharding) {
   return sharding.hash_value();
 }
 
 mlir::AsmPrinter& operator<<(mlir::AsmPrinter& os, ShardingParam sharding) {
+  os.getStream() << sharding;
+  return os;
+}
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
   PrintDims(os, sharding.dim_shards());
-  os << " to ["
-     << llvm::ArrayRef<int64_t>(sharding.minor_to_major().permutation)
-     << "] on ";
+  os << " to [";
+  llvm::interleaveComma(
+      llvm::ArrayRef<int64_t>(sharding.minor_to_major().permutation), os);
+  os << "] on ";
   PrintDims(os, sharding.minor_to_major().axis_sizes);
   return os;
 }

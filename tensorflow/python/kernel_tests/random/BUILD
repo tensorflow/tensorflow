@@ -109,7 +109,7 @@ cuda_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_crop_ops",
         "//third_party/py/numpy",
     ],
 )

@@ -253,10 +253,10 @@ class GrpcEagerClient : public EagerClient {
           metrics::UpdateEagerClientErrorCounter(
               error_source_proto.ErrorSource_Name(
                   error_source_proto.error_source()),
-              error_name(status.code()));
+              absl::StatusCodeToString(status.code()));
         } else {
-          metrics::UpdateEagerClientErrorCounter("unknown",
-                                                 error_name(status.code()));
+          metrics::UpdateEagerClientErrorCounter(
+              "unknown", absl::StatusCodeToString(status.code()));
         }
       }
     };

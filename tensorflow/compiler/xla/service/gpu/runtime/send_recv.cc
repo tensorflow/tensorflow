@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/send_recv.h"
 
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -127,6 +128,22 @@ absl::StatusOr<AsyncValueRef<se::Event>> SendRecvEvents::PopEvent(
 }
 
 //===----------------------------------------------------------------------===//
+// Generate a map with frontend attributes.
+//===----------------------------------------------------------------------===//
+
+absl::flat_hash_map<std::string, std::string> GenerateFrontEndAttributeMap(
+    Dictionary frontend_attrs) {
+  absl::flat_hash_map<std::string, std::string> frontend_attr_map;
+  for (std::string_view key : frontend_attrs.keys()) {
+    auto frontend_attr = frontend_attrs.get<std::string_view>(key);
+    if (mlir::succeeded(frontend_attr)) {
+      frontend_attr_map.insert({std::string(key), std::string(*frontend_attr)});
+    }
+  }
+  return frontend_attr_map;
+}
+
+//===----------------------------------------------------------------------===//
 // Send/Recv custom call implementation.
 //===----------------------------------------------------------------------===//
 
@@ -151,7 +168,8 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
   // Send buffer to a handler registered with the run options.
   if (auto* send = run_options->run_options().send_device_memory_function()) {
     auto done_event =
-        (*send)(channel.handle, stream, ToShape(arg), GetDeviceAddress(arg));
+        (*send)(channel.handle, stream, ToShape(arg), GetDeviceAddress(arg),
+                GenerateFrontEndAttributeMap(frontend_attrs));
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
@@ -180,7 +198,8 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
   // Recv buffer from a handler registered with the run options.
   if (auto* recv = run_options->run_options().recv_device_memory_function()) {
     auto dst = GetDeviceAddress(arg);
-    auto done_event = (*recv)(channel.handle, stream, ToShape(arg), &dst);
+    auto done_event = (*recv)(channel.handle, stream, ToShape(arg), &dst,
+                              GenerateFrontEndAttributeMap(frontend_attrs));
     if (!done_event.ok()) return ToAbslStatus(done_event.status());
     return events->PushEvent(channel.handle, std::move(*done_event));
   }

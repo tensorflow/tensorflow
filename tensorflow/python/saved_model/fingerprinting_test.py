@@ -144,7 +144,7 @@ class FingerprintingTest(test.TestCase):
 
     self.assertEqual(fingerprint, fingerprint_def)
 
-  def test_read_fingerprint_api_invalid(self):
+  def test_read_fingerprint_file_not_found(self):
     with self.assertRaisesRegex(FileNotFoundError,
                                 "SavedModel Fingerprint Error"):
       fingerprinting.read_fingerprint("foo")

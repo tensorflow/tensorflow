@@ -69,7 +69,6 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:cond",
@@ -78,7 +77,6 @@ py_binary(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_v1",

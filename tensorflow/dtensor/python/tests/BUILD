@@ -159,12 +159,12 @@ dtensor_test(
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops_gen",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -172,17 +172,18 @@ dtensor_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_strict_test(
     name = "input_util_test",
+    size = "medium",
     srcs = ["input_util_test.py"],
     shard_count = 8,
     deps = [
         ":test_util",
+        "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:input_util",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:mesh_util",
@@ -212,7 +213,16 @@ dtensor_test(
     main = "layout_test.py",
     deps = [
         ":test_util",
+        "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -248,14 +258,31 @@ dtensor_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_library(
+    name = "multi_client_test_util",
+    testonly = if_google(
+        True,
+        oss_value = False,  # build_pip_package depends on this target.
+    ),
+    srcs = ["multi_client_test_util.py"],
+    visibility = [
+        "//tensorflow/dtensor:dtensor-internal",
+        "//tensorflow/dtensor:dtensor-users",
+        "//tensorflow/tools/pip_package:__pkg__",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -279,6 +306,7 @@ dtensor_test(
         "nosan",
     ],  # b/195537906
     deps = [
+        ":multi_client_test_util",
         ":test_util",
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
@@ -310,7 +338,7 @@ dtensor_test(
     ],
     args = [
         "--num_clients=0",
-        "--num_devices=2",
+        "--num_local_devices=2",
         "--model_dim_size=2",
     ],
     disable = ALL_BACKENDS,
@@ -324,6 +352,7 @@ dtensor_test(
         "nosan",  # b/195537906
     ],
     deps = [
+        ":multi_client_test_util",
         ":test_util",
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
@@ -355,7 +384,7 @@ dtensor_test(
     ],
     args = [
         "--num_clients=2",
-        "--num_devices=1",
+        "--num_local_devices=1",
         "--model_dim_size=2",
     ],
     disable = ALL_BACKENDS,
@@ -369,6 +398,7 @@ dtensor_test(
         "nosan",  # b/195537906
     ],
     deps = [
+        ":multi_client_test_util",
         ":test_util",
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",

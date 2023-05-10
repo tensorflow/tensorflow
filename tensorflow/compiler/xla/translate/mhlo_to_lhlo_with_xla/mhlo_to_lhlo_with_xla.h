@@ -93,19 +93,13 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpT>
   tsl::StatusOr<OpT> EmitDoneOp(const xla::HloInstruction* instr);
 
-  tsl::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
-      const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllToAllStartOp> EmitAllToAllStartOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllToAllDoneOp> EmitAllToAllDoneOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
-      const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllGatherStartOp> EmitAllGatherStartOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllGatherDoneOp> EmitAllGatherDoneOp(
-      const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::AllReduceStartOp> EmitAllReduceStartOp(
       const xla::HloInstruction* instr);
@@ -115,13 +109,9 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
   tsl::StatusOr<mlir::Operation*> EmitAsyncDoneOp(
       const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::ReduceScatterOp> EmitReduceScatterOp(
-      const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::ReduceScatterStartOp> EmitReduceScatterStartOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::ReduceScatterDoneOp> EmitReduceScatterDoneOp(
-      const xla::HloInstruction* instr);
-  tsl::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo_gpu::CollectivePermuteStartOp>
   EmitCollectivePermuteStartOp(const xla::HloInstruction* instr);

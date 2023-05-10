@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/base/log_severity.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -2686,6 +2689,101 @@ TEST_F(HloVerifierTest, InvalidU4Usage) {
   EXPECT_THAT(
       status.message(),
       HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+}
+
+TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
+  if (tsl::testing::kIsOpenSource) {
+    return;
+  }
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+    ENTRY entry {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT sum = s32[] add(p0, p1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  ::absl::ScopedMockLog log(::absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      log,
+      Log(absl::LogSeverity::kInfo, ::testing::EndsWith("/hlo_verifier.cc"),
+          ::testing::StartsWith("TEST PREFIX creation_pass_coverage=0")))
+      .Times(1);
+  log.StartCapturingLogs();
+  {
+    MetadataTracker tracker("TEST PREFIX");
+    for (const auto* c : module->computations()) {
+      TF_ASSERT_OK(c->Accept(&tracker));
+    }
+  }
+}
+
+TEST_F(HloVerifierTest, TopKWrongComparator) {
+  const char* const hlo = R"(
+HloModule module
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  p3 = f32[] parameter(2)
+  p4 = f32[] parameter(3)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY entry {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("to have 2 parameters"));
+}
+
+TEST_F(HloVerifierTest, TopKUnexpectedComparator) {
+  const char* const hlo = R"(
+HloModule module
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LE
+}
+
+ENTRY entry {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("expects a strict comparison"));
+}
+
+TEST_F(HloVerifierTest, TopKOK) {
+  const char* const hlo = R"(
+HloModule topk, entry_computation_layout={(f32[10,10]{0,1})->(f32[10,2]{0,1}, s32[10,2]{0,1})}
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY TopK {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
 }
 
 }  // namespace

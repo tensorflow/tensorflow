@@ -269,6 +269,9 @@ inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
 ### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
+### `-tf-embedding-pipelining`: Rewrite graph for embedding pipelining
+For architectures that support accelerated embedding lookups, this pass will
+rewrite the graph to use pipelining for better device utilization.
 ### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-executor-check-control-dependencies`: Checks control dependencies
 This pass analyzes control dependencies between islands and warns about
@@ -1532,6 +1535,25 @@ Then said `ReadVariableOp` is going to get replaced by:
     %2 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<4xf32>>>) -> tensor<4xf32>
     tf_device.return %2 : tensor<4xf32>
   }) {...} : () -> tensor<4xf32>
+```
+### `-tf-tpu-colocate-splits`: Colocates each Split op with its predecessor
+It is beneficial for performance to assign a `Split` op to the same device
+as its predecessor. This is because the weight of cut edges is always
+minimized when the `Split` is with its predecessor. This colocation
+constraint will be used by the placer graph optimization to assign a device
+to the op.
+
+This pass should run in the export pipeline after tf-replicate-to-island so
+each replica has its own distinct (predecessor, Split) pair.
+
+The colocation class (`_class`) of the `Split` is set to the same class as
+its predecessor:
+
+```mlir
+%outputs1:2, %control1 = tf_executor.island wraps "tf.IteratorGetNext"(%arg)
+  {_class = ["loc:@dataset_iterator_1"]}
+%outputs2:2, %control2 = tf_executor.island wraps "tf.Split"(%outputs0, %outputs1#1)
+  {_class = ["loc:@dataset_iterator_1", num_split = 2 : i32}
 ```
 ### `-tf-tpu-device-propagation`: Propagates TPU devices from ops to users
 ### `-tf-tpu-dynamic-layout-pass`: Inserts TPU layout ops to determine layout at run time.

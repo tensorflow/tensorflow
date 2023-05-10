@@ -24,7 +24,7 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
@@ -246,17 +246,24 @@ class _DelayedRewriteGradientFunctions(object):
     # Rewrite an inference call op to be a forward call op
     op._set_func_attr("f", forward_function.name)
     op._set_type_list_attr(
-        "Tout", forward_function._graph_artifacts.output_types
+        "Tout",
+        [
+            o.dtype.as_datatype_enum
+            for o in forward_function.function_type.flat_outputs
+        ],
     )
+    truncated_outputs = forward_function.function_type.flat_outputs[
+        len(op.outputs) :
+    ]
     op._add_outputs(
-        forward_function._graph_artifacts.output_types[len(op.outputs) :],
-        forward_function._graph_artifacts.output_shapes[len(op.outputs) :],
+        [o.dtype.as_datatype_enum for o in truncated_outputs],
+        [o.shape for o in truncated_outputs],
     )
     for i in range(len(op.outputs)):
-      func_graph_output = forward_function._graph_artifacts.func_graph_outputs[
-          i
-      ]
-      handle_data_util.copy_handle_data(func_graph_output, op.outputs[i])
+      output_type = forward_function.function_type.flat_outputs[i]
+      handle_data = output_type.dtype._handle_data
+      if handle_data:
+        handle_data_util.set_handle_data(op.outputs[i], handle_data)
     # pylint: enable=protected-access
 
     capture_mapping = dict(
@@ -345,7 +352,7 @@ class _DelayedRewriteGradientFunctions(object):
         operation.
     """
     backward_function, to_record = self._backward(flat_outputs)
-    tape.record_operation(
+    record.record_operation(
         self._inference_function.cached_definition.signature.name,
         to_record,
         inference_args + input_tangents,
@@ -525,7 +532,7 @@ class _TapeGradientFunctions(object):
           else:
             forward_wrapper_graph.inputs.append(input_placeholder)
         for inp, arg in zip(forward_wrapper_graph.inputs, inference_args):
-          tape.record_operation(
+          record.record_operation(
               "captured_value", [inp], [arg],
               backward_function=lambda x: [x],
               forward_function=lambda x: [x])
@@ -545,7 +552,7 @@ class _TapeGradientFunctions(object):
             tensor_shape.TensorShape(
                 external_jvp.shape).assert_is_compatible_with(
                     jvp_placeholder.shape)
-            tape.record_operation(
+            record.record_operation(
                 "captured_value",
                 [jvp_placeholder],
                 [external_jvp],
@@ -573,7 +580,7 @@ class _TapeGradientFunctions(object):
       #
       # TODO(allenl): It might be better to explicitly stop backward recording
       # so we don't use the second-order tape cases unnecessarily.
-      tape.record_operation_forwardprop_only(
+      record.record_operation_forwardprop_only(
           forward_function.cached_definition.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
@@ -801,19 +808,19 @@ class _TapeGradientFunctions(object):
     backward_function, to_record = self._wrap_backward_function(
         self._forward_graph, self._backward, flat_outputs)
     if self._forwardprop_output_indices:
-      tape.record_operation_backprop_only(
+      record.record_operation_backprop_only(
           self._forward.cached_definition.signature.name,
           to_record, inference_args,
           backward_function)
-      tape.record_operation_forwardprop_only(
+      record.record_operation_forwardprop_only(
           self._forward.cached_definition.signature.name,
           flat_outputs, inference_args + input_tangents,
           backward_function,
           self._forwardprop_output_indices)
     else:
-      tape.record_operation(self._forward.cached_definition.signature.name,
-                            to_record, inference_args + input_tangents,
-                            backward_function)
+      record.record_operation(self._forward.cached_definition.signature.name,
+                              to_record, inference_args + input_tangents,
+                              backward_function)
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
@@ -1289,7 +1296,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if default_graph.building_function and not self._func_graph.saveable:
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
-    if (tape.could_possibly_record() or
+    if (record.could_possibly_record() or
         hasattr(default_graph, "watch_variable")):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
@@ -1608,7 +1615,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       input_tangents = forwardprop_util.pack_tangents(args)
     else:
       input_tangents = forwardprop_util.TangentInfo()
-    need_gradients_for_jvps = tape.should_record_backprop(
+    need_gradients_for_jvps = record.should_record_backprop(
         input_tangents.tangents)
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.

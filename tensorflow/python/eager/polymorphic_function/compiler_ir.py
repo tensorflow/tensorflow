@@ -41,13 +41,11 @@ def make_handledata_tensor_specs(resource_vars):
   trace_type_inputs = trace_type.from_value(
       tuple(resource_vars), inner_context
   ).components
-  handledata_mapping = inner_context.get_handledata_mapping()
 
   def to_resource_spec(traced_input):
     try:
-      my_id = id(traced_input)
-      handled_data = handledata_mapping[my_id]
-      shape_and_type = handled_data.shape_and_type[0]
+      handle_data = traced_input.dtype._handle_data  # pylint: disable=protected-access
+      shape_and_type = handle_data.shape_and_type[0]
       spec = tensor_spec.TensorSpec(
           shape=shape_and_type.shape, dtype=shape_and_type.dtype
       )

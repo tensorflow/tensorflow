@@ -149,7 +149,6 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/training:saver",
         "//tensorflow/python/training:training_lib",
-        "//tensorflow/python/types",
         "@absl_py//absl/logging",
     ],
 )
@@ -181,7 +180,7 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/trackable:autotrackable",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
@@ -240,7 +239,7 @@ pytype_library(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -269,7 +268,7 @@ pytype_strict_library(
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
     ],
 )
 
@@ -283,7 +282,7 @@ tf_py_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
     ],
 )

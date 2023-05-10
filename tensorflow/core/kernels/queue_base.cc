@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/queue_base.h"
 
 #include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -36,11 +39,11 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
   if (element->NumElements() != (parent.NumElements() / parent.dim_size(0))) {
     TensorShape chip_shape = parent.shape();
     chip_shape.RemoveDim(0);
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "HandleSliceToElement Cannot copy slice: number of elements does not "
         "match.  Shapes are: [element]: ",
         element->shape().DebugString(),
-        ", [parent slice]: ", chip_shape.DebugString());
+        ", [parent slice]: ", chip_shape.DebugString()));
   }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);
@@ -62,16 +65,16 @@ QueueBase::~QueueBase() {}
 
 Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
   if (tuple.size() != static_cast<size_t>(num_components())) {
-    return errors::InvalidArgument(
-        "Wrong number of components in tuple. Expected ", num_components(),
-        ", got ", tuple.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Wrong number of components in tuple. Expected ",
+                     num_components(), ", got ", tuple.size()));
   }
   for (size_t i = 0; i < tuple.size(); ++i) {
     if (tuple[i].dtype() != component_dtypes_[i]) {
-      return errors::InvalidArgument(
-          "Type mismatch in tuple component ", i, ". Expected ",
-          DataTypeString(component_dtypes_[i]), ", got ",
-          DataTypeString(tuple[i].dtype()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Type mismatch in tuple component ", i, ". Expected ",
+                       DataTypeString(component_dtypes_[i]), ", got ",
+                       DataTypeString(tuple[i].dtype())));
     }
   }
   return OkStatus();
@@ -92,9 +95,10 @@ string QueueBase::ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {
 Status QueueBase::MatchesNodeDefOp(const NodeDef& node_def,
                                    const string& op) const {
   if (node_def.op() != op) {
-    return errors::InvalidArgument("Shared queue '", name_, "' has type '", op,
-                                   "' that does not match type of Node '",
-                                   node_def.name(), "': ", node_def.op());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shared queue '", name_, "' has type '", op,
+                     "' that does not match type of Node '", node_def.name(),
+                     "': ", node_def.op()));
   }
   return OkStatus();
 }
@@ -105,9 +109,9 @@ Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "capacity", &requested_capacity));
   if (requested_capacity < 0) requested_capacity = kUnbounded;
   if (requested_capacity != capacity) {
-    return errors::InvalidArgument("Shared queue '", name_, "' has capacity ",
-                                   capacity, " but requested capacity was ",
-                                   requested_capacity);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shared queue '", name_, "' has capacity ", capacity,
+                     " but requested capacity was ", requested_capacity));
   }
   return OkStatus();
 }
@@ -117,11 +121,11 @@ Status QueueBase::MatchesNodeDefTypes(const NodeDef& node_def) const {
   TF_RETURN_IF_ERROR(
       GetNodeAttr(node_def, "component_types", &requested_dtypes));
   if (requested_dtypes != component_dtypes_) {
-    return errors::InvalidArgument("Shared queue '", name_,
-                                   "' has component types ",
-                                   DataTypeSliceString(component_dtypes_),
-                                   " but requested component types were ",
-                                   DataTypeSliceString(requested_dtypes));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shared queue '", name_, "' has component types ",
+                     DataTypeSliceString(component_dtypes_),
+                     " but requested component types were ",
+                     DataTypeSliceString(requested_dtypes)));
   }
   return OkStatus();
 }
@@ -130,11 +134,11 @@ Status QueueBase::MatchesNodeDefShapes(const NodeDef& node_def) const {
   std::vector<TensorShape> requested_shapes;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "shapes", &requested_shapes));
   if (requested_shapes != component_shapes_) {
-    return errors::InvalidArgument("Shared queue '", name_,
-                                   "' has component shapes ",
-                                   ShapeListString(component_shapes_),
-                                   " but requested component shapes were ",
-                                   ShapeListString(requested_shapes));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shared queue '", name_, "' has component shapes ",
+                     ShapeListString(component_shapes_),
+                     " but requested component shapes were ",
+                     ShapeListString(requested_shapes)));
   }
   return OkStatus();
 }
@@ -146,10 +150,10 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
   if (specified_shapes()) {
     for (size_t i = 0; i < tuple.size(); ++i) {
       if (!component_shapes_[i].IsSameSize(tuple[i].shape())) {
-        return errors::InvalidArgument(
-            "Shape mismatch in tuple component ", i, ". Expected ",
-            component_shapes_[i].DebugString(), ", got ",
-            tuple[i].shape().DebugString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Shape mismatch in tuple component ", i, ". Expected ",
+                         component_shapes_[i].DebugString(), ", got ",
+                         tuple[i].shape().DebugString()));
       }
     }
   }
@@ -166,19 +170,19 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
       // Expected shape is [batch_size] + component_shapes_[i]
       const TensorShape expected_shape = ManyOutShape(i, batch_size);
       if (!expected_shape.IsSameSize(tuple[i].shape())) {
-        return errors::InvalidArgument("Shape mismatch in tuple component ", i,
-                                       ". Expected ",
-                                       expected_shape.DebugString(), ", got ",
-                                       tuple[i].shape().DebugString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Shape mismatch in tuple component ", i, ". Expected ",
+                         expected_shape.DebugString(), ", got ",
+                         tuple[i].shape().DebugString()));
       }
     }
   } else {
     for (size_t i = 1; i < tuple.size(); ++i) {
       if (tuple[i].dim_size(0) != batch_size) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "All input tensors must have the same size in the 0th ",
             "dimension. Component ", i, " has ", tuple[i].dim_size(0),
-            ", and should have ", batch_size);
+            ", and should have ", batch_size));
       }
     }
   }
@@ -200,10 +204,10 @@ void QueueBase::Cancel(Action action, CancellationManager* cancellation_manager,
           attempt.is_cancelled = true;
           if (action == kEnqueue) {
             attempt.context->SetStatus(
-                errors::Cancelled("Enqueue operation was cancelled"));
+                absl::CancelledError("Enqueue operation was cancelled"));
           } else {
             attempt.context->SetStatus(
-                errors::Cancelled("Dequeue operation was cancelled"));
+                absl::CancelledError("Dequeue operation was cancelled"));
           }
           std::swap(callback, attempt.done_callback);
         }
@@ -226,7 +230,7 @@ void QueueBase::CloseAndCancel() {
       if (!attempt.is_cancelled) {
         attempt.is_cancelled = true;
         attempt.context->SetStatus(
-            errors::Cancelled("Enqueue operation was cancelled"));
+            absl::CancelledError("Enqueue operation was cancelled"));
         callbacks.emplace_back(std::move(attempt.done_callback));
       }
     }
@@ -249,8 +253,8 @@ void QueueBase::Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
           0, callback, ctx, nullptr, CancellationManager::kInvalidToken,
           [this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
-              attempt->context->SetStatus(
-                  errors::Cancelled("Queue '", name_, "' is already closed."));
+              attempt->context->SetStatus(absl::CancelledError(
+                  absl::StrCat("Queue '", name_, "' is already closed.")));
             } else {
               closed_ = true;
             }

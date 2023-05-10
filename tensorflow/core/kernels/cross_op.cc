@@ -16,9 +16,13 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/cross_op.h"
+
 #include <algorithm>
 #include <cmath>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/cross_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,13 +47,14 @@ class CrossOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& in0 = context->input(0);
     const Tensor& in1 = context->input(1);
-    OP_REQUIRES(context, in0.shape() == in1.shape(),
-                errors::InvalidArgument("Both inputs must be of same shape: ",
-                                        in0.shape().DebugString(), " vs. ",
-                                        in1.shape().DebugString()));
+    OP_REQUIRES(
+        context, in0.shape() == in1.shape(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Both inputs must be of same shape: ", in0.shape().DebugString(),
+            " vs. ", in1.shape().DebugString())));
     OP_REQUIRES(context, in0.dims() >= 1,
-                errors::InvalidArgument("Input must be at least 1D",
-                                        in0.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input must be at least 1D", in0.shape().DebugString())));
 
     // Cross-products only really make sense for three and
     // seven dimensions, and the latter is very obscure. If there is
@@ -59,7 +63,7 @@ class CrossOp : public OpKernel {
     // that all are 3D.
     auto inner_dim = in0.dim_size(in0.dims() - 1);
     OP_REQUIRES(context, inner_dim == 3,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(
                     "Cross-products are only defined for 3-element vectors."));
 
     // Create the output Tensor with the same dimensions as the input Tensors.

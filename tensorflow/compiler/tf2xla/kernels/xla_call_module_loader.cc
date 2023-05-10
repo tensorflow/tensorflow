@@ -66,8 +66,11 @@ const int VERSION_START_PLATFORMS = 3;
 // Version 4 supports StableHLO with compatibility guarantees.
 // Used from 03/2023.
 const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
+// Version 5 add support to stablehlo.custom_call for host call tf graph.
+// Used from 04/2023.
+const int VERSION_SUPPORT_CUSTOM_CALL = 5;
 const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
-const int VERSION_MAXIMUM_SUPPORTED = VERSION_START_STABLE_HLO_COMPATIBILITY;
+const int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".

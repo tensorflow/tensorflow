@@ -95,17 +95,6 @@ class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
 #define GEN_PASS_DEF_LEGALIZETFMODULEPASS
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
-class LegalizeTFModulePass
-    : public impl::LegalizeTFModulePassBase<LegalizeTFModulePass> {
- public:
-  explicit LegalizeTFModulePass(StringRef tf2xla_fallback_device_type) {
-    device_type_ = tf2xla_fallback_device_type.str();
-  }
-
-  /// Performs the lowering to XLA dialect.
-  void runOnOperation() override;
-};
-
 FailureOr<IntegerType> GetStorageType(Operation *op,
                                       Type original_output_element_type,
                                       PatternRewriter &rewriter) {
@@ -952,7 +941,7 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
     // Add TF->HLO legalization patterns via TF2XLA fallback.
     PopulateLegalizeTfWithTf2XlaPatterns(
         tf2xla_fallback_device_type.value(), patterns, context, converter,
-        prefer_tf2xla, /*is_module_pass=*/false, use_tf2xla_hlo_importer);
+        prefer_tf2xla, use_tf2xla_hlo_importer);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -982,27 +971,6 @@ void LegalizeTF::runOnOperation() {
   }
 }
 
-void LegalizeTFModulePass::runOnOperation() {
-  // This pass should only be run when a fallback device is present.
-  if (!device_type_.hasValue()) {
-    return;
-  }
-  VLOG(1) << "TF to XLA legalization patterns include TF2XLA fallback "
-             "patterns for Ops that need to create functions.";
-  Operation *op = getOperation();
-  MLIRContext *context = op->getContext();
-  RewritePatternSet patterns(context);
-  Tf2XlaTypeConverter converter;
-  PopulateLegalizeTfWithTf2XlaPatterns(device_type_, patterns, context,
-                                       converter, /*prefer_tf2xla=*/false,
-                                       /*is_module_pass=*/true);
-
-  if (failed(ApplyPatterns(op, patterns,
-                           /*legalize_chlo=*/false))) {
-    signalPassFailure();
-  }
-}
-
 }  // end namespace
 
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
@@ -1022,11 +990,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
                                       tf2xla_fallback_device_type,
                                       prefer_tf2xla);
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
-    StringRef tf2xla_fallback_device_type) {
-  return std::make_unique<LegalizeTFModulePass>(tf2xla_fallback_device_type);
 }
 
 }  // end namespace mhlo

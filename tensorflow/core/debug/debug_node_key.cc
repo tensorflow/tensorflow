@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_node_key.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
@@ -25,18 +27,25 @@ const char* const DebugNodeKey::kMetadataFilePrefix = "_tfdbg_";
 const char* const DebugNodeKey::kDeviceTag = "device_";
 
 DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
-                           const int32_t output_slot, const string& debug_op)
+                           const int32_t output_slot, const string& debug_op,
+                           const string& io_of_node, const bool is_input,
+                           const int32_t io_index)
     : device_name(device_name),
       node_name(node_name),
       output_slot(output_slot),
       debug_op(debug_op),
       debug_node_name(
           strings::StrCat(node_name, ":", output_slot, ":", debug_op)),
-      device_path(DeviceNameToDevicePath(device_name)) {}
+      device_path(DeviceNameToDevicePath(device_name)),
+      io_of_node(io_of_node),
+      is_input(is_input),
+      io_index(io_index) {}
 
 bool DebugNodeKey::operator==(const DebugNodeKey& other) const {
   return (device_name == other.device_name && node_name == other.node_name &&
-          output_slot == other.output_slot && debug_op == other.debug_op);
+          output_slot == other.output_slot && debug_op == other.debug_op &&
+          io_of_node == other.io_of_node && is_input == other.is_input &&
+          io_index == other.io_index);
 }
 
 bool DebugNodeKey::operator!=(const DebugNodeKey& other) const {

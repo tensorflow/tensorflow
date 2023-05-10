@@ -1,4 +1,5 @@
-# DTensor C++ runtime and libraries.
+#include "third_party/absl/strings/str_cat.h"
+#DTensor C++ runtime and libraries.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -116,6 +117,7 @@ cc_library(
         "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -131,6 +133,7 @@ cc_library(
         "//tensorflow/tsl/platform:refcount",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -343,6 +346,8 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/dtensor/mlir:layout_parsing",
+        "//tensorflow/dtensor/mlir:op_utils",
+        "//tensorflow/dtensor/mlir:spmd_expander",
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/util:env_var",

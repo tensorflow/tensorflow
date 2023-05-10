@@ -47,7 +47,7 @@ LogicalResult GetOutermostOpsOfType(
         auto v = symtab.lookup<func::FuncOp>(sym.getRootReference());
         if (!v) {
           // This is not expected to happen in practice.
-          v.emitError() << "Cannot find function " << sym.getRootReference();
+          op->emitError() << "Cannot find function " << sym.getRootReference();
           return WalkResult::interrupt();
         }
         worklist.push(v);

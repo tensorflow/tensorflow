@@ -16,7 +16,6 @@
 import copy
 import functools
 import itertools
-import os
 import weakref
 
 from absl.testing import parameterized
@@ -27,9 +26,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
-from tensorflow.python.eager.polymorphic_function import quarantine
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -46,7 +43,6 @@ from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -76,6 +72,33 @@ def total_function_cache(defined):
 # TODO(b/258247871): Do not delete these tests, migrate to use tf.function or
 # TracingCompiler.
 class DefunTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBackwardNoneGradient(self):
+    model = variables.Variable(1.0, name='model')
+    count = variables.Variable(0)
+
+    @polymorphic_function.function
+    def forward_pass(value):
+      count.assign_add(1)
+      residuals = value - model
+      loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
+      # Note: count is an integer, so its doutput will be None
+      return loss, count
+
+    def reduce_fn(x):
+      if context.executing_eagerly():
+        with backprop.GradientTape() as t:
+          loss, count = forward_pass(x)
+        return t.gradient(loss, model), count
+      loss, count = forward_pass(x)
+      grad_only = gradients_impl.gradients(loss, model)
+      return grad_only, count
+
+    g, _ = reduce_fn(constant_op.constant([7.0]))
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(nest.flatten(self.evaluate(g)), [-6.0])
 
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():
@@ -1931,134 +1954,6 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
 
     result = func(g1, g2, c1, g3, c2)
     self.assertEqual(result.numpy(), 5.0 * 7.0 * 17.0)
-
-
-class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
-
-  def testAddFunctionCallback(self):
-    functions = []
-
-    def function_callback(f):
-      functions.append(f)
-      return f
-
-    @polymorphic_function.function
-    def plus_one(x):
-      return x + 1
-
-    try:
-      quarantine.add_function_callback(function_callback)
-      x_float32 = numpy.array(3.0, dtype=numpy.float32)
-      self.assertAllClose(plus_one(x_float32), 4.0)
-      self.assertLen(functions, 1)
-      # Function is already created. Executing it again should not invoke the
-      # function callback.
-      self.assertAllClose(plus_one(x_float32), 4.0)
-      self.assertLen(functions, 1)
-      # Signature change leads to a new Function being built.
-      x_float64 = numpy.array(3.0, dtype=numpy.float64)
-      self.assertAllClose(plus_one(x_float64), 4.0)
-      self.assertLen(functions, 2)
-    finally:
-      quarantine.clear_function_callbacks()
-
-  def testFunctionCallbackAddOps(self):
-    file_name = os.path.join(self.get_temp_dir(), 'test')
-
-    def function_callback(f):
-      with f.graph.as_default():
-        printer = logging_ops.print_v2(
-            'hello', output_stream='file://' + file_name
-        )
-        f._graph_artifacts.outputs[0].op._add_control_input(printer)
-
-        return atomic_function.from_func_graph_no_transforms(
-            f.name,
-            f.graph,
-            f._graph_artifacts.inputs,
-            f._graph_artifacts.outputs,
-            f._graph_artifacts.attrs,
-            overwrite=True,
-        )
-
-    @polymorphic_function.function
-    def plus_one(x):
-      return x + 1
-
-    self.addCleanup(quarantine.clear_function_callbacks)
-    quarantine.add_function_callback(function_callback)
-    x_float32 = numpy.array(3.0, dtype=numpy.float32)
-
-    self.assertAllClose(plus_one(x_float32), 4.0)
-
-    with open(file_name, 'r') as f:
-      self.assertEqual(f.read().strip(), 'hello')
-
-  def testRemoveFunctionCallback(self):
-    functions_1 = []
-
-    def function_callback_1(f):
-      functions_1.append(f)
-      return f
-
-    functions_2 = []
-
-    def function_callback_2(f):
-      functions_2.append(f)
-      return f
-
-    @polymorphic_function.function
-    def plus_one(x):
-      return x + 1
-
-    try:
-      quarantine.add_function_callback(function_callback_1)
-      quarantine.add_function_callback(function_callback_2)
-      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float32)), 4.0)
-      self.assertLen(functions_1, 1)
-      self.assertLen(functions_2, 1)
-      quarantine.remove_function_callback(function_callback_1)
-      # The 1st callback should not be invokved after remove_function_callback()
-      # is called.
-      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float64)), 4.0)
-      self.assertLen(functions_1, 1)
-      self.assertLen(functions_2, 2)
-    finally:
-      quarantine.clear_function_callbacks()
-
-  def testClearFunctionCallbacks(self):
-    quarantine.add_function_callback(lambda f: None)
-    quarantine.add_function_callback(lambda f: None)
-    self.assertLen(atomic_function.FUNCTION_TRANSFORMS, 2)
-    quarantine.clear_function_callbacks()
-    self.assertEmpty(atomic_function.FUNCTION_TRANSFORMS)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testBackwardNoneGradient(self):
-    model = variables.Variable(1.0, name='model')
-    count = variables.Variable(0)
-
-    @polymorphic_function.function
-    def forward_pass(value):
-      count.assign_add(1)
-      residuals = value - model
-      loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
-      # Note: count is an integer, so its doutput will be None
-      return loss, count
-
-    def reduce_fn(x):
-      if context.executing_eagerly():
-        with backprop.GradientTape() as t:
-          loss, count = forward_pass(x)
-        return t.gradient(loss, model), count
-      loss, count = forward_pass(x)
-      grad_only = gradients_impl.gradients(loss, model)
-      return grad_only, count
-
-    g, _ = reduce_fn(constant_op.constant([7.0]))
-
-    self.evaluate(variables.global_variables_initializer())
-    self.assertAllEqual(nest.flatten(self.evaluate(g)), [-6.0])
 
 
 class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):

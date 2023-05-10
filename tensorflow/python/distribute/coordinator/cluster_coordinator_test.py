@@ -33,7 +33,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import remote_value
@@ -44,12 +44,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -489,7 +489,7 @@ def make_coordinator(num_workers, num_ps):
   cluster_def['chief'] = [
       'localhost:%d' % test_util.pick_unused_port()
   ]
-  cluster_resolver = SimpleClusterResolver(
+  cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer='grpc')
   strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
       cluster_resolver)
@@ -733,11 +733,12 @@ class ClusterCoordinatorTest(
     self.assertNotAllEqual(elements_in_iterator_1, elements_in_iterator_2)
 
   def testPerWorkerValue(self):
-    self.skipTest('b/168569314')
     var_shape = tuple()
     var_dtype = dtypes.float32
     var_name = 'var'
 
+    # This should not be a tf.function, as variable creation is prohibited in
+    # tf.functions in general.
     def create_var():
       var = variables.Variable(
           initial_value=0.0, dtype=var_dtype, name=var_name)
@@ -745,16 +746,17 @@ class ClusterCoordinatorTest(
       return var
 
     worker_local_var = self.coordinator._create_per_worker_resources(create_var)
-
     # The following is a workaround to allow `worker_local_var` to be passed in
-    # as args to the `coordinator.schedule` method which requires tensor specs
-    # to trace tf.function but _create_worker_resources' return values don't
-    # have tensor specs. We can get rid of this workaround once
-    # _create_worker_resources is able to infer the tensor spec of the return
-    # value of the function passed in. See b/154675763.
+    # as args to the `coordinator.schedule` method which requires specs
+    # to trace a tf.function, but _create_worker_resources' return values don't
+    # have specs when its input function is not a tf.function. We can get rid of
+    # this workaround once _create_worker_resources is able to infer the tensor
+    # spec of the return value of the (non-tf) function passed in. See
+    # b/154675763.
     for var in worker_local_var._values:
-      var._type_spec = tensor_spec.TensorSpec(var_shape, var_dtype, var_name)
+      var._type_spec = resource_variable_ops.VariableSpec(var_shape, var_dtype)
 
+    @def_function.function
     def worker_fn(var):
       var.assign_add(1.0)
 
@@ -767,8 +769,36 @@ class ClusterCoordinatorTest(
     var_sum = sum(self.coordinator.fetch(worker_local_var._values))
     self.assertEqual(var_sum, 10.0)
 
-  def testDisallowRemoteValueAsInput(self):
+  def testPerWorkerVariableCreation(self):
+    var_dtype = dtypes.float32
+    var_name = 'var'
 
+    with self.strategy.scope():
+      var = variables.Variable(
+          initial_value=0.0, dtype=var_dtype, name=var_name,
+          per_worker_variable=True)
+
+    # Use per-worker variable as a capture
+    @def_function.function
+    def worker_fn():
+      var.assign_add(1.0)
+      return var
+
+    num_closures = 10
+    for _ in range(num_closures):
+      self.coordinator.schedule(worker_fn)
+    self.coordinator.join()
+
+    # Verify placement of variables
+    devices = [wv._get_values().device for wv in var._per_worker_vars._values]
+    expected_devices = [f'/job:worker/replica:0/task:{ix}/device:CPU:0'
+                        for ix in range(self.strategy._num_workers)]  # pylint: disable=protected-access
+    self.assertAllEqual(devices, expected_devices)
+
+    result_sum = sum(var.read_all()).numpy()
+    self.assertEqual(result_sum, num_closures)
+
+  def testDisallowRemoteValueAsInput(self):
     @def_function.function
     def func_0():
       return 1.0

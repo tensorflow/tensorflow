@@ -23,7 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.eager import record
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -962,7 +962,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       d2y_dx2 = g.gradient(dy_dx, x)  # d2y/dx2 := 6x
     d3y_dx3 = g.gradient(d2y_dx2, x)  # d3y/dx3 := 6
     x = 3
-    self.assertEqual(self.evaluate(y), x**3)
+    self.assertAllClose(self.evaluate(y), x**3)
     self.assertEqual(self.evaluate(dy_dx), 3 * x**2)
     self.assertEqual(self.evaluate(d2y_dx2), 6 * x)
     self.assertEqual(self.evaluate(d3y_dx3), 6)
@@ -1084,7 +1084,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(1.)
     with backprop.GradientTape() as g:
       g.watch(x)
-      tape_lib.record_operation('InvalidBackprop', [y], [x], lambda dy: [])
+      record.record_operation('InvalidBackprop', [y], [x], lambda dy: [])
     with self.assertRaisesRegex(errors_impl.InternalError,
                                 'InvalidBackprop.*too few gradients'):
       g.gradient(y, x)

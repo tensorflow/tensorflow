@@ -434,6 +434,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass(
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicaIDToDeviceOrdinalPass();
 
+// Creates a pass that adds pipelining to a graph that contains device
+// accelerated embeddings.
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
+
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
@@ -592,6 +596,9 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 
 // Creates a pass that propagates TPU devices to users.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
+
+// Create a pass that colocates each `Split` with its predecessor.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUColocateSplitsPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge.

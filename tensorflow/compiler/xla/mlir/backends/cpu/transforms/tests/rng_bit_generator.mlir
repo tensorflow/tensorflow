@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -xla-legalize-collective-ops | FileCheck %s
+// RUN: xla-cpu-opt %s -xla-legalize-library-ops | FileCheck %s
 
 func.func @rng_bit_generator(%state: tensor<2xui64>) -> (tensor<2xui64>, tensor<10xui32>) {
   %new_state, %output = "mhlo.rng_bit_generator"(%state) {

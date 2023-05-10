@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_collective_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -373,6 +374,9 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     d_tensor = api.call_with_layout(array_ops.zeros, layout=layout, shape=[10])
     self.assertTrue(api.is_dtensor(d_tensor))
 
+    var = d_variable.DVariable(d_tensor)
+    self.assertTrue(api.is_dtensor(var))
+
     self.assertFalse(api.is_dtensor([0, 1]))
     self.assertFalse(api.is_dtensor({False: True}))
 
@@ -402,13 +406,51 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     cpu0_mesh = Mesh.from_device("/job:localhost/replica:0/task:0/device:CPU:0")
     with api.default_mesh(cpu0_mesh):
       a = constant_op.constant(1.0)
-      b = array_ops.ones(shape=(3, 3))
 
     self.assertFalse(api.is_dtensor(a))
     self.assertIn("CPU:0", a.device)
 
+    with api.default_mesh(cpu0_mesh):
+      b = array_ops.ones(shape=(3, 3))
+
     self.assertTrue(api.is_dtensor(b))
     self.assertEqual(api.fetch_layout(b).mesh, cpu0_mesh)
+
+  def testUnsupportedOpReplicatedInput(self):
+    with api.default_mesh(self.mesh):
+      t = array_ops.ones(shape=(8, 3))
+      a = gen_collective_ops.collective_reduce_v2(
+          t,
+          group_size=1,
+          group_key=1030,
+          instance_key=1,
+          merge_op="Add",
+          final_op="Id",
+          ordering_token=[],
+      )
+
+    self.assertFalse(api.is_dtensor(a))
+    self.assertAllClose(a.numpy(), t.numpy())
+
+  def testUnsupportedOpShardedInput(self):
+    with api.default_mesh(self.mesh):
+      t = array_ops.ones(shape=(8, 3))
+      t = api.relayout(
+          t, Layout.batch_sharded(mesh=self.mesh, batch_dim=_BATCH_DIM, rank=2)
+      )
+      with self.assertRaisesRegex(
+          errors_impl.UnimplementedError, "not supported"
+      ):
+        # This is an Op that we don't have a SPMD expander.
+        gen_collective_ops.collective_reduce_v2(
+            t,
+            group_size=1,
+            group_key=1030,
+            instance_key=1,
+            merge_op="Add",
+            final_op="Id",
+            ordering_token=[],
+        )
 
 
 class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
@@ -443,9 +485,7 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
             layout=Layout.replicated(self.mesh, 2),
         )
     )
-    with self.assertRaisesRegex(
-        TypeError,
-        "Received Variable input to unpack, Variable is not supported."):
+    with self.assertRaisesRegex(TypeError, "Expecting a Tensor"):
       api._dtensor_device().unpack(v0)
 
   def testUnpackingRegularTensorRaisesInvalidArgumentError(self):
@@ -495,10 +535,10 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
     with self.assertRaisesRegex(RuntimeError, "`pack` must be called eagerly."):
       f(constant_op.constant([1.0]))
 
-  def testPackingVariablesRaisesTypeError(self):
+  def testPackingVariablesRaisesError(self):
     with self.assertRaisesRegex(
-        TypeError,
-        "Received Variable input to Pack, Variable is not supported."):
+        errors_impl.InvalidArgumentError, "Variable input is not supported."
+    ):
       api._dtensor_device().pack(
           [
               d_variable.DVariable(array_ops.ones([2, 3])),

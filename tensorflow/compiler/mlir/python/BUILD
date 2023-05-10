@@ -20,6 +20,7 @@ cc_library(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

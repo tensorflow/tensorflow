@@ -245,6 +245,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kTopK:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
@@ -2324,9 +2325,6 @@ bool ShardingPropagation::InferShardingFromOperands(
                                              may_combine_partial_sharding);
     }
     case HloOpcode::kCustomCall: {
-      if (instruction->IsCustomCall("X64Combine")) {
-        return false;
-      }
       HloSharding inferred_operand_sharding = HloSharding::Replicate();
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target());

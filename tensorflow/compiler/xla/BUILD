@@ -29,6 +29,7 @@ package_group(
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
         "//third_party/py/t5x/...",
+        "//third_party/py/tpu_graphs/...",
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
     ],
@@ -771,6 +772,10 @@ cc_library(
     hdrs = ["executable_run_options.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(
@@ -1178,7 +1183,9 @@ filegroup(
         "runlit.cfg.py",
         "runlit.site.cfg.py",
     ],
-    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler/xla:__subpackages__",  # Scheuklappen: keep
+    ],
 )
 
 # -----------------------------------------------------------------------------

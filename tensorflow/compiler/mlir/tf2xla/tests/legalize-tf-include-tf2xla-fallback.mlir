@@ -1,7 +1,7 @@
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion use-tf2xla-fallback=false" -verify-diagnostics %s | FileCheck --check-prefix NO_FALLBACK %s
-// RUN: tf-opt "-xla-legalize-tf=use-tf2xla-fallback=true device-type=XLA_CPU_JIT" -verify-diagnostics %s | FileCheck --check-prefix SUPPORTED_FALLBACK_DEVICE %s
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion use-tf2xla-fallback=true" %s | FileCheck --check-prefix UNSPECIFIED_FALLBACK_DEVICE %s
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion use-tf2xla-fallback=true device-type=INVALID_DEVICE_TYPE" %s | FileCheck --check-prefix UNSUPPORTED_FALLBACK_DEVICE %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion use-tf2xla-fallback=false use-tf2xla-hlo-importer=false" -verify-diagnostics %s | FileCheck --check-prefix NO_FALLBACK %s
+// RUN: tf-opt "-xla-legalize-tf=use-tf2xla-fallback=true device-type=XLA_CPU_JIT use-tf2xla-hlo-importer=false" -verify-diagnostics %s | FileCheck --check-prefix SUPPORTED_FALLBACK_DEVICE %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion use-tf2xla-fallback=true use-tf2xla-hlo-importer=false" %s | FileCheck --check-prefix UNSPECIFIED_FALLBACK_DEVICE %s
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion use-tf2xla-fallback=true device-type=INVALID_DEVICE_TYPE use-tf2xla-hlo-importer=false" %s | FileCheck --check-prefix UNSUPPORTED_FALLBACK_DEVICE %s
 
 // We run this test four times:
 // 1) Legalize without using TF2XLA fallback (ops cannot be legalized).

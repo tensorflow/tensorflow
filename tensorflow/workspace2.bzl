@@ -174,9 +174,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "bfcf778030831f325cfc13ae5995388cc834fbff2995a297ba580d9ec65ca3b6",
-        strip_prefix = "cudnn-frontend-0.8",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.8.zip"),
+        sha256 = "d8dba9e2607a0c256aa8eacb45b39986ab6f3f24a4d431d4397047a3cb0cd4fb",
+        strip_prefix = "cudnn-frontend-0.9",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.9.zip"),
     )
 
     tf_http_archive(
@@ -506,10 +506,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "dfb8582a05a893e305783047d791ffef5e167d295cf8d12b9eb9cfa0991ca5a9",
-        strip_prefix = "curl-7.88.0",
+        sha256 = "cdb38b72e36bc5d33d5b8810f8018ece1baa29a8f215b4495e495ded82bbf3c7",
+        strip_prefix = "curl-7.88.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.88.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.88.1.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule

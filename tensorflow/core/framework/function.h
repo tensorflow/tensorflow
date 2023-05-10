@@ -368,18 +368,33 @@ class AbstractStackTrace {
 
   virtual ~AbstractStackTrace() {}
 
-  // The returned span is alive as long as the AbstractStackTrace is alive.
+  // The returned span is alive until either the AbstractStackTrace gets
+  // destroyed or its cache gets flushed.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
+
+  // Remove all data that was generated for e.g. the result of ToFrames().
+  // Calling this will make the next ToFrames() run more slowly, but tends to
+  // save a large amount of memory.
+  virtual void WipeCache() {}
 
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
   virtual StackFrame LastUserFrame() const = 0;
+
+  // Returns stack trace from user code (instead of op creation ones returned in
+  // ToFrames).
+  virtual std::vector<StackFrame> GetUserFrames(int limit) const = 0;
+
   virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
 };
 
 using StackTracesMap =
     std::unordered_map<std::string,
                        std::shared_ptr<tensorflow::AbstractStackTrace>>;
+
+// Generates a GraphDebugInfo proto from a StackTracesMap object.
+tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
+    const tensorflow::StackTracesMap& map);
 
 // Holds Function information that can be shared in multiple places.
 // FunctionRecord must be explicitly finalized before being saved in
@@ -902,6 +917,7 @@ class FunctionLibraryRuntime {
     // tensors to the remote TensorHandles in the default device.
     absl::optional<int64_t> op_id = absl::nullopt;
 
+    // Not owned. Caller makes sure that the rendezvous outlives this Options.
     RendezvousInterface* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;

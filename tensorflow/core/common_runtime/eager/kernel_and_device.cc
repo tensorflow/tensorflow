@@ -354,7 +354,8 @@ KernelAndDeviceFunc::PrepareForRun(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    tsl::CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent,
+    tsl::core::RefCountPtr<Rendezvous>* rendezvous) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (eager_func_params.has_value()) {
     const EagerFunctionParams& params = eager_func_params.value();
@@ -382,9 +383,8 @@ KernelAndDeviceFunc::PrepareForRun(
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
   // of the same multi-device function concurrently.
-  Rendezvous* rendezvous = nullptr;
-  TF_CHECK_OK(rendezvous_factory_(opts->step_id, nullptr, &rendezvous));
-  opts->rendezvous = rendezvous;
+  TF_CHECK_OK(rendezvous_factory_(opts->step_id, nullptr, rendezvous));
+  opts->rendezvous = rendezvous->get();
   opts->create_rendezvous = false;
 
   // Create a cancellation manager to be used by FLR options if caller does not
@@ -432,9 +432,10 @@ Status KernelAndDeviceFunc::Run(
     n.WaitForNotification();
     return status;
   }
-  std::shared_ptr<FunctionLibraryRuntime::Options> opts =
-      PrepareForRun(step_container, outputs, cancellation_manager,
-                    eager_func_params, stack_trace, coordination_service_agent);
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
+  std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
+      step_container, outputs, cancellation_manager, eager_func_params,
+      stack_trace, coordination_service_agent, &created_rendezvous);
 
   std::vector<Tensor> rets;
   Status s;
@@ -447,7 +448,6 @@ Status KernelAndDeviceFunc::Run(
   if (cancellation_manager == nullptr) {
     delete opts->cancellation_manager;
   }
-  static_cast<Rendezvous*>(opts->rendezvous)->Unref();
   outputs->reserve(rets.size());
   for (auto& v : rets) {
     outputs->push_back(std::move(v));
@@ -468,19 +468,21 @@ void KernelAndDeviceFunc::RunAsync(
                                        {{"_r", 1}});
       },
       profiler::TraceMeLevel::kInfo);
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,
-      absl::nullopt, coordination_service_agent);
+      absl::nullopt, coordination_service_agent, &created_rendezvous);
 
-  pflr_->Run(*opts, handle_, inputs, outputs,
-             [this, opts, cancellation_manager,
-              done = std::move(done)](const Status& s) {
-               if (cancellation_manager == nullptr) {
-                 delete opts->cancellation_manager;
-               }
-               static_cast<Rendezvous*>(opts->rendezvous)->Unref();
-               done(s);
-             });
+  pflr_->Run(
+      *opts, handle_, inputs, outputs,
+      [opts, cancellation_manager, done = std::move(done),
+       created_rendezvous = created_rendezvous.release()](const Status& s) {
+        if (cancellation_manager == nullptr) {
+          delete opts->cancellation_manager;
+        }
+        created_rendezvous->Unref();
+        done(s);
+      });
 }
 
 tensorflow::Device* KernelAndDeviceOp::OutputDevice(int idx) const {

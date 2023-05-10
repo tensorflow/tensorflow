@@ -516,8 +516,8 @@ def _map_function_arguments_to_created_inputs(
     function_arguments: A list of argument placeholders in the function body.
     signature_key: The name of the signature being exported, for error messages.
     function_name: The name of the function, for error messages.
-    defaults: A dictionary mapping (signature_key, user_specified_name) to
-      Tensor representing default values.
+    defaults: A dictionary mapping signature_key to dictionary of
+      user_specified_name to Tensor representing default values.
 
   Returns:
     A tuple of (mapped_inputs, exterior_placeholders)
@@ -563,7 +563,7 @@ def _map_function_arguments_to_created_inputs(
           "structures unless unique names are specified for each. Use "
           "tf.TensorSpec(..., name=...) to provide a name for a Tensor "
           "input.")
-    default_value = defaults.get((signature_key, user_input_name))
+    default_value = defaults.get(signature_key, {}).get(user_input_name)
     if default_value is not None:
       placeholder_with_default = array_ops.placeholder_with_default(
           input=default_value.numpy(),
@@ -592,8 +592,8 @@ def _generate_signatures(signature_functions, object_map, defaults=None):
       which will be used to generate SignatureDefs.
     object_map: A dictionary that contains mappings from signature functions to
       concrete functions in the exported graph.
-    defaults: A dictionary mapping (signature_key, user_specified_name) to
-      Tensor representing default values.
+    defaults: A dictionary mapping signature_key to dictionary of
+      user_specified_name to Tensor representing default values.
 
   Returns:
     Each function in the `signature_functions` dictionary is called with
@@ -632,7 +632,9 @@ def _generate_signatures(signature_functions, object_map, defaults=None):
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_argument_placeholders),
         _tensor_dict_to_tensorinfo(outputs),
-        method_name=signature_constants.PREDICT_METHOD_NAME)
+        method_name=signature_constants.PREDICT_METHOD_NAME,
+        defaults=defaults.get(signature_key, None),
+    )
   return signatures
 
 
@@ -823,8 +825,8 @@ def _fill_meta_graph_def(
       functions containing signatures to add to the MetaGraph.
     namespace_whitelist: List of strings containing whitelisted op namespaces.
     save_custom_gradients: Whether to save custom gradients.
-    defaults: A dictionary mapping (signature_key, user_specified_name) to
-      Tensor representing default values.
+    defaults: A dictionary mapping signature_key to dictionary of
+      user_specified_name to Tensor representing default values.
 
   Returns:
     A tuple of (_AssetInfo, Graph) containing the captured assets and
@@ -1072,18 +1074,16 @@ def _export_debug_info(exported_graph, export_dir):
     exported_graph: A Graph that has been created by tracing a saveable view.
     export_dir: SavedModel directory in which to write the debug info.
   """
-  exported_operations = []
+  per_fn_info = []
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
     fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
     if not isinstance(fn, defun.AtomicFunction):  # pylint: disable=protected-access
       continue
 
-    fn_graph = fn.graph
-    for fn_op in fn_graph.get_operations():
-      exported_operations.append((fn_name, fn_op))
+    per_fn_info.append((fn_name, fn.graph_debug_info))
 
-  graph_debug_info = error_interpolation.create_graph_debug_info_def(
-      exported_operations)
+  graph_debug_info = error_interpolation.merge_graph_debug_info_def(
+      per_fn_info)
   file_io.atomic_write_string_to_file(
       file_io.join(
           path_helpers.get_or_create_debug_dir(export_dir),
@@ -1099,7 +1099,7 @@ def save(obj, export_dir, signatures=None, options=None):
   """Exports a [tf.Module](https://www.tensorflow.org/api_docs/python/tf/Module) (and subclasses) `obj` to [SavedModel format](https://www.tensorflow.org/guide/saved_model#the_savedmodel_format_on_disk).
 
   The `obj` must inherit from the [`Trackable`
-  class](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/tracking/base.py#L591).
+  class](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/trackable/base.py#L278).
 
   Example usage:
 
@@ -1450,10 +1450,16 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
       elif isinstance(func, polymorphic_function.Function):
         for fdef in func._list_all_concrete_functions():  # pylint: disable=protected-access
           function_aliases[fdef.name] = alias
+      elif isinstance(func, collections.abc.Iterable) and all(
+          isinstance(x, types_core.ConcreteFunction) for x in func
+      ):
+        for entry in func:
+          function_aliases[entry.name] = alias
       else:
         raise TypeError(
             f"Unsupported type f{type(func)}. Functions in `function_aliases`"
-            " should be created by tf.function, or concrete functions."
+            " should be created by tf.function, or concrete functions, or"
+            " collections of concrete functions."
         )
   object_graph_proto = _serialize_object_graph(saveable_view,
                                                asset_info.asset_index)

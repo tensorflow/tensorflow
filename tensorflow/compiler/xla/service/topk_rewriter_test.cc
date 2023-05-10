@@ -22,9 +22,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -33,11 +37,12 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 namespace xla {
 namespace {
 
+namespace op = xla::testing::opcode_matchers;
 using ::tsl::testing::IsOkAndHolds;
 using TopkRewriterTest = HloTestBase;
 
@@ -148,6 +153,11 @@ std::string getStableComparator() {
   })";
 }
 
+bool IsStableSort(const HloInstruction* inst) {
+  auto* sort = DynCast<HloSortInstruction>(inst);
+  return sort != nullptr && sort->is_stable();
+}
+
 TEST_F(TopkRewriterTest, Rewrite) {
   for (std::string comparator :
        {getComparator(), getCompareComparator(), getStableComparator()}) {
@@ -172,10 +182,10 @@ ENTRY cluster {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     TF_ASSERT_OK(HloDCE().Run(module.get()).status());
     EXPECT_TRUE(changed);
-    EXPECT_THAT(
-        module->entry_computation()->root_instruction(),
-        op::Tuple(op::GetTupleElement(op::CustomCall(op::Parameter(0)), 0),
-                  op::GetTupleElement(op::CustomCall(op::Parameter(0)), 1)));
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Tuple(
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
     const HloInstruction* cc =
         module->entry_computation()->root_instruction()->operand(0)->operand(0);
     EXPECT_THAT(cc->custom_call_target(), "TopK");
@@ -207,10 +217,10 @@ ENTRY cluster {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     TF_ASSERT_OK(HloDCE().Run(module.get()).status());
     EXPECT_TRUE(changed);
-    EXPECT_THAT(
-        module->entry_computation()->root_instruction(),
-        op::Tuple(op::GetTupleElement(op::CustomCall(op::Parameter(0)), 0),
-                  op::GetTupleElement(op::CustomCall(op::Parameter(0)), 1)));
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Tuple(
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
     const HloInstruction* cc =
         module->entry_computation()->root_instruction()->operand(0)->operand(0);
     EXPECT_THAT(cc->custom_call_target(), "TopK");
@@ -239,10 +249,10 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Tuple(op::GetTupleElement(op::CustomCall(op::Parameter(0)), 0),
-                op::GetTupleElement(op::CustomCall(op::Parameter(0)), 1)));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
   const HloInstruction* cc =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   EXPECT_THAT(cc->custom_call_target(), "TopK");
@@ -270,10 +280,10 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Tuple(op::GetTupleElement(op::CustomCall(op::Parameter(0)), 0),
-                op::GetTupleElement(op::CustomCall(op::Parameter(0)), 1)));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
   const HloInstruction* cc =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   EXPECT_THAT(cc->custom_call_target(), "TopK");
@@ -302,12 +312,12 @@ ENTRY cluster {
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
   LOG(INFO) << module->entry_computation()->ToString();
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Tuple(op::Transpose(op::GetTupleElement(
-                    op::CustomCall(op::Transpose(op::Parameter(0))), 0)),
-                op::Transpose(op::GetTupleElement(
-                    op::CustomCall(op::Transpose(op::Parameter(0))), 1))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(m::Transpose(m::Parameter(0))), 0)),
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(m::Transpose(m::Parameter(0))), 1)))));
   const HloInstruction* cc = module->entry_computation()
                                  ->root_instruction()
                                  ->operand(0)
@@ -332,8 +342,9 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::GetTupleElement(op::CustomCall(op::Parameter(0)), 0));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
   const HloInstruction* cc =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_THAT(cc->custom_call_target(), "TopK");
@@ -356,8 +367,9 @@ ENTRY cluster {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     TF_ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
-    ASSERT_THAT(module->entry_computation()->root_instruction(),
-                op::GetTupleElement(op::CustomCall(op::Parameter(0)), 0));
+    ASSERT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
     const HloInstruction* cc =
         module->entry_computation()->root_instruction()->operand(0);
     ASSERT_THAT(cc->custom_call_target(), "TopK");
@@ -370,7 +382,8 @@ ENTRY cluster {
   EXPECT_TRUE(decomposer_changed);
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Slice(op::Sort(op::Parameter(0))));
+              GmockMatch(m::Slice(
+                  m::Sort(m::Parameter(0)).WithPredicate(IsStableSort))));
   // ... and that it can become a topk again.
   run_topk_pass();
 }
@@ -396,8 +409,9 @@ ENTRY cluster {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     TF_ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
-    ASSERT_THAT(module->entry_computation()->root_instruction(),
-                op::GetTupleElement(op::CustomCall(op::Parameter(0)), 1));
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1)));
     const HloInstruction* cc =
         module->entry_computation()->root_instruction()->operand(0);
     ASSERT_THAT(cc->custom_call_target(), "TopK");
@@ -410,9 +424,11 @@ ENTRY cluster {
   EXPECT_TRUE(decomposer_changed);
   TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Slice(op::GetTupleElement(
-                  op::Sort(op::Parameter(0), op::Iota()), 1)));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Slice(m::GetTupleElement(
+          m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort),
+          1))));
   // ... and that it can become a topk again.
   run_topk_pass();
 }
@@ -440,10 +456,10 @@ ENTRY cluster {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     TF_ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
-    ASSERT_THAT(
-        module->entry_computation()->root_instruction(),
-        op::Tuple(op::GetTupleElement(op::CustomCall(op::Parameter(0)), 0),
-                  op::GetTupleElement(op::CustomCall(op::Parameter(0)), 1)));
+    ASSERT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Tuple(
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
     const HloInstruction* cc =
         module->entry_computation()->root_instruction()->operand(0)->operand(0);
     ASSERT_THAT(cc->custom_call_target(), "TopK");
@@ -456,10 +472,12 @@ ENTRY cluster {
   EXPECT_TRUE(decomposer_changed);
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
-  auto sort_matcher = op::Sort(op::Parameter(0), op::Iota());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::Slice(op::GetTupleElement(sort_matcher, 0)),
-                        op::Slice(op::GetTupleElement(sort_matcher, 1))));
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::GetTupleElement(sort_matcher, 0)),
+                          m::Slice(m::GetTupleElement(sort_matcher, 1)))));
   // ... and that it can become a topk again.
   run_topk_pass();
 }
@@ -529,6 +547,72 @@ ENTRY cluster {
   };
   EXPECT_TRUE(
       RunAndCompare(std::move(source_module), std::nullopt, round_trip));
+}
+
+TEST_F(TopkRewriterTest, DecomposerStability) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getCompareComparator() + R"(
+ENTRY cluster {
+  %constant.1 = f32[] constant(42)
+  %broadcast.2= f32[1234] broadcast(f32[] %constant.1), dimensions={}
+  %iota.4 = s32[1234] iota(), iota_dimension=0
+  %sort.27 = (f32[1234], s32[1234]) sort(%broadcast.2, %iota.4),
+    dimensions={0}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[1234] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[5] slice(%get-tuple-element.28), slice={[0:5]}
+  %get-tuple-element.30 = s32[1234] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[5] slice(%get-tuple-element.30), slice={[0:5]}
+  ROOT %tuple.32 = (f32[5], s32[5]) tuple(%slice.29, %slice.31)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto source_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto round_trip = [](HloModule* module) {
+    EXPECT_THAT(TopkRewriter([](const HloSortInstruction*, int64_t) {
+                  return true;
+                }).Run(module),
+                IsOkAndHolds(true));
+    EXPECT_THAT(TopkDecomposer().Run(module), IsOkAndHolds(true));
+  };
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(source_module), std::nullopt,
+                                       round_trip));
+}
+
+TEST_F(TopkRewriterTest, TopKDecomposition) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+compare {
+  p.0.lhs = bf16[] parameter(0)
+  p.0.rhs = bf16[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
+}
+
+ENTRY TopK {
+  x = bf16[10,10]{0,1} parameter(0)
+  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                          TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  auto sort_matcher = op::Sort(op::Parameter(0), op::Iota());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::Slice(op::GetTupleElement(sort_matcher, 0)),
+                        op::Slice(op::GetTupleElement(sort_matcher, 1))));
+
+  // Check that we also match the topk rewriter, effectively roundtripping.
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

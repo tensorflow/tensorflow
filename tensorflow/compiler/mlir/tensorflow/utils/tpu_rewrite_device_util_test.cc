@@ -19,12 +19,15 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
@@ -32,6 +35,20 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetMlirModuleFromString(
+    llvm::StringRef string, mlir::MLIRContext* context) {
+  mlir::DialectRegistry mlir_registry;
+  RegisterAllTensorFlowDialects(mlir_registry);
+  context->appendDialectRegistry(mlir_registry);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+  auto status =
+      tensorflow::DeserializeMlirModule(string, context, &mlir_module);
+  if (!status.ok()) {
+    return status;
+  }
+  return mlir_module;
+}
 
 using Device = DeviceNameUtils::ParsedName;
 
@@ -915,6 +932,125 @@ TEST(TPURewriteDeviceUtilTest, TestIsTPUDevice) {
   EXPECT_TRUE(IsTPUDevice("/job:localhost/replica:0/task:0/device:TPU:0"));
   EXPECT_FALSE(IsTPUDevice("/job:localhost/replica:0/task:0/device:CPU:0"));
   EXPECT_FALSE(IsTPUDevice("INVALID_DEVICE"));
+}
+
+TEST(TPURewriteDeviceUtilTest, TestDeviceToHostMapBadTopology) {
+  static const char* const module_str =
+      R"(
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}} {
+  func.func @main() -> () {
+    "tf_device.cluster"() ({
+      tf_device.return
+    }) {device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], num_cores_per_replica = 2 : i64} : () -> ()
+    func.return
+  }
+})";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          GetMlirModuleFromString(module_str, &context));
+  mlir::tf_device::ClusterOp cluster;
+  module->walk(
+      [&](mlir::tf_device::ClusterOp descendant) { cluster = descendant; });
+  llvm::SmallVector<std::string, 8> core_to_host;
+  EXPECT_TRUE(mlir::failed(GetDeviceToHostMap(cluster, core_to_host)));
+}
+
+TEST(TPURewriteDeviceUtilTest, TestDeviceToHostMapBadDeviceAssignment) {
+  static const char* const module_str =
+      R"(
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}} {
+  func.func @main() -> () {
+    "tf_device.cluster"() ({
+      tf_device.return
+    }) {num_cores_per_replica = 2 : i64, topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01"} : () -> ()
+    func.return
+  }
+})";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          GetMlirModuleFromString(module_str, &context));
+  mlir::tf_device::ClusterOp cluster;
+  module->walk(
+      [&](mlir::tf_device::ClusterOp descendant) { cluster = descendant; });
+  llvm::SmallVector<std::string, 8> core_to_host;
+  EXPECT_TRUE(mlir::failed(GetDeviceToHostMap(cluster, core_to_host)));
+}
+
+// Tests `GetDeviceToHostMap` on a non-replicated TPU cluster.
+TEST(TPURewriteDeviceUtilTest, TestDeviceToHostMapNotReplicated) {
+  static const char* const module_str =
+      R"(
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}} {
+  func.func @main() -> () {
+    "tf_device.cluster"() ({
+      tf_device.return
+    }) {device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], num_cores_per_replica = 2 : i64, topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01"} : () -> ()
+    func.return
+  }
+})";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          GetMlirModuleFromString(module_str, &context));
+  mlir::tf_device::ClusterOp cluster;
+  module->walk(
+      [&](mlir::tf_device::ClusterOp descendant) { cluster = descendant; });
+  llvm::SmallVector<std::string, 8> core_to_host;
+  EXPECT_TRUE(mlir::succeeded(GetDeviceToHostMap(cluster, core_to_host)));
+  EXPECT_EQ(core_to_host.size(), 2);
+  EXPECT_EQ(core_to_host[0], "/job:localhost/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(core_to_host[1], "/job:localhost/replica:0/task:0/device:CPU:0");
+}
+
+// Tests `GetDeviceToHostMap` on a replicated TPU cluster.
+TEST(TPURewriteDeviceUtilTest, TestDeviceToHostMapReplicated) {
+  static const char* const module_str =
+      R"(
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU:2", "/job:localhost/replica:0/task:0/device:TPU:3", "/job:localhost/replica:0/task:0/device:TPU:4", "/job:localhost/replica:0/task:0/device:TPU:5", "/job:localhost/replica:0/task:0/device:TPU:6", "/job:localhost/replica:0/task:0/device:TPU:7", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}} {
+  func.func @main() -> () {
+    tf_device.replicate() {n = 4 : i32} {
+      "tf_device.cluster"() ({
+        tf_device.return
+      }) {device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1], num_cores_per_replica = 2 : i64, topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01*\02\08\01"} : () -> ()
+      tf_device.return
+    }
+    func.return
+  }
+})";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          GetMlirModuleFromString(module_str, &context));
+  mlir::tf_device::ClusterOp cluster;
+  module->walk(
+      [&](mlir::tf_device::ClusterOp descendant) { cluster = descendant; });
+  llvm::SmallVector<std::string, 8> core_to_host;
+  EXPECT_TRUE(mlir::succeeded(GetDeviceToHostMap(cluster, core_to_host)));
+  EXPECT_EQ(core_to_host.size(), 2);
+  EXPECT_EQ(core_to_host[0], "TPU_REPLICATED_HOST_0");
+  EXPECT_EQ(core_to_host[1], "TPU_REPLICATED_HOST_1");
+}
+
+// Tests `GetDeviceToHostMap` on a CPU cluster.
+TEST(TPURewriteDeviceUtilTest, TestDeviceToHostMapCPU) {
+  static const char* const module_str =
+      R"(
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0"}} {
+  func.func @main() -> () {
+    "tf_device.cluster"() ({
+      tf_device.return
+    }) {} : () -> ()
+    func.return
+  }
+})";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          GetMlirModuleFromString(module_str, &context));
+  mlir::tf_device::ClusterOp cluster;
+  module->walk(
+      [&](mlir::tf_device::ClusterOp descendant) { cluster = descendant; });
+  llvm::SmallVector<std::string, 8> core_to_host;
+  EXPECT_TRUE(mlir::succeeded(GetDeviceToHostMap(cluster, core_to_host)));
+  EXPECT_EQ(core_to_host.size(), 1);
+  EXPECT_EQ(core_to_host[0], "/job:localhost/replica:0/task:0/device:CPU:0");
 }
 
 }  // anonymous namespace

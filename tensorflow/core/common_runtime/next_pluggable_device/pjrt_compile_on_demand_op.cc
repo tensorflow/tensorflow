@@ -113,6 +113,8 @@ void RegisterPjRtCompileOnDemand(const char* device, const char* jit_device) {
     return new PjRtCompileOnDemandOp(context);
   };
   XlaOpRegistry::RegisterCompilationKernels();
+  // TODO(b/281686536): support register PjRtCompileOnDemand when there are
+  // multiple next pluggable devices registered.
   static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
       device, jit_device, factory, "PjRtCompileOnDemandOp");
   (void)registrations;

@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -61,7 +62,7 @@ filegroup(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "gen_html",
     srcs = ["gen_html.py"],
     data = [
@@ -69,13 +70,18 @@ py_library(
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
+    deps = [
+        ":toco_conversion_log_proto_py",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:resource_loader",
+    ],
 )
 
-py_test(
+py_strict_test(
     name = "gen_html_test",
     srcs = ["gen_html_test.py"],
     data = [
-        "//tensorflow/lite/toco/logging:template.html",
+        ":template.html",
         "//tensorflow/lite/toco/logging/testdata:generated.html",
         "//tensorflow/lite/toco/logging/testdata:toco_log_after.pb",
         "//tensorflow/lite/toco/logging/testdata:toco_log_before.pb",
@@ -88,6 +94,9 @@ py_test(
         ":gen_html",
         ":toco_conversion_log_proto_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 

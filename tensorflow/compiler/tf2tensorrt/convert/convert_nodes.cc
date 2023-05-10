@@ -2536,7 +2536,7 @@ Status Converter::SqueezeTensor(ITensorProxyPtr input,
   // Reshape tensor.
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(input), DimsAdapter(*input_dims),
-      /*validation_only=*/false, output, params->node_def));
+      /*validation_only=*/false, output, params->node_def, op_instance));
   return OkStatus();
 }
 

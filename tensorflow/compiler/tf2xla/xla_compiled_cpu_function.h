@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <cassert>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/service/cpu/buffer_desc.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,6 +31,10 @@ limitations under the License.
 namespace xla {
 class ProgramShapeProto;
 class HloProfilePrinterData;
+
+namespace cpu {
+class CpuExecutable;
+}  // namespace cpu
 }  // namespace xla
 
 namespace tensorflow {
@@ -54,6 +60,10 @@ class XlaCompiledCpuFunction {
                                const xla::ExecutableRunOptions* run_options,
                                const void** args, void** temps,
                                XlaCustomCallStatus*, int64_t* profile_counters);
+  using RunFunction =
+      bool (*)(const xla::cpu::CpuExecutable* cpu_executable,
+               const std::vector<xla::cpu::BufferDesc>& descriptor_table,
+               const xla::ExecutableRunOptions* run_options);
 
   // StaticData represents the state necessary to run an XLA-compiled
   // function. For JIT this is backed by data in XlaJitCompiledCpuFunction; for
@@ -66,9 +76,12 @@ class XlaCompiledCpuFunction {
     // The raw function to call.
     RawFunction raw_function_;
 
+    RunFunction run_function_ = nullptr;
+    const xla::cpu::CpuExecutable* cpu_executable_ = nullptr;
+
     // Contains information about the buffers used by the XLA computation.
     const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
-    size_t num_buffers_ = 0;
+    int32_t num_buffers_ = 0;
 
     // Entry parameter i is described by
     // buffer_infos[arg_index_table[i]].
@@ -278,6 +291,16 @@ class XlaCompiledCpuFunction {
     static_data->raw_function_ = raw_function;
   }
 
+  static void set_static_data_run_function(StaticData* static_data,
+                                           RunFunction run_function) {
+    static_data->run_function_ = run_function;
+  }
+
+  static void set_static_data_cpu_executable(
+      StaticData* static_data, const xla::cpu::CpuExecutable* cpu_executable) {
+    static_data->cpu_executable_ = cpu_executable;
+  }
+
   static void set_static_data_buffer_infos(
       StaticData* static_data,
       const xla::cpu_function_runtime::BufferInfo* buffer_infos) {
@@ -347,6 +370,12 @@ class XlaCompiledCpuFunction {
 
  private:
   const RawFunction raw_function_;
+  // TODO(ecg): RunFunction and CpuExecutable should go away. Instead, we should
+  // have a pointer or reference to a minimal wrapper around CpuExecutable's
+  // Execute(), without CpuExecutable's dependences. We could call this wrapper
+  // "XlaRuntimeRunner".
+  const RunFunction run_function_;
+  const xla::cpu::CpuExecutable* cpu_executable_;
   const size_t result_index_;
 
   // Array containing pointers to argument and temp buffers (slots corresponding
@@ -355,6 +384,7 @@ class XlaCompiledCpuFunction {
 
   // Describes the buffers used by the XLA computation.
   const xla::cpu_function_runtime::BufferInfo* const buffer_infos_;
+  const int32 num_buffers_;
 
   // Argument i needs to be placed in buffer_table_[arg_index_to_temp_index_[i]]
   // for XLA generated code to be able to find it.
@@ -382,6 +412,9 @@ class XlaCompiledCpuFunction {
   const char** result_names_ = nullptr;
   const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
+
+  // Creates a descriptor table for XLA Runtime.
+  std::vector<xla::cpu::BufferDesc> MakeXlaRuntimeDescriptorTable();
 
   // Add `XlaJitCompiledCpuFunction` as a friend so that it can access the
   // `set_static_data_*` static methods above.

@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -38,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -90,16 +92,16 @@ static Status ValidateNode(const NodeDef& node) {
     if (node_value.has_tensor()) {
       const PartialTensorShape node_shape(node_value.tensor().tensor_shape());
       if (node_shape.num_elements() < 0) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Saved model contains node \"", node.name(), "\" (op \"", node.op(),
             "\") which initializes from a tensor with ",
-            node_shape.num_elements(), " elements");
+            node_shape.num_elements(), " elements"));
       }
     }
   } else if (node.op() == "Const") {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Saved model contains node \"", node.name(),
-        "\" which is a constant tensor but no value has been provided");
+        "\" which is a constant tensor but no value has been provided"));
   }
   return OkStatus();
 }
@@ -108,9 +110,9 @@ static Status ValidateFunctionNotRecursive(const FunctionDef& function) {
   const auto& function_name = function.signature().name();
   for (const auto& node : function.node_def()) {
     if (node.op() == function_name) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Function ", function_name,
-          " is self recursive and TensorFlow does not support this scenario.");
+          " is self recursive and TensorFlow does not support this scenario."));
     }
   }
 
@@ -340,17 +342,17 @@ class LiteSessionWrapper : public Session {
       : wrapped_(std::move(wrapped)) {}
 
   Status Create(const GraphDef& graph) override {
-    return errors::Unimplemented("Session::Create()");
+    return absl::UnimplementedError("Session::Create()");
   }
   Status Create(GraphDef&& graph) override {
-    return errors::Unimplemented("Session::Create()");
+    return absl::UnimplementedError("Session::Create()");
   }
 
   Status Extend(const GraphDef& graph) override {
-    return errors::Unimplemented("Session::Extend()");
+    return absl::UnimplementedError("Session::Extend()");
   }
   Status Extend(GraphDef&& graph) override {
-    return errors::Unimplemented("Session::Extend()");
+    return absl::UnimplementedError("Session::Extend()");
   }
 
   Status Run(const std::vector<std::pair<string, Tensor>>& inputs,
@@ -362,16 +364,16 @@ class LiteSessionWrapper : public Session {
   }
 
   Status Create(const RunOptions& run_options, const GraphDef& graph) override {
-    return errors::Unimplemented("Session::Create()");
+    return absl::UnimplementedError("Session::Create()");
   }
   Status Extend(const RunOptions& run_options, const GraphDef& graph) override {
-    return errors::Unimplemented("Session::Extend()");
+    return absl::UnimplementedError("Session::Extend()");
   }
   Status Create(const RunOptions& run_options, GraphDef&& graph) override {
-    return errors::Unimplemented("Session::Create()");
+    return absl::UnimplementedError("Session::Create()");
   }
   Status Extend(const RunOptions& run_options, GraphDef&& graph) override {
-    return errors::Unimplemented("Session::Extend()");
+    return absl::UnimplementedError("Session::Extend()");
   }
   Status Close(const RunOptions& run_options) override {
     return wrapped_->Close(run_options);
@@ -390,14 +392,14 @@ class LiteSessionWrapper : public Session {
                    const std::vector<string>& output_names,
                    const std::vector<string>& target_nodes,
                    string* handle) override {
-    return errors::Unimplemented("Session::PRunSetup()");
+    return absl::UnimplementedError("Session::PRunSetup()");
   }
 
   Status PRun(const string& handle,
               const std::vector<std::pair<string, Tensor>>& inputs,
               const std::vector<string>& output_names,
               std::vector<Tensor>* outputs) override {
-    return errors::Unimplemented("Session::PRun()");
+    return absl::UnimplementedError("Session::PRun()");
   }
 
   Status ListDevices(std::vector<DeviceAttributes>* response) override {

@@ -54,6 +54,7 @@ class Array2D : public Array<T> {
   // or double) from the given nested initializer list of float values.
   template <typename T2, typename = typename std::enable_if<
                              (std::is_same<T, tsl::float8_e4m3fn>::value ||
+                              std::is_same<T, tsl::float8_e4m3b11>::value ||
                               std::is_same<T, tsl::float8_e5m2>::value ||
                               std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, bfloat16>::value ||

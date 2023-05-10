@@ -1,7 +1,7 @@
 # Tensorflow protobuf utility package
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 
 visibility = [
@@ -36,7 +36,7 @@ tf_proto_library(
     cc_api_version = 2,
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "protobuf_compare_test",
     size = "small",
     srcs = ["compare_test.py"],
@@ -45,6 +45,7 @@ tf_py_test(
     tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
+        ":protobuf",
         "//tensorflow/python:platform_test",
         "@six_archive//:six",
     ],

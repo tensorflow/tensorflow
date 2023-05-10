@@ -98,7 +98,8 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(const std::string& module_name,
+                                          func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
@@ -106,7 +107,8 @@ LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
-      ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
+      ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()),
+                       absl::StrCat("module_", module_name));
   auto parent_module = entry_func->getParentOfType<ModuleOp>();
   auto versions_attr = parent_module->getAttr(kVersionsAttr);
   if (!versions_attr)
@@ -396,7 +398,10 @@ Operation* BuildCompileOp(
           func_attr.getValue());
 
   std::string txt_module;
-  if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
+  if (failed(EncapsulateFuncAndSerialize(
+          module_name.empty() ? "unknown_graph" : module_name.str(), func,
+          &txt_module)))
+    return nullptr;
 
   auto compilation_status_type =
       RankedTensorType::get({}, builder->getType<TF::StringType>());

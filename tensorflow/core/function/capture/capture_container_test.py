@@ -17,6 +17,7 @@ import copy
 
 from absl.testing import parameterized
 
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.platform import test
 
@@ -142,6 +143,26 @@ class FunctionCapturesTest(test.TestCase, parameterized.TestCase):
     with self.subTest("clear"):
       fn_captures.clear()
       self.assertEmpty(fn_captures.by_val_capture_tuples)
+
+  def test_capture_types(self):
+    class FakePlaceholder():
+      pass
+
+    fn_captures = capture_container.FunctionCaptures()
+    fn_captures.add_or_replace("v1", 1, FakePlaceholder(), is_by_ref=False)
+    fn_captures.add_or_replace("v2", 2, FakePlaceholder(), is_by_ref=False)
+    fn_captures.add_or_replace("v3", 3, FakePlaceholder(), is_by_ref=False)
+    fn_captures.add_or_replace(
+        "r1", 1, FakePlaceholder(), trace_type.from_value(4), is_by_ref=True)
+    fn_captures.add_or_replace(
+        "r2", 2, FakePlaceholder(), trace_type.from_value(5), is_by_ref=True)
+
+    self.assertLen(fn_captures.capture_types, 5)
+    self.assertEqual(fn_captures.capture_types["v1"], trace_type.from_value(1))
+    self.assertEqual(fn_captures.capture_types["v2"], trace_type.from_value(2))
+    self.assertEqual(fn_captures.capture_types["v3"], trace_type.from_value(3))
+    self.assertEqual(fn_captures.capture_types["r1"], trace_type.from_value(4))
+    self.assertEqual(fn_captures.capture_types["r2"], trace_type.from_value(5))
 
 
 if __name__ == "__main__":

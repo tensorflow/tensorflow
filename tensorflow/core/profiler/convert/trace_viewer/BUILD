@@ -91,6 +91,33 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "trace_events",
+    srcs = ["trace_events.cc"],
+    hdrs = ["trace_events.h"],
+    deps = [
+        ":trace_events_filter_interface",
+        ":trace_events_util",
+        ":trace_viewer_visibility",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:context_types_hdrs",
+        "//tensorflow/core/profiler/protobuf:task_proto_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
+        "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/base:endian",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )

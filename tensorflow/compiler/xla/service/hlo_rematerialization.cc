@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -1149,6 +1149,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
         RematerializeBuffer(old_buffer, remat_item, std::move(unplaced_users));
 
     remat_item->buffers_defined.push_back(new_buffer.id);
+    remat_item->buffers_output.push_back(new_buffer.id);
     auto update_buffers = [old_buffer_id, new_buffer_id = new_buffer.id](
                               BufferIdList& to_update) {
       std::replace(to_update.begin(), to_update.end(), old_buffer_id,
@@ -1452,9 +1453,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
                           << candidate->ToShortString() << ")"
                           << " now best when compressed into "
                           << compact_shape.ToString(true);
-                  RematStrategy strategy;
-                  strategy.kind = RematStrategy::kCompress;
-                  best_strategy = strategy;
+                  best_strategy.kind = RematStrategy::kCompress;
                   best_strategy.compact_shape = compact_shape;
                   best_items = block;
                   best_cost = cost;

@@ -189,7 +189,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
           auto status_or = RunHelper(pass, hlo, execution_threads);
           if (!status_or.ok()) {
             compilation_stats_->RecordPassError(
-                pass_name, tsl::error_name(status_or.status().code()));
+                pass_name, absl::StatusCodeToString(status_or.status().code()));
           }
           return status_or;
         };
@@ -212,8 +212,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
                                                   absl::string_view pass_name) {
         auto status = RunInvariantCheckers(hlo, pass_name);
         if (!status.ok()) {
-          compilation_stats_->RecordPassError(pass_name,
-                                              tsl::error_name(status.code()));
+          compilation_stats_->RecordPassError(
+              pass_name, absl::StatusCodeToString(status.code()));
         }
         return status;
       };
@@ -252,6 +252,18 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
   }
 
   CHECK(disabled_pass_names.empty() || enabled_pass_names.empty());
+
+  if (disabled_pass_names.contains(name())) {
+    // Disable the full pass.
+    VLOG(1) << "Disable the full pass: " << name();
+    return {};
+  }
+
+  if (enabled_pass_names.contains(name())) {
+    VLOG(1) << "Enable the full pass: " << name();
+    // Enable the full pass.
+    enabled_pass_names.clear();
+  }
 
   std::vector<HloPassInterface*> enabled_passes;
   if (!enabled_pass_names.empty()) {

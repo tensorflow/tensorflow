@@ -39,8 +39,18 @@ T baseline_add(T lhs, T rhs) {
 }
 
 template <typename T>
+T baseline_div(T lhs, T rhs) {
+  return lhs / rhs;
+}
+
+template <typename T>
 T baseline_sub(T lhs, T rhs) {
   return lhs - rhs;
+}
+
+template <typename T>
+T baseline_greater(T lhs, T rhs) {
+  return lhs > rhs;
 }
 
 /// Test `tf.Addv2`.
@@ -69,6 +79,32 @@ TEST_F(BinaryOpsLargeTensorTest, SubLargeTensors) {
       test::OpsTestConfig().ExpectStrictlyEqual());
 }
 
+#endif
+
+/// Test `tf.Div`.
+
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+
+TEST_F(BinaryOpsLargeTensorTest, DivV2LargeTensors) {
+  TestEqualShapes<float, float, float, float>(
+      "Div", /*shape=*/test::DefaultInputShapeExceedingInt32(),
+      test::DefaultInput<float>(), test::DefaultInput<float>(), baseline_div,
+      test::OpsTestConfig().ExpectStrictlyEqual());
+}
+#endif
+
+/// Test `tf.Greater`.
+
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+
+TEST_F(BinaryOpsLargeTensorTest, GreaterLargeTensors) {
+  TestEqualShapes<float, float, bool, float>(
+      "Greater", /*shape=*/test::DefaultInputShapeExceedingInt32(),
+      test::DefaultInput<float>(), test::DefaultInput<float>(),
+      baseline_greater, test::OpsTestConfig().ExpectStrictlyEqual());
+}
 #endif
 
 }  // namespace

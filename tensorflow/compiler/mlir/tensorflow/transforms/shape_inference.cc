@@ -1856,14 +1856,14 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
   auto output_shape = xla::ShapeInference::InferGatherShape(
       input_shape, start_indices_shape, gather_dim_numbers, slice_sizes);
   if (!output_shape.ok()) {
-    op->emitError(output_shape.status().message());
+    op->emitError() << output_shape.status().message();
     return false;
   }
 
   auto refined_type = xla::ConvertShapeToType<RankedTensorType>(
       *output_shape, mlir::Builder(op));
   if (!refined_type.ok()) {
-    op->emitError(refined_type.status().message());
+    op->emitError() << refined_type.status().message();
     return false;
   }
 
@@ -2145,7 +2145,8 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   SmallVector<Type, 4> inferred;
   LogicalResult res = infer_ti.inferReturnTypes(
       op->getContext(), op->getLoc(), op->getOperands(),
-      op->getAttrDictionary(), op->getRegions(), inferred);
+      op->getAttrDictionary(), op->getPropertiesStorage(), op->getRegions(),
+      inferred);
   if (failed(res)) {
     op->emitOpError("failed to refine type as inference failed");
     return false;

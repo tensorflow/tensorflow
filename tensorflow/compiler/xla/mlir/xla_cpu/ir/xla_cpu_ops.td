@@ -22,7 +22,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.td"
 include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.td"
-include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_base.td"
+include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops_common.td"
 
 // Base class for XLA CPU dialect ops.
 class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
@@ -30,6 +30,9 @@ class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
 
 def TensorOrMemref :
   AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
+
+def TensorOrMemrefOrToken :
+  AnyTypeOf<[AnyMemRef, AnyRankedTensor, MHLO_Token]>;
 
 def AllReduceOp : XlaCpu_Op<"all_reduce",
     [SameOperandsElementType,
@@ -201,6 +204,40 @@ def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
   }];
 }
 
+def InfeedOp : XlaCpu_Op<"infeed", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of Infeed";
+  let description = [{
+    The difference between this and HLO's outfeed is that the former bufferizes
+    to itself.
+  }];
+  let arguments = (ins
+    Variadic<TensorOrMemrefOrToken>:$dst,
+    DefaultValuedStrAttr<StrAttr, "">:$config,
+    OptionalAttr<ArrayAttr>:$layout
+  );
+  let results = (outs
+      Variadic<TensorOrMemrefOrToken>
+  );
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return false;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return true;
+    }
+    bufferization::AliasingOpResultList getAliasingOpResults(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      return {{getOperation()->getOpResult(0),
+               bufferization::BufferRelation::Equivalent}};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+  }];
+}
+
 def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
   let summary = "CPU-specific version of Outfeed";
   let description = [{
@@ -311,6 +348,63 @@ def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
         return {};
       return {{getOperation()->getOpResult(0),
                bufferization::BufferRelation::Unknown, /*isDefinite=*/false}};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+  }];
+}
+
+def ConvolutionOp : XlaCpu_Op<"convolution", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of convolution";
+  let description = [{
+    The major differences between this and HLO's convolution are:
+    - It bufferizes to itself.
+    - It uses destination passing style.
+  }];
+
+  let arguments = (ins
+      TensorOrMemref:$input,
+      TensorOrMemref:$kernel,
+      TensorOrMemref:$dst,
+      // Default value: one for each of the spatial dimension.
+      OptionalAttr<I64ElementsAttr>:$window_strides,
+      // Default value: two zeros for each of the spatial dimension.
+      OptionalAttr<I64ElementsAttr>:$padding,
+      // Default value: one for each of the spatial dimension.
+      OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+      // Default value: one for each of the spatial dimension.
+      OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+      // Default value: false for each of the spatial dimension.
+      OptionalAttr<MHLO_BoolElementsAttr>:$window_reversal,
+      I64Attr:$inputBatchDimension,
+      I64Attr:$inputFeatureDimension,
+      I64ArrayAttr:$inputSpatialDimensions,
+      I64Attr:$kernelInputFeatureDimension,
+      I64Attr:$kernelOutputFeatureDimension,
+      I64ArrayAttr:$kernelSpatialDimensions,
+      I64Attr:$outputBatchDimension,
+      I64Attr:$outputFeatureDimension,
+      I64ArrayAttr:$outputSpatialDimensions,
+      I64Attr:$feature_group_count,
+      I64Attr:$batch_group_count,
+      MHLO_PrecisionConfigAttr:$precision_config
+  );
+  let results = (outs Variadic<TensorOrMemref>);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() < 2;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 2;
+    }
+    bufferization::AliasingOpResultList getAliasingOpResults(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() < 2) return {};
+      return {{getOperation()->getOpResult(0),
+               bufferization::BufferRelation::Equivalent}};
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);

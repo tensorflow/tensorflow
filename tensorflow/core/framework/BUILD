@@ -122,6 +122,7 @@ exports_files(
         "full_type.proto",
         "function.proto",
         "graph.proto",
+        "graph_debug_info.proto",
         "graph_transfer_info.proto",
         "kernel_def.proto",
         "log_memory.proto",
@@ -1504,6 +1505,7 @@ tf_proto_library(
     protodeps = [
         ":attr_value_proto",
         ":function_proto",
+        ":graph_debug_info_proto",
         ":node_def_proto",
         ":op_def_proto",
         ":resource_handle_proto",
@@ -1526,6 +1528,15 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "graph_debug_info_proto",
+    srcs = ["graph_debug_info.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
     ],
 )
 
@@ -1825,6 +1836,7 @@ tf_proto_library(
         ":device_attributes_proto",
         ":full_type_proto",
         ":function_proto",
+        ":graph_debug_info_proto",
         ":graph_proto",
         ":graph_transfer_info_proto",
         ":kernel_def_proto",

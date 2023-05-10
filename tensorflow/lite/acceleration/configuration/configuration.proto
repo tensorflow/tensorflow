@@ -587,6 +587,11 @@ message GoogleEdgeTpuSettings {
   // TFLite Async API.
   optional TriState prefer_cache_coherency_for_inputs = 9;
   optional TriState prefer_cache_coherency_for_outputs = 10;
+
+  // Whether to allow the accelerator to optionally use lower-precision
+  // float16 (16-bit floating point) arithmetic when doing calculations on
+  // float32 (32-bit floating point).
+  optional bool allow_fp16_precision_for_fp32 = 11 [default = false];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.

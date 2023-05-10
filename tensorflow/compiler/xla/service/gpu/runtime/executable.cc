@@ -35,11 +35,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/send_recv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/topk.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
@@ -94,6 +96,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
   RegisterSendRecvCustomCalls(registry);
+  RegisterTopkCustomCall(registry);
 
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
@@ -368,8 +371,13 @@ Status GpuRuntimeExecutable::Execute(
       graph_instances_(executor)->snapshot();
   CapturedFunctionExecutionCount::Snapshot execution_count =
       captured_function_counts_(executor)->snapshot();
-  CapturingCudaGraph capturing_cuda_graph(false);
 #endif  // GOOGLE_CUDA
+
+  // Kernels in concurrent regions should be launched on borrowed stream, so
+  // that the cuda graph won't record dependencies between kernels.
+  // This state stores if the kernel being run is in a concurrent region and
+  // the index of the next borrowed stream to be used.
+  ConcurrentRegionStatus concurrent_region_status;
 
   // State cached globally for gpu executable.
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
@@ -390,8 +398,9 @@ Status GpuRuntimeExecutable::Execute(
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances, &execution_count, &capturing_cuda_graph,
+      &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA
+      &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);

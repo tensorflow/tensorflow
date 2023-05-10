@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -8282,6 +8283,188 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
   EXPECT_FALSE(interval_picker.Done());
   EXPECT_EQ(interval_picker.Next(), 1);
   EXPECT_TRUE(interval_picker.Done());
+}
+
+class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
+ protected:
+  Status Initialize(const HloModule* module,
+                    float pipeline_overhead_window_size_mib = 0.0) {
+    HloCostAnalysis::Options options;
+    options_.alternate_mem_bandwidth_bytes_per_second = 128;
+    options_.async_copy_bandwidth_bytes_per_second = 32;
+    options_.pipeline_overhead_window_size_mib =
+        pipeline_overhead_window_size_mib;
+    options.shape_size = ShapeSize;
+    options.set_flops_per_second(8);
+    options.set_bytes_per_second(32);
+    options.set_transcendentals_per_second(16);
+    hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(options);
+    TF_RETURN_IF_ERROR(
+        module->entry_computation()->Accept(hlo_cost_analysis_.get()));
+    TF_ASSIGN_OR_RETURN(cost_analysis_,
+                        MemorySpaceAssignmentCostAnalysis::Create(
+                            *hlo_cost_analysis_, options_, *module));
+    return OkStatus();
+  }
+
+  Options options_;
+  std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
+  std::unique_ptr<MemorySpaceAssignmentCostAnalysis> cost_analysis_;
+};
+
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, NoPipelineOverhead) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    ROOT add = f32[2,4] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(Initialize(module.get()));
+
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  const float expected_compute_elapsed =
+      /*num_flops=*/8 / /*flops_per_second=*/8.0;
+  LOG(INFO) << "Expected compute elapsed = " << expected_compute_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add),
+            expected_compute_elapsed);
+  float expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/32.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add),
+            expected_memory_elapsed);
+
+  // This HLO is memory-bound.
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsed(*add),
+            expected_memory_elapsed);
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedInAlternateMemory(*add, {}, {}),
+      expected_memory_elapsed);
+
+  // Put operand 0 in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {}),
+            expected_memory_elapsed);
+
+  // Put operand 0 and output in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}, {{}}),
+      expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {{}}),
+            expected_memory_elapsed);
+
+  // Put everything in alternate memory. We're now compute bound.
+  expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/128.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_compute_elapsed);
+}
+
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, PipelineOverhead) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    ROOT add = f32[2,4] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // Set the window size 64B.
+  TF_ASSERT_OK(
+      Initialize(module.get(),
+                 /*pipeline_overhead_window_size_mib=*/(64.0 / 1024 / 1024)));
+
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  const float expected_compute_elapsed =
+      /*num_flops=*/8 / /*flops_per_second=*/8.0;
+  LOG(INFO) << "Expected compute elapsed = " << expected_compute_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add),
+            expected_compute_elapsed);
+  float expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/32.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add),
+            expected_memory_elapsed);
+
+  float expected_overhead = expected_compute_elapsed * 2 / 3;
+  LOG(INFO) << "Expected overhead = " << expected_overhead;
+  EXPECT_EQ(cost_analysis_->GetDefaultMemoryAccessOverhead(*add),
+            expected_overhead);
+  // This HLO is memory-bound.
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsed(*add),
+            expected_memory_elapsed + expected_overhead);
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedInAlternateMemory(*add, {}, {}),
+      expected_memory_elapsed + expected_overhead);
+
+  // Put operand 0 in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  EXPECT_EQ(cost_analysis_->GetDefaultMemoryAccessOverhead(*add, {{0, {}}}),
+            expected_overhead);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {}),
+            expected_memory_elapsed + expected_overhead);
+
+  // Put operand 0 and output in alternate memory. Still memory bound.
+  expected_memory_elapsed =
+      (/*bytes_accessed=*/(4 * 8) / /*bytes_per_second=*/32.0) +
+      (/*bytes_accessed=*/(2 * 4 * 8) / /*bytes_per_second=*/128.0);
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  expected_overhead = expected_compute_elapsed / 3;
+  LOG(INFO) << "Expected overhead = " << expected_overhead;
+  EXPECT_EQ(
+      cost_analysis_->GetDefaultMemoryAccessOverhead(*add, {{0, {}}}, {{}}),
+      expected_overhead);
+  EXPECT_EQ(
+      cost_analysis_->GetInstructionElapsedDueToMemory(*add, {{0, {}}}, {{}}),
+      expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}}, {{}}),
+            expected_memory_elapsed + expected_overhead);
+
+  // Put everything in alternate memory. We're now compute bound.
+  expected_memory_elapsed =
+      /*bytes_accessed=*/(3 * 4 * 8) / /*bytes_per_second=*/128.0;
+  LOG(INFO) << "Expected memory elapsed = " << expected_memory_elapsed;
+  expected_overhead = 0;
+  LOG(INFO) << "Expected overhead = " << expected_overhead;
+  EXPECT_EQ(cost_analysis_->GetDefaultMemoryAccessOverhead(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_overhead);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_memory_elapsed);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
+                *add, {{0, {}}, {1, {}}}, {{}}),
+            expected_compute_elapsed);
 }
 
 }  // namespace

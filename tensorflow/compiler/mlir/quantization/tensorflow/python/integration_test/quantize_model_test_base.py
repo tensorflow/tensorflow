@@ -948,8 +948,16 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
       def __init__(self):
         """Initializes a SimpleGatherAndConvModel."""
-        embedding_w_val = np.random.randn(1024, 3, 4, 3).astype('f4')
-        self.embedding_w = embedding_w_val
+        self.embedding_w = np.random.randn(1024, 3, 4, 3).astype('f4')
+
+        self.conv_filters = np.random.uniform(
+            low=-10, high=10, size=filter_shape
+        ).astype('f4')
+
+        second_conv_filter_shape = (3, 3, filter_shape[-1], 1)
+        self.second_conv_filters = np.random.uniform(
+            low=-10, high=10, size=second_conv_filter_shape
+        ).astype('f4')
 
       @def_function.function(
           input_signature=[
@@ -967,20 +975,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         Returns:
           A map of: output key -> output result.
         """
-        conv_filters = np.random.uniform(
-            low=-10, high=10, size=filter_shape
-        ).astype('f4')
-        second_conv_filter_shape = (3, 3, filter_shape[-1], 1)
-        second_conv_filters = np.random.uniform(
-            low=-10, high=10, size=second_conv_filter_shape
-        ).astype('f4')
 
         out = array_ops.gather_v2(self.embedding_w, input_tensor)
 
         # One pure conv
         out = nn_ops.conv2d(
             out,
-            conv_filters,
+            self.conv_filters,
             strides=(1, 1, 2, 1),
             dilations=(1, 1, 1, 1),
             padding='SAME',
@@ -993,12 +994,14 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
               out, min=-0.1, max=0.2, num_bits=8, narrow_range=False
           )
           second_conv_filters = array_ops.fake_quant_with_min_max_args(
-              second_conv_filters,
+              self.second_conv_filters,
               min=-0.1,
               max=0.2,
               num_bits=8,
               narrow_range=True,
           )
+        else:
+          second_conv_filters = self.second_conv_filters
 
         out = nn_ops.conv2d(
             out,
@@ -1110,6 +1113,16 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     class DepthwiseConvModel(module.Module):
       """A simple model with a single depthwise conv2d, bias and relu."""
 
+      def __init__(self):
+        self.filters = np.random.uniform(
+            low=-10, high=10, size=filter_shape
+        ).astype('f4')
+
+        self.out_channel_size = filter_shape[2] * filter_shape[3]
+        self.bias = np.random.uniform(
+            low=0, high=10, size=(self.out_channel_size)
+        ).astype('f4')
+
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
@@ -1126,25 +1139,19 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         Returns:
           A map of: output key -> output result.
         """
-        filters = np.random.uniform(low=-10, high=10, size=filter_shape).astype(
-            'f4'
-        )
-        out_channel_size = filter_shape[2] * filter_shape[3]
-        bias = np.random.uniform(
-            low=0, high=10, size=(out_channel_size)
-        ).astype('f4')
-        scale, offset = [1.0] * out_channel_size, [0.5] * out_channel_size
+        scale = [1.0] * self.out_channel_size
+        offset = [0.5] * self.out_channel_size
         mean, variance = scale, offset
         out = nn_ops.depthwise_conv2d_native(
             input_tensor,
-            filters,
+            self.filters,
             strides=[1, 2, 2, 1],
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC',
         )
         if has_bias:
-          out = nn_ops.bias_add(out, bias)
+          out = nn_ops.bias_add(out, self.bias)
         if has_batch_norm:
           # Fusing is supported for non-training case.
           out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
@@ -1170,6 +1177,16 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     class ConvModel(module.Module):
       """A simple model with a single conv2d, bias and relu."""
 
+      def __init__(self):
+        self.filters = np.random.uniform(
+            low=-10, high=10, size=filter_shape
+        ).astype('f4')
+
+        self.out_channel_size = filter_shape[-1]
+        self.bias = np.random.uniform(
+            low=0, high=10, size=(self.out_channel_size)
+        ).astype('f4')
+
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
@@ -1184,25 +1201,19 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         Returns:
           A map of: output key -> output result.
         """
-        filters = np.random.uniform(low=-10, high=10, size=filter_shape).astype(
-            'f4'
-        )
-        out_channel_size = filter_shape[-1]
-        bias = np.random.uniform(
-            low=0, high=10, size=(out_channel_size)
-        ).astype('f4')
-        scale, offset = [1.0] * out_channel_size, [0.5] * out_channel_size
+        scale = [1.0] * self.out_channel_size
+        offset = [0.5] * self.out_channel_size
         mean, variance = scale, offset
         out = nn_ops.conv2d(
             input_tensor,
-            filters,
+            self.filters,
             strides=[1, 1, 2, 1],
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC',
         )
         if has_bias:
-          out = nn_ops.bias_add(out, bias, data_format='NHWC')
+          out = nn_ops.bias_add(out, self.bias, data_format='NHWC')
         if has_batch_norm:
           # Fusing is supported for non-training case.
           out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(

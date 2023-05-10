@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/bitmap.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -258,6 +259,9 @@ Status Apply(Literal& literal, F&& literal_generator) {
       return Trait<F8E5M2>::Run(literal, std::forward<F>(literal_generator));
     case F8E4M3FN:
       return Trait<F8E4M3FN>::Run(literal, std::forward<F>(literal_generator));
+    case F8E4M3B11FNUZ:
+      return Trait<F8E4M3B11FNUZ>::Run(literal,
+                                       std::forward<F>(literal_generator));
     case F16:
       return Trait<F16>::Run(literal, std::forward<F>(literal_generator));
     case BF16:
@@ -926,6 +930,9 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[F8E4M3FN] =
       std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>>(
           this);
+  typed_visitors_[F8E4M3B11FNUZ] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>>(
+          this);
 
   typed_visitors_[TUPLE] =
       std::make_unique<FunctionVisitor>([](HloInstruction*) {
@@ -1518,15 +1525,41 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
           "expected element type in shape to be floating point, but "
           "got: %s",
           PrimitiveType_Name(elem_ty));
-    case F8E5M2:
-    case F8E4M3FN:
-      return InvalidArgument("F8 is unsupported in IsFinite");
-
+    case F8E5M2: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, tsl::float8_e5m2>(
+          is_finite,
+          [](tsl::float8_e5m2 elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case F8E4M3FN: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, tsl::float8_e4m3fn>(
+          is_finite,
+          [](tsl::float8_e4m3fn elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case F8E4M3B11FNUZ: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, tsl::float8_e4m3b11>(
+          is_finite,
+          [](tsl::float8_e4m3b11 elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
     case F16: {
       auto result_or = ElementWiseUnaryOpImpl<bool, Eigen::half>(
           is_finite,
           [](Eigen::half elem_operand) {
-            return std::isfinite(static_cast<float>(elem_operand));
+            return Eigen::numext::isfinite(elem_operand);
           },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
@@ -1536,7 +1569,7 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
       auto result_or = ElementWiseUnaryOpImpl<bool, bfloat16>(
           is_finite,
           [](bfloat16 elem_operand) {
-            return std::isfinite(static_cast<float>(elem_operand));
+            return Eigen::numext::isfinite(elem_operand);
           },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
@@ -1545,7 +1578,9 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
     case F32: {
       auto result_or = ElementWiseUnaryOpImpl<bool, float>(
           is_finite,
-          [](float elem_operand) { return std::isfinite(elem_operand); },
+          [](float elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
       break;
@@ -1553,7 +1588,9 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
     case F64: {
       auto result_or = ElementWiseUnaryOpImpl<bool, double>(
           is_finite,
-          [](double elem_operand) { return std::isfinite(elem_operand); },
+          [](double elem_operand) {
+            return Eigen::numext::isfinite(elem_operand);
+          },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
       break;
@@ -1773,6 +1810,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     } break;
     case F8E4M3FN: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3fn>(
+                                                   compare->shape(), direction,
+                                                   lhs_literal, rhs_literal));
+    } break;
+    case F8E4M3B11FNUZ: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3b11>(
                                                    compare->shape(), direction,
                                                    lhs_literal, rhs_literal));
     } break;

@@ -1,3 +1,4 @@
+
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,6 +61,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -562,6 +564,31 @@ LogicalResult TPUPartitionedCallOp::verifySymbolUses(
   return VerifyPartitionedCall(*this, symbolTable);
 }
 
+template <typename CallOpClass>
+static void SetPartitionCalleeFromCallable(CallOpClass op,
+                                           mlir::CallInterfaceCallable callee) {
+  // Direct call.
+  if (SymbolRefAttr fAttr = op.getFAttr()) {
+    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    return op.setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
+  }
+  // Indirect call, callee Value is the first operand.
+  return op.setOperand(0, callee.get<Value>());
+}
+
+void PartitionedCallOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
+}
+void StatefulPartitionedCallOp::setCalleeFromCallable(
+    CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
+}
+void TPUPartitionedCallOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
+}
+
 //===----------------------------------------------------------------------===//
 // PowOp
 //===----------------------------------------------------------------------===//
@@ -717,9 +744,9 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   if (!(start_tensor && limit_tensor && delta_tensor)) return nullptr;
 
   // Operands should all be scalars
-  assert(start_tensor.getType().getRank() == 0 &&
-         limit_tensor.getType().getRank() == 0 &&
-         delta_tensor.getType().getRank() == 0);
+  assert(start_tensor.getShapedType().getRank() == 0 &&
+         limit_tensor.getShapedType().getRank() == 0 &&
+         delta_tensor.getShapedType().getRank() == 0);
   Type elem_type = getType().cast<ShapedType>().getElementType();
   if (elem_type.isSignlessInteger() || elem_type.isUnsignedInteger()) {
     auto start_attr = start_tensor.getValues<IntegerAttr>()[0];
@@ -2321,6 +2348,18 @@ void TPUExecuteOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// WriteTrainingPredictions
+//===----------------------------------------------------------------------===//
+
+void WriteTrainingPredictionsOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(1);
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::WriteTrainingPredictions::get());
+}
+
+//===----------------------------------------------------------------------===//
 // TPUExecuteAndUpdateVariablesOp
 //===----------------------------------------------------------------------===//
 
@@ -2660,7 +2699,7 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult ToBoolOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
       tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
@@ -3469,7 +3508,8 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
@@ -3492,7 +3532,7 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     return set_unranked_results();
   }
 
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     if (lhs_rank != rhs_rank && lhs_rank != 0 && rhs_rank != 0) {
       return emitOptionalError(
           location,
@@ -3607,7 +3647,8 @@ LogicalResult XlaConvV2Op::verify() {
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
@@ -3677,9 +3718,10 @@ LogicalResult XlaReduceWindowOp::verify() {
   auto check = [&](mlir::Value val, std::string attr_name) -> LogicalResult {
     ElementsAttr attr;
     if (matchPattern(val, m_Constant(&attr))) {
-      if (attr.getType().getRank() != 1) {
-        return op.emitOpError() << "expects the rank of " << attr_name
-                                << "to be 1, got " << attr.getType().getRank();
+      if (attr.getShapedType().getRank() != 1) {
+        return op.emitOpError()
+               << "expects the rank of " << attr_name << "to be 1, got "
+               << attr.getShapedType().getRank();
       }
       if (input_ty.hasRank()) {
         int64_t input_rank = input_ty.getRank();
@@ -3707,11 +3749,11 @@ LogicalResult XlaReduceWindowOp::verify() {
 
   ElementsAttr padding;
   if (matchPattern(op.getPadding(), m_Constant(&padding))) {
-    const ShapedType &padding_ty = padding.getType();
+    const ShapedType &padding_ty = cast<ShapedType>(padding.getType());
     if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2) {
       return op.emitOpError()
              << "expects padding to be a matrix with minor dimension 2, got "
-             << padding.getType().getShape();
+             << padding.getShapedType().getShape();
     }
   }
 
@@ -3764,11 +3806,11 @@ LogicalResult XlaSelectAndScatterOp::verify() {
 
   ElementsAttr padding;
   if (matchPattern(op.getPadding(), m_Constant(&padding))) {
-    const ShapedType &padding_ty = padding.getType();
+    const ShapedType &padding_ty = cast<ShapedType>(padding.getType());
     if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2) {
       return op.emitOpError()
              << "expects padding to be a matrix with minor dimension 2, got "
-             << padding.getType().getShape();
+             << padding.getShapedType().getShape();
     }
   }
 
@@ -3924,8 +3966,8 @@ LogicalResult XlaVariadicSortOp::verify() {
 
   ElementsAttr dimension;
   if (matchPattern(op.getDimension(), m_Constant(&dimension))) {
-    if (dimension.getType().getRank() != 0 ||
-        dimension.getType().getNumElements() != 1)
+    if (dimension.getShapedType().getRank() != 0 ||
+        dimension.getShapedType().getNumElements() != 1)
       return op.emitOpError() << "dimension must be a scalar";
   }
 

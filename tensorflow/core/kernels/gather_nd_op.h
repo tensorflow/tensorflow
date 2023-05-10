@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_H_
 // Functor definition for GatherOp, must be compilable by nvcc.
 
+#include "absl/status/status.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -47,15 +48,15 @@ template <typename Device, typename T, typename Index>
 Status DoGatherNd(OpKernelContext* c, const Tensor& params,
                   const Tensor& indices, Tensor* out) {
   if (!TensorShapeUtils::IsVectorOrHigher(params.shape())) {
-    return errors::InvalidArgument("params must be at least a vector");
+    return absl::InvalidArgumentError("params must be at least a vector");
   }
   if (!TensorShapeUtils::IsVectorOrHigher(indices.shape())) {
-    return errors::InvalidArgument("indices must be at least a vector");
+    return absl::InvalidArgumentError("indices must be at least a vector");
   }
   if (indices.dim_size(indices.dims() - 1) > params.dims()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "index innermost dimension length must be <= params rank; saw: ",
-        indices.dim_size(indices.dims() - 1), " vs. ", params.dims());
+        indices.dim_size(indices.dims() - 1), " vs. ", params.dims()));
   }
 
   const TensorShape& indices_shape(indices.shape());
@@ -67,15 +68,15 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
     N_big *= indices_shape.dim_size(i);
   }
   if (N_big > std::numeric_limits<int>::max()) {
-    return errors::InvalidArgument(
-        "indices has too many elements for int indexing: ", N_big, " > ",
-        std::numeric_limits<int>::max());
+    return absl::InvalidArgumentError(
+        absl::StrCat("indices has too many elements for int indexing: ", N_big,
+                     " > ", std::numeric_limits<int>::max()));
   }
   if (params.NumElements() > std::numeric_limits<Index>::max()) {
-    return errors::InvalidArgument("params.NumElements() too large for ",
-                                   DataTypeString(DataTypeToEnum<Index>::v()),
-                                   " indexing: ", params.NumElements(), " > ",
-                                   std::numeric_limits<Index>::max());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "params.NumElements() too large for ",
+        DataTypeString(DataTypeToEnum<Index>::v()), " indexing: ",
+        params.NumElements(), " > ", std::numeric_limits<Index>::max()));
   }
 
   // The result shape is
@@ -98,9 +99,9 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
   }
 
   if (slice_size_big > std::numeric_limits<Index>::max()) {
-    return errors::InvalidArgument(
-        "slice size is too large for indexing: ", slice_size_big, " > ",
-        std::numeric_limits<Index>::max());
+    return absl::InvalidArgumentError(
+        absl::StrCat("slice size is too large for indexing: ", slice_size_big,
+                     " > ", std::numeric_limits<Index>::max()));
   }
 
   const Index slice_size = static_cast<Index>(slice_size_big);
@@ -110,10 +111,10 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
 
   if (N_result > 0) {
     if (params_shape.num_elements() == 0) {
-      return errors::InvalidArgument(
-          "Requested more than 0 entries, but "
-          "params is empty.  Params shape: ",
-          params_shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requested more than 0 entries, but "
+                       "params is empty.  Params shape: ",
+                       params_shape.DebugString()));
     }
 
     auto indices_mat = indices.flat_inner_dims<Index>();
@@ -145,22 +146,22 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
       PARAMS_CASE(7);
 #undef PARAMS_CASE
       default:
-        return errors::InvalidArgument(
-            "Only indices.shape[-1] values between 1 and 7 "
-            "are currently supported.  Requested rank: ",
-            indices_nd);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Only indices.shape[-1] values between 1 and 7 "
+                         "are currently supported.  Requested rank: ",
+                         indices_nd));
     }
 
     // bad_i will only return >= 0 on CPUs right now.
     if (bad_i >= 0) {
       auto shape = indices.shape();
       shape.RemoveLastDims(1);
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "indices", SliceDebugString(shape, bad_i), " = [",
           str_util::Join(
               gtl::ArraySlice<Index>(&indices_mat(bad_i, 0), indices_nd), ", "),
           "] does not index into param shape ", params.shape().DebugString(),
-          ", node name: ", c->op_kernel().name());
+          ", node name: ", c->op_kernel().name()));
     }
   }
   return OkStatus();

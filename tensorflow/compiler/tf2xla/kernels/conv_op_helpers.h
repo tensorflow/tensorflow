@@ -58,20 +58,19 @@ struct ConvOpAttrs {
 
 // Creates a new XLA forward or backward convolution with the given inputs and
 // attributes.
-StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
-    StringPiece type_string, xla::XlaOp conv_input, xla::XlaOp filter,
-    const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config = nullptr);
+StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece type_string,
+                                          xla::XlaOp conv_input,
+                                          xla::XlaOp filter,
+                                          const ConvOpAttrs& attrs);
 StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
     xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config = nullptr,
     xla::XlaOp* input_sizes = nullptr);
-StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
-    StringPiece type_string, xla::XlaOp activations,
-    const xla::Shape& filter_shape, xla::XlaOp gradients,
-    const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config = nullptr);
+StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(StringPiece type_string,
+                                                 xla::XlaOp activations,
+                                                 const xla::Shape& filter_shape,
+                                                 xla::XlaOp gradients,
+                                                 const ConvOpAttrs& attrs);
 
 }  // namespace tensorflow
 

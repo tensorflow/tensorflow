@@ -730,11 +730,10 @@ tf_kernel_library(
     }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cusolver_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ],
 )
 

@@ -68,6 +68,7 @@ InterpreterValue alloc(InterpreterState& state, memref::AllocOp alloc,
     stats->peakHeapSize = std::max(stats->peakHeapSize, stats->heapSize);
     ++stats->numAllocations;
   }
+  result.buffer()->setAllocatedBy(alloc);
   return result;
 }
 
@@ -77,10 +78,11 @@ InterpreterValue allocA(InterpreterState&, memref::AllocaOp alloc,
   auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
   auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
   result.buffer()->setIsAlloca();
+  result.buffer()->setAllocatedBy(alloc);
   return result;
 }
 
-void dealloc(InterpreterState& state, memref::DeallocOp,
+void dealloc(InterpreterState& state, memref::DeallocOp op,
              InterpreterValue memref) {
   if (!memref.buffer()) {
     state.addFailure("attempting to deallocate null pointer.");
@@ -96,7 +98,7 @@ void dealloc(InterpreterState& state, memref::DeallocOp,
       buffer->getByteSize()) {
     state.addFailure("Attempting to deallocate a subview");
   } else if (!state.getOptions().disableDeallocations) {
-    buffer->deallocate();
+    buffer->deallocate(op);
   }
 }
 

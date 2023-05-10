@@ -863,9 +863,11 @@ Attribute TensorProtoAttr::parse(AsmParser& parser, Type type) {
     parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
     return nullptr;
   }
+  auto shapedType = type.dyn_cast<ShapedType>();
+  if (!shapedType) return nullptr;
 
   std::string bytes_data = absl::HexStringToBytes(data.substr(2));
-  return TensorProtoAttr::get(type, bytes_data);
+  return TensorProtoAttr::get(shapedType, bytes_data);
 }
 
 void TensorProtoAttr::print(mlir::AsmPrinter& printer) const {

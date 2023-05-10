@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
@@ -234,6 +234,8 @@ StatusOr<std::string> PreprocessXSpace(
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
     const ToolOptions& options) {
+  LOG(INFO) << "serving tool: " << tool_name
+            << " with options: " << DebugString(options);
   if (tool_name == "trace_viewer") {
     return ConvertXSpaceToTraceEvents(session_snapshot);
   } else if (tool_name == "overview_page") {

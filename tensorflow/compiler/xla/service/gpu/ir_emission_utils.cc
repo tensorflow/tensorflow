@@ -492,8 +492,13 @@ static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
   // For i1 memrefs, the underlying allocation is 8 bits.
   if (type.getElementType().isInteger(/*width=*/1)) {
     return type.getNumElements();
+  } else if (auto complexType =
+                 type.getElementType().dyn_cast<mlir::ComplexType>()) {
+    auto elementType = complexType.getElementType();
+    return elementType.getIntOrFloatBitWidth() * type.getNumElements() * 2 /
+           CHAR_BIT;
   } else {
-    return type.cast<mlir::ShapedType>().getSizeInBits() / CHAR_BIT;
+    return type.getNumElements() * type.getElementTypeBitWidth() / CHAR_BIT;
   }
 }
 

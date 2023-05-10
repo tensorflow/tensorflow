@@ -22,7 +22,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import common_shapes
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
@@ -65,6 +64,32 @@ def sanitize_spec_name(name: str) -> str:
     return swapped
   else:
     return "tensor_" + swapped
+
+
+def get_op_name(tensor_name):
+  """Extract the Op name from a Tensor name.
+
+  The Op name is everything before a colon, if present,
+  not including any ^ prefix denoting a control dependency.
+
+  Args:
+    tensor_name: the full name of a Tensor in the graph.
+  Returns:
+    The name of the Op of which the given Tensor is an output.
+  Raises:
+    ValueError: if tensor_name is None or empty.
+  """
+  if not tensor_name:
+    raise ValueError(
+        f"Tensor name cannot be empty or None. Received: {tensor_name}.")
+
+  # Control dependency inputs start with ^.
+  if tensor_name.startswith("^"):
+    tensor_name = tensor_name[1:]
+  if ":" in tensor_name:
+    op_name, _ = tensor_name.split(":")
+    return op_name
+  return tensor_name
 
 
 class DenseSpec(type_spec.TypeSpec):
@@ -250,15 +275,14 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       placeholder.op._set_attr(  # pylint: disable=protected-access
           "_user_specified_name",
           attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
-    # TODO(b/263894631): Add an assertion for a TensorSpec of type resource or
-    # variant which must have handle data associated with it.
-    if ((self.dtype == dtypes.resource or self.dtype == dtypes.variant)
-        and placeholder_context.has_handledata(id(self))):
-      handle_data = placeholder_context.get_handledata(id(self))
-      if (handle_data is not None
-          and handle_data.is_set
-          and handle_data.shape_and_type):
-        handle_data_util.set_handle_data(placeholder, handle_data)
+
+    handle_data = self.dtype._handle_data  # pylint: disable=protected-access
+    if (
+        handle_data is not None
+        and handle_data.is_set
+        and handle_data.shape_and_type
+    ):
+      handle_data_util.set_handle_data(placeholder, handle_data)
 
     # Record the composite device as an attribute to the placeholder.
     # This attribute would be propagated into the arg_attr of the FunctionDef.
@@ -305,6 +329,9 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   def _to_tensors(self, value):
     assert isinstance(value, ops.Tensor)
     return [value]
+
+  def _flatten(self):
+    return [self]
 
   def _cast(self, value, casting_context):
     """Cast value to a tensor that is a subtype of this TensorSpec."""
@@ -423,44 +450,6 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
 trace_type.register_serializable(TensorSpec)
 trace_type.register_tensor_type(TensorSpec)
-
-
-class _TensorCodec:
-  """Codec for Tensor."""
-
-  def can_encode(self, pyobj):
-    return isinstance(pyobj, ops.Tensor)
-
-  def do_encode(self, tensor_value, encode_fn):
-    """Returns an encoded `TensorProto` for the given `tf.Tensor`."""
-    del encode_fn
-    encoded_tensor = struct_pb2.StructuredValue()
-    if isinstance(tensor_value, ops.EagerTensor):
-      encoded_tensor.tensor_value.CopyFrom(
-          tensor_util.make_tensor_proto(tensor_value.numpy())
-      )
-    else:
-      if tensor_value.op.type == "Const":
-        encoded_tensor.tensor_value.CopyFrom(tensor_value.op.get_attr("value"))
-      else:
-        raise nested_structure_coder.NotEncodableError(
-            f"No encoder for object {str(tensor_value)} of type"
-            f" {type(tensor_value)}."
-        )
-    return encoded_tensor
-
-  def can_decode(self, value):
-    return value.HasField("tensor_value")
-
-  def do_decode(self, value, decode_fn):
-    """Returns the `tf.Tensor` encoded by the proto `value`."""
-    del decode_fn
-    tensor_proto = value.tensor_value
-    tensor = constant_op.constant(tensor_util.MakeNdarray(tensor_proto))
-    return tensor
-
-
-nested_structure_coder.register_codec(_TensorCodec())
 
 
 class _TensorSpecCodec:

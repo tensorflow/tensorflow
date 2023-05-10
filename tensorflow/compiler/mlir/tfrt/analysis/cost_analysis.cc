@@ -142,6 +142,7 @@ void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
   // Use the max size among function inputs as the default size of dynamic
   // shaped tensors in the function.
   for (auto arg : func_op.getArguments()) {
+    if (!arg.getType().isa<mlir::TensorType>()) continue;
     auto type = arg.getType().cast<mlir::TensorType>();
     if (type.hasRank()) {
       max_arg_size_ = std::max(max_arg_size_, GetRankedTensorSize(type));
@@ -177,7 +178,7 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     const auto op_key_attr =
         op->getAttrOfType<mlir::IntegerAttr>(kOpKeyAttrName);
     if (op_key_attr) {
-      cost_map_[op] = cost_recorder_->GetCost(op_key_attr.getInt());
+      cost_map_[op] = cost_recorder_->GetCostNanosecond(op_key_attr.getInt());
       return;
     }
   }

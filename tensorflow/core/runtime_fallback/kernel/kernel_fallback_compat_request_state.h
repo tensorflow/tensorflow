@@ -112,6 +112,9 @@ class KernelFallbackCompatRequestState {
   }
 
   tensorflow::Device* cpu_device() const { return cpu_device_; }
+  tensorflow::FunctionLibraryRuntime* cpu_function_library_runtime() const {
+    return cpu_function_library_runtime_;
+  }
 
   ScopedStepContainer* step_container() const { return step_container_.get(); }
 
@@ -185,6 +188,7 @@ class KernelFallbackCompatRequestState {
       custom_device_;
   std::unique_ptr<tensorflow::Device> custom_cpu_device_;
   tensorflow::Device* cpu_device_ = nullptr;
+  tensorflow::FunctionLibraryRuntime* cpu_function_library_runtime_ = nullptr;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
   CollectiveExecutor* collective_executor_ = nullptr;
   core::RefCountPtr<Rendezvous> rendezvous_;

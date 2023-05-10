@@ -409,6 +409,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -570,6 +572,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -1009,6 +1013,8 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -1896,7 +1902,7 @@ on host. `tpu_tensors` are list of tpu device tensors without the padded data.
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
-def TF_TPUAnnotateTensorsWithDynamicShapeOp : TF_Op<"TPUAnnotateTensorsWithDynamicShape", []> {
+def TF_TPUAnnotateTensorsWithDynamicShapeOp : TF_Op<"TPUAnnotateTensorsWithDynamicShape", [Pure]> {
   let summary = [{
 Placeholder op which takes the output of TPUCopyWithDynamicShapeOp and pass
 them to the following tpu ops.
@@ -1917,7 +1923,6 @@ removed during the bridge rewrite.
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
-
 
 def TF_ConvertToCooTensorOp : TF_Op<"ConvertToCooTensor", [Pure]> {
   let summary = [{
@@ -1945,5 +1950,25 @@ format which contains three 1D tensors.
   );
 }
 
+def TF_ResourceGatherNdOp : TF_Op<"ResourceGatherNd", []> {
+  let summary = "GatherNd on a resource.";
+
+  let description = [{
+This op reads the variable referenced by the first argument, and
+then performs a GatherNd operation on it.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$resource,
+    TF_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
 
 #endif // TF_OPS

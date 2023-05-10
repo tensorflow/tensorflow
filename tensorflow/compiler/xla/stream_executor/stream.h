@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_memory_manager.h"
@@ -609,6 +610,23 @@ class Stream {
   }
 
   template <typename ElementType>
+  tsl::Status ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                              const NumericOptions &numeric_options,
+                              const dnn::BatchDescriptor &input_dimensions,
+                              const DeviceMemory<ElementType> &input_data,
+                              const dnn::BatchDescriptor &output_dimensions,
+                              DeviceMemory<ElementType> *output_data,
+                              ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
+                                pooling_dimensions, numeric_options,
+                                input_dimensions, input_data, output_dimensions,
+                                *output_data, workspace_allocator);
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  template <typename ElementType>
   tsl::Status ThenPoolBackward(
       const dnn::PoolingDescriptor &pooling_dimensions,
       const dnn::BatchDescriptor &input_dimensions,
@@ -623,6 +641,26 @@ class Stream {
           dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
           input_dimensions, input_data, output_dimensions, output_data,
           input_diff_data, *output_diff_data, workspace_allocator);
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  template <typename ElementType>
+  tsl::Status ThenPoolBackward(
+      const dnn::PoolingDescriptor &pooling_dimensions,
+      const NumericOptions &numeric_options,
+      const dnn::BatchDescriptor &input_dimensions,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      const DeviceMemory<ElementType> &output_data,
+      const DeviceMemory<ElementType> &input_diff_data,
+      DeviceMemory<ElementType> *output_diff_data,
+      ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolBackward(
+          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
+          numeric_options, input_dimensions, input_data, output_dimensions,
+          output_data, input_diff_data, *output_diff_data, workspace_allocator);
     }
     return tsl::errors::Unimplemented("DNN library is not found.");
   }
@@ -839,31 +877,6 @@ class Stream {
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *y, int incy);
 
-  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64_t m, uint64 n,
-                                    float alpha, const DeviceMemory<float> &a,
-                                    int lda, const DeviceMemory<float> &x,
-                                    int incx, float beta,
-                                    DeviceMemory<float> *y, int incy,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64_t m, uint64 n,
-                                    double alpha, const DeviceMemory<double> &a,
-                                    int lda, const DeviceMemory<double> &x,
-                                    int incx, double beta,
-                                    DeviceMemory<double> *y, int incy,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(
-      blas::Transpose trans, uint64_t m, uint64 n, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &x, int incx,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(
-      blas::Transpose trans, uint64_t m, uint64 n, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &x, int incx,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *y,
-      int incy, blas::ProfileResult *output_profile_result);
-
   // See BlasSupport::DoBlasSbmv.
   Stream &ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k, float alpha,
                        const DeviceMemory<float> &a, int lda,
@@ -946,44 +959,6 @@ class Stream {
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
                         ldc, blas::kDefaultComputePrecision);
   }
-
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<Eigen::half> &a, int lda,
-                                    const DeviceMemory<Eigen::half> &b, int ldb,
-                                    float beta, DeviceMemory<Eigen::half> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<float> &a, int lda,
-                                    const DeviceMemory<float> &b, int ldb,
-                                    float beta, DeviceMemory<float> *c, int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, double alpha,
-                                    const DeviceMemory<double> &a, int lda,
-                                    const DeviceMemory<double> &b, int ldb,
-                                    double beta, DeviceMemory<double> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &b, int ldb,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
 
   template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemmWithAlgorithm(
@@ -1497,6 +1472,7 @@ class Stream {
                       absl::Span<const int> labels_data,
                       absl::Span<const int> labels_lengths_data,
                       absl::Span<const int> input_lengths_data,
+                      const NumericOptions &numeric_options,
                       DeviceMemory<float> *costs_data,
                       const dnn::RnnStateTensorDescriptor &grads_desc,
                       DeviceMemory<float> *grads_data,

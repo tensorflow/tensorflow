@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
@@ -105,27 +108,6 @@ static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,
 // be limited reasonably. The current maximum value was chosen based on
 // some matmul configurations benchmarked so far and can be increased further.
 constexpr int kMaxSplitK = 16;
-
-// TODO(b/266210099): have a way to generate/load these dynamically.
-// Returns a list of possible tilings for a gemm performed in Triton.
-static std::vector<AutotuneResult::TritonGemmKey>
-GetPossibleMatmulAutotuneConfigs() {
-  return {GemmKey(128, 256, 32, 1, 3, 8),  GemmKey(256, 128, 32, 1, 3, 8),
-          GemmKey(256, 64, 32, 1, 4, 4),   GemmKey(64, 256, 32, 1, 4, 4),
-          GemmKey(128, 64, 32, 1, 4, 4),   GemmKey(64, 128, 32, 1, 4, 4),
-          GemmKey(128, 256, 32, 1, 3, 8),  GemmKey(256, 128, 128, 1, 3, 8),
-          GemmKey(256, 64, 128, 1, 4, 4),  GemmKey(64, 256, 128, 1, 4, 4),
-          GemmKey(128, 128, 128, 1, 4, 4), GemmKey(128, 64, 64, 1, 4, 4),
-          GemmKey(64, 128, 64, 1, 4, 4),   GemmKey(128, 32, 64, 1, 4, 4),
-          GemmKey(64, 32, 64, 1, 4, 4),    GemmKey(32, 128, 32, 1, 4, 4),
-          GemmKey(64, 32, 64, 1, 2, 8),    GemmKey(128, 128, 32, 1, 4, 4),
-          GemmKey(32, 32, 256, 1, 1, 4),   GemmKey(64, 32, 32, 16, 1, 4),
-          GemmKey(32, 64, 64, 4, 1, 4),    GemmKey(128, 128, 64, 4, 1, 4),
-          GemmKey(16, 16, 256, 1, 1, 4),   GemmKey(16, 128, 32, 16, 1, 4),
-          GemmKey(16, 64, 128, 1, 1, 4),   GemmKey(16, 128, 32, 8, 1, 4),
-          GemmKey(16, 16, 512, 1, 1, 4),   GemmKey(32, 16, 512, 1, 1, 4),
-          GemmKey(16, 16, 256, 1, 3, 4)};
-}
 
 // We assume that the string representation is general enough for caching
 // purposes.
@@ -311,7 +293,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     BufferComparator comparator(root->shape(), fusion.parent()->config());
 
     const std::vector<AutotuneResult::TritonGemmKey> configurations =
-        GetPossibleMatmulAutotuneConfigs();
+        GetPossibleMatmulAutotuneConfigs(
+            device_config.stream_exec->GetDeviceDescription()
+                .cuda_compute_capability());
 
     // Pre-compile all versions first using the thread pool.
     if (thread_pool_) {
@@ -543,6 +527,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     // Avoid dumping compilation steps of every autotuning variant.
     options.set_xla_dump_to("");
     options.set_xla_gpu_dump_llvmir(false);
+    // Avoid using another thread pool for PTX compilation - there are maximum
+    // two functions to compile here.
+    options.set_xla_gpu_force_compilation_parallelism(1);
     new_hlo_module->config().set_debug_options(options);
     HloComputation* entry_computation = new_hlo_module->entry_computation();
     HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
@@ -635,6 +622,32 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 };
 
 }  // anonymous namespace
+
+std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
+    const se::CudaComputeCapability compute_capability) {
+  std::vector<AutotuneResult::TritonGemmKey> configs = {
+      GemmKey(32, 32, 256, 1, 1, 4), GemmKey(64, 32, 32, 16, 1, 4),
+      GemmKey(32, 64, 64, 4, 1, 4),  GemmKey(128, 128, 64, 4, 1, 4),
+      GemmKey(16, 16, 256, 1, 1, 4), GemmKey(16, 128, 32, 16, 1, 4),
+      GemmKey(16, 64, 128, 1, 1, 4), GemmKey(16, 128, 32, 8, 1, 4),
+      GemmKey(16, 16, 512, 1, 1, 4), GemmKey(32, 16, 512, 1, 1, 4),
+      GemmKey(64, 32, 64, 1, 2, 8)};
+  if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    absl::c_copy(
+        std::vector<AutotuneResult::TritonGemmKey>{
+            GemmKey(128, 256, 32, 1, 3, 8), GemmKey(256, 128, 32, 1, 3, 8),
+            GemmKey(256, 64, 32, 1, 4, 4), GemmKey(64, 256, 32, 1, 4, 4),
+            GemmKey(128, 64, 32, 1, 4, 4), GemmKey(64, 128, 32, 1, 4, 4),
+            GemmKey(128, 256, 32, 1, 3, 8), GemmKey(256, 128, 128, 1, 3, 8),
+            GemmKey(256, 64, 128, 1, 4, 4), GemmKey(64, 256, 128, 1, 4, 4),
+            GemmKey(128, 128, 128, 1, 4, 4), GemmKey(128, 64, 64, 1, 4, 4),
+            GemmKey(64, 128, 64, 1, 4, 4), GemmKey(128, 32, 64, 1, 4, 4),
+            GemmKey(64, 32, 64, 1, 4, 4), GemmKey(32, 128, 32, 1, 4, 4),
+            GemmKey(128, 128, 32, 1, 4, 4), GemmKey(16, 16, 256, 1, 3, 4)},
+        std::back_inserter(configs));
+  }
+  return configs;
+}
 
 std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
     const HloInstruction& hlo) {

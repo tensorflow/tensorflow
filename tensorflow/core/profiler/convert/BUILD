@@ -615,6 +615,7 @@ cc_library(
         ":xplane_to_memory_profile",
         ":xplane_to_op_stats",
         ":xplane_to_tf_data_stats",
+        ":xplane_to_tf_functions",
         ":xplane_to_tool_names",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
@@ -632,7 +633,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/tsl/profiler/convert:xplane_to_trace_events",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -840,6 +840,7 @@ cc_library(
     hdrs = ["tool_options.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
+#include <iterator>
+#include <limits>
+#include <map>
 #include <memory>
+#include <optional>
 #include <random>
+#include <sstream>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -31,7 +36,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
-#include "tensorflow/tsl/util/determinism.h"
 #include "tensorflow/tsl/util/env_var.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
@@ -402,24 +406,22 @@ static void InitializeTypedBuffer(se::Stream* stream,
     // Default-seeded random numbers.
     std::mt19937 gen;
     for (auto& element : *ret) {
+      constexpr bool kIsIntegral = std::numeric_limits<T>::is_integer;
+      constexpr bool kIsLowRange =
+          !kIsIntegral && std::numeric_limits<T>::max_exponent <=
+                              std::numeric_limits<Eigen::half>::max_exponent;
       // Only double gets random values in double.  Other data types get random
       // values in float then cast them to the target data types.
-      using RandomFloatingPointType =
-          typename std::conditional<std::is_same<T, Eigen::half>::value ||
-                                        std::is_same<T, Eigen::bfloat16>::value,
-                                    float, T>::type;
-      using RandomType =
-          typename std::conditional<std::is_integral<T>::value, float,
-                                    RandomFloatingPointType>::type;
+      using RandomType = typename std::conditional<std::is_same_v<T, double>,
+                                                   double, float>::type;
       // Scale down the values for fp16 to have less overflows.
-      auto upper_bound =
-          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
+      auto upper_bound = RandomType(kIsLowRange ? 0.1 : 1.0);
       auto rand_val = UniformDistribution(RandomType(0), upper_bound, &gen);
       // For bf16, float or double, it is between [0,1].
       // For fp16, it ranges between [0, 0.1].
       // For integer types, element is either 0 or 1 for less overflows
       // especially for int8_t.
-      element = T(std::is_integral<T>::value ? rand_val + 0.5 : rand_val);
+      element = T(kIsIntegral ? rand_val + 0.5 : rand_val);
     }
     return ret;
   }();
@@ -447,28 +449,30 @@ static void InitializeTypedBuffer(se::Stream* stream,
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64_t* rng_state, se::DeviceMemoryBase buffer) {
-  switch (buffer_type) {
-    case xla::F16:
-      return InitializeTypedBuffer<Eigen::half>(stream, buffer, rng_state);
-    case xla::BF16:
-      return InitializeTypedBuffer<Eigen::bfloat16>(stream, buffer, rng_state);
-    case xla::F32:
-    case xla::C64:
-      return InitializeTypedBuffer<float>(stream, buffer, rng_state);
-    case xla::F64:
-    case xla::C128:
-      return InitializeTypedBuffer<double>(stream, buffer, rng_state);
-    case xla::PRED:
-      // Using S8 for PRED initialization, as vector<bool> has different
-      // semantics and cannot be used as a buffer.
-    case xla::S8:
-      return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
-    case xla::S32:
-      return InitializeTypedBuffer<int32_t>(stream, buffer, rng_state);
-    default:
-      LOG(FATAL) << "Unexpected type: "
-                 << primitive_util::LowercasePrimitiveTypeName(buffer_type);
-  }
+  return primitive_util::PrimitiveTypeSwitch<void>(
+      [&](auto primitive_type_constant) -> void {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant) ||
+                      primitive_util::IsIntegralType(primitive_type_constant)) {
+          using NativeT = typename primitive_util::PrimitiveTypeToNative<
+              primitive_type_constant>::type;
+          return InitializeTypedBuffer<NativeT>(stream, buffer, rng_state);
+        }
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = typename primitive_util::PrimitiveTypeToNative<
+              primitive_type_constant>::type;
+          return InitializeTypedBuffer<typename NativeT::value_type>(
+              stream, buffer, rng_state);
+        }
+        // Using S8 for PRED initialization, as vector<bool> has different
+        // semantics and cannot be used as a buffer.
+        if constexpr (primitive_type_constant == PRED) {
+          return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
+        }
+        LOG(FATAL) << "Unexpected type: "
+                   << primitive_util::LowercasePrimitiveTypeName(buffer_type);
+      },
+      buffer_type);
 }
 
 StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
@@ -518,7 +522,7 @@ bool RequireDeterminism(const HloModuleConfig& config) {
                                         &cudnn_deterministic));
     return cudnn_deterministic;
   }();
-  return tsl::OpDeterminismRequired() || require_cudnn_determinism ||
+  return require_cudnn_determinism ||
          config.debug_options().xla_gpu_deterministic_ops();
 }
 

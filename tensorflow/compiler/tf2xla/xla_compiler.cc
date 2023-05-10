@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
+#include <algorithm>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
@@ -53,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -61,7 +64,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -901,8 +903,16 @@ Status XlaCompiler::CompileFunction(
     }
   } else {
     VLOG(1) << "MLIR bridge off. Using the old bridge to compile the function";
-    TF_RETURN_IF_ERROR(
-        CompileGraph(options, function_id, std::move(graph), args, result));
+    auto status =
+        CompileGraph(options, function_id, std::move(graph), args, result);
+    if (!status.ok()) {
+      ::tsl::errors::AppendToMessage(
+          &status, "tf2xla conversion failed while converting ", function_id,
+          ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
+          "--vmodule=xla_compiler=2 to obtain a dump of the compiled "
+          "functions.");
+      return status;
+    }
   }
   VLOG(1) << "====================================================";
 
@@ -1396,6 +1406,10 @@ class DummyStackTrace : public AbstractStackTrace {
   absl::Span<StackFrame const> ToFrames() const override { return frames_; }
 
   StackFrame LastUserFrame() const override { return frames_.back(); }
+
+  std::vector<StackFrame> GetUserFrames(int /*limit*/) const override {
+    return frames_;
+  }
 
   std::string ToString(const TracePrintingOptions& opts) const override {
     auto frame = LastUserFrame();

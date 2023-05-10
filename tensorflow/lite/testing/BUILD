@@ -264,6 +264,7 @@ cc_library(
     hdrs = ["tflite_driver.h"],
     deps = [
         ":join",
+        ":result_expectations",
         ":split",
         ":test_runner",
         "//tensorflow/lite:builtin_op_data",
@@ -351,10 +352,10 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -586,6 +587,20 @@ cc_library(
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "result_expectations",
+    srcs = ["result_expectations.cc"],
+    hdrs = ["result_expectations.h"],
+    deps = [
+        ":split",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/strings",
     ],
 )

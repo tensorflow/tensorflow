@@ -17,6 +17,7 @@
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
@@ -44,6 +45,11 @@ def is_variable_initialized(variable):
     initialized, `False` otherwise.
   """
   return state_ops.is_variable_initialized(variable)
+
+
+def default_variable_creator(_, **kwds):
+  del kwds
+  raise NotImplementedError("ref_variable needs to be imported")
 
 
 @tf_export(v1=["Variable"])
@@ -290,8 +296,7 @@ class VariableV1(variables.Variable):
     """VariableV1 class getter. Useful to force the signature."""
     if cls is not VariableV1:
       return None
-    previous_getter = lambda **kwargs: variables.default_variable_creator(
-        None, **kwargs)
+    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
       previous_getter = variables._make_getter(getter, previous_getter)  # pylint: disable=protected-access
 
@@ -316,3 +321,5 @@ class VariableV1(variables.Variable):
         collections=collections,
         use_resource=use_resource,
     )
+
+variable_scope.set_variable_v1(VariableV1)

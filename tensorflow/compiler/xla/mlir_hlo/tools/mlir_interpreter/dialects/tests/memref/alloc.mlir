@@ -45,3 +45,13 @@ func.func @alloc_dynamic() -> memref<?x3xi32> {
 // CHECK-LABEL: @alloc_dynamic
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: <2x3xi32>: [[0, 0, 0], [0, 0, 0]]
+
+func.func @dealloc() -> memref<i32> {
+  %a = memref.alloc() : memref<i32>
+  memref.dealloc %a : memref<i32>
+  return %a : memref<i32>
+}
+
+// CHECK-LABEL: @dealloc
+// CHECK-NEXT: Results
+// CHECK-NEXT: TensorOrMemref<i32>: <<deallocated>>

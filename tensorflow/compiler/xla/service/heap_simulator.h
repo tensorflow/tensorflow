@@ -18,14 +18,22 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <iostream>
 #include <memory>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+// TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
+#if defined(__GNUC__) || defined(__clang__)
+#include "absl/container/btree_map.h"
+#endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
@@ -59,6 +67,12 @@ class HeapSimulator {
   // Chunk represents a contiguous piece of memory.  Each BufferValue will be
   // associated with a chunk in the assignment result.
   struct Chunk {
+    static Chunk FromOffsetEnd(int64_t offset, int64_t end);
+    static Chunk FromOffsetSize(int64_t offset, int64_t size);
+    Chunk() : Chunk(-1, 0) {}
+
+    std::string ToString() const;
+
     int64_t offset;
     int64_t size;
 
@@ -69,6 +83,11 @@ class HeapSimulator {
     bool operator==(const Chunk& other) const {
       return offset == other.offset && size == other.size;
     }
+
+   private:
+    Chunk(int64_t offset, int64_t size) : offset(offset), size(size) {}
+
+    friend std::ostream& operator<<(std::ostream& stream, const Chunk& chunk);
   };
 
   template <typename BufferType>
@@ -370,6 +389,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   using Result = HeapSimulator::Result<BufferType>;
   using Chunk = HeapSimulator::Chunk;
 
+  // A mapping from a free chunk offset to the end of that chunk (exclusive).
+#if defined(__GNUC__) || defined(__clang__)
+  using FreeChunks = absl::btree_map<int64_t, int64_t, std::greater<int64_t>>;
+#else
+  using FreeChunks = std::map<int64_t, int64_t, std::greater<int64_t>>;
+#endif
+
   enum Type {
     kSpatial = 0,
     kTemporal,
@@ -380,19 +406,19 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // Convenience method for use with debugging and logging.
     std::string ToString() const;
 
-    const BufferType* buffer;
-    int64_t size;
+    const BufferType* buffer = nullptr;
+    int64_t size = -1;
     // Alloc time of the buffer.
-    int64_t start;
+    int64_t start = -1;
     // Free time of the buffer.
-    int64_t end;
+    int64_t end = -1;
 
     // Colocation buffers that need to be collocated with this one.
     absl::InlinedVector<const BufferType*, 2> colocations;
 
     // True if this buffer needs an allocation. False if it is collocated with
     // other buffer.
-    bool need_allocation;
+    bool need_allocation = false;
   };
 
   // Comparison function that is used to store buffer intervals.
@@ -454,6 +480,175 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     std::vector<IntervalSlice> sorted_slices;
   };
 
+  // A class for finding locations to allocate a sliced allocation. A sliced
+  // allocation is an allocation of a buffer, in which slices of the buffer are
+  // allocated at different times, called slice times. Slice time is a logical
+  // time. For example, a requestor may ask for 15 Mib, allocated 5 MiB at a
+  // time, at 3 slices times t0, t1, and t2.
+  //
+  // The primary data structure inside this class is free_chunks_. free_chunks_
+  // is a sorted map of the chunks of memory that are free at the latest
+  // requested slice time. For each memory offset within each of those chunks,
+  // we track the earliest slice time t, such that the memory offset is
+  // continuously free during [t, latest requested slice time].
+  //
+  // For example, the following depiction of free_chunks_ indicates that
+  // at slice time t2, we have 2 free chunks, [5,15) and [20, 25). At slice time
+  // t1, the free chunk [5,15) is still free at [6,8) and [10,12). At slice time
+  // t0, the free chunk [5,15) is still free at [7,8). The free chunk [20, 25)
+  // is also free at slice times t0 and t1. (In the depicition, `x` indicates
+  // used space and ` ` indicates free space.)
+  //
+  //    ^
+  // t2 |xxxxx          xxxxx     xxxxxx
+  // t1 |xxxxxx  xx  xxxxxxxx     xxxxxx
+  // t0 |xxxxxxx xxxxxxxxxxxx     xxxxxx
+  //    +!----|----!----|----!----|----!>
+  //          space
+  class SlicedAllocationFinder {
+   public:
+    // The chunk at index i is the chunk that should be allocated at slice time
+    // i.
+    using ChunksSortedBySliceTime = std::vector<Chunk>;
+
+    // A structure representing a piece of a free chunk that is continuously
+    // free in [piece.earliest_free_slice_time, LatestSliceTime()].
+    struct FreeChunkPiece {
+      std::string ToString() const;
+
+      int64_t earliest_free_slice_time;
+      Chunk dimensions;
+    };
+
+    // A sorted map (indexed by starting offset) describing how far back in
+    // slice time different pieces of a FreeChunkRoot are free.
+#if defined(__GNUC__) || defined(__clang__)
+    using FreeChunkPieces =
+        absl::btree_map<int64_t, FreeChunkPiece, std::greater<int64_t>>;
+#else
+    using FreeChunkPieces =
+        std::map<int64_t, FreeChunkPiece, std::greater<int64_t>>;
+#endif
+
+    // A free chunk that has been split into FreeChunkPieces.
+    struct FreeChunkRoot {
+      FreeChunkRoot(const Chunk& free_chunk, int64_t free_chunk_slice_time);
+
+      std::string ToString() const;
+
+      // Update pieces in accordance with the knowledge that free_chunk is
+      // free at free_chunk_slice_time.
+      //
+      // REQUIRES:
+      // - We must process all updates at free_chunk_slice_time x before
+      //   processing those at free time x-1.
+      void Update(const Chunk& free_chunk, int64_t free_chunk_slice_time);
+
+      Chunk chunk;
+      FreeChunkPieces pieces;
+    };
+
+    // A sorted map (indexed by starting offset) of FreeChunkRoots.
+#if defined(__GNUC__) || defined(__clang__)
+    using FreeChunkRoots =
+        absl::btree_map<int64_t, FreeChunkRoot, std::greater<int64_t>>;
+#else
+    using FreeChunkRoots =
+        std::map<int64_t, FreeChunkRoot, std::greater<int64_t>>;
+#endif
+
+    // Arguments:
+    // - free_chunks_per_slice_time[i]: Describes free chunks at slice time i.
+    // - sorted_slice_sizes: A sliced allocation request. In space, the i+1th
+    //   slice immediately follows the ith slice.
+    // - max_colocation_size: The max size of any buffer that will be colocated
+    //   with the fully allocated sliced allocation.
+    // - preferred_offset: The preferred starting offset for the fully allocated
+    //   sliced allocation.
+    // - is_allocation_offset_allowed_fn: Indicates if a the entire sliced
+    //   allocation is allowed to be allocated staring at a given offset.
+    //
+    // REQUIRES:
+    // - sorted_slice_sizes.size() == free_chunks_per_slice_time.size()
+    // - any slice can be allocated at any slice time
+    // - alignment >= 1
+    //
+    // In the future, if we want to restrict certain slices to be fetched at
+    // certain slice times (e.g., because certain slices don't represent enough
+    // real time to allocate a larger slice), we can take a lambda to indicate
+    // what is permitted.
+    SlicedAllocationFinder(
+        absl::Span<const FreeChunks> free_chunks_per_slice_time,
+        std::vector<int64_t> sorted_slice_sizes, int64_t max_colocation_size,
+        int64_t preferred_offset, int64_t alignment);
+
+    std::string FreeChunksToAsciiArt() const;
+    std::string ToString() const;
+
+    // Finds a set of chunks in which to allocate the sliced allocation request.
+    // Returns a vector of chunks in which the ith element is the chunk that
+    // should be allocated at slice time i. If no such chunks can be found, an
+    // empty vector is returned.
+    //
+    // The returned vector will always be 1 larger than the initial request,
+    // with a chunk to represent any additional allocation needed for
+    // max_colocation_size_. This extra chunk will always come at the end of
+    // the returned vector and will be present even if its size is 0.
+    ChunksSortedBySliceTime Find() const;
+
+   private:
+    // The earliest slice time for the specified sliced allocation request.
+    int64_t EarliestSliceTime() const { return 0; }
+
+    // The latest slice time for the specified sliced allocation request.
+    int64_t LatestSliceTime() const { return sorted_slice_sizes_.size() - 1; }
+
+    // Returns ok if the given permutation of slice times results in an
+    // allocation of free space in root, at the specified offset. Otherwise,
+    // returns the reason such an allocation would not fit.
+    //
+    // permutation_of_slice_times[i] is the slice time that the ith slice
+    // (spatially) should be allocated. Such a slice has size
+    // sorted_slice_sizes_[i] and would be allocated at offset +
+    // sum(sorted_slice_sizes[j], for j in [0, i-1]).
+    Status DoesPermutationFit(
+        const std::vector<int64_t>& permutation_of_slice_times,
+        const FreeChunkRoot& root, int64_t offset) const;
+
+    // Only DoesSlicedPermutationFit() should call this method directly. Other
+    // callers should call DoesSlicedPermutationFit(), which contains some
+    // wrapper VLOGGING.
+    Status DoesPermutationFitImpl(
+        const std::vector<int64_t>& permutation_of_slice_times,
+        const FreeChunkRoot& root, int64_t offset) const;
+
+    // Same as Find() except only checks root to see if it can hold the sliced
+    // allocation request. If only_try_preferred_offset is true, only tries the
+    // preferred_offset_, when trying to find a fit for the sliced allocation
+    // request.
+    ChunksSortedBySliceTime FindInRoot(const FreeChunkRoot& root,
+                                       bool only_try_preferred_offset) const;
+
+    // Given a permutation of slice times (see DoesSlicedPermutationFit()),
+    // return a vector of chunks, in which the ith chunk should be allocated at
+    // slice time i, with size sorted_slice_sizes_[i] and at offset +
+    // sum(sorted_slice_sizes[j], for j in [0, i-1]).
+    //
+    // PermutationToChunks() does the additional job of adding a Chunk to the
+    // end of the result to account for an additional colocation space that
+    // need to be allocated. This Chunk is added, even if it is of size 0.
+    ChunksSortedBySliceTime PermutationToChunks(
+        const std::vector<int64_t>& permutation_of_slice_times,
+        int64_t offset) const;
+
+    std::vector<int64_t> sorted_slice_sizes_;
+    int64_t slice_size_sum_;
+    int64_t max_colocation_size_;
+    int64_t preferred_offset_;
+    int64_t alignment_;
+    FreeChunkRoots free_chunks_;
+  };
+
   explicit GlobalDecreasingSizeBestFitHeap(int64_t alignment,
                                            Type type = kSpatial);
   ~GlobalDecreasingSizeBestFitHeap() override {}
@@ -474,9 +669,34 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Returns the buffer intervals sorted according to buffer_interval_compare_.
   std::vector<BufferInterval> GetSortedBufferIntervals() const;
 
-  // TODO(b/275905276): create a FindChunkCandidates that takes a
-  // SlicedBufferInterval and return a vector of chunks, one per allocation
-  // slice
+  // Compute free chunks as all memory - chunks that are allocated at some time
+  // during the lifetime of buffer_interval or during the lifetime of buffers
+  // that are colocated with buffer_interval.
+  //
+  // Imagine that we've already allocated three chunks : a, b and c.  And now
+  // we want to allocate d. Since e is colocated with d, we have to allocate
+  // chunks for them together at the same address. To do this, we first gather
+  // all chunks that overlap with d and e on the time dimension, in this case
+  // the overlapped chunks are a and b (c doesn't overlap with either of d and
+  // e), then find create a new chunk that doesn't overlap with a and b on the
+  // space dimension.
+  //
+  // space
+  //   ^
+  //   |+--d---+      +---e---+
+  //   |
+  //   |+---+  +---------------+  +-------+
+  //   ||   |  |               |  |       |
+  //   ||   |  |               |  |       |
+  //   |+-a-+  +-------b-------+  +---c---+
+  //   ----------------------------------------> time
+  //
+  // MakeFreeChunks imposes the following additional constraints on its output:
+  // - The chunks in the result will start on alignment_ boundaries.
+  // - A free chunk will not be returned if it does not have enough space to fit
+  //   max_colocation_size.
+  FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
+                            int64_t max_colocation_size) const;
 
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for

@@ -296,7 +296,7 @@ class ExecutorState {
   struct AsyncState;
 
   // Process a ready node in current thread.
-  void Process(TaggedNode node, int64_t scheduled_nsec);
+  void Process(const TaggedNode& node, int64_t scheduled_nsec);
 
   void ProcessInline(TaggedNodeReadyQueue* inline_ready,
                      int64_t scheduled_nsec);
@@ -693,7 +693,7 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 }
 
 template <class PropagatorStateType>
-void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
+void ExecutorState<PropagatorStateType>::Process(const TaggedNode& tagged_node,
                                                  int64_t scheduled_nsec) {
   profiler::TraceMe traceme("ExecutorState::Process Scheduled",
                             profiler::TraceMeLevel::kVerbose);

@@ -370,6 +370,8 @@ class ShapeInference {
                                                     const Shape& val_shape,
                                                     int64_t dimension);
 
+  static StatusOr<Shape> InferTopKShape(const Shape& operand_shape, int64_t k);
+
   // Helper function for creating a Window proto from user-supplied data.
   // Returns error if the user-supplied data was invalid.
   static StatusOr<Window> InferWindowFromDimensions(

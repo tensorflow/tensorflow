@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/ctc_ops.cc.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -37,6 +39,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -97,46 +100,46 @@ class CTCLossOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("sequence_length", &seq_len));
 
     OP_REQUIRES(ctx, inputs->shape().dims() == 3,
-                errors::InvalidArgument("inputs is not a 3-Tensor"));
+                absl::InvalidArgumentError("inputs is not a 3-Tensor"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(seq_len->shape()),
-                errors::InvalidArgument("sequence_length is not a vector"));
+                absl::InvalidArgumentError("sequence_length is not a vector"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels_indices->shape()),
-                errors::InvalidArgument("labels_indices is not a matrix"));
+                absl::InvalidArgumentError("labels_indices is not a matrix"));
     OP_REQUIRES(ctx, labels_indices->dim_size(1) > 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "labels_indices second dimension must be >= 1. Received ",
-                    labels_indices->dim_size(1)));
+                    labels_indices->dim_size(1))));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(labels_values->shape()),
-                errors::InvalidArgument("labels_values is not a vector"));
+                absl::InvalidArgumentError("labels_values is not a vector"));
 
     const TensorShape& inputs_shape = inputs->shape();
     const int64_t max_time = inputs_shape.dim_size(0);
     OP_REQUIRES(ctx, max_time != 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Max time or first dimension of input cannot be 0."));
     const int64_t batch_size = inputs_shape.dim_size(1);
     const int64_t num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(
         ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("num_classes cannot exceed max int"));
+        absl::InvalidArgumentError("num_classes cannot exceed max int"));
     const int num_classes = static_cast<const int>(num_classes_raw);
 
-    OP_REQUIRES(
-        ctx, batch_size == seq_len->dim_size(0),
-        errors::InvalidArgument("len(sequence_length) != batch_size.  ",
-                                "len(sequence_length):  ", seq_len->dim_size(0),
-                                " batch_size: ", batch_size));
+    OP_REQUIRES(ctx, batch_size == seq_len->dim_size(0),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "len(sequence_length) != batch_size.  ",
+                    "len(sequence_length):  ", seq_len->dim_size(0),
+                    " batch_size: ", batch_size)));
     auto seq_len_t = seq_len->vec<int32>();
 
     OP_REQUIRES(ctx, labels_indices->dim_size(0) == labels_values->dim_size(0),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "labels_indices and labels_values must contain the "
                     "same number of rows, but saw shapes: ",
                     labels_indices->shape().DebugString(), " vs. ",
-                    labels_values->shape().DebugString()));
+                    labels_values->shape().DebugString())));
 
     OP_REQUIRES(ctx, batch_size != 0,
-                errors::InvalidArgument("batch_size must not be 0"));
+                absl::InvalidArgumentError("batch_size must not be 0"));
 
     // Figure out the maximum label length to use as sparse tensor dimension.
     auto labels_indices_t = labels_indices->matrix<int64_t>();
@@ -153,17 +156,18 @@ class CTCLossOp : public OpKernel {
                                           labels_shape, order, &labels_sp));
 
     Status labels_sp_valid = labels_sp.IndicesValid();
-    OP_REQUIRES(ctx, labels_sp_valid.ok(),
-                errors::InvalidArgument("label SparseTensor is not valid: ",
-                                        labels_sp_valid.message()));
+    OP_REQUIRES(
+        ctx, labels_sp_valid.ok(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "label SparseTensor is not valid: ", labels_sp_valid.message())));
 
     typename ctc::CTCLossCalculator<T>::LabelSequences labels_t(batch_size);
     for (const auto& g : labels_sp.group({0})) {  // iterate by batch
       const int64_t batch_indices = g.group()[0];
       OP_REQUIRES(ctx, FastBoundsCheck(batch_indices, batch_size),
-                  errors::InvalidArgument("labels batch index must be between ",
-                                          0, " and ", batch_size,
-                                          " but saw: ", batch_indices));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "labels batch index must be between ", 0, " and ",
+                      batch_size, " but saw: ", batch_indices)));
 
       auto values = g.values<int32>();
       std::vector<int>* b_values = &labels_t[batch_indices];
@@ -172,14 +176,14 @@ class CTCLossOp : public OpKernel {
     }
 
     OP_REQUIRES(ctx, static_cast<size_t>(batch_size) == labels_t.size(),
-                errors::InvalidArgument("len(labels) != batch_size.  ",
-                                        "len(labels):  ", labels_t.size(),
-                                        " batch_size: ", batch_size));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "len(labels) != batch_size.  ", "len(labels):  ",
+                    labels_t.size(), " batch_size: ", batch_size)));
 
     for (int64_t b = 0; b < batch_size; ++b) {
-      OP_REQUIRES(
-          ctx, seq_len_t(b) <= max_time,
-          errors::InvalidArgument("sequence_length(", b, ") <= ", max_time));
+      OP_REQUIRES(ctx, seq_len_t(b) <= max_time,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("sequence_length(", b, ") <= ", max_time)));
     }
 
     Tensor* loss = nullptr;
@@ -359,8 +363,9 @@ class CTCLossOpGPU : public OpKernel {
     bool cudnn_launch_status =
         stream
             ->ThenCtcLoss(*probs_desc, probs_data, labels_data,
-                          labels_lengths_data, input_lengths_data, &costs_data,
-                          *grads_desc, &grads_data, &workspace_allocator)
+                          labels_lengths_data, input_lengths_data,
+                          GetNumericOptions(), &costs_data, *grads_desc,
+                          &grads_data, &workspace_allocator)
             .ok();
 
     if (!cudnn_launch_status) {

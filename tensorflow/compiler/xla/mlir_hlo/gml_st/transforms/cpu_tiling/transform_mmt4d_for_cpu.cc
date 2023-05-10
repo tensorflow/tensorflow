@@ -39,7 +39,8 @@ namespace {
 FailureOr<Operation *> tileUsingSCFForAndReplace(
     PatternRewriter &rewriter, Operation *op,
     const scf::SCFTilingOptions &tilingOptions) {
-  auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, tilingOptions);
+  auto tilingResult = scf::tileUsingSCFForOp(
+      rewriter, cast<TilingInterface>(op), tilingOptions);
   if (failed(tilingResult) || tilingResult->loops.empty()) return failure();
   rewriter.replaceOp(op, tilingResult->replacements);
   return tilingResult->tiledOps.front();
@@ -97,8 +98,8 @@ LogicalResult tileMmt4DOp(linalg::Mmt4DOp mmt4dOp, PatternRewriter &rewriter) {
     iterTypes.resize(parallelTileSizes.size());
   }
 
-  splitParallelAndReductionTiles(mmt4dOp.getOperation(), parallelTileSizes,
-                                 reductionTileSizes);
+  splitParallelAndReductionTiles(cast<linalg::LinalgOp>(mmt4dOp.getOperation()),
+                                 parallelTileSizes, reductionTileSizes);
 
   // Tile the parallel loops.
   auto tiledOp = tileUsingSCFForAndReplace(

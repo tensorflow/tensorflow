@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -337,6 +338,7 @@ std::string ExperimentalRunPassPipeline(const std::string& mlir_txt,
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  registry.insert<mlir::shape::ShapeDialect>();
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
@@ -372,10 +374,11 @@ void ExperimentalWriteBytecode(const std::string& filename,
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  registry.insert<mlir::shape::ShapeDialect>();
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   {
-    mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     module = mlir::parseSourceString<mlir::ModuleOp>(mlir_txt, &context);
     if (!module) {
       tsl::Set_TF_Status_from_Status(status,
@@ -394,7 +397,10 @@ void ExperimentalWriteBytecode(const std::string& filename,
     return;
   }
   outputFile->keep();
-  mlir::writeBytecodeToFile(*module, outputFile->os(), writer_config);
+  if (failed(mlir::writeBytecodeToFile(*module, outputFile->os(),
+                                       writer_config))) {
+    tsl::Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+  }
 }
 
 void ExperimentalTFLiteToTosaBytecode(
@@ -407,6 +413,7 @@ void ExperimentalTFLiteToTosaBytecode(
   registry.insert<mlir::tosa::TosaDialect>();
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   {
     mlir::Location loc = mlir::UnknownLoc::get(&context);
     std::string error;
@@ -418,7 +425,6 @@ void ExperimentalTFLiteToTosaBytecode(
       return;
     }
 
-    mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     auto buffer_view =
         std::string_view(buffer->getBufferStart(), buffer->getBufferSize());
     module = tflite::FlatBufferToMlir(
@@ -449,7 +455,10 @@ void ExperimentalTFLiteToTosaBytecode(
     return;
   }
   outputFile->keep();
-  mlir::writeBytecodeToFile(*module, outputFile->os(), writer_config);
+  if (failed(mlir::writeBytecodeToFile(*module, outputFile->os(),
+                                       writer_config))) {
+    tsl::Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+  }
 }
 
 }  // namespace tensorflow

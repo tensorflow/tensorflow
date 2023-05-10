@@ -324,12 +324,9 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
       ++pos;
     }
-    node->set_op("NoOp");
+    ChangeToNoOp(node);
     EraseRegularNodeAttributes(node);
     DedupControlInputs(node);
-    // Noop nodes have no outputs. Remove any full type information describing
-    // the outputs that were not consumed.
-    node->clear_experimental_type();
     nodes_to_simplify->PushBack(node_to_idx_[node]);
     return;
   }

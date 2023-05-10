@@ -269,7 +269,7 @@ def : EqualityPat<TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">>;
 //===----------------------------------------------------------------------===//
 
 def OneElementAttrPred
-  : CPred<"$_self.cast<ElementsAttr>().getType().getNumElements() == 1">;
+  : CPred<"$_self.cast<ElementsAttr>().getShapedType().getNumElements() == 1">;
 
 def OneElementAttr
   : ElementsAttrBase<And<[ElementsAttr.predicate, OneElementAttrPred]>,
@@ -389,11 +389,14 @@ foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
 // MatMul op patterns.
 //===----------------------------------------------------------------------===//
 
+def GetPrecisionConfig: NativeCodeCall<
+  "GetPrecisionConfig(&$_builder)">;
+
 def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (MHLO_DotOp
           (TF_TransposeOp $a, (TF_ConstOp (Get2DTransposePerm $transpose_a))),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
-          /*precision_config=*/(NullArrayAttr))>;
+          /*precision_config=*/(GetPrecisionConfig))>;
 
 //===----------------------------------------------------------------------===//
 // Lower `tf.ZerosLike`

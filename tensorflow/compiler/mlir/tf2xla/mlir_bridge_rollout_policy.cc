@@ -24,7 +24,7 @@ namespace tensorflow {
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
     const FunctionLibraryDefinition* function_library,
-    std::optional<ConfigProto> config_proto, bool is_tpu_graph,
+    std::optional<ConfigProto> config_proto, bool run_tpu_bridge,
     bool uses_uninitialized_resource_args, bool is_v1_compat,
     bool record_stats) {
   switch (GetMlirBridgeRolloutState(config_proto)) {

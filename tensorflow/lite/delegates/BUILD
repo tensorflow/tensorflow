@@ -35,9 +35,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
 
@@ -48,9 +48,9 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":telemetry",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/profiling:profile_buffer",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

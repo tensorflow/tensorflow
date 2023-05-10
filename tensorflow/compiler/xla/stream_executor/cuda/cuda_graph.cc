@@ -175,5 +175,17 @@ tsl::StatusOr<OwnedCudaGraphExec> InstantiateCudaGraph(OwnedCudaGraph graph) {
   return OwnedCudaGraphExec(exec);
 }
 
+tsl::StatusOr<bool> IsStreamCapturing(stream_executor::Stream* stream) {
+  cudaStreamCaptureStatus capture_status;
+  cudaError_t err = cudaStreamIsCapturing(
+      stream_executor::gpu::AsGpuStreamValue(stream), &capture_status);
+  if (err != cudaSuccess) {
+    return InternalError("Failed to get stream's capture status: %s",
+                         cudaGetErrorString(err));
+  }
+
+  return capture_status == cudaStreamCaptureStatusActive;
+}
+
 }  // namespace gpu
 }  // namespace stream_executor

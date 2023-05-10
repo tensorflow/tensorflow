@@ -22,9 +22,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/platform/bfloat16.h"
-
-
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -32,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -240,11 +239,11 @@ class ApproximateEqualOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& x_input = context->input(0);
     const Tensor& y_input = context->input(1);
-    OP_REQUIRES(
-        context, x_input.shape() == y_input.shape(),
-        errors::InvalidArgument("x and y must be of the same shape. ",
-                                "x shape: ", x_input.shape().DebugString(),
-                                ". y shape: ", y_input.shape().DebugString()));
+    OP_REQUIRES(context, x_input.shape() == y_input.shape(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "x and y must be of the same shape. ",
+                    "x shape: ", x_input.shape().DebugString(),
+                    ". y shape: ", y_input.shape().DebugString())));
     Tensor* z_output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, x_input.shape(), &z_output));
@@ -275,11 +274,11 @@ class SimpleBinaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
-    OP_REQUIRES(
-        ctx, in0.NumElements() == in1.NumElements(),
-        errors::InvalidArgument("The two arguments to a cwise op must have "
-                                "same number of elements, got ",
-                                in0.NumElements(), " and ", in1.NumElements()));
+    OP_REQUIRES(ctx, in0.NumElements() == in1.NumElements(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "The two arguments to a cwise op must have "
+                    "same number of elements, got ",
+                    in0.NumElements(), " and ", in1.NumElements())));
     auto in0_flat = in0.flat<Tin>();
     auto in1_flat = in1.flat<Tin>();
     const Device& eigen_device = ctx->eigen_device<Device>();
@@ -336,7 +335,7 @@ class UnaryVariantOp : public OpKernel {
     const Tensor& inp = ctx->input(0);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(inp.shape()),
-        errors::InvalidArgument("Non-scalar variants are not supported."));
+        absl::InvalidArgumentError("Non-scalar variants are not supported."));
     const Variant& v = inp.scalar<Variant>()();
     Variant v_out;
     OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(ctx, OpEnum, v, &v_out));

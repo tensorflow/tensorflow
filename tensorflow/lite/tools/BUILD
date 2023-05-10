@@ -1,4 +1,4 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "verifier_internal_visibility_allowlist")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
@@ -81,7 +81,6 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
     ],
@@ -231,10 +230,6 @@ cc_library_with_tflite(
     hdrs = ["verifier_internal.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    visibility = verifier_internal_visibility_allowlist() + [
-        "//tensorflow/lite/core/shims:__subpackages__",
-        "//tensorflow/lite/java/src/main/native:__pkg__",
-    ],
     deps = ["//tensorflow/lite/core/tools:verifier_internal"],
 )
 

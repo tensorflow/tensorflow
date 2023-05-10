@@ -286,6 +286,8 @@ cc_library(
     deps = [
         ":lib_internal",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
@@ -433,6 +435,7 @@ tf_cuda_library(
     deps = [
         ":framework_internal",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:any_invocable",
     ],
 )
 
@@ -615,6 +618,7 @@ cc_library(
         "//tensorflow/core/kernels:stateless_random_gamma_op",
         "//tensorflow/core/kernels:stateless_random_ops",
         "//tensorflow/core/kernels:stateless_shuffle",
+        "//tensorflow/core/kernels:stochastic_cast_op",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:sync_ops",
@@ -629,6 +633,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_instance_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_layer_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
@@ -959,6 +964,7 @@ filegroup(
         "stateful_random_ops_op_lib",
         "stateless_random_ops_op_lib",
         "stateless_random_ops_v2_op_lib",
+        "stochastic_cast_op_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
         "sync_ops_op_lib",
@@ -1050,6 +1056,7 @@ cc_library(
 #         "@com_google_absl//absl/algorithm:container",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/meta:type_traits",
+#         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core:mobile_additional_lib_deps",
@@ -1070,7 +1077,9 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1256,6 +1265,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + if_static([":lib_internal_impl"]),
 )
@@ -1688,6 +1698,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -1962,6 +1973,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_instance_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
@@ -2033,6 +2045,7 @@ transitive_hdrs(
 #     deps = [
 #         "//tensorflow/core/example:example_parser_configuration_go_proto",
 #         "//tensorflow/core/example:example_protos_go_proto",
+#         "//tensorflow/core/framework:graph_debug_info_go_proto",
 #         "//tensorflow/core/protobuf:for_core_protos_go_proto",
 #         "//tensorflow/core/util:event_go_proto",
 #         "//tensorflow/core/util:memmapped_file_system_go_proto",

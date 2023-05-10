@@ -267,32 +267,31 @@ auto* function_graph_optimization_time_usecs = tsl::monitoring::Counter<0>::New(
     "The amount of time TensorFlow has spent optimizing function graphs, in "
     "microseconds. ");
 
-auto* function_graph_optimization_saving_time_usecs =
-    tsl::monitoring::Counter<1>::New(
-        "/tensorflow/core/function_graph_optimization_saving_time_usec",
-        "The amount of time TensorFlow has saved by caching the optimized "
-        "function graph, in microseconds",  // metric description
-        "source"                            // graph optimization source
-    );
+auto* graph_optimization_saving_time_usecs = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_saving_time_usec",
+    "The amount of time TensorFlow has saved by caching the optimized "
+    "function graph, in microseconds",  // metric description
+    "source"                            // graph optimization source
+);
 
-auto* function_graph_optimization_cache_hit_count =
-    tsl::monitoring::Counter<1>::New(
-        "/tensorflow/core/function_graph_optimization_cache_hit_count",
-        "The number of times the cache for the graph optimization is hit.",
-        "source");
+auto* graph_optimization_cache_hit_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_hit_count",
+    "The number of times the cache for the graph optimization is hit.",
+    "source"  // graph optimization source
+);
 
-auto* function_graph_optimization_cache_failure_count =
-    tsl::monitoring::Counter<1>::New(
-        "/tensorflow/core/function_graph_optimization_cache_failure_count",
-        "The number of times restoring from the graph optimization cache "
-        "fails.",
-        "source");
+auto* graph_optimization_cache_failure_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_failure_count",
+    "The number of times restoring from the graph optimization cache "
+    "fails.",
+    "source"  // graph optimization source
+);
 
-auto* function_graph_optimization_cache_miss_count =
-    tsl::monitoring::Counter<1>::New(
-        "/tensorflow/core/function_graph_optimization_cache_miss_count",
-        "The number of times the cache for the graph optimization is missed.",
-        "source");
+auto* graph_optimization_cache_miss_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_miss_count",
+    "The number of times the cache for the graph optimization is missed.",
+    "source"  // graph optimization source
+);
 
 auto* xla_compilations = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilations",
@@ -620,7 +619,7 @@ void UpdateFunctionGraphOptimizationSavingTime(const uint64 saving_time_usecs,
   if (saving_time_usecs > 0) {
     std::string mapped_source = GraphOptimizationSourceMapping(source);
     static auto* function_graph_optimization_saving_time_usecs_cell =
-        function_graph_optimization_saving_time_usecs->GetCell(mapped_source);
+        graph_optimization_saving_time_usecs->GetCell(mapped_source);
     function_graph_optimization_saving_time_usecs_cell->IncrementBy(
         saving_time_usecs);
   }
@@ -629,50 +628,47 @@ void UpdateFunctionGraphOptimizationSavingTime(const uint64 saving_time_usecs,
 uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
-  return function_graph_optimization_saving_time_usecs->GetCell(mapped_source)
-      ->value();
+  return graph_optimization_saving_time_usecs->GetCell(mapped_source)->value();
 }
 
-void IncrementFunctinGraphOptimizationCacheHitCount(
+void IncrementFunctionGraphOptimizationCacheHitCount(
     const int count, GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
-  function_graph_optimization_cache_hit_count->GetCell(mapped_source)
+  graph_optimization_cache_hit_count->GetCell(mapped_source)
       ->IncrementBy(count);
 }
 
 int64_t GetFunctionGraphOptimizationCacheHitCount(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
-  return function_graph_optimization_cache_hit_count->GetCell(mapped_source)
-      ->value();
+  return graph_optimization_cache_hit_count->GetCell(mapped_source)->value();
 }
 
 void IncrementFunctionGraphOptimizationCacheFailureCount(
     const int count, GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
-  function_graph_optimization_cache_failure_count->GetCell(mapped_source)
+  graph_optimization_cache_failure_count->GetCell(mapped_source)
       ->IncrementBy(count);
 }
 
 int64_t GetFunctionGraphOptimizationCacheFailureCount(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
-  return function_graph_optimization_cache_failure_count->GetCell(mapped_source)
+  return graph_optimization_cache_failure_count->GetCell(mapped_source)
       ->value();
 }
 
-void IncrementFunctinGraphOptimizationCacheMissCount(
+void IncrementFunctionGraphOptimizationCacheMissCount(
     const int count, GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
-  function_graph_optimization_cache_miss_count->GetCell(mapped_source)
+  graph_optimization_cache_miss_count->GetCell(mapped_source)
       ->IncrementBy(count);
 }
 
-int64_t GetFunctinGraphOptimizationCacheMissCount(
+int64_t GetFunctionGraphOptimizationCacheMissCount(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
-  return function_graph_optimization_cache_miss_count->GetCell(mapped_source)
-      ->value();
+  return graph_optimization_cache_miss_count->GetCell(mapped_source)->value();
 }
 
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {

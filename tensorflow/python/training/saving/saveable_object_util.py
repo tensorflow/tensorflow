@@ -658,7 +658,8 @@ def trackable_has_serialize_to_tensor(obj):
       # In some cases (e.g. restored objects), the object may have
       # `_serialize_to_tensors` even if the class does not.
       return True
-  except AttributeError:  # Data structure proxy wrappers don't have __dict__.
+  except (AttributeError, TypeError):
+    # Data structure proxy wrappers don't have __dict__.
     pass
 
   # Use MRO so that if a parent class has `_serialize_to_tensors`, but the

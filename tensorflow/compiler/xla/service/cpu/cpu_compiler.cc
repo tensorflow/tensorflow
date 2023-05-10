@@ -125,6 +125,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/collectives.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/convolution_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/fft_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/rng.h"
@@ -202,7 +203,7 @@ namespace {
 void LoadMLIRDialects(mlir::MLIRContext& context) {
   context.loadDialect<mlir::arith::ArithDialect, mlir::linalg::LinalgDialect,
                       mlir::scf::SCFDialect, mlir::vector::VectorDialect,
-                      mlir::func::FuncDialect, mlir::AffineDialect,
+                      mlir::func::FuncDialect, mlir::affine::AffineDialect,
                       mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
   mlir::registerBuiltinDialectTranslation(context);
@@ -317,6 +318,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     const HloModule& module) {
   runtime::CpuPipelineOptions copts;
   runtime::JitExecutable::Options opts;
+  copts.xla_cpu_sparse_cuda_threads =
+      GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
       [](xla::runtime::DialectRegistry& dialects) {
@@ -327,10 +330,11 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
   opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
       [](runtime::DirectCustomCallRegistry& registry) {
         PopulateXlaCpuCollectivesCall(registry);
+        PopulateXlaCpuConvolutionCall(registry);
         PopulateXlaCpuCustomCall(registry);
-        PopulateXlaXfeedCall(registry);
         PopulateXlaCpuFftCall(registry);
         PopulateXlaCpuRngCall(registry);
+        PopulateXlaXfeedCall(registry);
       });
   opts.compiler
       .create_compilation_pipeline = [&module, copts](
@@ -351,6 +355,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
       options.enable_fusion_outlining = true;
       options.experimental_deallocation = true;
     }
+    options.xla_cpu_sparse_cuda_threads =
+        GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
 
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
@@ -637,6 +643,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
   FloatSupport f8e4m3fn_support(F8E4M3FN);
   pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
@@ -691,7 +699,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Run the following passes to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
-   is_mlir_compile, this] {
+   this] {
     AddHloVerifier(&pipeline, allow_sparse_shapes_, HloVerifierOpts{},
                    /*debug_only=*/true);
 
@@ -706,13 +714,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
-    // Disable TreeReductionRewriter for MLIR compiles. Reduce window is quite
-    // slow, and reduce is supposed to have similar numerics using a tree-like
-    // tiling pattern.
-    if (!is_mlir_compile) {
-      // Needs to happen after algebraic simplifier.
-      pipeline.AddPass<TreeReductionRewriter>();
-    }
+    // Needs to happen after algebraic simplifier.
+    pipeline.AddPass<TreeReductionRewriter>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -732,6 +735,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<ConditionalSimplifier>();
   }();
   pipeline.AddPass<BitcastDtypesExpander>();
+  pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTopK;
+  });
 
   // XLA lowers topk to a libcall while the MLIR based pipeline does not yet
   // support libcalls. Disable this for now.
@@ -775,14 +781,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
-  {
-    HloPassPipeline pipeline("hlo normalization");
-    pipeline.AddPass<ReshapeDecomposer>();
-    pipeline.AddPass<ReduceDecomposer>();
-    pipeline.AddPass<BroadcastCanonicalizer>();
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-  }
-
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   // CopyInsertion is still needed by BufferAssignment. MLIR passes will handle
@@ -791,6 +789,14 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (is_mlir_compile) {
     pipeline.AddPass<CopyInsertion>();
     return pipeline.Run(module).status();
+  }
+
+  {
+    HloPassPipeline normalization_pipeline("hlo normalization");
+    normalization_pipeline.AddPass<ReshapeDecomposer>();
+    normalization_pipeline.AddPass<ReduceDecomposer>();
+    normalization_pipeline.AddPass<BroadcastCanonicalizer>();
+    TF_RETURN_IF_ERROR(normalization_pipeline.Run(module).status());
   }
 
   // After layout assignment, use a layout-sensitive verifier.
@@ -1122,15 +1128,30 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   auto mlir_module = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(mlir_module, module));
 
+  // Flatten tuples before we set up the input mapping. The flattening pass
+  // doesn't preserve attributes so we'd lose some in the process.
+  mlir::PassManager pm(mlir_module.getOperation()->getName(),
+                       mlir::PassManager::Nesting::Implicit);
+  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
+  if (failed(pm.run(mlir_module.getOperation()))) {
+    return tsl::errors::Internal("Failed to flatten tuples");
+  }
+
   // Add buffer mappings. The first attribute is the index of the slice, the
   // second is a boolean attribute on whether the allocation is writeable.
   llvm::SmallVector<std::pair<mlir::Attribute, mlir::Attribute>>
       operand_mapping;
   for (auto i : module->entry_computation()->parameter_instructions()) {
-    auto slice = assignment->GetUniqueTopLevelSlice(i);
-    operand_mapping.emplace_back(
-        builder.getI32IntegerAttr(static_cast<int32_t>(slice->index())),
-        builder.getBoolAttr(!slice->allocation()->is_readonly()));
+    ShapeUtil::ForEachSubshape(
+        i->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsTuple()) {
+            return;
+          }
+          auto slice = assignment->GetUniqueSlice(i, index);
+          operand_mapping.emplace_back(
+              builder.getI32IntegerAttr(static_cast<int32_t>(slice->index())),
+              builder.getBoolAttr(!slice->allocation()->is_readonly()));
+        });
   }
 
   auto root_instr = module->entry_computation()->root_instruction();
@@ -1139,15 +1160,20 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   // Gather mappings to each element in the tuple if necessary
   llvm::SmallVector<mlir::Attribute> result_inner_mapping;
   if (output_allocation->allocation()->is_tuple()) {
-    for (auto i : llvm::seq<int>(0, root_instr->shape().tuple_shapes_size())) {
-      int64_t result_index =
-          assignment->GetUniqueSlice(root_instr, {i})->index();
-      result_inner_mapping.push_back(mlir::IntegerAttr::get(
-          mlir::IntegerType::get(&mlir_context, 64), result_index));
-      if (export_mapping != nullptr) {
-        export_mapping->flattened_outputs.push_back(result_index);
-      }
-    }
+    ShapeUtil::ForEachSubshape(
+        root_instr->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsTuple()) {
+            return;
+          }
+          int64_t result_index =
+              assignment->GetUniqueSlice(root_instr, index)->index();
+          result_inner_mapping.push_back(
+              builder.getI64IntegerAttr(result_index));
+          if (export_mapping != nullptr) {
+            export_mapping->flattened_outputs.push_back(result_index);
+          }
+        });
   }
 
   int output_index = static_cast<int>(output_allocation->index());

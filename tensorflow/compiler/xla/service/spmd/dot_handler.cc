@@ -469,8 +469,11 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
 
   // Determine if any of the users have the same shardings that can allow
   // reuse of the resharding for the operand with original_hlo.
-  auto check_users_sharding = [original_hlo, &call_graph](
-                                  const HloInstruction* to_loop_over) {
+  auto check_users_sharding = [original_hlo, &call_graph,
+                               &options](const HloInstruction* to_loop_over) {
+    if (options.skip_checking_windowed_einsum_users) {
+      return true;
+    }
     if (to_loop_over->users().size() <= 1) {
       return true;
     }
@@ -1146,11 +1149,14 @@ StatusOr<HloInstruction*> PartitionBaseCase(
                   ShapeUtil::MakeShape(slice_operand->shape().element_type(),
                                        new_dims),
                   slice_operand));
-          auto min = body_b.AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::MinValue(
-                  reshaped_slice_operand->shape().element_type())));
-          std::vector<int64_t> min_padding(
-              reshaped_slice_operand->shape().rank());
+          auto pad_value = body_b.AddInstruction(HloInstruction::CreateConstant(
+              ShapeUtil::ElementIsFloating(reshaped_slice_operand->shape())
+                  ? LiteralUtil::MinValue(
+                        reshaped_slice_operand->shape().element_type())
+                  : LiteralUtil::Zero(
+                        reshaped_slice_operand->shape().element_type())));
+
+          std::vector<int64_t> padding(reshaped_slice_operand->shape().rank());
           auto padded_slice_operand = reshaped_slice_operand;
           auto padded_shape = padded_slice_operand->shape();
           int64_t padding_dim = slice_sharding_dim;
@@ -1158,25 +1164,25 @@ StatusOr<HloInstruction*> PartitionBaseCase(
           if (ccw) {
             // ccw pad high
             PaddingConfig ccw_pad_config =
-                window_util::MakeSymmetricPadding(min_padding);
+                window_util::MakeSymmetricPadding(padding);
             ccw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_low(0);
             ccw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_high(1);
-            padded_slice_operand =
-                body_b.AddInstruction(HloInstruction::CreatePad(
-                    padded_shape, padded_slice_operand, min, ccw_pad_config));
+            padded_slice_operand = body_b.AddInstruction(
+                HloInstruction::CreatePad(padded_shape, padded_slice_operand,
+                                          pad_value, ccw_pad_config));
           } else {
             // cw pad low
             PaddingConfig cw_pad_config =
-                window_util::MakeSymmetricPadding(min_padding);
+                window_util::MakeSymmetricPadding(padding);
             cw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_low(1);
             cw_pad_config.mutable_dimensions(padding_dim)
                 ->set_edge_padding_high(0);
-            padded_slice_operand =
-                body_b.AddInstruction(HloInstruction::CreatePad(
-                    padded_shape, padded_slice_operand, min, cw_pad_config));
+            padded_slice_operand = body_b.AddInstruction(
+                HloInstruction::CreatePad(padded_shape, padded_slice_operand,
+                                          pad_value, cw_pad_config));
           }
 
           padded_slice_operand->set_sharding(HloSharding::Replicate());
@@ -1199,7 +1205,11 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         auto ccw_slice = gen_slice(ccw_data_partition_id, true);
         auto cw_slice = gen_slice(cw_data_partition_id, false);
         auto slice = body_b.AddInstruction(HloInstruction::CreateBinary(
-            ccw_slice->shape(), HloOpcode::kMaximum, ccw_slice, cw_slice));
+            ccw_slice->shape(),
+            ShapeUtil::ElementIsFloating(ccw_slice->shape())
+                ? HloOpcode::kMaximum
+                : HloOpcode::kAdd,
+            ccw_slice, cw_slice));
         // Reshape. The reshaped slice will not be used to produce the final
         // result, but used as a hint for the shape inference.
         std::vector<int64_t> reshaped_slice_dims;

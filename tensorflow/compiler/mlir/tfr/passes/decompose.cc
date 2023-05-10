@@ -79,8 +79,8 @@ namespace TFR {
 namespace {
 
 // Quantize the float value based on given scale and zero point attributes.
-Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
-                   OpBuilder builder) {
+IntegerAttr Quantize(float value, Attribute scale_attr, Attribute zp_attr,
+                     OpBuilder builder) {
   double scale = scale_attr.cast<FloatAttr>().getValueAsDouble();
   int64_t zp = zp_attr.cast<IntegerAttr>().getInt();
 
@@ -223,8 +223,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
           attr_cst =
               builder.create<ConstOp>(op->getLoc(), output_type, attribute);
         } else {
-          attr_cst =
-              builder.create<mlir::arith::ConstantOp>(op->getLoc(), attribute);
+          attr_cst = builder.create<mlir::arith::ConstantOp>(
+              op->getLoc(), cast<TypedAttr>(attribute));
         }
         new_operands.push_back(attr_cst);
       }

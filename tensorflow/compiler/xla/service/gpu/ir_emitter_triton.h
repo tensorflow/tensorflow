@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace gpu {
@@ -37,12 +38,12 @@ using tensorflow::AutotuneResult;
 // Use tiling and execution parameters from 'config'.
 StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder b,
                                   const HloDotInstruction* dot_instr,
-                                  mlir::func::FuncOp fn,
+                                  mlir::triton::FuncOp fn,
                                   const AutotuneResult::TritonGemmKey& config,
                                   int shmem_budget);
 
 using LaunchDimensionsGenerator = std::function<StatusOr<LaunchDimensions>(
-    mlir::OpBuilder, const HloDotInstruction*, mlir::func::FuncOp,
+    mlir::OpBuilder, const HloDotInstruction*, mlir::triton::FuncOp,
     const AutotuneResult::TritonGemmKey&, int)>;
 
 // Generate Triton IR by running the provided generator, compile it into LLVM IR

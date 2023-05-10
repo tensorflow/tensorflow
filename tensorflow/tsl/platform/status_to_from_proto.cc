@@ -40,8 +40,7 @@ Status StatusFromProto(const tensorflow::StatusProto& proto,
   if (proto.code() == tensorflow::error::OK) {
     return OkStatus();
   }
-  return Status(static_cast<absl::StatusCode>(proto.code()), proto.message(),
-                loc);
+  return Status(static_cast<absl::StatusCode>(proto.code()), proto.message());
 }
 
 }  // namespace tsl

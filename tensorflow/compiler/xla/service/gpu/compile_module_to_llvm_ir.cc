@@ -45,11 +45,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
@@ -92,7 +92,8 @@ static bool HasFp8(const HloModule& hlo_module) {
   for (const HloComputation* computation : hlo_module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN)) {
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3B11FNUZ)) {
         return true;
       }
     }
@@ -231,7 +232,7 @@ Status CompileModuleToLlvmIrImpl(
     HloPredicate is_nop =
         HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
                          HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
-    pipeline.AddPass<ConvertAsyncCollectivesToSync>(is_nop);
+    pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
     pipeline.AddPass<OptimizationBarrierExpander>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());

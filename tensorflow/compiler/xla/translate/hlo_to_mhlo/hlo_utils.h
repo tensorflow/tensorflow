@@ -112,6 +112,11 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
             dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
                 mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
             break;
+          case DimLevelType::DIM_COMPRESSED_WITH_HI:
+            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+                mlir::sparse_tensor::LevelFormat::CompressedWithHi, ordered,
+                unique));
+            break;
           default:
             return InvalidArgument("Unknown DimLevelType from HLO");
         }

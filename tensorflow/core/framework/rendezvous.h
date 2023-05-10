@@ -135,21 +135,22 @@ class Rendezvous : public RendezvousInterface, public core::WeakRefCounted {
     // Default to a factory that evaluates to false.
     Factory() : valid_(false) {}
 
-    explicit Factory(
-        std::function<Status(const int64_t, const DeviceMgr*, Rendezvous**)>
-            create_fn)
+    explicit Factory(std::function<Status(const int64_t, const DeviceMgr*,
+                                          tsl::core::RefCountPtr<Rendezvous>*)>
+                         create_fn)
         : valid_(true), create_fn_(std::move(create_fn)) {}
 
     explicit operator bool() const { return valid_; }
 
     Status operator()(const int64_t step_id, const DeviceMgr* device_mgr,
-                      Rendezvous** rendez) const {
+                      tsl::core::RefCountPtr<Rendezvous>* rendez) const {
       return create_fn_(step_id, device_mgr, rendez);
     }
 
    private:
     bool valid_;
-    std::function<Status(const int64_t, const DeviceMgr*, Rendezvous**)>
+    std::function<Status(const int64_t, const DeviceMgr*,
+                         tsl::core::RefCountPtr<Rendezvous>*)>
         create_fn_;
   };
 

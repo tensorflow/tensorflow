@@ -1978,8 +1978,10 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     tsl::thread::ThreadPool* thread_pool) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                            const se::DeviceMemoryBase&) {
+    return [device_ordinal](
+               int64_t channel_id, se::Stream*, const Shape&,
+               const se::DeviceMemoryBase&,
+               const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to send a buffer to the channel_id=%d, there was no send "
           "callbacks registered for the device_ordinal=%d",
@@ -1991,9 +1993,10 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   absl::Span<const SendCallback> callbacks =
       options.send_callbacks[device_ordinal];
 
-  return [callbacks, thread_pool](int64_t channel_id, se::Stream* stream,
-                                  const Shape& shape,
-                                  const se::DeviceMemoryBase& src)
+  return [callbacks, thread_pool](
+             int64_t channel_id, se::Stream* stream, const Shape& shape,
+             const se::DeviceMemoryBase& src,
+             const absl::flat_hash_map<std::string, std::string>&)
              -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -2130,8 +2133,10 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     int device_ordinal, const ExecuteOptions& options) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                            se::DeviceMemoryBase*) {
+    return [device_ordinal](
+               int64_t channel_id, se::Stream*, const Shape&,
+               se::DeviceMemoryBase*,
+               const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to receive a buffer from the channel_id=%d, there was no "
           "recv callbacks registered for the device_ordinal=%d",
@@ -2143,9 +2148,10 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   absl::Span<const RecvCallback> callbacks =
       options.recv_callbacks[device_ordinal];
 
-  return [callbacks](
-             int64_t channel_id, se::Stream* stream, const Shape& shape,
-             se::DeviceMemoryBase* dst) -> StatusOr<AsyncValueRef<se::Event>> {
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     se::DeviceMemoryBase* dst,
+                     const absl::flat_hash_map<std::string, std::string>&)
+             -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Recv from channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
@@ -2255,6 +2261,12 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     // before the buffer is mutated. Usage holds are excluded during a donation
     // hold so we know that the set of usage events won't be modified while we
     // are enqueueing.
+    if (device_state->allocation_model() ==
+        LocalDeviceState::kComputeSynchronized) {
+      GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/false,
+                            &events);
+    }
+
     GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/must_donate,
                           &events);
   }

@@ -78,7 +78,7 @@ type Tensor struct {
 // NewTensor converts from a Go value to a Tensor. Valid values are scalars,
 // slices, and arrays. Every element of a slice must have the same length so
 // that the resulting Tensor has a valid shape.
-func NewTensor(value interface{}) (*Tensor, error) {
+func NewTensor(value any) (*Tensor, error) {
 	val := reflect.ValueOf(value)
 	shape, dataType, err := shapeAndDataTypeOf(val)
 	if err != nil {
@@ -161,7 +161,7 @@ type eface struct {
 // reference to the original value. But we just want a pointer to make it
 // efficient to read the value, so cheating like this should be safe and
 // reasonable.
-func unpackEFace(obj interface{}) *eface {
+func unpackEFace(obj any) *eface {
 	return (*eface)(unsafe.Pointer(&obj))
 }
 
@@ -253,7 +253,7 @@ func (t *Tensor) Reshape(newShape []int64) error {
 // For example:
 // Tensor(int64, 0): int64
 // Tensor(float64, 3): [][][]float64
-func (t *Tensor) Value() interface{} {
+func (t *Tensor) Value() any {
 	raw := tensorData(t.c)
 	shape := t.Shape()
 	dt := t.DataType()
@@ -542,7 +542,7 @@ func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) (int, error) {
 	return w.Write(b)
 }
 
-func bug(format string, args ...interface{}) error {
+func bug(format string, args ...any) error {
 	return fmt.Errorf("BUG: Please report at https://github.com/tensorflow/tensorflow/issues with the note: Go TensorFlow %v: %v", Version(), fmt.Sprintf(format, args...))
 }
 

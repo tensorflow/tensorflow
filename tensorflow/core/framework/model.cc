@@ -55,6 +55,9 @@ constexpr double kTargetTimeSigmas = 1.0;
 // downsizing a buffer.
 constexpr double kBufferUpsizeMultiplier = 2.0;
 constexpr double kBufferDownsizeMultipliter = 0.9;
+// Threshold of low buffer watermark before a buffer is a candidate for
+// upsizing.
+constexpr int64_t kBufferLowWatermarkThreshold = 2;
 
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
@@ -261,11 +264,6 @@ inline bool IsSyncNode(const std::shared_ptr<Node> node) {
   return !node->IsAsync();
 }
 
-// Helper function for node traversal that returns only asynchronous nodes.
-inline bool IsAsyncNode(const std::shared_ptr<Node> node) {
-  return node->IsAsync();
-}
-
 // Helper function for node traversal that returns only asynchronous interleave
 // many nodes.
 inline bool IsAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
@@ -273,12 +271,6 @@ inline bool IsAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
 }
 inline bool IsAsyncInterleaveManyNode(const Node* node) {
   return absl::StartsWith(node->name(), kParallelInterleave);
-}
-
-// Helper function for node traversal that returns nodes other than asynchronous
-// interleave many nodes.
-inline bool IsNotAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
-  return !absl::StartsWith(node->name(), kParallelInterleave);
 }
 
 // Wrapper for the square function to reduce verbosity.
@@ -1909,7 +1901,7 @@ void Node::CollectBufferParametersToUpsize(
           (parameter->state == nullptr || !parameter->state->tunable)) {
         continue;
       }
-      if (buffered_elements_low_ <= 0 &&
+      if (buffered_elements_low_ <= kBufferLowWatermarkThreshold &&
           buffered_elements_high_ >= parameter->value) {
         parameter->value = parameter->state->value;
         node_parameters[this] = parameter.get();
@@ -2325,16 +2317,14 @@ Model::ModelParameters Model::CollectTunableParameters(
 }
 
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
-  // TODO(wilsin): If this turns out to be the cause of fleetwide degradation in
-  // the experiment, remove the downsize code.
-  if (experiments_.contains("autotune_buffer_optimization")) {
-    return false;
-  }
   Node::NodeVector nodes =
-      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
   nodes.push_back(snapshot);
   bool downsized = false;
   for (auto& node : nodes) {
+    if (!node->IsAsync()) {
+      continue;
+    }
     if (node->TryDownsizeBuffer()) {
       downsized = true;
     }
@@ -2345,12 +2335,15 @@ bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
 absl::flat_hash_map<Node*, Parameter*> Model::CollectBufferParametersToUpsize(
     std::shared_ptr<Node> snapshot) {
   Node::NodeVector nodes =
-      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
   absl::flat_hash_map<Node*, Parameter*> node_parameters;
   if (snapshot->IsAsync()) {
     snapshot->CollectBufferParametersToUpsize(node_parameters);
   }
   for (auto& node : nodes) {
+    if (!node->IsAsync()) {
+      continue;
+    }
     node->CollectBufferParametersToUpsize(node_parameters);
   }
   return node_parameters;
@@ -2629,12 +2622,15 @@ void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
     CancellationManager* cancellation_manager) {
   VLOG(2) << "Optimizing async interleave many nodes.";
   Node::NodeVector interleave_many_nodes =
-      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncInterleaveManyNode);
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
   if (IsAsyncInterleaveManyNode(snapshot)) {
     interleave_many_nodes.push_back(snapshot);
   }
   Node::ModelParameters tunable_parameters;
   for (auto node : interleave_many_nodes) {
+    if (!IsAsyncInterleaveManyNode(node)) {
+      continue;
+    }
     Node::ModelParameters node_tunable_parameters =
         node->CollectNodeTunableParameters();
     tunable_parameters.insert(tunable_parameters.end(),
@@ -2693,8 +2689,7 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
   VLOG(2) << "Optimizing nodes other than async interleave many nodes.";
   Node::NodeVector all_nodes;
   if (experiments_.contains("stage_based_autotune_v2")) {
-    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS,
-                                       IsNotAsyncInterleaveManyNode);
+    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
     if (!IsAsyncInterleaveManyNode(snapshot)) {
       all_nodes.push_back(snapshot);
     }
@@ -2704,6 +2699,9 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
   }
   Node::ModelParameters tunable_parameters;
   for (auto node : all_nodes) {
+    if (IsAsyncInterleaveManyNode(node)) {
+      continue;
+    }
     Node::ModelParameters node_tunable_parameters =
         node->CollectNodeTunableParameters();
     tunable_parameters.insert(tunable_parameters.end(),
@@ -2862,9 +2860,12 @@ bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
 
 void Model::ResetBufferWatermarks() {
   Node::NodeVector nodes =
-      output()->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+      output()->CollectNodes(TraversalOrder::BFS, IsAnyNode);
   nodes.push_back(output());
   for (auto& node : nodes) {
+    if (!node->IsAsync()) {
+      continue;
+    }
     node->ResetBufferWatermarks();
   }
 }
@@ -3048,12 +3049,6 @@ const ModelTiming::NodeTiming* ModelTiming::GetTiming(const Node* node) const {
 void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
   for (const auto& node : bfs_nodes) {
     auto& node_timing = timing_nodes_[node.get()];
-    if (!node->autotune()) {
-      // These are inactive nodes marked by parallel interleave
-      // transformations.
-      node_timing.pipeline_ratio = 0.0;
-      continue;
-    }
     double parent_pipeline_ratio = 1.0;
     double parent_ratio = 1.0;
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {

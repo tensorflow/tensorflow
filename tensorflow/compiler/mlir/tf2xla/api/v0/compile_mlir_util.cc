@@ -339,12 +339,6 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
       /*allow_partial_conversion=*/true, legalize_chlo,
       /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
 
-  // Legalizing with tf2xla creates functions that contain MHLO. Inline those
-  // right away to speed up compilation time for downstream passes.
-  if (enable_op_fallback) {
-    pm.addPass(mlir::createInlinerPass());
-  }
-
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::CreateInfeedsOpsXlaAdjustLayoutPass());
@@ -433,8 +427,6 @@ void CreateConvertMlirToXlaHloPipeline(
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
-  pm.addPass(mlir::mhlo::createLegalizeTFModulePass(
-      /*tf2xla_fallback_device_type=*/device_type));
 
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));

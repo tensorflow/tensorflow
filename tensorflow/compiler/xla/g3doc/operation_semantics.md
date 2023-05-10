@@ -183,9 +183,9 @@ AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
 </div>
 
 In this example, there are 4 cores participating the Alltoall. On each core, the
-operand is split into 4 parts along dimension 0, so each part has shape
+operand is split into 4 parts along dimension 1, so each part has shape
 f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
-the received parts along dimension 1, in the order or core 0-4. So the output on
+the received parts along dimension 0, in the order or core 0-4. So the output on
 each core has shape f32[16,4].
 
 ## BatchNormGrad
@@ -2949,6 +2949,36 @@ there are elements which are considered to be equal by the comparator, the
 relative order of the equal values is preserved. Two elements `e1` and `e2` are
 equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
 default, `is_stable` is set to false.
+
+## Top-K
+
+See also the `jax.lax.top_k` operation.
+
+<b>`TopK(operand)`</b>
+
+Arguments    | Type             | Semantics
+------------ | ---------------- | ---------------------------------------------
+`operand`    | `XlaOp`          | N-dimensional array
+`k`          | `int64`          | Integer specifying the number of top entries.
+`comparator` | `XlaComputation` | The comparator computation to use.
+
+Returns top `k` values and their indices as a tuple, along the last dimension of
+the operand using the given `comparator` (for usual topk behavior, it should be
+strict-greater-than operation).
+
+For example, given strict `>` operator, `k=1` and the following operand of shape
+`f32[2,3]`:
+
+```
+[[0.1, 0.3, 0.1], [0.7, 0.2, -0.1]]
+```
+
+The TopK application returns the following tuple of shape `(f32[2,1],
+s32[2,1])`:
+
+```
+([[0.3], [0.7]], [[1], [0]])
+```
 
 ## Transpose
 

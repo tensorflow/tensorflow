@@ -567,7 +567,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           : lib_def_->FindOptimizedFunctionGraph(function_name);
   if (optimized_graph_proto != nullptr) {
     LOG(INFO) << "Found AOT'd graph for function: " << function_name;
+    metrics::UpdateFunctionGraphOptimizationSavingTime(
+        optimized_graph_proto->optimization_time_usecs(),
+        metrics::GraphOptimizationSource::kAot);
+    metrics::IncrementFunctionGraphOptimizationCacheHitCount(
+        1, metrics::GraphOptimizationSource::kAot);
   }
+
   StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       optimized_graph_proto == nullptr
           ? OptimizeFunctionGraphOrReadFromFileCache(
@@ -1224,22 +1230,18 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   return errors::InvalidArgument("Handle not found: ", handle);
 }
 
-void ProcessFunctionLibraryRuntime::CleanupCreatedRendezvous(
-    const Rendezvous* created_rendezvous, const int64_t step_id) const {
-  if (created_rendezvous) {
-    created_rendezvous->Unref();
-  }
-}
-
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
     FunctionLibraryRuntime::DoneCallback done,
     const FunctionLibraryRuntime::Options& opts,
-    const Rendezvous* created_rendezvous) const {
+    tsl::core::RefCountPtr<Rendezvous> created_rendezvous) const {
   return [this, items, done = std::move(done), step_id = opts.step_id,
-          created_rendezvous](const Status& status) {
-    this->CleanupCreatedRendezvous(created_rendezvous, step_id);
+          created_rendezvous =
+              created_rendezvous.release()](const Status& status) {
+    if (created_rendezvous != nullptr) {
+      created_rendezvous->Unref();
+    }
     auto* local_status = new Status(status);
     CleanUp(items, [local_status, done](const Status& cleanup_status) {
       local_status->Update(cleanup_status);
@@ -1252,7 +1254,7 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
 
 Status ProcessFunctionLibraryRuntime::CreateRendezvous(
     FunctionLibraryRuntime::Options& opts,
-    Rendezvous** created_rendezvous) const {
+    tsl::core::RefCountPtr<Rendezvous>* created_rendezvous) const {
   DCHECK(opts.rendezvous == nullptr);
   if (!rendezvous_factory_) {
     return errors::FailedPrecondition(
@@ -1262,7 +1264,7 @@ Status ProcessFunctionLibraryRuntime::CreateRendezvous(
   }
   Status s = rendezvous_factory_(opts.step_id, device_mgr_, created_rendezvous);
   if (s.ok()) {
-    opts.rendezvous = *created_rendezvous;
+    opts.rendezvous = created_rendezvous->get();
     opts.create_rendezvous = false;
   }
   return s;
@@ -1328,7 +1330,7 @@ void ProcessFunctionLibraryRuntime::Run(
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
   FunctionLibraryRuntime::Options new_opts = opts;
-  Rendezvous* created_rendezvous = nullptr;
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous = nullptr;
   if (!opts.rendezvous) {
     Status s = CreateRendezvous(new_opts, &created_rendezvous);
     if (!s.ok()) {
@@ -1339,7 +1341,7 @@ void ProcessFunctionLibraryRuntime::Run(
 
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
   done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done), new_opts,
-                                    created_rendezvous);
+                                    std::move(created_rendezvous));
   std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
   done = [rets, function_rets, done = std::move(done)](const Status& s) {
     Status status = s;
@@ -1515,7 +1517,7 @@ Status ProcessFunctionLibraryRuntime::RunSync(
   if (multi_device_data && multi_device_data->enable_sync_execution) {
     metrics::IncrementTestCounter("pflr_runsync", "sync");
     FunctionLibraryRuntime::Options new_opts = orig_opts;
-    Rendezvous* created_rendezvous = nullptr;
+    tsl::core::RefCountPtr<Rendezvous> created_rendezvous = nullptr;
     if (!new_opts.rendezvous) {
       TF_RETURN_IF_ERROR(CreateRendezvous(new_opts, &created_rendezvous));
     }
@@ -1528,7 +1530,6 @@ Status ProcessFunctionLibraryRuntime::RunSync(
 
     Status status = RunMultiDeviceSync(new_opts, handle, &function_rets,
                                        std::move(get_component_args));
-    CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
     status.Update(FunctionRetsToTensors(&function_rets, rets));
     return status;
   } else {
@@ -1578,7 +1579,7 @@ void ProcessFunctionLibraryRuntime::Run(
   }
 
   FunctionLibraryRuntime::Options new_opts = opts;
-  Rendezvous* created_rendezvous = nullptr;
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous = nullptr;
   if (!opts.rendezvous) {
     Status s = CreateRendezvous(new_opts, &created_rendezvous);
     if (!s.ok()) {
@@ -1593,8 +1594,8 @@ void ProcessFunctionLibraryRuntime::Run(
   return;
 #else   // !IS_MOBILE_PLATFORM
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done =
-      ApplyCleanUpToDoneCallback(cleanup_items, done, opts, created_rendezvous);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts,
+                                    std::move(created_rendezvous));
 
   auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                     InternalArgs* comp_args) -> Status {

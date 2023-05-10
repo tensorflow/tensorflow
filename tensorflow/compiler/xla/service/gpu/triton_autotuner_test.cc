@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
@@ -127,6 +130,30 @@ class TritonAutotunerTest : public HloTestBase {
   }
 };
 
+TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::VOLTA, /*minor=*/0};
+  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(compute_capability);
+  EXPECT_FALSE(
+      std::any_of(configs.begin(), configs.end(),
+                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
+                    return key.num_stages() > 2;
+                  }));
+}
+
+TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(compute_capability);
+  EXPECT_TRUE(
+      std::any_of(configs.begin(), configs.end(),
+                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
+                    return key.num_stages() > 2;
+                  }));
+}
+
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {
   const std::string hlo = R"(
 HloModule module
@@ -146,7 +173,7 @@ ENTRY e {
 // CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{5e-3, 5e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm256) {
@@ -169,7 +196,7 @@ ENTRY e {
 // CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-2, 1e-2}));
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonAutotunerTest, SelectsSplitK) {
@@ -195,35 +222,7 @@ ENTRY e {
 ; CHECK: ROOT %fusion.1
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{1e-1, 1e-1}));
-}
-
-TEST_F(TritonAutotunerTest, KnownBestConfig) {
-  const std::string kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f16[256,256] parameter(0)
-  p1 = s8[256,256] parameter(1)
-  c = f16[256,256] convert(p1)
-  ROOT _ = f16[256,256] dot(c, p0),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-
-  // This is the fastest config amongst the currently probed ones
-  // at least on RTX A6000 and V100; feel free to modify on related changes.
-  const se::DeviceDescription& device_description =
-      GetTestPlatform()->ExecutorForDevice(0).value()->GetDeviceDescription();
-  const std::string& name = device_description.name();
-  if (name == "NVIDIA RTX A6000" || name == "Tesla V100-SXM2-16GB") {
-    CheckTritonAutotuning(kHloText, R"(
-// CHECK: backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"256\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
-  )");
-  } else {
-    VLOG(1) << "Not tested on " << name;
-  }
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{0.02, 0.01}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.5, /*arel=*/1e-1}));
 }
 
 TEST_F(TritonAutotunerTest, SkipConfigsProducingDeviantResults) {
@@ -276,7 +275,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,

@@ -295,12 +295,12 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
     std::function<void(const Status&)> done) const {
-  llvm::SmallVector<AsyncValue*, 8> arguments;
+  std::vector<tsl::RCReference<AsyncValue>> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
-  arguments.push_back(tfrt::GetReadyChain().release());
+  arguments.push_back(tfrt::GetReadyChain());
   for (auto& input : inputs) {
-    arguments.push_back(TFTensorToFallbackTensor(input).release());
+    arguments.push_back(TFTensorToFallbackTensor(input));
   }
   llvm::SmallVector<RCReference<AsyncValue>, 4> results;
   results.resize(bef_func_->result_types().size());
@@ -331,7 +331,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
   batch_exec_ctx.set_location(exec_ctx.location());
 
-  bef_func_->ExecuteAsync(batch_exec_ctx, arguments, results);
+  bef_func_->ExecuteAsync(batch_exec_ctx, std::move(arguments), results);
   // There is a comment in tensorflow/core/kernels/batch_kernels.cc
   // counterpart of this method that blocking here seems to improve
   // latency/throughput in practice with how the batching library manage
@@ -339,9 +339,6 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   // this behavior for now, should reconsider when we redo the batching
   // kernels.
   batch_exec_ctx.work_queue().Await(results);
-  for (AsyncValue* arg : arguments) {
-    arg->DropRef();
-  }
 
   // The first result is a Chain.
   combined_outputs->reserve(results.size() - 1);

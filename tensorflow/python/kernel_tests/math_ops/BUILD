@@ -197,6 +197,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
@@ -298,7 +299,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["matmul_op_test.py"],
     shard_count = 20,
-    tags = ["no_mac_arm64"],
+    tags = [
+        "no_armv7",  # b/280582913
+        "no_mac_arm64",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

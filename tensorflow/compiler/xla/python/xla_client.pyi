@@ -54,6 +54,7 @@ mlir_api_version: int
 
 bfloat16: Type[numpy.generic]
 float8_e4m3fn: Type[numpy.generic]
+float8_e4m3b11fnuz: Type[numpy.generic]
 float8_e5m2: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
@@ -228,3 +229,4 @@ def register_custom_call_target(
     name: str, fn: Callable, platform: str = ...
 ) -> None:
   ...
+def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
