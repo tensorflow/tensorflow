@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -27,7 +25,7 @@ Status InitializableLookupTable::Find(OpKernelContext* ctx, const Tensor& keys,
                                       Tensor* values,
                                       const Tensor& default_value) {
   if (!is_initialized()) {
-    return absl::FailedPreconditionError("Table not initialized.");
+    return errors::FailedPrecondition("Table not initialized.");
   }
   // Do not let the use migrate before the check;  table is used without
   // a lock by the readers.
@@ -82,8 +80,9 @@ Status InitializableLookupTable::Initialize(
     // If the table is already initialized, we make sure that the entries in the
     // table are the same that we want to initialize the table with.
     if (!result) {
-      return absl::FailedPreconditionError(
-          "Table was already initialized with different data.");
+      return errors::FailedPrecondition(
+          "Table was already initialized with "
+          "different data.");
     } else {
       return OkStatus();
     }

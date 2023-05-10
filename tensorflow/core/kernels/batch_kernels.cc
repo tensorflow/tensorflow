@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
@@ -409,7 +408,7 @@ Status BatchFunctionKernel::InstantiateFunction(
   // TODO(b/173748062): Merge this instantiation logic with PartitionedCall.
   FunctionLibraryRuntime* flib = c->function_library();
   if (!flib) {
-    return absl::InternalError("No function library");
+    return errors::Internal("No function library");
   }
 
   FunctionLibraryRuntime::InstantiateOptions opts;
@@ -426,16 +425,16 @@ Status BatchFunctionKernel::InstantiateFunction(
   const FunctionDef* fdef =
       flib->GetFunctionLibraryDefinition()->Find(func_.name());
   if (!fdef) {
-    return absl::NotFoundError(absl::StrCat(
-        "Failed to find definition for function \"", func_.name(), "\""));
+    return errors::NotFound("Failed to find definition for function \"",
+                            func_.name(), "\"");
   }
   OpInputList in_tensors;
   TF_RETURN_IF_ERROR(c->input_list("in_tensors", &in_tensors));
   for (int i = 0; i < in_tensors.size(); i++) {
     if (in_tensors[i].dtype() == DT_RESOURCE) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("BatchFunction cannot take resource inputs but input ",
-                       i, " is a resource."));
+      return errors::InvalidArgument(
+          "BatchFunction cannot take resource inputs but input ", i,
+          " is a resource.");
     } else {
       // Currently, inputs are on CPU since they are concatenated on CPU
       opts.input_devices.push_back(cpu_device->name());
@@ -457,9 +456,9 @@ Status BatchFunctionKernel::InstantiateFunction(
     opts.output_devices.push_back(cpu_device->name());
   }
   if (opts.input_devices.size() != signature.input_arg_size()) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return errors::InvalidArgument(
         "Function takes ", signature.input_arg_size(), " argument(s) but ",
-        opts.input_devices.size(), " argument(s) were passed"));
+        opts.input_devices.size(), " argument(s) were passed");
   }
   return flib->Instantiate(func_.name(), AttrSlice(&func_.attr()), opts,
                            handle);
@@ -489,13 +488,13 @@ Status BatchFunctionKernel::ValidateAllowedBatchSizes() const {
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
     const int32_t size = allowed_batch_sizes_.at(i);
     if (i > 0 && size <= last_size) {
-      return absl::InvalidArgumentError(
+      return errors::InvalidArgument(
           "allowed_batch_sizes entries must be monotonically increasing");
     }
 
     if ((!enable_large_batch_splitting_) &&
         (i == allowed_batch_sizes_.size() - 1) && (size != max_batch_size_)) {
-      return absl::InvalidArgumentError(
+      return errors::InvalidArgument(
           "final entry in allowed_batch_sizes must equal max_batch_size when "
           "enable_large_batch_splitting is False");
     }
@@ -565,7 +564,7 @@ void BatchFunctionKernel::SetAdaptiveBatchSchedulerOptions(
   thread::ThreadPool* thread_pool = GetOrCreateBatchThreadsPool();
   OP_REQUIRES(
       c, thread_pool != nullptr,
-      absl::FailedPreconditionError("Failed to create batch threads pool"));
+      errors::FailedPrecondition("Failed to create batch threads pool"));
 
   adaptive_batch_scheduler_options_ = options;
 }
@@ -644,11 +643,11 @@ class BatchKernel : public AsyncOpKernel {
     for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
       const int32_t size = allowed_batch_sizes_.at(i);
       if (i > 0 && size <= last_size) {
-        return absl::InvalidArgumentError(
+        return errors::InvalidArgument(
             "allowed_batch_sizes entries must be monotonically increasing");
       }
       if (i == allowed_batch_sizes_.size() - 1 && size != max_batch_size_) {
-        return absl::InvalidArgumentError(
+        return errors::InvalidArgument(
             "final entry in allowed_batch_sizes must equal max_batch_size");
       }
       last_size = size;
@@ -697,24 +696,24 @@ class UnbatchResource : public ResourceBase {
     const Tensor& batch_index_t = context->input(1);
 
     if (batch_index_t.shape().dim_size(0) > data_t.shape().dim_size(0)) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return errors::InvalidArgument(
           "Wrong shape for index tensor. Expected 0th dimension size to be no "
           "greater than ",
           data_t.shape().dim_size(0),
-          "; Got: ", batch_index_t.shape().dim_size(0), "."));
+          "; Got: ", batch_index_t.shape().dim_size(0), ".");
     }
     if (batch_index_t.shape().dim_size(1) != 3) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return errors::InvalidArgument(
           "Wrong shape for index tensor. Expected 1st dimension size to be 3 ; "
           "Got: ",
-          batch_index_t.shape().dim_size(1), "."));
+          batch_index_t.shape().dim_size(1), ".");
     }
 
     if (!TensorShapeUtils::IsScalar(context->input(2).shape())) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Input id should be scalar; "
-                       "Got: ",
-                       context->input(2).DebugString(), "."));
+      return errors::InvalidArgument(
+          "Input id should be scalar; "
+          "Got: ",
+          context->input(2).DebugString(), ".");
     }
     const int64_t batch_key = context->input(2).scalar<int64_t>()();
     const bool nonempty_input = batch_index_t.dim_size(0) > 0;
@@ -758,7 +757,7 @@ class UnbatchResource : public ResourceBase {
                .emplace(batch_key,
                         WaitingCallback{deadline_micros, context, done})
                .second) {
-        return absl::AlreadyExistsError(
+        return errors::AlreadyExists(
             "Multiple session runs with the same batch key.");
       }
 
@@ -779,7 +778,7 @@ class UnbatchResource : public ResourceBase {
                      .emplace(batch_keys[i],
                               WaitingTensor{deadline_micros, split_inputs[i]})
                      .second) {
-              return absl::AlreadyExistsError(
+              return errors::AlreadyExists(
                   "Multiple tensors returned for same batch key.");
             }
           }
@@ -828,9 +827,8 @@ class UnbatchResource : public ResourceBase {
     }
 
     for (const WaitingCallback& evicted_callback : evicted_callbacks) {
-      evicted_callback.context->CtxFailureWithWarning(
-          absl::DeadlineExceededError(
-              "Batched data did not arrive within timeout window."));
+      evicted_callback.context->CtxFailureWithWarning(errors::DeadlineExceeded(
+          "Batched data did not arrive within timeout window."));
       evicted_callback.done();
     }
   }
@@ -919,7 +917,7 @@ class UnbatchGradResource : public ResourceBase {
     for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
       auto available_it = available_tensors_.find(batch_index(i, 0));
       if (available_it == available_tensors_.end()) {
-        return absl::InternalError("bad bookkeeping of available tensors.");
+        return errors::Internal("bad bookkeeping of available tensors.");
       }
       tensors.push_back(available_it->second);
       available_tensors_.erase(available_it);
@@ -936,8 +934,7 @@ class UnbatchGradResource : public ResourceBase {
       TF_CALL_ALL_TYPES(CASE);
 #undef CASE
       default:
-        return absl::InvalidArgumentError(
-            absl::StrCat("Unsupported data type: ", type));
+        return errors::InvalidArgument("Unsupported data type: ", type);
     }
     done();
     return OkStatus();
@@ -953,28 +950,28 @@ class UnbatchGradResource : public ResourceBase {
 
     mutex_lock ml(mu_);
     if (!TensorShapeUtils::IsScalar(batch_key_t.shape())) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Expected `id` to be scalar. Received ", batch_key_t.DebugString()));
+      return errors::InvalidArgument("Expected `id` to be scalar. Received ",
+                                     batch_key_t.DebugString());
     }
 
     const int64_t batch_key = context->input(3).scalar<int64_t>()();
     // Mark our tensor as available.
     if (!available_tensors_.emplace(batch_key, grad_t).second) {
-      return absl::InvalidArgumentError("Two runs with the same batch key.");
+      return errors::InvalidArgument("Two runs with the same batch key.");
     }
 
     // Check whether we have a valid input tensor and, if so, create its
     // dispatch logic.
     if (data_t.NumElements() > 0) {
       if (batch_index_t.NumElements() == 0) {
-        return absl::InvalidArgumentError(
+        return errors::InvalidArgument(
             "batch_index is empty while the tensor isn't.");
       }
       std::unordered_set<int64_t> missing_tensors;
       if (batch_index_t.NumElements() != batch_index_t.dim_size(0) * 3) {
-        return absl::InvalidArgumentError(absl::StrCat(
+        return errors::InvalidArgument(
             "batch_index should contain ", batch_index_t.dim_size(0) * 3,
-            " elements. Received ", batch_index_t.NumElements()));
+            " elements. Received ", batch_index_t.NumElements());
       }
       const auto batch_index =
           batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
@@ -990,12 +987,12 @@ class UnbatchGradResource : public ResourceBase {
       if (!available_batches_
                .emplace(batch_key, Batch{missing_tensors, context, done})
                .second) {
-        return absl::InvalidArgumentError(
+        return errors::InvalidArgument(
             "Batch key with valid batch used twice.");
       }
       for (const int64_t i : missing_tensors) {
         if (!desired_tensor_to_batch_map_.emplace(i, batch_key).second) {
-          return absl::InvalidArgumentError(
+          return errors::InvalidArgument(
               "Missing tensor wanted by more than one batch.");
         }
       }
@@ -1016,7 +1013,7 @@ class UnbatchGradResource : public ResourceBase {
       auto batch_it = available_batches_.find(desire_it->second);
       desired_tensor_to_batch_map_.erase(desire_it);
       if (batch_it == available_batches_.end()) {
-        return absl::InvalidArgumentError("Batch no longer exists.");
+        return errors::InvalidArgument("Batch no longer exists.");
       }
       batch_it->second.missing_tensors.erase(batch_key);
       // If all tensors are available we should concatenate them and dispatch

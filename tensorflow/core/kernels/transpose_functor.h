@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -232,8 +231,7 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
       break;
 
     default:
-      return absl::UnimplementedError(
-          absl::StrCat("Unsupported dtype on CPU: ", in.dtype()));
+      return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
   }
   return OkStatus();
 }

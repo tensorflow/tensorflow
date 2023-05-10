@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <optional>
 
-#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -135,7 +134,7 @@ mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input,
       return (*maybe_resource)->mu();
     } else {
       ctx->CtxFailureWithWarning(
-          absl::InternalError("Invalid variable reference."));
+          errors::Internal("Invalid variable reference."));
       return nullptr;
     }
   }

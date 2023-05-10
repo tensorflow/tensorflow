@@ -15,8 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -67,8 +65,8 @@ class SplitVOpBase : public OpKernel {
     const Tensor& split_dim_tensor = context->input(2);
 
     OP_REQUIRES(context, split_dim_tensor.NumElements() == 1,
-                absl::InvalidArgumentError("split_dim_tensor must have "
-                                           "exactly one element."));
+                errors::InvalidArgument("split_dim_tensor must have "
+                                        "exactly one element."));
 
     const int32_t split_dim_orig = split_dim_tensor.flat<int32>()(0);
     const int32_t split_dim =
@@ -77,11 +75,10 @@ class SplitVOpBase : public OpKernel {
     OP_REQUIRES(
         context,
         split_tensor.dims() == 1 && split_tensor.NumElements() == num_split,
-        absl::InvalidArgumentError(
-            absl::StrCat("size of the split_tensor must be 1-D and have "
-                         "the same elements as outputs got ",
-                         split_tensor.dims(), " -D and ",
-                         split_tensor.NumElements(), " elements")));
+        errors::InvalidArgument("size of the split_tensor must be 1-D and have "
+                                "the same elements as outputs got ",
+                                split_tensor.dims(), " -D and ",
+                                split_tensor.NumElements(), " elements"));
 
     auto split_sizes_d = split_tensor.vec<Tlen>();
 
@@ -92,14 +89,14 @@ class SplitVOpBase : public OpKernel {
 
     OP_REQUIRES(
         context, num_split > 0,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Number of ways to split should be > 0, but got ", num_split)));
+        errors::InvalidArgument(
+            "Number of ways to split should be > 0, but got ", num_split));
 
     OP_REQUIRES(
         context, 0 <= split_dim && split_dim < input.dims(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "-input rank(-", input.dims(), ") <= split_dim < input rank (",
-            input.dims(), "), but got ", split_dim_orig)));
+        errors::InvalidArgument("-input rank(-", input.dims(),
+                                ") <= split_dim < input rank (", input.dims(),
+                                "), but got ", split_dim_orig));
 
     Tlen input_size_split_dim = input_shape.dim_size(split_dim);
 
@@ -108,10 +105,10 @@ class SplitVOpBase : public OpKernel {
       context->set_output(0, context->input(0));
       OP_REQUIRES(
           context, (*split_sizes_vec)[0] == input_size_split_dim,
-          absl::InvalidArgumentError(absl::StrCat(
-              "If there is only one output, it must have "
-              "the same size as the input. Input size: ",
-              input_size_split_dim, " output size: ", (*split_sizes_vec)[0])));
+          errors::InvalidArgument("If there is only one output, it must have "
+                                  "the same size as the input. Input size: ",
+                                  input_size_split_dim,
+                                  " output size: ", (*split_sizes_vec)[0]));
       *done = true;
       return;
     }
@@ -123,10 +120,9 @@ class SplitVOpBase : public OpKernel {
       Tlen size = (*split_sizes_vec)[d];
 
       if (size == -1) {
-        OP_REQUIRES(
-            context, neg_one_dim == -1,
-            absl::InvalidArgumentError("There can only be one -1 in the "
-                                       "input."));
+        OP_REQUIRES(context, neg_one_dim == -1,
+                    errors::InvalidArgument("There can only be one -1 in the "
+                                            "input."));
         neg_one_dim = d;
       } else {
         determined_size += size;
@@ -137,13 +133,12 @@ class SplitVOpBase : public OpKernel {
         context,
         (neg_one_dim == -1 && determined_size == input_size_split_dim) ||
             (neg_one_dim >= 0 && determined_size <= input_size_split_dim),
-        absl::InvalidArgumentError(
-            absl::StrCat("Determined shape must either match "
-                         "input shape along split_dim exactly if "
-                         "fully specified, or be less than the size of "
-                         "the input along split_dim if not fully "
-                         "specified.  Got: ",
-                         determined_size)));
+        errors::InvalidArgument("Determined shape must either match "
+                                "input shape along split_dim exactly if "
+                                "fully specified, or be less than the size of "
+                                "the input along split_dim if not fully "
+                                "specified.  Got: ",
+                                determined_size));
 
     if (neg_one_dim >= 0) {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
@@ -151,10 +146,9 @@ class SplitVOpBase : public OpKernel {
 
     for (int i = 0; i < split_sizes_vec->size(); ++i) {
       const Tlen& split_size = (*split_sizes_vec)[i];
-      OP_REQUIRES(
-          context, split_size >= Tlen(0),
-          absl::InvalidArgumentError(absl::StrCat(
-              "Split size at index ", i, " must be >= 0. Got: ", split_size)));
+      OP_REQUIRES(context, split_size >= Tlen(0),
+                  errors::InvalidArgument("Split size at index ", i,
+                                          " must be >= 0. Got: ", split_size));
     }
 
     // Special case 2: split along the 1st dimension. The requirements are that
@@ -319,12 +313,12 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     // Android also uses int32 indexing, so check here also.
-    OP_REQUIRES(context,
-                FastBoundsCheck(input.NumElements(),
-                                std::numeric_limits<Eigen::DenseIndex>::max()),
-                absl::InvalidArgumentError(absl::StrCat(
-                    "Split requires input size < ",
-                    std::numeric_limits<Eigen::DenseIndex>::max())));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input.NumElements(),
+                        std::numeric_limits<Eigen::DenseIndex>::max()),
+        errors::InvalidArgument("Split requires input size < ",
+                                std::numeric_limits<Eigen::DenseIndex>::max()));
 
     Eigen::DenseIndex prefix_dim_size;
     Eigen::DenseIndex split_dim_size;

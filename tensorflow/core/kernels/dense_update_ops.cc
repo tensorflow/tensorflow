@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -72,13 +70,12 @@ class DenseUpdateOp : public OpKernel {
     Tensor Tparams = context->mutable_input(0, use_exclusive_lock_);
     const Tensor& Tupdate = context->input(1);
     OP_REQUIRES(context, Tparams.IsInitialized(),
-                absl::FailedPreconditionError(
-                    absl::StrCat("Attempting to use uninitialized "
-                                 "parameters: ",
-                                 requested_input(0))));
-    OP_REQUIRES(context, Tparams.IsSameSize(Tupdate),
-                absl::InvalidArgumentError(
-                    "Parameters and update must be the same size"));
+                errors::FailedPrecondition("Attempting to use uninitialized "
+                                           "parameters: ",
+                                           requested_input(0)));
+    OP_REQUIRES(
+        context, Tparams.IsSameSize(Tupdate),
+        errors::InvalidArgument("Parameters and update must be the same size"));
 
     functor::DenseUpdate<Device, T, OP> update_functor;
     update_functor(context->template eigen_device<Device>(), Tparams.flat<T>(),

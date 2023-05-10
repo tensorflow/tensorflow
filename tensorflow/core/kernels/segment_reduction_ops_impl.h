@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
@@ -107,10 +106,10 @@ class SegmentReductionOp : public OpKernel {
             ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
             : 0;
     OP_REQUIRES(context, output_rows >= 0,
-                absl::InvalidArgumentError("segment ids must be >= 0"));
+                errors::InvalidArgument("segment ids must be >= 0"));
 
     OP_REQUIRES(context, input.dims() >= 1,
-                absl::InvalidArgumentError("Shape must be at least rank 1"));
+                errors::InvalidArgument("Shape must be at least rank 1"));
 
     TensorShape output_shape = input.shape();
     // Since we're changing the first dimension of the shape, we need to make
@@ -123,7 +122,7 @@ class SegmentReductionOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (num_indices == 0) return;
     OP_REQUIRES(context, output_rows > 0,
-                absl::InvalidArgumentError("segment ids must be >= 0"));
+                errors::InvalidArgument("segment ids must be >= 0"));
     auto output_flat = output->flat_outer_dims<T>();
 
     Eigen::IndexList<Eigen::type2index<0> > dims_to_reduce;
@@ -147,9 +146,8 @@ class SegmentReductionOp : public OpKernel {
           continue;
         }
         // We have a new segment here.  Verify that the segment ids are growing.
-        OP_REQUIRES(
-            context, out_index < next_index,
-            absl::InvalidArgumentError("segment ids are not increasing"));
+        OP_REQUIRES(context, out_index < next_index,
+                    errors::InvalidArgument("segment ids are not increasing"));
       }
 
       // Process segment [start, end)
@@ -482,10 +480,9 @@ class UnsortedSegmentReductionOp : public OpKernel {
     const int64_t output_rows = internal::SubtleMustCopy(static_cast<int64_t>(
         num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32>()()
                                          : num_segments.scalar<int64_t>()()));
-    OP_REQUIRES(
-        context, output_rows >= 0,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Input num_segments == ", output_rows, " must not be negative.")));
+    OP_REQUIRES(context, output_rows >= 0,
+                errors::InvalidArgument("Input num_segments == ", output_rows,
+                                        " must not be negative."));
     TensorShape output_shape;
     OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
@@ -569,12 +566,12 @@ class SparseSegmentReductionOpBase : public OpKernel {
     if (has_num_segments_) {
       OP_REQUIRES(
           context, output_rows >= last_segment_id_plus_one,
-          absl::InvalidArgumentError("segment ids must be < num_segments"));
+          errors::InvalidArgument("segment ids must be < num_segments"));
     } else {
       output_rows = last_segment_id_plus_one;
     }
     OP_REQUIRES(context, output_rows >= 0,
-                absl::InvalidArgumentError("segment ids must be >= 0"));
+                errors::InvalidArgument("segment ids must be >= 0"));
 
     TensorShape output_shape = input.shape();
     OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, output_rows));
@@ -590,7 +587,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
       return;
     }
     OP_REQUIRES(context, output_rows > 0,
-                absl::InvalidArgumentError("segment ids must be >= 0"));
+                errors::InvalidArgument("segment ids must be >= 0"));
     auto output_flat = output->flat_outer_dims<T>();
 
     Tensor temp;
@@ -617,8 +614,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
         }
         // We have a new segment here.  Verify that the segment ids are growing.
         OP_REQUIRES(context, out_index < next_index,
-                    absl::InvalidArgumentError(
-                        absl::StrCat("segment ids are not increasing")));
+                    errors::InvalidArgument("segment ids are not increasing"));
       }
 
       OP_REQUIRES(
@@ -1053,7 +1049,7 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
     const SegmentId last_segment_id_plus_one =
         internal::SubtleMustCopy(segment_vec(N - 1)) + 1;
     OP_REQUIRES(context, last_segment_id_plus_one <= num_segments,
-                absl::InvalidArgumentError("Invalid number of segments"));
+                errors::InvalidArgument("Invalid number of segments"));
 
     // Compute scaling factors for input.
     std::vector<double> scaling(
@@ -1073,7 +1069,7 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
           case SparseSegmentReductionOperation::kSum: {
             OP_REQUIRES(
                 context, false,
-                absl::InternalError(
+                errors::Internal(
                     "Should not happen: sum inside SparseSegmentReductionOp "
                     "scaling generation."));
           }
@@ -1154,15 +1150,15 @@ class SparseSegmentGradOpBase : public OpKernel {
     const Tensor& output_dim0 = context->input(3);
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
-                absl::InvalidArgumentError("indices should be a vector."));
+                errors::InvalidArgument("indices should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-                absl::InvalidArgumentError("segment_ids should be a vector."));
+                errors::InvalidArgument("segment_ids should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_dim0.shape()),
-                absl::InvalidArgumentError("output_dim0 should be a scalar."));
+                errors::InvalidArgument("output_dim0 should be a scalar."));
 
     const int64_t N = indices.NumElements();
     OP_REQUIRES(context, N == segment_ids.NumElements(),
-                absl::InvalidArgumentError(
+                errors::InvalidArgument(
                     "segment_ids and indices should have same size."));
     const SegmentId M = internal::SubtleMustCopy(output_dim0.scalar<int32>()());
 

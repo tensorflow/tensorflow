@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -68,19 +66,19 @@ struct LaunchConvOp<CPUDevice, T> {
                      const std::array<int64, 3>& strides, const Padding padding,
                      TensorFormat data_format, Tensor* output) {
     OP_REQUIRES(context, data_format == FORMAT_NHWC,
-                absl::InvalidArgumentError("CPU implementation of Conv3D "
-                                           "currently only supports the NHWC "
-                                           "tensor format."));
-    OP_REQUIRES(
-        context, dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1,
-        absl::InvalidArgumentError("CPU implementation of Conv3D "
-                                   "currently only supports dilated rates "
-                                   "of 1."));
+                errors::InvalidArgument("CPU implementation of Conv3D "
+                                        "currently only supports the NHWC "
+                                        "tensor format."));
+    OP_REQUIRES(context,
+                dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1,
+                errors::InvalidArgument("CPU implementation of Conv3D "
+                                        "currently only supports dilated rates "
+                                        "of 1."));
     OP_REQUIRES(context, filter.dim_size(3) == input.dim_size(input.dims() - 1),
-                absl::InvalidArgumentError(absl::StrCat(
+                errors::InvalidArgument(
                     "Number of channels in filter (", filter.dim_size(3),
                     ") must match last dimension of input (",
-                    input.dim_size(input.dims() - 1), ")")));
+                    input.dim_size(input.dims() - 1), ")"));
     functor::CuboidConvolution<CPUDevice, T>()(
         context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
         input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
@@ -95,31 +93,31 @@ class Conv3DOp : public BinaryOp<T> {
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                absl::InvalidArgumentError("Invalid data format"));
+                errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
-                absl::InvalidArgumentError("Sliding window strides field must "
-                                           "specify 5 dimensions"));
-    OP_REQUIRES(context,
-                (GetTensorDim(stride_, data_format_, 'N') == 1 &&
-                 GetTensorDim(stride_, data_format_, 'C') == 1),
-                absl::InvalidArgumentError(
-                    "Current implementation does not yet support "
-                    "strides in the batch and depth dimensions."));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 5 dimensions"));
+    OP_REQUIRES(
+        context,
+        (GetTensorDim(stride_, data_format_, 'N') == 1 &&
+         GetTensorDim(stride_, data_format_, 'C') == 1),
+        errors::InvalidArgument("Current implementation does not yet support "
+                                "strides in the batch and depth dimensions."));
     OP_REQUIRES(
         context,
         (GetTensorDim(stride_, data_format_, '0') > 0 &&
          GetTensorDim(stride_, data_format_, '1') > 0 &&
          GetTensorDim(stride_, data_format_, '2') > 0),
-        absl::InvalidArgumentError("Spatial strides should be larger than 0."));
+        errors::InvalidArgument("Spatial strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
-                absl::InvalidArgumentError("Dilation rates field must "
-                                           "specify 5 dimensions"));
+                errors::InvalidArgument("Dilation rates field must "
+                                        "specify 5 dimensions"));
     OP_REQUIRES(context,
                 (GetTensorDim(dilation_, data_format_, 'N') == 1 &&
                  GetTensorDim(dilation_, data_format_, 'C') == 1),
-                absl::InvalidArgumentError(
+                errors::InvalidArgument(
                     "Current implementation does not yet support "
                     "dilation rates in the batch and depth dimensions."));
     OP_REQUIRES(
@@ -127,7 +125,7 @@ class Conv3DOp : public BinaryOp<T> {
         (GetTensorDim(dilation_, data_format_, '0') > 0 &&
          GetTensorDim(dilation_, data_format_, '1') > 0 &&
          GetTensorDim(dilation_, data_format_, '2') > 0),
-        absl::InvalidArgumentError("Dilated rates should be larger than 0."));
+        errors::InvalidArgument("Dilated rates should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
@@ -144,9 +142,9 @@ class Conv3DOp : public BinaryOp<T> {
     // NOTE: The ordering of the spatial dimensions is arbitrary, but has to be
     // kept consistent between input/filter/output.
     OP_REQUIRES(context, input.dims() == 5,
-                absl::InvalidArgumentError("input must be 5-dimensional"));
+                errors::InvalidArgument("input must be 5-dimensional"));
     OP_REQUIRES(context, filter.dims() == 5,
-                absl::InvalidArgumentError("filter must be 5-dimensional"));
+                errors::InvalidArgument("filter must be 5-dimensional"));
 
     const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
     const int64_t in_batch = GetTensorDim(input, data_format_, 'N');
@@ -155,15 +153,15 @@ class Conv3DOp : public BinaryOp<T> {
     const int64_t out_depth = filter.dim_size(4);
 
     OP_REQUIRES(context, filter_depth != 0,
-                absl::InvalidArgumentError("filter_depth must be non-zero"));
+                errors::InvalidArgument("filter_depth must be non-zero"));
     OP_REQUIRES(context, in_depth % filter_depth == 0,
-                absl::InvalidArgumentError(absl::StrCat(
+                errors::InvalidArgument(
                     "Input depth must be evenly divisible by filter depth: ",
-                    in_depth, " vs ", filter_depth)));
+                    in_depth, " vs ", filter_depth));
     OP_REQUIRES(
         context, filter.NumElements() > 0,
-        absl::InvalidArgumentError("filter must not have zero elements "
-                                   "(i.e. all dimensions must be non-zero)"));
+        errors::InvalidArgument("filter must not have zero elements "
+                                "(i.e. all dimensions must be non-zero)"));
 
     // Dimension order for these arrays is: z, y, x.
     std::array<int64_t, 3> input_size = {
