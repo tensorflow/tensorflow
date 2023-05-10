@@ -43,7 +43,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-#define GEN_PASS_DEF_CONVERTLMHLOTOCPURUNTIMEPASS
+#define GEN_PASS_DEF_CONVERTXLACPUTOCPURUNTIMEPASS
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
@@ -56,9 +56,9 @@ using xla_cpu::ReplicaIdOp;
 using xla::runtime::AppendCustomCallAttrs;
 using xla::runtime::CustomCallDeclarations;
 
-class ConvertLmhloToCpuRuntimePass
-    : public impl::ConvertLmhloToCpuRuntimePassBase<
-          ConvertLmhloToCpuRuntimePass> {
+class ConvertXlaCpuToCpuRuntimePass
+    : public impl::ConvertXlaCpuToCpuRuntimePassBase<
+          ConvertXlaCpuToCpuRuntimePass> {
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -532,7 +532,7 @@ class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
 
 //===----------------------------------------------------------------------===//
 
-void ConvertLmhloToCpuRuntimePass::runOnOperation() {
+void ConvertXlaCpuToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
 
@@ -540,7 +540,7 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   SymbolTable sym_table(module);
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
-  // Convert lmhlo operations to XLA cpu runtime custom calls.
+  // Convert xla_cpu operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns
       .insert<AllReduceLowering, AllToAllLowering, CollectivePermuteLowering,
@@ -559,8 +559,8 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createConvertLmhloToCpuRuntimePass() {
-  return std::make_unique<ConvertLmhloToCpuRuntimePass>();
+createConvertXlaCpuToCpuRuntimePass() {
+  return std::make_unique<ConvertXlaCpuToCpuRuntimePass>();
 }
 
 }  // namespace cpu

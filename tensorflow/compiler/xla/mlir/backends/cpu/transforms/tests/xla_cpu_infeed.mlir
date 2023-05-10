@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -xla-lmhlo-to-cpu-runtime | FileCheck %s
+// RUN: xla-cpu-opt %s -xla-cpu-to-cpu-runtime | FileCheck %s
 
 func.func @infeed(%arg0 : memref<3x3xi32>, %arg1 : memref<i1>) -> () {
   "xla_cpu.infeed"(%arg0, %arg1) {config = "foobar", layout = [[0, 1], [0]]}

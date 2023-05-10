@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -split-input-file -xla-lmhlo-to-cpu-runtime \
+// RUN: xla-cpu-opt %s -split-input-file -xla-cpu-to-cpu-runtime \
 // RUN: | FileCheck %s
 
 func.func @cpu_outfeed(%arg0: memref<8xf32>, %arg1: memref<10xui32>) {
