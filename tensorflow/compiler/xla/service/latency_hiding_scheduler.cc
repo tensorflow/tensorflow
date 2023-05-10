@@ -1302,6 +1302,7 @@ void HloScheduleGraph::InitializeGraphAnalysis(
     HloGraphNode& node = GetNode(instr);
     current_rank[&node] = node.GetIndegree();
     node.SetAsyncDepth(0.0);
+    node.SetDepth(0.0);
     if (node.GetIndegree() == 0) {
       stack.push_back(&node);
     }
@@ -1314,11 +1315,17 @@ void HloScheduleGraph::InitializeGraphAnalysis(
         node->SetAsyncDepth(
             std::max(pred.Target().GetAsyncDepth() + pred.Latency(),
                      node->GetAsyncDepth()));
+        node->SetDepth(std::max(
+            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
+            node->GetDepth()));
       }
     } else {
       for (auto& pred : node->GetPredecessors()) {
         node->SetAsyncDepth(
             std::max(pred.Target().GetAsyncDepth(), node->GetAsyncDepth()));
+        node->SetDepth(std::max(
+            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
+            node->GetDepth()));
       }
     }
     for (auto& succ : node->GetSuccessors()) {
@@ -1385,6 +1392,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                                roots.end());
   // Schedule in order bottom up.
   while (!sched_state.ready_set.empty()) {
+    VLOG(10) << "Current ready time: " << sched_state.current_time;
     VLOG(10) << "Current ready queue:";
     XLA_VLOG_LINES(10, [&sched_state]() {
       struct LogFormatter {

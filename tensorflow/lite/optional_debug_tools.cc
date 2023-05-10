@@ -363,6 +363,8 @@ const char* AllocTypeName(TfLiteAllocationType type) {
       return "kTfLitePersistentRo";
     case kTfLiteCustom:
       return "kTfLiteCustom";
+    case kTfLiteVariantObject:
+      return "kTfLiteVariantObject";
   }
   return "(invalid)";
 }

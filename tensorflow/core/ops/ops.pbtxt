@@ -40815,13 +40815,13 @@ op {
   }
 }
 op {
-  name: "RelayoutGrad"
+  name: "RelayoutLike"
   input_arg {
     name: "input"
     type_attr: "T"
   }
   input_arg {
-    name: "forward_input"
+    name: "layout_input"
     type_attr: "T"
   }
   output_arg {

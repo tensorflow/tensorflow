@@ -58,9 +58,9 @@ class ConvertToSignless : public ConversionPattern {
     if (failed(typeConverter->convertTypes(op->getResultTypes(), resultTypes)))
       return failure();
 
-    auto* newOp = Operation::create(op->getLoc(), op->getName(), resultTypes,
-                                    operands, op->getAttrs(),
-                                    op->getSuccessors(), op->getNumRegions());
+    auto* newOp = Operation::create(
+        op->getLoc(), op->getName(), resultTypes, operands, op->getAttrs(),
+        op->getPropertiesStorage(), op->getSuccessors(), op->getNumRegions());
     for (auto regions : llvm::zip(op->getRegions(), newOp->getRegions())) {
       Region& before = std::get<0>(regions);
       Region& parent = std::get<1>(regions);

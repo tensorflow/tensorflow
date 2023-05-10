@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -152,6 +153,8 @@ void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
 template <typename FloatT>
 void PopulateWithFloatingPointData(Literal* literal, std::minstd_rand0* engine,
                                    bool no_duplicates, bool use_large_range) {
+  using ComputeT =
+      std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
   CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
@@ -160,7 +163,7 @@ void PopulateWithFloatingPointData(Literal* literal, std::minstd_rand0* engine,
   } else if (use_large_range) {
     PopulateWithRandomFullRangeFloatingPointData<FloatT>(literal, engine);
   } else {
-    PopulateWithRandomFloatingPointData<FloatT, FloatT>(literal, engine);
+    PopulateWithRandomFloatingPointData<FloatT, ComputeT>(literal, engine);
   }
 }
 
@@ -187,77 +190,6 @@ void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
   absl::Span<ComplexT> result_data = result->data<ComplexT>();
   for (int i = 0; i < real_lit.data<InnerFloatT>().size(); i++) {
     result_data[i] = ComplexT(real_data[i], imaginary_data[i]);
-  }
-}
-
-template <>
-void PopulateWithFloatingPointData<half>(Literal* literal,
-                                         std::minstd_rand0* engine,
-                                         bool no_duplicates,
-                                         bool use_large_range) {
-  CHECK(engine != nullptr);
-  CHECK_EQ(literal->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<half>());
-  if (no_duplicates) {
-    PopulateWithNoDuplicateData<half>(literal, engine);
-  } else if (use_large_range) {
-    PopulateWithRandomFullRangeFloatingPointData<half>(literal, engine);
-  } else {
-    PopulateWithRandomFloatingPointData<half, float>(literal, engine);
-  }
-}
-
-template <>
-void PopulateWithFloatingPointData<bfloat16>(Literal* literal,
-                                             std::minstd_rand0* engine,
-                                             bool no_duplicates,
-                                             bool use_large_range) {
-  CHECK(engine != nullptr);
-  CHECK_EQ(literal->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<bfloat16>());
-  if (no_duplicates) {
-    PopulateWithNoDuplicateData<bfloat16>(literal, engine);
-  } else if (use_large_range) {
-    PopulateWithRandomFullRangeFloatingPointData<bfloat16>(literal, engine);
-  } else {
-    PopulateWithRandomFloatingPointData<bfloat16, float>(literal, engine);
-  }
-}
-
-template <>
-void PopulateWithFloatingPointData<tsl::float8_e5m2>(Literal* literal,
-                                                     std::minstd_rand0* engine,
-                                                     bool no_duplicates,
-                                                     bool use_large_range) {
-  CHECK(engine != nullptr);
-  CHECK_EQ(literal->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<tsl::float8_e5m2>());
-  if (no_duplicates) {
-    PopulateWithNoDuplicateData<tsl::float8_e5m2>(literal, engine);
-  } else if (use_large_range) {
-    PopulateWithRandomFullRangeFloatingPointData<tsl::float8_e5m2>(literal,
-                                                                   engine);
-  } else {
-    PopulateWithRandomFloatingPointData<tsl::float8_e5m2, float>(literal,
-                                                                 engine);
-  }
-}
-
-template <>
-void PopulateWithFloatingPointData<tsl::float8_e4m3fn>(
-    Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
-    bool use_large_range) {
-  CHECK(engine != nullptr);
-  CHECK_EQ(literal->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<tsl::float8_e4m3fn>());
-  if (no_duplicates) {
-    PopulateWithNoDuplicateData<tsl::float8_e4m3fn>(literal, engine);
-  } else if (use_large_range) {
-    PopulateWithRandomFullRangeFloatingPointData<tsl::float8_e4m3fn>(literal,
-                                                                     engine);
-  } else {
-    PopulateWithRandomFloatingPointData<tsl::float8_e4m3fn, float>(literal,
-                                                                   engine);
   }
 }
 
@@ -390,6 +322,10 @@ StatusOr<Literal> MakeFakeLiteralInternal(
       break;
     case F8E4M3FN:
       PopulateWithFloatingPointData<tsl::float8_e4m3fn>(
+          &literal, engine, no_duplicates, use_large_range);
+      break;
+    case F8E4M3B11FNUZ:
+      PopulateWithFloatingPointData<tsl::float8_e4m3b11>(
           &literal, engine, no_duplicates, use_large_range);
       break;
     case BF16:

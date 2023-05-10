@@ -72,7 +72,6 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerNonXlaDevice) {
   Device* device = device_setup_.GetDevice(DEVICE_GPU);
 
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
-
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
                                       platform_info, &xla_device_compiler));
@@ -101,21 +100,14 @@ TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTestXlaDevice) {
   EXPECT_EQ(pjrt_device_compiler->client(), pjrt_client);
 }
 
-TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerNonXlaDevice) {
+TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTestGpuDevice) {
   device_setup_.AddDevicesAndSetUp({DEVICE_GPU});
   Device* device = device_setup_.GetDevice(DEVICE_GPU);
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
-
-  // PjRtClient currently isn't supported on non-XLA devices.
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
-  EXPECT_THAT(
-      BuildPjRtDeviceCompiler(platform_info, device_setup_.flr(),
-                              &pjrt_device_compiler),
-      testing::StatusIs(error::Code::UNIMPLEMENTED,
-                        ::testing::ContainsRegex(
-                            "The PJRT client for GPU is not created explicitly "
-                            "before its first use and creating this PJRT "
-                            "client on the first use is not implemented")));
+  TF_EXPECT_OK(BuildPjRtDeviceCompiler(platform_info, device_setup_.flr(),
+                                       &pjrt_device_compiler));
+  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
 }
 #endif
 

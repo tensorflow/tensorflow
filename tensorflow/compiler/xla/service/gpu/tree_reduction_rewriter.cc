@@ -41,13 +41,8 @@ namespace gpu {
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor(
-      se::CudaComputeCapability cuda_compute_capability)
-      : cuda_compute_capability_(cuda_compute_capability) {}
-
-  explicit ReductionRewriterVisitor(
-      se::RocmComputeCapability rocm_compute_capability)
-      : rocm_compute_capability_(rocm_compute_capability) {}      
+  explicit ReductionRewriterVisitor(GpuVersion gpu_version)
+      : gpu_version_(gpu_version) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
     if (IsMinMaxReduction(hlo)) {
@@ -279,9 +274,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     VLOG(1) << "Generated: " << out->ToString();
     return ReplaceWithNewInstruction(hlo, std::move(out));
   }
-  
-    se::RocmComputeCapability rocm_compute_capability_;
-    se::CudaComputeCapability cuda_compute_capability_;
+
+  GpuVersion gpu_version_;
 };
 
 StatusOr<bool> GpuTreeReductionRewriter::Run(
@@ -289,11 +283,7 @@ StatusOr<bool> GpuTreeReductionRewriter::Run(
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
   TF_ASSIGN_OR_RETURN(bool changed,
-#if TENSORFLOW_USE_ROCM
-                      ReductionRewriterVisitor(rocm_compute_capability_)
-#else 
-                      ReductionRewriterVisitor(cuda_compute_capability_)
-#endif  
+                      ReductionRewriterVisitor(gpu_version_)
                           .RunOnModule(module, execution_threads));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;

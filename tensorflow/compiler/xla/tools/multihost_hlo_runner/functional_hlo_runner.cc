@@ -129,25 +129,6 @@ StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape, int value) {
   return literal;
 }
 
-void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
-  auto set_manual_sharding = [](HloInstruction* hlo) {
-    if (!hlo->has_sharding()) {
-      hlo->set_sharding(
-          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
-    }
-  };
-  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
-       ++i) {
-    HloInstruction* param =
-        hlo_module->entry_computation()->parameter_instruction(i);
-    set_manual_sharding(param);
-  }
-
-  HloInstruction* entry_root =
-      hlo_module->entry_computation()->root_instruction();
-  set_manual_sharding(entry_root);
-}
-
 }  // namespace
 
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
@@ -270,6 +251,25 @@ std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode) {
     default:
       LOG(FATAL) << "Unexpected output mode.";
   }
+}
+
+void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
+  auto set_manual_sharding = [](HloInstruction* hlo) {
+    if (!hlo->has_sharding()) {
+      hlo->set_sharding(
+          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
+    }
+  };
+  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
+       ++i) {
+    HloInstruction* param =
+        hlo_module->entry_computation()->parameter_instruction(i);
+    set_manual_sharding(param);
+  }
+
+  HloInstruction* entry_root =
+      hlo_module->entry_computation()->root_instruction();
+  set_manual_sharding(entry_root);
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {

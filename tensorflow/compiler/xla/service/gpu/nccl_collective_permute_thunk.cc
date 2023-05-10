@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 
-#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -141,45 +140,6 @@ Status NcclCollectivePermuteThunkBase::RunCollectivePermute(
   return ::xla::gpu::RunCollectivePermute(source_target, device_buffers[0],
                                           stream, comm, device_string,
                                           current_id);
-}
-
-/*static*/ NcclCollectivePermuteConfig
-NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
-    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::GetNcclCollectivePermuteConfig(op, replica_count,
-                                              partition_count);
-}
-
-/*static*/ Status NcclCollectivePermuteThunk::CheckImplementable(
-    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return AddOpDescription<NcclCollectivePermuteThunk>(
-      impl::CheckImplementable(op), op, replica_count, partition_count);
-}
-
-/*static*/ bool NcclCollectivePermuteThunk::IsDegenerate(
-    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclCollectivePermuteThunk::GetGroupMode(
-    mlir::lmhlo::CollectivePermuteOp op) {
-  return impl::GetGroupMode(op);
-}
-
-NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
-    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
-    : NcclCollectivePermuteThunkBase(
-          Thunk::kNcclCollectivePermute, thunk_info,
-          GetNcclCollectivePermuteConfig(op, replica_count, partition_count),
-          buffer) {}
-
-Status NcclCollectivePermuteThunk::RunNcclCollective(
-    const ExecuteParams& params, ncclComm_t comm) {
-  return RunCollectivePermute(params, *params.stream, comm);
 }
 
 /*static*/ NcclCollectivePermuteConfig

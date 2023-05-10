@@ -38,6 +38,7 @@ bool IsValidComparison(xla::PrimitiveType type, Comparison::Order order) {
     case F64:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case C64:
     case C128:
       return true;
@@ -105,6 +106,7 @@ Comparison::Order DefaultOrdering(PrimitiveType type) {
       return Comparison::Order::kTotal;
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case BF16:
     case F16:
     case F32:
@@ -262,6 +264,7 @@ Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
       return Type::kUnsigned;
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case F16:
     case F32:
     case BF16:
@@ -316,6 +319,7 @@ std::optional<Comparison> Comparison::Inverse() const {
     case F64:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case C64:
     case C128:
     case S4:

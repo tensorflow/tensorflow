@@ -52,16 +52,28 @@ T* AllocateGpuBuffer(int num_elements) {
 }
 
 template <typename T>
-std::vector<T> RandomFill(void* buffer, int num_elements) {
+std::vector<T> RandomFillRange(void* buffer, int num_elements, T start, T end) {
   std::vector<T> local;
   local.reserve(num_elements);
   thread_local absl::BitGen gen;
   for (int i = 0; i < num_elements; ++i) {
-    local.push_back(absl::Uniform<T>(gen, 0, num_elements));
+    local.push_back(absl::Uniform<T>(gen, start, end));
   }
   CUDA_CHECK(cudaMemcpy(buffer, local.data(), num_elements * sizeof(T),
                         cudaMemcpyHostToDevice));
   return local;
+}
+
+template <typename T>
+std::vector<T> RandomFill(void* buffer, int num_elements) {
+  return RandomFillRange(buffer, num_elements, static_cast<T>(0),
+                         static_cast<T>(num_elements));
+}
+
+template <typename T>
+std::vector<T> RandomFillNegative(void* buffer, int num_elements) {
+  return RandomFillRange(buffer, num_elements, -static_cast<T>(num_elements),
+                         static_cast<T>(0));
 }
 
 PrimitiveType Get(float) { return PrimitiveType::F32; }
@@ -88,9 +100,39 @@ TEST_P(TopkTest, TopKFloat) {
       static_cast<uint32_t*>(AllocateGpuBuffer<uint32_t>(k * batch_size));
   GpuStreamHandle stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
-  CHECK(RunTopk(stream, Get(T()), input_buffer, n, output_values,
-                output_indices, k, batch_size)
-            .ok());
+  ASSERT_TRUE(RunTopk(stream, Get(T()), input_buffer, n, output_values,
+                      output_indices, k, batch_size)
+                  .ok());
+  std::vector<T> got(k);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  for (int i = 0; i < batch_size; i++) {
+    CUDA_CHECK(cudaMemcpy(got.data(), &output_values[k * i], k * sizeof(T),
+                          cudaMemcpyDeviceToHost));
+    std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
+    std::sort(slice.begin(), slice.end(), std::greater<T>());
+    slice.resize(k);
+    EXPECT_THAT(got, ::testing::ElementsAreArray(slice))
+        << " k=" << k << ", batch_size=" << batch_size;
+  }
+  CUDA_CHECK(cudaFree(input_buffer));
+  CUDA_CHECK(cudaFree(output_indices));
+  CUDA_CHECK(cudaFree(output_values));
+}
+
+TEST_P(TopkTest, TopKPackedNegative) {
+  using T = float;
+  const auto [n_kb, k, batch_size, offset] = GetParam();
+  const size_t n = n_kb * 1024 + offset;
+  T* input_buffer = AllocateGpuBuffer<T>(n * batch_size);
+  auto source = RandomFillNegative<T>(input_buffer, n * batch_size);
+  T* output_values = AllocateGpuBuffer<T>(k * batch_size);
+  auto* output_indices =
+      static_cast<uint32_t*>(AllocateGpuBuffer<uint32_t>(k * batch_size));
+  GpuStreamHandle stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+  ASSERT_TRUE(RunTopk(stream, Get(T()), input_buffer, n, output_values,
+                      output_indices, k, batch_size)
+                  .ok());
   std::vector<T> got(k);
   CUDA_CHECK(cudaStreamSynchronize(stream));
   for (int i = 0; i < batch_size; i++) {

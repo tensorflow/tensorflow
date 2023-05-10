@@ -378,10 +378,12 @@ py_library(
         ":dtypes",
         ":ops",
         ":tensor_shape",
+        ":tensor_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/profiler:trace",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -1570,7 +1572,6 @@ py_library(
     srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
-        ":constant_op",
         ":dtypes",
         ":tensor_shape",
         ":tensor_util",

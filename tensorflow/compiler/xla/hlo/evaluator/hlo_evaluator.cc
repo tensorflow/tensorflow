@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -258,6 +258,9 @@ Status Apply(Literal& literal, F&& literal_generator) {
       return Trait<F8E5M2>::Run(literal, std::forward<F>(literal_generator));
     case F8E4M3FN:
       return Trait<F8E4M3FN>::Run(literal, std::forward<F>(literal_generator));
+    case F8E4M3B11FNUZ:
+      return Trait<F8E4M3B11FNUZ>::Run(literal,
+                                       std::forward<F>(literal_generator));
     case F16:
       return Trait<F16>::Run(literal, std::forward<F>(literal_generator));
     case BF16:
@@ -926,6 +929,9 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[F8E4M3FN] =
       std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>>(
           this);
+  typed_visitors_[F8E4M3B11FNUZ] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>>(
+          this);
 
   typed_visitors_[TUPLE] =
       std::make_unique<FunctionVisitor>([](HloInstruction*) {
@@ -1520,6 +1526,7 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
           PrimitiveType_Name(elem_ty));
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
       return InvalidArgument("F8 is unsupported in IsFinite");
 
     case F16: {
@@ -1773,6 +1780,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     } break;
     case F8E4M3FN: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3fn>(
+                                                   compare->shape(), direction,
+                                                   lhs_literal, rhs_literal));
+    } break;
+    case F8E4M3B11FNUZ: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3b11>(
                                                    compare->shape(), direction,
                                                    lhs_literal, rhs_literal));
     } break;

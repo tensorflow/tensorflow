@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file %s | FileCheck %s --dump-input-context=20
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -2491,6 +2491,9 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 // CHECK-DAG:     [[VAL_4:%.*]] = "mhlo.get_dimension_size"([[ARG_1]]) {dimension = 2 : i64} : (tensor<?x5x3xi1>) -> tensor<i32>
 // CHECK-DAG:     [[VAL_5:%.*]] = mhlo.reshape [[VAL_4]] : (tensor<i32>) -> tensor<1xi32>
 // CHECK-DAG:     [[VAL_6:%.*]] = "mhlo.concatenate"([[VAL_1]], [[VAL_3]], [[VAL_5]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK-DAG:     [[VAL_ct2:%.*]] = mhlo.constant dense<2> : tensor<i32>
+// CHECK-DAG:     [[VAL_ct2_tensor:%.*]] = mhlo.reshape [[VAL_ct2]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:     [[VAL_result_shape:%.*]] = "mhlo.concatenate"([[VAL_1]], [[VAL_3]], [[VAL_ct2_tensor]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
 // CHECK-DAG:     [[VAL_7:%.*]] = "mhlo.dynamic_iota"([[VAL_6]]) {iota_dimension = 2 : i64} : (tensor<3xi32>) -> tensor<?x5x3xi32>
 // CHECK-DAG:     [[VAL_8:%.*]]:2 = "mhlo.sort"([[ARG_1]], [[VAL_7]]) ({
 // CHECK-DAG:     ^bb0([[ARG_2:%.*]]: tensor<i1>, [[ARG_3:%.*]]: tensor<i1>, [[ARG_4:%.*]]: tensor<i32>, [[ARG_5:%.*]]: tensor<i32>):
@@ -2498,7 +2501,7 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 // CHECK-DAG:       mhlo.return [[VAL_14]] : tensor<i1>
 // CHECK-DAG:     }) {dimension = 2 : i64, is_stable = true} : (tensor<?x5x3xi1>, tensor<?x5x3xi32>) -> (tensor<?x5x3xi1>, tensor<?x5x3xi32>)
 // CHECK-DAG:     [[VAL_9:%.*]] = mhlo.constant dense<0> : tensor<3xi64>
-// CHECK-DAG:     [[VAL_10:%.*]] = mhlo.convert [[VAL_6]] : (tensor<3xi32>) -> tensor<3xi64>
+// CHECK-DAG:     [[VAL_10:%.*]] = mhlo.convert [[VAL_result_shape]] : (tensor<3xi32>) -> tensor<3xi64>
 // CHECK-DAG:     [[VAL_11:%.*]] = mhlo.constant dense<1> : tensor<3xi64>
 // CHECK-DAG:     [[VAL_12:%.*]] = mhlo.real_dynamic_slice [[VAL_8]]#0, [[VAL_9]], [[VAL_10]], [[VAL_11]] : (tensor<?x5x3xi1>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi1>
 // CHECK-DAG:     [[VAL_13:%.*]] = mhlo.real_dynamic_slice [[VAL_8]]#1, [[VAL_9]], [[VAL_10]], [[VAL_11]] : (tensor<?x5x3xi32>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi32>

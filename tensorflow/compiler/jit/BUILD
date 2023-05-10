@@ -78,6 +78,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core/tfrt/common:pjrt_cpu_client_registration",
     ] + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
@@ -95,6 +96,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/core/tfrt/common:pjrt_gpu_client_registration",
     ]),
     alwayslink = 1,
 )
@@ -528,6 +530,7 @@ cc_library(
         "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -558,6 +561,7 @@ tf_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1622,6 +1626,7 @@ tf_cuda_cc_test(
         ":flags",
         ":xla_device",
         ":xla_gpu_device",
+        ":xla_gpu_jit",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:test",

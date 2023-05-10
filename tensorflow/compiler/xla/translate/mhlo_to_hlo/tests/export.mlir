@@ -606,6 +606,9 @@ func.func @main() {
   // CHECK: f8e4m3fn[4] constant({1, 2, 3, 4})
   %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
 
+  // CHECK: f8e4m3b11fnuz[4] constant({1, 2, 3, 4})
+  %cst_13 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3B11FNUZ>
+
   func.return
 }
 

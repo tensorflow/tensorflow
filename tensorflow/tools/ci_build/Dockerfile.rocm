@@ -54,6 +54,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   libboost-filesystem-dev \
   rpm \
   libnuma-dev \
+  patchelf \
   pciutils \
   virtualenv \
   python3-pip \

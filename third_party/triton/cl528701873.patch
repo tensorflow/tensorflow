@@ -1,0 +1,54 @@
+==== triton/lib/Dialect/Triton/IR/Ops.cpp#7 - /google/src/cloud/csigg/mlir_5e118f933b6590cecd7f1afb30845a1594bc4a5d_1683013084/triton/lib/Dialect/Triton/IR/Ops.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/Triton/IR/Ops.cpp	2023-04-24 23:33:26.000000000 -0700
++++ triton/lib/Dialect/Triton/IR/Ops.cpp	2023-05-02 03:18:21.000000000 -0700
+@@ -260,7 +260,7 @@
+ //-- TransOp --
+ mlir::LogicalResult mlir::triton::TransOp::inferReturnTypes(
+     MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<Type> &inferredReturnTypes) {
+   // type is the same as the input
+   auto argTy = operands[0].getType().cast<RankedTensorType>();
+@@ -287,7 +287,7 @@
+ //-- DotOp --
+ mlir::LogicalResult mlir::triton::DotOp::inferReturnTypes(
+     MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<Type> &inferredReturnTypes) {
+   // type is the same as the accumulator
+   auto accTy = operands[2].getType().cast<RankedTensorType>();
+@@ -355,7 +355,7 @@
+ 
+ mlir::LogicalResult mlir::triton::ReduceOp::inferReturnTypes(
+     MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<Type> &inferredReturnTypes) {
+   for (auto arg : operands) {
+     auto argTy = arg.getType().cast<RankedTensorType>();
+@@ -462,7 +462,7 @@
+ //-- ExpandDimsOp --
+ mlir::LogicalResult mlir::triton::ExpandDimsOp::inferReturnTypes(
+     MLIRContext *context, std::optional<Location> loc, ValueRange operands,
+-    DictionaryAttr attributes, RegionRange regions,
++    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+     SmallVectorImpl<Type> &inferredReturnTypes) {
+   // infer shape
+   auto arg = operands[0];
+==== triton/lib/Dialect/TritonGPU/Transforms/Utility.cpp#4 - /google/src/cloud/csigg/mlir_5e118f933b6590cecd7f1afb30845a1594bc4a5d_1683013084/triton/lib/Dialect/TritonGPU/Transforms/Utility.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/TritonGPU/Transforms/Utility.cpp	2023-04-24 23:33:26.000000000 -0700
++++ triton/lib/Dialect/TritonGPU/Transforms/Utility.cpp	2023-05-02 02:57:06.000000000 -0700
+@@ -224,7 +224,8 @@
+     SmallVector<Type, 1> newTypes;
+     auto success = typeInfer.inferReturnTypes(
+         newOp->getContext(), newOp->getLoc(), newOp->getOperands(),
+-        newOp->getAttrDictionary(), newOp->getRegions(), newTypes);
++        newOp->getAttrDictionary(), newOp->getPropertiesStorage(),
++        newOp->getRegions(), newTypes);
+     if (succeeded(success))
+       newOp->getResult(0).setType(newTypes.front());
+   }

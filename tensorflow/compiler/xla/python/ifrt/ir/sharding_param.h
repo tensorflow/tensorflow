@@ -17,11 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_SHARDING_PARAM_H_
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -113,6 +115,8 @@ class ShardingParam {
         llvm::ArrayRef<int64_t>(minor_to_major_.axis_sizes));
   }
 
+  std::string DebugString() const;
+
  private:
   llvm::SmallVector<int64_t, 4> dim_shards_;
   MinorToMajor minor_to_major_;
@@ -121,6 +125,8 @@ class ShardingParam {
 llvm::hash_code hash_value(ShardingParam sharding);
 
 mlir::AsmPrinter& operator<<(mlir::AsmPrinter& os, ShardingParam sharding);
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding);
 
 }  // namespace ifrt
 }  // namespace xla

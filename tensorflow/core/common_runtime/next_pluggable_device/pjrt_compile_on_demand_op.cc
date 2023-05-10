@@ -113,9 +113,8 @@ void RegisterPjRtCompileOnDemand(const char* device, const char* jit_device) {
     return new PjRtCompileOnDemandOp(context);
   };
   XlaOpRegistry::RegisterCompilationKernels();
-  static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
-      device, jit_device, factory, "PjRtCompileOnDemandOp");
-  (void)registrations;
+  RegisterXlaDeviceKernels(device, jit_device, factory,
+                           "PjRtCompileOnDemandOp");
 }
 
 }  // namespace tensorflow

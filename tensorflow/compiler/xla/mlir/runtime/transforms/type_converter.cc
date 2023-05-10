@@ -109,6 +109,7 @@ static std::unique_ptr<Type> ConvertCanonicalType(
 /*static*/ StatusOr<PrimitiveType> TypeConverter::ConvertElementType(
     mlir::Type type) {
   if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
+  if (type.isFloat8E4M3B11FNUZ()) return PrimitiveType::F8E4M3B11FNUZ;
   if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isIndex()) return PrimitiveType::S64;
   if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;

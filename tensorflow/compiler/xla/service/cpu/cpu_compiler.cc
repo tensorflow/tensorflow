@@ -318,6 +318,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     const HloModule& module) {
   runtime::CpuPipelineOptions copts;
   runtime::JitExecutable::Options opts;
+  copts.xla_cpu_sparse_cuda_threads =
+      GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
       [](xla::runtime::DialectRegistry& dialects) {
@@ -641,6 +643,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
   FloatSupport f8e4m3fn_support(F8E4M3FN);
   pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
@@ -695,7 +699,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Run the following passes to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
-   is_mlir_compile, this] {
+   this] {
     AddHloVerifier(&pipeline, allow_sparse_shapes_, HloVerifierOpts{},
                    /*debug_only=*/true);
 
@@ -710,13 +714,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
-    // Disable TreeReductionRewriter for MLIR compiles. Reduce window is quite
-    // slow, and reduce is supposed to have similar numerics using a tree-like
-    // tiling pattern.
-    if (!is_mlir_compile) {
-      // Needs to happen after algebraic simplifier.
-      pipeline.AddPass<TreeReductionRewriter>();
-    }
+    // Needs to happen after algebraic simplifier.
+    pipeline.AddPass<TreeReductionRewriter>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.

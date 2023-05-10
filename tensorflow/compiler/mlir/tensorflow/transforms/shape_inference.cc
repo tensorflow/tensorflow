@@ -2145,7 +2145,8 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   SmallVector<Type, 4> inferred;
   LogicalResult res = infer_ti.inferReturnTypes(
       op->getContext(), op->getLoc(), op->getOperands(),
-      op->getAttrDictionary(), op->getRegions(), inferred);
+      op->getAttrDictionary(), op->getPropertiesStorage(), op->getRegions(),
+      inferred);
   if (failed(res)) {
     op->emitOpError("failed to refine type as inference failed");
     return false;

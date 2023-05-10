@@ -154,6 +154,46 @@ class MemorySpaceAssignmentCostAnalysis {
       const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
       Cache* cache = nullptr) const;
 
+  // If enabled in Options::pipeline_overhead_window_size_mib, returns the
+  // overhead of accessing the default memory, in seconds. The source of the
+  // overhead is the software pipelining ovehead. The lowering of the operations
+  // typically use tiling to copy one window at a time from default memory, and
+  // perform compute:
+  //
+  // Pipeline overhead:                          <->
+  //                        +----+----+----+----+
+  // Copy from default mem: |    |    |    |    |
+  //                        +----+----+----+----+
+  //                            \    \    \    \
+  //                             \    \    \    \
+  //                              V    V    V    V
+  //                             +--+ +--+ +--+ +--+
+  // Compute:                    |  | |  | |  | |  |
+  //                             +--+ +--+ +--+ +--+
+  float GetDefaultMemoryAccessOverhead(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
+
+  // Returns the amount of time the default memory bandwidth is idle, while
+  // executing this instruction, in seconds.  This value can be multiplied with
+  // the default memory bandwidth to get the amount of bytes that are available
+  // to be copied to/from default memory during the execution of this
+  // instruction.
+  float GetDefaultMemoryBandwidthIdleTime(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
+
+  // Returns the bytes accessed from alternate memory.
+  float GetBytesAccessedFromAlternateMemory(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
+
   // Returns the elapsed time in seconds due to compute only.
   float GetInstructionElapsedDueToCompute(
       const HloInstruction& instruction) const;
@@ -1241,6 +1281,10 @@ struct Options {
 
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
+
+  // The window size used to calculate the pipeline overhead when HLO accesses
+  // the default memory, in MiB.
+  float pipeline_overhead_window_size_mib = 0;
 
   // Config to filter prefetches and update preferred prefetch times for the
   // filtered prefetches according to an update config.

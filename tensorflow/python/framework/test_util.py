@@ -960,11 +960,13 @@ def assert_no_garbage_created(f):
     The decorated function.
   """
 
+  # FIXME(power) -- Update documentation, we no longer care if garbage is
+  # created, we only want to verify we don't have memory leaks.
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
     gc.disable()
     previous_debug_flags = gc.get_debug()
-    gc.set_debug(gc.DEBUG_SAVEALL)
+    gc.set_debug(gc.DEBUG_UNCOLLECTABLE)
     gc.collect()
     previous_garbage = len(gc.garbage)
     result = f(self, **kwargs)

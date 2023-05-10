@@ -21,7 +21,7 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.distribute.coordinator import utils
 from tensorflow.python.eager import context
@@ -46,7 +46,7 @@ class GetTaskStatesTest(object):  # pylint: disable=missing-docstring
     self._cluster_def["chief"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
-    cluster_resolver = SimpleClusterResolver(
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
         server_lib.ClusterSpec(self._cluster_def), rpc_layer="grpc")
 
     context.context().configure_coordination_service(

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_QUERY_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_QUERY_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_QUERY_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_QUERY_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -101,4 +101,4 @@ bool HasX64TransformedHostTransfer(const HloModule& module);
 }  // namespace hlo_query
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_QUERY_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_UTILS_HLO_QUERY_H_

@@ -236,7 +236,7 @@ uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
     GraphOptimizationSource source);
 
 // Increments the hit count for the graph optimization cache.
-void IncrementFunctinGraphOptimizationCacheHitCount(
+void IncrementFunctionGraphOptimizationCacheHitCount(
     int count, GraphOptimizationSource source);
 
 // Gets the hit count for the graph optimization cache.
@@ -252,11 +252,11 @@ int64_t GetFunctionGraphOptimizationCacheFailureCount(
     GraphOptimizationSource source);
 
 // Increments the miss count for the graph optimization cache.
-void IncrementFunctinGraphOptimizationCacheMissCount(
+void IncrementFunctionGraphOptimizationCacheMissCount(
     int count, GraphOptimizationSource source);
 
 // Gets the miss count for the graph optimization cache.
-int64_t GetFunctinGraphOptimizationCacheMissCount(
+int64_t GetFunctionGraphOptimizationCacheMissCount(
     GraphOptimizationSource source);
 
 // Records the activity of the first phase of the mlir bridge using the

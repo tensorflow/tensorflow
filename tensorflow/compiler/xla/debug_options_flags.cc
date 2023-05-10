@@ -111,12 +111,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(false);
+  opts.set_xla_gpu_pgle_profile_directory("");
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
   opts.set_xla_cpu_matmul_tiling_m_dim(8);
   opts.set_xla_cpu_matmul_tiling_n_dim(8);
   opts.set_xla_cpu_matmul_tiling_k_dim(8);
+  opts.set_xla_cpu_enable_mlir_fusion_outlining(true);
   opts.set_xla_cpu_enable_experimental_deallocation(true);
 
   opts.set_xla_partitioning_algorithm(
@@ -966,6 +968,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     &DebugOptions::set_xla_gpu_enable_latency_hiding_scheduler),
                 debug_options->xla_gpu_enable_latency_hiding_scheduler(),
                 "Enable latency-hiding scheduler for XLA:GPU"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_pgle_profile_directory",
+      string_setter_for(&DebugOptions::set_xla_gpu_pgle_profile_directory),
+      debug_options->xla_gpu_pgle_profile_directory(),
+      "Directory for PGLE profiles in XLA:GPU"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_lhs_enable_gpu_async_tracker",
       bool_setter_for(&DebugOptions::set_xla_gpu_lhs_enable_gpu_async_tracker),

@@ -92,7 +92,8 @@ static bool HasFp8(const HloModule& hlo_module) {
   for (const HloComputation* computation : hlo_module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN)) {
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3B11FNUZ)) {
         return true;
       }
     }

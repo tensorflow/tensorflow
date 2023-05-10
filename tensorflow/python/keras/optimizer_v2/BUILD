@@ -9,7 +9,7 @@ package(
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tpu/tests:__pkg__",
-        "//tensorflow/python/training/tracking:__pkg__",
+        "//tensorflow/python/trackable:__pkg__",
     ],
     licenses = ["notice"],
 )

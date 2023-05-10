@@ -264,6 +264,11 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
           op_params, op_context.effective_input_shape, op_context.input,
           GetTensorShape(op_context.output), op_context.output);
       break;
+    case kTfLiteUInt32:
+      reference_ops::StridedSlice<uint32_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
     case kTfLiteInt8:
       reference_ops::StridedSlice<int8_t>(
           op_params, op_context.effective_input_shape, op_context.input,

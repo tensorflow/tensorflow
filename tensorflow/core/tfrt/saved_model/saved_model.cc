@@ -30,6 +30,7 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/infra/mira/mlrt/bytecode/bytecode.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -256,7 +256,8 @@ tensorflow::Status RunBytecodeInitializers(
   if (auto function = loaded_executable.GetFunction("_tfrt_fallback_init")) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        /*sync_resource_state=*/nullptr));
   }
 
   for (const auto& p : initializers_and_signatures.initializers) {
@@ -275,7 +276,8 @@ tensorflow::Status RunBytecodeInitializers(
   if (auto function = loaded_executable.GetFunction("_tfrt_resource_init")) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        /*sync_resource_state=*/nullptr));
   }
 
   return OkStatus();
@@ -1138,6 +1140,13 @@ SavedModelImpl::GetOrCreateLoadingResult(const RunOptions& run_options,
   TF_ASSIGN_OR_RETURN(
       const auto joined_signature,
       JoinSignatures(names, signatures_, meta_graph_def_.signature_def()));
+
+  LOG(INFO) << "TFRT loading joined signature " << joined_signature.name;
+  absl::Cleanup log_finish([&joined_signature, start_time = absl::Now()]() {
+    LOG(INFO) << "TFRT finished loading joined signature "
+              << joined_signature.name << ". Took "
+              << absl::ToInt64Milliseconds(absl::Now() - start_time) << " ms.";
+  });
 
   return LoadJoinedSignature(joined_signature);
 }

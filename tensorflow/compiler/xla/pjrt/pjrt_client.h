@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -1311,6 +1312,15 @@ struct ExecuteOptions {
   // Currently it is only applied to CPU implementations
   enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
   ExecutionMode execution_mode = ExecutionMode::kDefault;
+
+  // A set of indices denoting the input buffers that should not be donated.
+  // An input buffer may be non-donable, for example, if it is referenced more
+  // than once. Since such runtime information is not available at compile time,
+  // the compiler might mark the input as `may-alias`, which could lead PjRt to
+  // donate the input buffer when it should not. By defining this set of
+  // indices, a higher-level PjRt caller can instruct PjRtClient not to donate
+  // specific input buffers.
+  absl::flat_hash_set<int> non_donatable_input_indices;
 };
 
 // Represents a compiled computation that can be executed given handles to

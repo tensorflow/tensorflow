@@ -22,7 +22,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -436,7 +436,8 @@ class TestStrategyTest(test.TestCase):
         "ps": ["ps0:2222", "ps1:2222"],
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
-    cluster_resolver = SimpleClusterResolver(base_cluster_spec)
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        base_cluster_spec)
     dist.extended._cluster_resolver = cluster_resolver
     self.assertIs(dist.cluster_resolver, cluster_resolver)
 

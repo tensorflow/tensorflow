@@ -374,6 +374,9 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     d_tensor = api.call_with_layout(array_ops.zeros, layout=layout, shape=[10])
     self.assertTrue(api.is_dtensor(d_tensor))
 
+    var = d_variable.DVariable(d_tensor)
+    self.assertTrue(api.is_dtensor(var))
+
     self.assertFalse(api.is_dtensor([0, 1]))
     self.assertFalse(api.is_dtensor({False: True}))
 
@@ -482,9 +485,7 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
             layout=Layout.replicated(self.mesh, 2),
         )
     )
-    with self.assertRaisesRegex(
-        TypeError,
-        "Received Variable input to unpack, Variable is not supported."):
+    with self.assertRaisesRegex(TypeError, "Expecting a Tensor"):
       api._dtensor_device().unpack(v0)
 
   def testUnpackingRegularTensorRaisesInvalidArgumentError(self):
@@ -534,10 +535,10 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
     with self.assertRaisesRegex(RuntimeError, "`pack` must be called eagerly."):
       f(constant_op.constant([1.0]))
 
-  def testPackingVariablesRaisesTypeError(self):
+  def testPackingVariablesRaisesError(self):
     with self.assertRaisesRegex(
-        TypeError,
-        "Received Variable input to Pack, Variable is not supported."):
+        errors_impl.InvalidArgumentError, "Variable input is not supported."
+    ):
       api._dtensor_device().pack(
           [
               d_variable.DVariable(array_ops.ones([2, 3])),

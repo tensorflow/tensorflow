@@ -7,6 +7,15 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+*  `tf.Tensor`
+    * The class hierarchy for `tf.Tensor` has changed, and there are now
+      explicit `EagerTensor` and `SymbolicTensor` classes for eager and
+      tf.function respectively. Users who relied on the exact type of Tensor
+      (e.g. `type(t) == tf.Tensor`) will need to update their code to use
+      `isinstance(t, tf.Tensor)`. The `tf.is_symbolic_tensor` helper added in
+      2.13 may be used when it is necessary to determine if a value is
+      specifically a symbolic tensor.
+
 # Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -19,7 +28,8 @@
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 # Bug Fixes and Other Changes
-
+* `tf.lite`
+    * Strided_Slice now supports `UINT32`.
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>

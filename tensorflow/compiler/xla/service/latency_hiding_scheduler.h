@@ -246,7 +246,9 @@ class HloGraphNode {
   TimeCost GetCost() const { return cost_; }
   void SetCost(TimeCost cost) { cost_ = cost; }
   TimeCost GetAsyncDepth() const { return async_depth_; }
+  TimeCost GetDepth() const { return depth_; }
   void SetAsyncDepth(TimeCost async_depth) { async_depth_ = async_depth; }
+  void SetDepth(TimeCost depth) { depth_ = depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
   ResourcesVector GetResources() const { return resources_; }
@@ -304,6 +306,7 @@ class HloGraphNode {
     absl::StrAppend(&result, "Outdegree: ", outdegree_, "\n");
     absl::StrAppend(&result, "Cost: ", cost_, "\n");
     absl::StrAppend(&result, "Async Depth: ", async_depth_, "\n");
+    absl::StrAppend(&result, "Depth: ", depth_, "\n");
     absl::StrAppend(&result, "Force Delay: ", force_delay_, "\n");
     absl::StrAppend(&result, "Predecessors:\n");
     for (const HloEdge& e : predecessors_) {
@@ -348,6 +351,8 @@ class HloGraphNode {
   TimeCost cost_ = 0.0;
   // Depth in latency terms of a node based on Async operation cost on the path.
   TimeCost async_depth_ = 0.0;
+  // Depth in latency terms of node based on distance to the entry nodes.
+  TimeCost depth_ = 0.0;
   // AsyncResources used by the node.
   ResourcesVector resources_;
   // Force the scheduling of the nodes with attribute set as late as possible.

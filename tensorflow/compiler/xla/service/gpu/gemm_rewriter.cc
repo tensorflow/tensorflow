@@ -363,8 +363,7 @@ auto OptionalConvert(HloInstruction **optional_convert, Pattern pattern) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(
-      GpuVersion gpu_version)
+  explicit GemmRewriterVisitor(GpuVersion gpu_version)
       : gpu_version_(gpu_version) {}
 
   Status HandleDot(HloInstruction *instr) override {
@@ -644,20 +643,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                     bool b_mult_scale,
                                     std::vector<HloInstruction *> a_unary_ops,
                                     std::vector<HloInstruction *> b_unary_ops) {
-    auto cuda_compute_capability =
-          std::get<se::CudaComputeCapability>(gpu_version_);
-
+    auto cuda_compute_capability_ =
+        std::get<se::CudaComputeCapability>(gpu_version_);
     // FP8 GEMM kernels are only available on Hopper and newer architectures.
-    if (!cuda_compute_capability.IsAtLeast(
+    if (!cuda_compute_capability_.IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
       VLOG(1) << "FP8 Custom Calls require Hopper or newer architecture.";
       return false;
     }
-#if CUDA_VERSION < 11080
-    // FP8 GEMM kernels are only available with CUDA 11.8 and above
-    VLOG(1) << "FP8 Custom Calls require CUDA 11.8 or newer.";
+#if CUDA_VERSION < 12000
+    // FP8 GEMM kernels are only available with CUDA 12.0 and above
+    VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
     return false;
-#endif
+#endif  // CUDA_VERSION < 12000
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
@@ -728,7 +726,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // fusion of the scaling and conversion of D into the Custom Call. Fusing
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr;
-#if CUDA_VERSION > 12000
+
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *add = instr->users()[0];
@@ -739,7 +737,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
       }
     }
-#endif  // CUDA_VERSION > 12000
+
     // If a matrix bias was not fused, set C to a matrix of zeros.
     if (!c) {
       Literal c_literal = LiteralUtil::Zero(c_type);
@@ -1548,9 +1546,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-    auto cuda_compute_capability =
-          std::get<se::CudaComputeCapability>(gpu_version_);
-    if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    auto cuda_compute_capability_ =
+        std::get<se::CudaComputeCapability>(gpu_version_);
+    if (cuda_compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       // cuBlasLt has an implementation for complex data with compute type
       // 32F_FAST_32TF that uses tensor cores and that is free from the
       // restriction. This implementation only works on Ampere
@@ -1621,9 +1619,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> RunOnComputation(
-    HloComputation *computation,
-    GpuVersion gpu_version) {
+StatusOr<bool> RunOnComputation(HloComputation *computation,
+                                GpuVersion gpu_version) {
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -1640,8 +1637,8 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
-        bool result, RunOnComputation(computation, gpu_version_));
+    TF_ASSIGN_OR_RETURN(bool result,
+                        RunOnComputation(computation, gpu_version_));
     changed |= result;
   }
   return changed;

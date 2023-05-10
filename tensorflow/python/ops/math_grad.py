@@ -256,9 +256,9 @@ def _MeanGrad(op, grad):
     factor = constant_op.constant(factor, dtype=sum_grad.dtype)
   else:
     input_shape = array_ops.shape(op.inputs[0])
-    output_shape = array_ops.shape(op.outputs[0])
-    factor = _safe_shape_div(
-        math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
+    input_rank = array_ops.size(input_shape)
+    axes = (op.inputs[1] + input_rank) % input_rank
+    factor = math_ops.reduce_prod(array_ops.gather(input_shape, axes))
   return math_ops.truediv(sum_grad, math_ops.cast(factor, sum_grad.dtype)), None
 
 
@@ -1255,8 +1255,20 @@ def _Atan2Grad(op, grad):
   y = op.inputs[0]
   x = op.inputs[1]
   with ops.control_dependencies([grad]):
+    (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
+        SmartBroadcastGradientArgs(x, y, grad)
+    )
+
     grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
-    return x * grad_inv, -y * grad_inv
+
+    gx = -y * grad_inv
+    if must_reduce_x:
+      gx = array_ops.reshape(math_ops.reduce_sum(gx, rx), sx)
+
+    gy = x * grad_inv
+    if must_reduce_y:
+      gy = array_ops.reshape(math_ops.reduce_sum(gy, ry), sy)
+    return gy, gx
 
 
 @ops.RegisterGradient("AddN")

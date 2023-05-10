@@ -564,9 +564,9 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:quarantine",
         "//tensorflow/python/eager/polymorphic_function:tf_method_target",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:transform",
     ],
 )
 

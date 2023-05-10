@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/base/log_severity.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -2686,6 +2689,35 @@ TEST_F(HloVerifierTest, InvalidU4Usage) {
   EXPECT_THAT(
       status.message(),
       HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+}
+
+TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
+  if (tsl::testing::kIsOpenSource) {
+    return;
+  }
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+    ENTRY entry {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT sum = s32[] add(p0, p1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  ::absl::ScopedMockLog log(::absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      log,
+      Log(absl::LogSeverity::kInfo, ::testing::EndsWith("/hlo_verifier.cc"),
+          ::testing::StartsWith("TEST PREFIX creation_pass_coverage=0")))
+      .Times(1);
+  log.StartCapturingLogs();
+  {
+    MetadataTracker tracker("TEST PREFIX");
+    for (const auto* c : module->computations()) {
+      TF_ASSERT_OK(c->Accept(&tracker));
+    }
+  }
 }
 
 }  // namespace

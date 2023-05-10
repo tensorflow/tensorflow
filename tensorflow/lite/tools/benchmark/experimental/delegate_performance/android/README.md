@@ -161,7 +161,7 @@ delegate.
 
 -   `tflite_settings_files`: `str` (required) the comma-delimited paths to the
     JSON-encoded delegate `TFLiteSettings` file(s), which is defined in
-    [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
+    [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/acceleration/configuration/configuration.proto).
 -   Additional optional command-line flags are documented
     [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/README.md)
     and can be appended to the `args` string (note that all args must be nested
@@ -274,7 +274,7 @@ for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
 
 -   `tflite_settings_files`: `str` (required) the comma-delimited paths to the
     JSON-encoded delegate `TFLiteSettings` file(s), which is defined in
-    [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
+    [configuration.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/acceleration/configuration/configuration.proto).
     The first path is the test target delegate and all other paths are treated
     as reference delegates. The test target delegate will be compared against
     each reference delegate.

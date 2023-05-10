@@ -579,7 +579,7 @@ def gen_zipped_test_file(name, file, flags = ""):
                 " --zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
-        exec_tools = [
+        tools = [
             "//tensorflow/lite/testing:generate_examples",
         ],
     )

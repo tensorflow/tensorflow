@@ -23,6 +23,8 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_join.h"
@@ -48,7 +50,7 @@ struct CudaComputeCapability {
     HOPPER = 9
   };
 
-  CudaComputeCapability() {}
+  CudaComputeCapability() = default;
   CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
@@ -124,8 +126,8 @@ class RocmComputeCapability {
   explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
-  RocmComputeCapability() {}
-  ~RocmComputeCapability() {}
+  RocmComputeCapability() = default;
+  ~RocmComputeCapability() = default;
 
   std::string gcn_arch_name() { return gcn_arch_name_; }
 

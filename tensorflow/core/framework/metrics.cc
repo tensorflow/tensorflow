@@ -631,7 +631,7 @@ uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
   return graph_optimization_saving_time_usecs->GetCell(mapped_source)->value();
 }
 
-void IncrementFunctinGraphOptimizationCacheHitCount(
+void IncrementFunctionGraphOptimizationCacheHitCount(
     const int count, GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   graph_optimization_cache_hit_count->GetCell(mapped_source)
@@ -658,14 +658,14 @@ int64_t GetFunctionGraphOptimizationCacheFailureCount(
       ->value();
 }
 
-void IncrementFunctinGraphOptimizationCacheMissCount(
+void IncrementFunctionGraphOptimizationCacheMissCount(
     const int count, GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   graph_optimization_cache_miss_count->GetCell(mapped_source)
       ->IncrementBy(count);
 }
 
-int64_t GetFunctinGraphOptimizationCacheMissCount(
+int64_t GetFunctionGraphOptimizationCacheMissCount(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   return graph_optimization_cache_miss_count->GetCell(mapped_source)->value();

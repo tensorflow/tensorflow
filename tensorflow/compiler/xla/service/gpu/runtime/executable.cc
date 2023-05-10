@@ -370,7 +370,6 @@ Status GpuRuntimeExecutable::Execute(
       graph_instances_(executor)->snapshot();
   CapturedFunctionExecutionCount::Snapshot execution_count =
       captured_function_counts_(executor)->snapshot();
-  CapturingCudaGraph capturing_cuda_graph(false);
 #endif  // GOOGLE_CUDA
 
   // State cached globally for gpu executable.
@@ -392,7 +391,7 @@ Status GpuRuntimeExecutable::Execute(
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances, &execution_count, &capturing_cuda_graph,
+      &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.

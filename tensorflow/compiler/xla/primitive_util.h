@@ -42,6 +42,10 @@ int ExponentWidth(PrimitiveType type);
 
 // Returns the exponent of the smallest number which cannot be represented.
 // For non-float datatypes, results in a LOG(FATAL).
+int UnderflowExponent(PrimitiveType type);
+
+// Returns the exponent of the smallest number which cannot be represented.
+// For non-float datatypes, results in a LOG(FATAL).
 int OverflowExponent(PrimitiveType type);
 
 // Returns the XLA primitive type (eg, F32) corresponding to the given
@@ -148,6 +152,11 @@ inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
   return F8E4M3FN;
 }
 
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11>() {
+  return F8E4M3B11FNUZ;
+}
+
 // Complex
 template <>
 inline PrimitiveType NativeToPrimitiveType<complex64>() {
@@ -170,7 +179,7 @@ bool IsUnsignedIntegralType(PrimitiveType type);
 bool IsIntegralType(PrimitiveType type);
 
 inline bool IsF8Type(PrimitiveType type) {
-  return type == F8E5M2 || type == F8E4M3FN;
+  return type == F8E5M2 || type == F8E4M3FN || type == F8E4M3B11FNUZ;
 }
 
 // Returns true if values of the given primitive type are held in array shapes.
@@ -193,6 +202,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
     case U8:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
       return 8;
 
     case S16:
@@ -240,6 +250,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
     case U8:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
       return 1;
 
     case S16:
@@ -357,6 +368,8 @@ inline bool CastPreservesValues(PrimitiveType from_type,
                primitive_util::SignificandWidth(to_type) &&
            primitive_util::ExponentWidth(from_type) <=
                primitive_util::ExponentWidth(to_type) &&
+           primitive_util::UnderflowExponent(from_type) >=
+               primitive_util::UnderflowExponent(to_type) &&
            primitive_util::OverflowExponent(from_type) <=
                primitive_util::OverflowExponent(to_type);
   }
@@ -487,6 +500,11 @@ struct PrimitiveTypeToNative<F8E4M3FN> {
   using type = tsl::float8_e4m3fn;
 };
 
+template <>
+struct PrimitiveTypeToNative<F8E4M3B11FNUZ> {
+  using type = tsl::float8_e4m3b11;
+};
+
 // Complex
 template <>
 struct PrimitiveTypeToNative<C64> {
@@ -523,6 +541,7 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
     case F64:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case C64:
     case C128:
       return NativeToPrimitiveType<T>() == type;

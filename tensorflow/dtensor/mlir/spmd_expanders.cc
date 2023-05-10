@@ -71,6 +71,7 @@ REGISTER_SPMD(Cast, TF::CastOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Identity, TF::IdentityOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Neg, TF::NegOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(ZerosLike, TF::ZerosLikeOp, ElementwiseSPMDExpander);
+REGISTER_SPMD(OnesLike, TF::OnesLikeOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Exp, TF::ExpOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Sqrt, TF::SqrtOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Rsqrt, TF::RsqrtOp, ElementwiseSPMDExpander);
@@ -399,7 +400,7 @@ REGISTER_SPMD(
     CopyToMeshGrad, TF::CopyToMeshGradOp, UnsupportedOpSPMDExpander,
     "CopyToMesh should have been lowered to DTensorSend and DTensorRecv.");
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
-REGISTER_SPMD(RelayoutGrad, TF::RelayoutGradOp, RelayoutGradSPMDExpander);
+REGISTER_SPMD(RelayoutLike, TF::RelayoutLikeOp, RelayoutLikeSPMDExpander);
 REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);
 REGISTER_SPMD(DTensorRecv, TF::DTensorRecv, DTensorRecvSPMDExpander);
 
