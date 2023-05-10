@@ -1006,7 +1006,10 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(name = "rnn_ops_gen")
+tf_gen_op_wrapper_private_py(
+    name = "rnn_ops_gen",
+    visibility = ["//tensorflow/python/kernel_tests/nn_ops:__pkg__"],
+)
 
 tf_gen_op_wrapper_private_py(
     name = "sendrecv_ops_gen",
