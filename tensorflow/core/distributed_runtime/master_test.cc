@@ -48,7 +48,10 @@ class MasterTest : public ::testing::Test {
     SessionOptions options;
     (*options.config.mutable_device_count())["CPU"] = 1;
     (*options.config.mutable_device_count())["GPU"] = 0;
-    TF_CHECK_OK(test::TestCluster::MakeTestCluster(options, 2, &cluster_));
+    TF_CHECK_OK(test::TestCluster::MakeTestCluster(
+        test::TestClusterConfig().Options(options).Jobs(
+            {test::TestJob{/*job_name=*/"localhost", /*num_tasks=*/2}}),
+        &cluster_));
     SharedGrpcChannelPtr channel_ptr;
     TF_CHECK_OK(NewHostPortGrpcChannel(
         cluster_->targets()[0], &options.config.rpc_options(), &channel_ptr));

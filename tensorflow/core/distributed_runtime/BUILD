@@ -391,6 +391,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -488,6 +489,7 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
