@@ -47,7 +47,7 @@ profiler = _xla.profiler
 _version = 151
 
 # Version number for MLIR:Python components.
-mlir_api_version = 47
+mlir_api_version = 48
 
 xla_platform_names = {
     'cpu': 'Host',
