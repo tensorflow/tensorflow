@@ -421,7 +421,7 @@ py_library(
     deps = [
         ":_dtypes",
         # copybara:uncomment_begin(google-only)
-        # ":cpp_shape_inference_proto_py_pb2",
+        # ":cpp_shape_inference_proto_py",
         # copybara:uncomment_end
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
