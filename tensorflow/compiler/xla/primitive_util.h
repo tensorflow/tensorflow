@@ -201,7 +201,7 @@ inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
 }
 
 // Returns the number of bits in the representation for a given type.
-ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
+constexpr ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
   switch (type) {
     case PRED:
       return 1;
@@ -300,7 +300,22 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
   }
 }
 
-PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth);
+constexpr PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
+  switch (src_bitwidth) {
+    case 4:
+      return xla::U4;
+    case 8:
+      return xla::U8;
+    case 16:
+      return xla::U16;
+    case 32:
+      return xla::U32;
+    case 64:
+      return xla::U64;
+    default:
+      return xla::PRIMITIVE_TYPE_INVALID;
+  }
+}
 
 PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
@@ -592,16 +607,9 @@ struct PrimitiveTypeConstantImpl {
   constexpr PrimitiveType operator()() const { return kValue; }
 };
 
-template <PrimitiveType kPrimitiveType, typename = void>
-struct PrimitiveTypeConstant
-    : public PrimitiveTypeConstantImpl<kPrimitiveType> {};
-
 template <PrimitiveType kPrimitiveType>
-struct PrimitiveTypeConstant<
-    kPrimitiveType, typename std::enable_if<IsArrayType(kPrimitiveType)>::type>
-    : public PrimitiveTypeConstantImpl<kPrimitiveType> {
-  using NativeType = typename PrimitiveTypeToNative<kPrimitiveType>::type;
-};
+using PrimitiveTypeConstant =
+    std::integral_constant<PrimitiveType, kPrimitiveType>;
 
 template <typename R, typename F>
 R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
@@ -658,6 +666,10 @@ R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
       LOG(FATAL) << "unhandled type " << type;
   }
 }
+
+template <PrimitiveType kType>
+using NativeTypeOf =
+    typename primitive_util::PrimitiveTypeToNative<kType>::type;
 
 }  // namespace primitive_util
 }  // namespace xla

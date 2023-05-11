@@ -188,24 +188,9 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
       auto iota = values_and_indices[3];
 
       // Slice value and indices for this partition.
-      XlaOp start;
-      switch (index_type) {
-        case PrimitiveType::S16:
-          start = Mul(Add(partition, ConstantR0<int16_t>(builder, 1)),
-                      ConstantR0<int16_t>(builder, per_partition_size));
-          break;
-        case PrimitiveType::S32:
-          start = Mul(Add(partition, ConstantR0<int32_t>(builder, 1)),
-                      ConstantR0<int32_t>(builder, per_partition_size));
-          break;
-        case PrimitiveType::S64:
-          start = Mul(Add(partition, ConstantR0<int64_t>(builder, 1)),
-                      ConstantR0<int64_t>(builder, per_partition_size));
-          break;
-        default:
-          LOG(FATAL) << "Unsupported index type "
-                     << PrimitiveType_Name(index_type);
-      }
+      XlaOp start =
+          Mul(Add(partition, One(builder, index_type)),
+              ConstantR0WithType(builder, index_type, per_partition_size));
       XlaOp sliced_input =
           DynamicSliceInMinorDims(input, {start}, {per_partition_size});
       XlaOp sliced_indices =
