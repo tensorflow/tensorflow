@@ -1464,10 +1464,10 @@ class NNAPIOpBuilder {
     // NNAPI only supports float sin
     auto tensor_size = theta.bytes / sizeof(float);
 
-    // Convert cos to sin: $cos(x) = sin(\pi - x)$
+    // Convert cos to sin: $cos(x) = sin(\frac{\pi}{2} - x)$
     auto data = theta.data.f;
     for (int i = 0; i < tensor_size; i++) {
-      data[i] = M_PI - data[i];
+      data[i] = M_PI_2 - data[i];
     }
 
     return kTfLiteOk;
