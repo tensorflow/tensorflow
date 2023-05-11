@@ -32,7 +32,6 @@ from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import math_ops_extra
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
@@ -668,13 +667,12 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
 @np_utils.np_doc('std')
 def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
   return _reduce(
-      math_ops_extra.reduce_std,
+      math_ops.reduce_std,
       a,
       axis=axis,
       dtype=None,
       keepdims=keepdims,
-      promote_int=_TO_FLOAT,
-  )
+      promote_int=_TO_FLOAT)
 
 
 @np_utils.np_doc('ravel')

@@ -32,7 +32,6 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import math_ops_extra
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import string_ops
@@ -913,7 +912,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           },
           expected=[1., 6.]),
       dict(
-          op=math_ops_extra.reduce_std,
+          op=math_ops.reduce_std,
           kwargs={
               'input_tensor':
                   ragged_factory_ops.constant_value([[1, 3], [1, 2, 2, 1]]),

@@ -24,7 +24,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
-from tensorflow.python.ops.ragged import ragged_math_ops_extra
 from tensorflow.python.platform import googletest
 
 _MAX_INT32 = dtypes.int32.max
@@ -140,7 +139,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           keepdims=False,
           expected=[9.6875, 0.0, 0.0]),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[3, 1, 4], [3, 1], [2], [2, 1]],
           axis=0,
           keepdims=False,
@@ -256,7 +255,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           keepdims=True,
           expected=[[9.6875, 0., 0.]]),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[3, 1, 4], [3, 1], [2], [2, 1]],
           axis=0,
           keepdims=True,
@@ -334,7 +333,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           keepdims=False,
           expected=variance(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
           axis=None,
           keepdims=False,
@@ -379,7 +378,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[variance(0, 1, 2, 3, 4),
                     variance(1, 1, 1), 0, 0]),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[1, 1, 2, 3], [1], [], [1, 1], [1], [1, 1]],
           axis=0,
           keepdims=False,
@@ -581,19 +580,19 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[[variance(6, 2), variance(6, 9, 9)], [variance(6, 7), 0.],
                     [0.]]),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[[6, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
           axis=0,
           keepdims=False,
           expected=[[std(6, 6, 9), std(2, 7)], [std(3, 8), 0., 0.]]),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[[6, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
           axis=1,
           keepdims=False,
           expected=[[std(6, 3), std(2, 4), 0.], [std(6, 8), 0.], [0.]]),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[[6, 2], [6, 9, 9]], [[6, 7], [8]], [[9]]],
           axis=2,
           keepdims=False,
@@ -622,7 +621,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[[0.0]],
       ),
       dict(
-          ragged_reduce_op=ragged_math_ops_extra.reduce_std,
+          ragged_reduce_op=ragged_math_ops.reduce_std,
           rt_input=[[[0.214441], [0.214441], [0.214441], [0.214441], [0.214441],
                      [0.214441], [0.214441]]],
           axis=[1],
@@ -674,7 +673,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     rt_as_list = [[0, 1, 1, 0], [4], [], [5, 6], [7], [8, 9]]
     expected = ([std(0, 1, 1, 0), std(4), std(), std(5, 6), std(7), std(8, 9)])
     rt_input = ragged_factory_ops.constant(rt_as_list)
-    reduced = ragged_math_ops_extra.reduce_std(rt_input, axis=1)
+    reduced = ragged_math_ops.reduce_std(rt_input, axis=1)
     self.assertEqualWithNan(self.evaluate(reduced), expected)
 
   def testMeanWithTensorInputs(self):
@@ -692,7 +691,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testStdWithTensorInputs(self):
     tensor = [[1.0, 2.0, 2.0, 1.0], [10.0, 20.0, 20.0, 10.0]]
     expected = [0.5, 5.]
-    reduced = ragged_math_ops_extra.reduce_std(tensor, axis=1)
+    reduced = ragged_math_ops.reduce_std(tensor, axis=1)
     self.assertAllEqual(reduced, expected)
 
   def testErrors(self):

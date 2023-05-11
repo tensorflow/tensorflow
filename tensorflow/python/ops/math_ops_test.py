@@ -31,7 +31,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import math_ops_extra
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -114,26 +113,23 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
   def testReduceStd(self):
     x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
-    self.assertAllClose(self.evaluate(math_ops_extra.reduce_std(x)), 0)
+    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0)
     self.assertAllClose(
-        self.evaluate(math_ops_extra.reduce_std(x, axis=0)), [0, 0, 0]
-    )
+        self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
 
     x = [[1, 2, 1, 1], [1, 1, 0, 1]]
     with self.assertRaisesRegex(TypeError, "must be either real or complex"):
-      math_ops_extra.reduce_std(x)
+      math_ops.reduce_std(x)
 
     x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
-    self.assertEqual(self.evaluate(math_ops_extra.reduce_std(x)), 0.5)
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x)), 0.5)
     x_np = np.array(x)
     self.assertEqual(np.std(x_np), 0.5)
-    self.assertEqual(self.evaluate(math_ops_extra.reduce_std(x_np)), 0.5)
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x_np)), 0.5)
 
     x = ragged_factory_ops.constant([[5., 1., 4., 1.], [], [5., 9., 2.], [5.],
                                      []])
-    self.assertAllClose(
-        math_ops_extra.reduce_std(x, axis=0), [0.0, 4.0, 1.0, 0.0]
-    )
+    self.assertAllClose(math_ops.reduce_std(x, axis=0), [0., 4., 1., 0.])
 
   def testReduceStdComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
@@ -141,23 +137,10 @@ class ReduceTest(test_util.TensorFlowTestCase):
                   (np.array([0 - 1j, 0 + 1j], "complex64"), dtypes.float32),
                   (np.array([0 - 1j, 0 + 1j], "complex128"), dtypes.float64)]
     for y, dtype in complex_ys:
-      y_result = math_ops_extra.reduce_std(y)
+      y_result = math_ops.reduce_std(y)
       self.assertEqual(np.std(y), 1.0)
       self.assertEqual(self.evaluate(y_result), 1.0)
       self.assertEqual(y_result.dtype, dtype)
-
-  def testReduceStdGradSingularityIsZero(self):
-    # Zero-variance inputs produce zero gradient.
-    x = constant_op.constant(1, shape=(10,), dtype=dtypes.float32)
-    if context.executing_eagerly():
-      with backprop.GradientTape() as tape:
-        tape.watch(x)
-        y = math_ops_extra.reduce_std(x)
-      grad = self.evaluate(tape.gradient(y, x))
-    else:
-      grad = self.evaluate(gradients.gradients(math_ops_extra.reduce_std(x), x))
-
-    self.assertAllEqual(grad, np.zeros(np.shape(grad)))
 
 
 @test_util.run_all_in_graph_and_eager_modes

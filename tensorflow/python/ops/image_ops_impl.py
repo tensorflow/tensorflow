@@ -35,7 +35,6 @@ from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import math_ops_extra
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -1996,7 +1995,7 @@ def per_image_standardization(image):
     image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
     # Apply a minimum normalization that protects us against uniform images.
-    stddev = math_ops_extra.reduce_std(image, axis=[-1, -2, -3], keepdims=True)
+    stddev = math_ops.reduce_std(image, axis=[-1, -2, -3], keepdims=True)
     min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
     adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 

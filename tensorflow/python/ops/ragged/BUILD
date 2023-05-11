@@ -1,4 +1,3 @@
-load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
@@ -249,7 +248,7 @@ py_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_strict_library(
     name = "ragged_math_ops",
     srcs = ["ragged_math_ops.py"],
     srcs_version = "PY3",
@@ -270,21 +269,6 @@ pytype_strict_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-    ],
-)
-
-pytype_strict_library(
-    name = "ragged_math_ops_extra",
-    srcs = ["ragged_math_ops_extra.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":ragged_math_ops",
-        ":ragged_tensor",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:math_ops_extra",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:dispatch",
     ],
 )
 
@@ -322,7 +306,6 @@ py_strict_library(
         ":ragged_image_ops",
         ":ragged_map_ops",
         ":ragged_math_ops",
-        ":ragged_math_ops_extra",
         ":ragged_operators",
         ":ragged_squeeze_op",
         ":ragged_string_ops",
@@ -605,7 +588,6 @@ py_strict_library(
         ":ragged_concat_ops",  # fixdeps: keep
         ":ragged_gather_ops",  # fixdeps: keep
         ":ragged_math_ops",  # fixdeps: keep
-        ":ragged_math_ops_extra",  # fixdeps: keep
         ":ragged_squeeze_op",  # fixdeps: keep
         ":ragged_tensor",
         ":ragged_tensor_shape",
@@ -616,7 +598,6 @@ py_strict_library(
         "//tensorflow/python:clip_ops",  # fixdeps: keep
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:math_ops_extra",
         "//tensorflow/python:parsing_ops",  # fixdeps: keep
         "//tensorflow/python:sparse_tensor",  # fixdeps: keep
         "//tensorflow/python:string_ops",
@@ -1043,7 +1024,6 @@ py_strict_test(
     deps = [
         ":ragged_factory_ops",
         ":ragged_math_ops",
-        ":ragged_math_ops_extra",
         "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -1291,7 +1271,6 @@ py_strict_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:math_ops_extra",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:sparse_tensor",

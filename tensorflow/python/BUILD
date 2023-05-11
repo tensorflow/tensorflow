@@ -2356,21 +2356,6 @@ py_library(
 )
 
 py_library(
-    name = "math_ops_extra",
-    srcs = [
-        "ops/math_ops_extra.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":math_ops",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
     name = "resources",
     srcs = ["ops/resources.py"],
     srcs_version = "PY3",
@@ -3099,7 +3084,6 @@ py_library(
         ":manip_ops",
         ":math_grad",
         ":math_ops",
-        ":math_ops_extra",
         ":numerics",
         ":parsing_ops",
         ":partitioned_variables",
@@ -3725,7 +3709,6 @@ cuda_py_test(
         ":array_ops",
         ":gradients",
         ":math_ops",
-        ":math_ops_extra",
         ":platform_test",
         ":variables",
         "//tensorflow/python/eager:def_function",
