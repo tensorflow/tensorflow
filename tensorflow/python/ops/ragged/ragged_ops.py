@@ -39,6 +39,7 @@ from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_image_ops
 from tensorflow.python.ops.ragged import ragged_map_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_math_ops_extra
 from tensorflow.python.ops.ragged import ragged_operators
 from tensorflow.python.ops.ragged import ragged_squeeze_op
 from tensorflow.python.ops.ragged import ragged_string_ops

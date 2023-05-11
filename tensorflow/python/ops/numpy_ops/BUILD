@@ -34,6 +34,7 @@ py_library(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:manip_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_extra",
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:while_loop",

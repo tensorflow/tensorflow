@@ -449,14 +449,6 @@ _RAGGED_REDUCE_VARIANCE_EXAMPLE = """
     >>> tf.math.reduce_variance(rt, axis=1).numpy()
     array([2., 0.25, 0., 2.25])
 """
-_RAGGED_REDUCE_STD_EXAMPLE = """
-    >>> rt = tf.ragged.constant([[1, 0], [2, 1], [3], [4, 1]],
-    ...                         dtype=tf.float64)
-    >>> tf.math.reduce_std(rt, axis=0).numpy()
-    array([1.11803399, 0.47140452])
-    >>> tf.math.reduce_std(rt, axis=1).numpy()
-    array([0.5, 0.5, 0., 1.5])
-"""
 _RAGGED_REDUCE_ALL_EXAMPLE = """
     >>> rt = tf.ragged.constant([[True, True], [True, True, False, True], [False, True]])
     >>> tf.reduce_all(rt, axis=0).numpy()
@@ -717,17 +709,6 @@ def reduce_variance(input_tensor: ragged_tensor.Ragged,
     return math_ops.maximum(mean_of_square - square_of_mean, 0)
 
 
-@dispatch.dispatch_for_api(math_ops.reduce_std)
-def reduce_std(input_tensor: ragged_tensor.Ragged,
-               axis=None,
-               keepdims=False,
-               name=None):
-  """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
-  with ops.name_scope(name, 'RaggedReduceStd', [input_tensor, axis]):
-    variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
-    return math_ops.sqrt(variance)
-
-
 def _cast(input_tensor, dtype):
   return ragged_functional_ops.map_flat_values(math_ops.cast, input_tensor,
                                                dtype)
@@ -779,8 +760,6 @@ _set_ragged_reduce_docstring(reduce_mean, 'mean', 'averaged', 'NaN',
                              _RAGGED_REDUCE_MEAN_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_variance, 'variance', 'averaged', 'NaN',
                              _RAGGED_REDUCE_VARIANCE_EXAMPLE)
-_set_ragged_reduce_docstring(reduce_std, 'std', 'averaged', 'NaN',
-                             _RAGGED_REDUCE_STD_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_all, 'logical and', 'and-ed', 'True',
                              _RAGGED_REDUCE_ALL_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_any, 'logical or', 'or-ed', 'False',

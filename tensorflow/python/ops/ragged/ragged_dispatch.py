@@ -16,6 +16,7 @@
 
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import math_ops_extra
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
@@ -93,7 +94,7 @@ _V2_OPS_THAT_ARE_DELEGATED_TO_FROM_V1_OPS = [
     math_ops.reduce_max,
     math_ops.reduce_mean,
     math_ops.reduce_variance,
-    math_ops.reduce_std,
+    math_ops_extra.reduce_std,
     math_ops.reduce_any,
     math_ops.reduce_all,
     string_ops.string_to_number,
