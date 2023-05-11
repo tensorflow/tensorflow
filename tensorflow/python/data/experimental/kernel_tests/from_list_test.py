@@ -45,7 +45,7 @@ class FromListTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testLargeNInputs(self):
     elements = list(range(1000))
-    dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+    dataset = from_list.from_list(elements)
     self.assertDatasetProduces(dataset, expected_output=elements)
 
   @combinations.generate(test_base.default_test_combinations())
