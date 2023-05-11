@@ -50,10 +50,29 @@ py_strict_library(
         "//tensorflow/python/framework:auto_control_deps_utils",
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:function_utils",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "atomic_function_test",
+    size = "small",
+    srcs = ["atomic_function_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":atomic_function",
+        ":polymorphic_function",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:compat",
     ],
 )
 
