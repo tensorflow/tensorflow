@@ -124,7 +124,7 @@ inline void CopyPayloads(const ::tsl::Status& from, ::tsl::Status& to) {
 inline ::tsl::Status Create(
     absl::StatusCode code, ::tsl::StringPiece message,
     const std::unordered_map<std::string, std::string>& payloads,
-    SourceLocation loc = SourceLocation::current()) {
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   Status status(code, message, loc);
   InsertPayloads(status, payloads);
   return status;
