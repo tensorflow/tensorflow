@@ -205,10 +205,25 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     }
     auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
     std::string device_local_name;
+    bool is_tpu_device = false;
     if (device_attr && !device_attr.str().empty()) {
+      tensorflow::DeviceNameUtils::ParsedName parsed;
+      if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.str(),
+                                                             &parsed)) {
+        op.emitWarning() << "Invalid device name " << device_attr.str();
+        return failure();
+      }
+
       device_local_name =
-          tensorflow::DeviceNameUtils::LocalName(device_attr.str());
+          tensorflow::DeviceNameUtils::LocalName(parsed.type, parsed.id);
+      is_tpu_device = parsed.type == "TPU";
     }
+
+    // Ignore non-TPU devices when clustering.
+    if (!is_tpu_device) {
+      continue;
+    }
+
     if (!has_replicated_compiled_op && !device_local_name.empty()) {
       // It is possible that a device may be same Local Name but
       // different fullname. Devices with same Local name are identical
