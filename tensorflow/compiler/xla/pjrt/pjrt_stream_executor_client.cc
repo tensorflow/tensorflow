@@ -145,14 +145,6 @@ StatusOr<LocalDeviceState*> PjRtStreamExecutorDevice::GetLocalDeviceState()
   return InvalidArgument("Device %s is not a local device.", DebugString());
 }
 
-absl::string_view PjRtStreamExecutorDevice::DebugString() const {
-  return debug_string_;
-}
-
-absl::string_view PjRtStreamExecutorDevice::ToString() const {
-  return to_string_;
-}
-
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
   if (devices.empty()) {

@@ -663,23 +663,19 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
-  attributes_ = {
+  description().SetAttributes({
       {"device_vendor", device_vendor_},
       {"slice_index", static_cast<int64_t>(slice_index)},
-  };
-  to_string_ = absl::StrFormat(
+  });
+  description().SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(id=%i, process_index=%i, slice_index=%i)", id,
-      process_index(), slice_index);
+      process_index(), slice_index));
 }
 
 int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
 
 absl::string_view StreamExecutorGpuDevice::device_vendor() const {
   return device_vendor_;
-}
-
-absl::string_view StreamExecutorGpuDevice::ToString() const {
-  return to_string_;
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
