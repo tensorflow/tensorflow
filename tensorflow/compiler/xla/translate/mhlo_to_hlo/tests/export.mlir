@@ -838,6 +838,39 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      top_k = 4 : i64,
+      is_fallback = true
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// CHECK: ENTRY
+// CHECK-DAG:   [[ARG0:%.*]] = bf16[16,256] parameter(0)
+// CHECK-DAG:   [[ARG1:%.*]] = s32[] parameter(1)
+// CHECK-DAG:   [[ARG2:%.*]] = s32[16,256] parameter(2)
+// CHECK-DAG:   [[ARG3:%.*]] = bf16[] parameter(3)
+// CHECK-DAG:   [[VAL0:%.*]] = (bf16[16,256], s32[16,256]) sort(bf16[16,256] [[ARG0]], s32[16,256] [[ARG2]])
+// CHECK-DAG:   [[VAL1:%.*]] = s32[16,256] get-tuple-element((bf16[16,256], s32[16,256]) [[VAL0]])
+// CHECK-DAG:   [[VAL2:%.*]] = s32[16,4] slice(s32[16,256] [[VAL1]])
+
+// -----
+
+// CHECK:  HloModule
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -877,6 +910,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x5xbf16>, tensor<16x5xi32>)
@@ -899,6 +933,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
        recall_target = 9.492180e-01 : f32,
        reduction_dim = 1 : i64,
        reduction_input_size_override = -1 : i64,
+      is_fallback = false,
        top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<17x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -921,6 +956,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i64>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i64>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -944,6 +980,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -966,6 +1003,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<17x4xi32>)
@@ -988,6 +1026,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi64>)
@@ -1010,6 +1049,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>)
@@ -1032,6 +1072,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>) -> (tensor<16x4xbf16>, tensor
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1054,6 +1095,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       },
       invalid_attribute = 123 : i64
@@ -1077,6 +1119,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64,
       invalid_attribute = 123 : i64
       }
@@ -1101,6 +1144,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1137,6 +1181,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       aggregate_to_topk = true,
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
+      is_fallback = false,
       reduction_input_size_override = -1 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1157,6 +1202,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
     backend_config = {
       aggregate_to_topk = true,
       recall_target = 9.492180e-01 : f32,
+      is_fallback = false,
       top_k = 4 : i64,
       reduction_input_size_override = -1 : i64
       }
@@ -1179,6 +1225,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       aggregate_to_topk = true,
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1199,6 +1246,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
     backend_config = {
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
+      is_fallback = false,
       top_k = 4 : i64,
       reduction_input_size_override = -1 : i64
       }
@@ -1222,6 +1270,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i32
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1244,6 +1293,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i32,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1266,6 +1316,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i32,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1286,6 +1337,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
     backend_config = {
       aggregate_to_topk = true,
       reduction_dim = 1 : i64,
+      is_fallback = false,
       top_k = 4 : i64,
       reduction_input_size_override = -1 : i64
       }
@@ -1309,6 +1361,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       aggregate_to_topk = true,
       recall_target = 0.01 : bf16,
       reduction_dim = 1 : i64,
+      is_fallback = false,
       top_k = 4 : i64,
       reduction_input_size_override = -1 : i64
       }
@@ -1332,6 +1385,30 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{is_fallback attribute in backend_config must be of bool type}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = 3 : i64,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1354,6 +1431,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 1.1 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
@@ -1376,6 +1454,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 0.5 : f32,
       reduction_dim = 400 : i64,
       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x256xbf16>, tensor<16x256xi32>)
@@ -1398,6 +1477,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 0.5 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = 3 : i64,
+      is_fallback = false,
       top_k = 4 : i64
       }
     } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)

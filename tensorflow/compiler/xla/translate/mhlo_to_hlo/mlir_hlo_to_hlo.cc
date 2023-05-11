@@ -1692,6 +1692,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   //        `input` is only a subset of the overall computation in SPMD or
   //        distributed pipelines, where the true input size cannot be deferred
   //        by the `input` shape.
+  //    + is_fallback:bool : use the CPU/GPU fallback instead of the TPU
+  //        implementation that uses PartialReduce (optional)
   //
   // The operands are a sequence of inputs over which to search, followed
   // by a list of initial values for each tensor in the first
@@ -1754,7 +1756,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       auto name = attr.getName();
       if (!(name == "top_k" || name == "reduction_dim" ||
             name == "recall_target" || name == "aggregate_to_topk" ||
-            name == "reduction_input_size_override"))
+            name == "reduction_input_size_override" || name == "is_fallback"))
         return op.emitOpError()
                << name.getValue() << " is not a supported backend_config"
                << " attribute for ApproxTopK";
@@ -1784,17 +1786,27 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
                << " attribute in backend_config must be of f32 type";
       return success();
     };
+    auto checkBoolAttr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name))
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      auto attr = backend_config.getAs<BoolAttr>(attr_name);
+      if (!attr)
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of bool type";
+      return success();
+    };
     if (failed(checkI64Attr("top_k"))) return failure();
     if (failed(checkI64Attr("reduction_dim"))) return failure();
     if (failed(checkF32Attr("recall_target"))) return failure();
-    if (!backend_config.get("aggregate_to_topk"))
-      return op.emitOpError(
-          "Missing aggregate_to_topk attribute in backend_config");
-    if (!backend_config.getAs<BoolAttr>("aggregate_to_topk"))
-      return op.emitOpError(
-          "aggregate_to_topk attribute in backend_config must be of bool "
-          "type");
+    if (failed(checkBoolAttr("aggregate_to_topk"))) return failure();
     if (failed(checkI64Attr("reduction_input_size_override"))) return failure();
+    bool has_is_fallback = backend_config.contains("is_fallback");
+    if (has_is_fallback && !backend_config.getAs<BoolAttr>("is_fallback"))
+      return op.emitOpError()
+             << "is_fallback attribute in backend_config must be of bool type";
 
     int64_t top_k = backend_config.getAs<IntegerAttr>("top_k").getInt();
     int64_t reduction_dim =
@@ -1807,6 +1819,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     int64_t reduction_input_size_override =
         backend_config.getAs<IntegerAttr>("reduction_input_size_override")
             .getInt();
+    bool is_fallback = has_is_fallback &&
+                       backend_config.getAs<BoolAttr>("is_fallback").getValue();
 
     // (C1)
     if (args.size() % 2 != 0) {
@@ -1913,9 +1927,16 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
             input_types[0].getShape()[reduction_dim])
       return op.emitOpError() << "reduction_input_size_override out of range";
 
-    auto cc_op = xla::ApproxTopK(
-        ctx.builder, inputs, init_values, top_k, reduction_dim, comparator,
-        recall_target, aggregate_to_topk, reduction_input_size_override);
+    xla::XlaOp cc_op;
+    if (is_fallback) {
+      cc_op = xla::ApproxTopKFallback(
+          ctx.builder, inputs, init_values, top_k, reduction_dim, comparator,
+          recall_target, aggregate_to_topk, reduction_input_size_override);
+    } else {
+      cc_op = xla::ApproxTopK(ctx.builder, inputs, init_values, top_k,
+                              reduction_dim, comparator, recall_target,
+                              aggregate_to_topk, reduction_input_size_override);
+    }
     for (const auto& item : llvm::enumerate(op.getResults())) {
       value_map[item.value()] = xla::GetTupleElement(cc_op, item.index());
     }
