@@ -288,7 +288,9 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           self._input_saved_model_path, quantization_options=options
       )
 
-  def test_per_channel_for_non_uniform_opset_raises_value_error(self):
+  def test_drq_per_channel_for_non_uniform_opset_raises_value_error(
+      self,
+  ):
     model = self.SimpleModel()
 
     saved_model_save.save(model, self._input_saved_model_path)
@@ -299,6 +301,27 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         ),
         op_set=quant_opts_pb2.TF,
         enable_per_channel_quantization=True,
+    )
+
+    with self.assertRaises(ValueError):
+      quantize_model.quantize(
+          self._input_saved_model_path, quantization_options=options
+      )
+
+  def test_weight_only_per_channel_with_legacy_weight_only_raises_value_error(
+      self,
+  ):
+    model = self.SimpleModel()
+
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.WEIGHT_ONLY
+        ),
+        op_set=quant_opts_pb2.XLA,
+        enable_per_channel_quantization=True,
+        enable_legacy_weight_only=True,
     )
 
     with self.assertRaises(ValueError):
@@ -4757,6 +4780,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
       # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      ('to_xla_per_channel', quant_opts_pb2.XLA, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_model(
@@ -4764,9 +4788,11 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       target_opset: quant_opts_pb2.OpSet,
       enable_per_channel_quantization: bool,
   ):
+    input_shape = (1, 3, 4, 512)
+    filter_shape = (2, 3, 512, 2)
     model = self._create_conv2d_model(
-        input_shape=(1, 3, 4, 512),
-        filter_shape=(2, 3, 512, 2),
+        input_shape=input_shape,
+        filter_shape=filter_shape,
         has_bias=False,
         has_batch_norm=False,
         activation_fn=nn_ops.relu6,
@@ -4809,10 +4835,43 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         threshold=0.3,
     )
 
+    if enable_per_channel_quantization:
+      per_channel_size_attr = attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(
+              shape=[
+                  tensor_shape_pb2.TensorShapeProto(
+                      dim=[
+                          tensor_shape_pb2.TensorShapeProto.Dim(
+                              size=filter_shape[-1]
+                          )
+                      ]
+                  )
+              ]
+          )
+      )
+      self.assertTrue(
+          self._contains_op(
+              output_graphdef, 'Const', '_output_shapes', per_channel_size_attr
+          )
+      )
+
+    input_tensor = array_ops.constant(
+        np.random.uniform(low=0, high=0.1, size=input_shape),
+        dtype=dtypes.float32,
+    )
+    original_output = model.conv(input_tensor)
+    quantized_output = converted_model.signatures['serving_default'](
+        input_tensor
+    )
+
+    threshold = 0.015 if enable_per_channel_quantization else 0.02
+    self.assertAllClose(original_output, quantized_output, atol=threshold)
+
   @parameterized.named_parameters(
       # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
       # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      ('to_xla_per_channel', quant_opts_pb2.XLA, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv2d_model(
@@ -4820,11 +4879,12 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       target_opset: quant_opts_pb2.OpSet,
       enable_per_channel_quantization: bool,
   ):
+    input_shape = (1, 3, 4, 512)
     filter_shape = (2, 3, 512, 2)
     strides = (1, 2, 2, 1)
 
     model = self._create_depthwise_conv2d_model(
-        input_shape=(1, 3, 4, 512), filter_shape=filter_shape, strides=strides
+        input_shape=input_shape, filter_shape=filter_shape, strides=strides
     )
 
     saved_model_save.save(model, self._input_saved_model_path)
@@ -4859,11 +4919,45 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+
+    size_threshold = 0.5 if enable_per_channel_quantization else 0.3
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
         self._input_saved_model_path,
-        threshold=0.3,
+        threshold=size_threshold,
     )
+
+    if enable_per_channel_quantization:
+      per_channel_size_attr = attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(
+              shape=[
+                  tensor_shape_pb2.TensorShapeProto(
+                      dim=[
+                          tensor_shape_pb2.TensorShapeProto.Dim(
+                              size=filter_shape[2] * filter_shape[3]
+                          ),
+                      ]
+                  )
+              ]
+          )
+      )
+      self.assertTrue(
+          self._contains_op(
+              output_graphdef, 'Const', '_output_shapes', per_channel_size_attr
+          )
+      )
+
+    input_tensor = array_ops.constant(
+        np.random.uniform(low=-0.1, high=0.1, size=input_shape),
+        dtype=dtypes.float32,
+    )
+    original_output = model.depthwise_conv(input_tensor)
+    quantized_output = converted_model.signatures['serving_default'](
+        input_tensor
+    )
+
+    threshold = 0.68 if enable_per_channel_quantization else 1.3
+    self.assertAllClose(original_output, quantized_output, atol=threshold)
 
   @parameterized.named_parameters(
       ('to_tf_use_constant', quant_opts_pb2.TF, False),

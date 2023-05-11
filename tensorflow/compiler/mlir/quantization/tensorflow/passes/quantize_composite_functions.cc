@@ -968,6 +968,76 @@ class QuantizeConstPattern
   OpSet target_opset_;
 };
 
+// To calculate per-channel scale and offset, weight of depthwise was reshaped
+// to [H, W, 1, InxMul]. After scale and offset has been calculated, this
+// pattern gets called and restores the weight of depthwise back
+// into [H, W, In, Mul]
+class RestoreWeightShapePattern
+    : public OpRewritePattern<TF::PartitionedCallOp> {
+  using OpRewritePattern<TF::PartitionedCallOp>::OpRewritePattern;
+
+ private:
+  LogicalResult addReshapeOpToDepthwiseWeight(TF::PartitionedCallOp op,
+                                              PatternRewriter& rewriter) const {
+    int weight_operand_idx = 1;
+    Operation* weight_op = op.getOperand(weight_operand_idx).getDefiningOp();
+
+    auto weight_type = weight_op->getResult(0).getType().dyn_cast<ShapedType>();
+    auto input_type = op.getOperand(0).getType().dyn_cast<ShapedType>();
+
+    llvm::ArrayRef<int64_t> weight_shape = weight_type.getShape();
+    llvm::ArrayRef<int64_t> input_shape = input_type.getShape();
+
+    // If weight_shape[2] != 1, it means weight shape was already restored.
+    if (weight_shape[2] != 1) return failure();
+
+    // Weight was reshaped into [H, W, 1, InxMul].
+    // Since we know in_channels from input_shape, we can derive multiplier.
+    int64_t in_channels = input_shape[3];
+    // If in_channels is 1, there is no need to restore weight shape.
+    if (in_channels == 1) return failure();
+    int64_t multiplier = weight_shape[3] / in_channels;
+
+    TensorType new_shape = RankedTensorType::get(
+        {weight_shape[0], weight_shape[1], in_channels, multiplier},
+        weight_type.getElementType());
+
+    int cur_rank = weight_type.getRank();
+
+    // Inserts a reshape op.
+    auto shape_spec_type =
+        RankedTensorType::get({cur_rank}, rewriter.getIntegerType(64));
+    auto new_shape_const_attr =
+        DenseElementsAttr::get(shape_spec_type, new_shape.getShape());
+    rewriter.setInsertionPointAfter(weight_op);
+    auto new_shape_const = rewriter.create<arith::ConstantOp>(
+        weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
+    auto reshape_op = rewriter.create<TF::ReshapeOp>(
+        weight_op->getLoc(), new_shape, weight_op->getResult(0),
+        new_shape_const);
+    op->setOperand(weight_operand_idx, reshape_op);
+
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
+                                PatternRewriter& rewriter) const override {
+    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    StringRef function_name = f_attr.getValue();
+    // TODO(b/228928859): Improve the getter function to match attributes rather
+    // than function name.
+    if (!function_name.startswith("quantized_")) {
+      return failure();
+    }
+
+    if (function_name.contains("depthwise_conv2d")) {
+      return addReshapeOpToDepthwiseWeight(call_op, rewriter);
+    }
+
+    return failure();
+  }
+};
+
 // Prints a summary about the quantization results.
 class QuantizationSummary {
  public:
@@ -1133,10 +1203,12 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.enableVerifier(false);
 
   QuantizationSpecs quant_specs;
-  pm.addPass(CreatePreprocessOpPass(quant_specs, target_opset_));
-
   quant_specs.inference_type = tensorflow::DT_QINT8;
   quant_specs.disable_per_channel = !enable_per_channel_quantization_;
+
+  pm.addPass(CreatePreprocessOpPass(target_opset_, quantization_method_,
+                                    enable_per_channel_quantization_));
+
   // Apply activation-weight quantization.
   if (quantization_method_ ==
       tensorflow::quantization::QuantizationMethod::STATIC_RANGE) {
@@ -1180,6 +1252,13 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   patterns_2.add<ReplaceQuantizePattern, ReplaceDequantizePattern>(
       ctx, target_opset_);
   patterns_2.add<QuantizeConstPattern>(ctx, target_opset_);
+
+  if (target_opset_ == OpSet::XLA && enable_per_channel_quantization_ &&
+      quantization_method_ ==
+          tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
+    patterns_2.add<RestoreWeightShapePattern>(ctx);
+  }
+
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns_2))) ||
       failed(verify(module))) {
     signalPassFailure();
