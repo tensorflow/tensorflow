@@ -1913,9 +1913,14 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
           "shape");
     }
   } else {
+    // When using explicit precision, there could be non-quantized Conv2D
+    // layers which will take a weight argument. In non-explicit mode, the
+    // second input should always be a weight.
+    auto filter_type = params->use_explicit_precision ? TrtInputArg::kBoth :
+                                                        TrtInputArg::kWeight;
     TF_RETURN_IF_ERROR(CheckInputsWeights(
         *params,
-        {{"input", false}, {"filter", !params->use_explicit_precision}}));
+        {{"input", TrtInputArg::kTensor}, {"filter", filter_type}}));
     tensor = inputs.at(0).tensor();
   }
   TF_RETURN_IF_ERROR(
@@ -2009,7 +2014,10 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
     weights_rsck = std::move(tmp).value();
   }
 
-  // In explcit precision mode, trace the input back to the constant while also
+  // Save a copy of the filter tensor so we can transpose it if applicable and
+  // use it as an input to the tensorrt convolution layer.
+  auto filter_tensor = inputs.at(1).tensor();
+  // In explicit precision mode, trace the input back to the constant while also
   // verifying that QDQ scale layers are present.
   if (!inputs.at(1).is_weights()) {
     TRT_ENSURE(params->use_explicit_precision);
@@ -2045,6 +2053,10 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
         static_cast<const float*>(const_weights_rsck.values);
     std::copy_n(weights_ptr, const_weights_rsck.count,
                 weights_rsck.GetPointer<float>());
+    // Tensorrt accepts the filter in KCRS mode, while the tensorflow tensor is
+    // set up in RSCK.
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        filter_tensor, {3, 2, 0, 1}, &filter_tensor, node_def, "to_KCRS"));
   }
 
   StatusOr<TRT_ShapedWeights> weights =
@@ -2075,10 +2087,12 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
   } else {
     const nvinfer1::Weights empty_weights{nvinfer1::DataType::kFLOAT, nullptr,
                                           0};
+    // If the second input is a tensor, it is an indication that the node has
+    // been quantized and we are in explicit Q/DQ mode.
     nvinfer1::IConvolutionLayer* layer =
         params->converter->network()->addConvolution(
             *tensor->trt_tensor(), noutput, kernel_size,
-            params->use_explicit_precision ? empty_weights
+            inputs.at(1).is_tensor() ? empty_weights
                                            : weights->GetTrtWeights(),
             empty_weights);
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
@@ -2091,15 +2105,13 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
     conv_layer = layer;
   }
 
-  // After creating the conv layer, if we are in explicit precision mode and the
-  // weights input is a tensor, then we need to override the weights input by
-  // calling setInput() on the layer.
-  if (params->use_explicit_precision) {
-    TRT_ENSURE(inputs.at(1).is_tensor());
-
-    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
-        *inputs.at(1).tensor()->trt_tensor());
-    layer->setFirstTranspose({3, 2, 0, 1});
+  // If we are in explicit Q/DQ mode (indicated by checking if the second input
+  // is a tensor), we need to override the weights input by calling setInput()
+  // on the layer.
+  if (inputs.at(1).is_tensor()) {
+    TRT_ENSURE(params->use_explicit_precision);
+    nvinfer1::IShuffleLayer* layer =
+        params->converter->network()->addShuffle(*filter_tensor->trt_tensor());
     layer->setReshapeDimensions({4, {0, 0, 0, 0}});
     conv_layer->setInput(1, *layer->getOutput(0));
   }
