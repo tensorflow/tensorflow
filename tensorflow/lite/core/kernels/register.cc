@@ -90,7 +90,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
              /* min_version */ 1,
              /* max_version */ 5);
