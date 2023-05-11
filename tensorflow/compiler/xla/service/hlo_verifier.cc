@@ -797,8 +797,13 @@ Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
   absl::c_transform(
       hlo->operands(), std::back_inserter(operand_shapes),
       [](const HloInstruction* operand) { return &(operand->shape()); });
-  return CheckShape(
-      hlo, ShapeInference::InferCollectivePermuteStartShape(operand_shapes));
+  std::vector<Shape> context_shapes;
+  if (hlo->shape().tuple_shapes_size() > 2) {
+    context_shapes = std::vector<Shape>(hlo->shape().tuple_shapes().begin() + 2,
+                                        hlo->shape().tuple_shapes().end());
+  }
+  return CheckShape(hlo, ShapeInference::InferCollectivePermuteStartShape(
+                             operand_shapes, context_shapes));
 }
 
 Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
