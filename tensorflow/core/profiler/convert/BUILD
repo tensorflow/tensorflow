@@ -899,3 +899,23 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "xplane_to_trace_container",
+    srcs = ["xplane_to_trace_container.cc"],
+    hdrs = ["xplane_to_trace_container.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/core/profiler/convert/trace_viewer:trace_event_arguments_builder",
+        "//tensorflow/core/profiler/convert/trace_viewer:trace_events",
+        "//tensorflow/core/profiler/convert/trace_viewer:trace_events_util",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/strings",
+    ],
+)
