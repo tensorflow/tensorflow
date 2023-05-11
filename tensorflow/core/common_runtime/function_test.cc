@@ -2458,6 +2458,7 @@ class TestStackTrace : public AbstractStackTrace {
       : frames_(frames) {}
 
   absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+  std::vector<StackFrame> ToUncachedFrames() const override { return frames_; }
 
   StackFrame LastUserFrame() const override { return frames_.back(); }
 
@@ -2567,6 +2568,19 @@ TEST(StackTracesMapToGraphDebugInfoTest, TwoFramesDifferentFile) {
   EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].line(), 20);
   EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].func(),
             "other_function_name");
+}
+
+TEST(StackTracesTest, ToFrames) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"other_file_name", 20, "other_function_name"})};
+  auto stack_trace = TestStackTrace(frames);
+  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
+  auto uncached_frames = stack_trace.ToUncachedFrames();
+  EXPECT_EQ(uncached_frames.size(), 2);
+  EXPECT_EQ(frames[0], uncached_frames[0]);
+  EXPECT_EQ(frames[1], uncached_frames[1]);
 }
 
 }  // namespace

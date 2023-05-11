@@ -64,6 +64,21 @@ class TFStackTest(test.TestCase):
     self.assertRegex(frames[-1].line, "# COMMENT")
     self.assertRegex(frames[-2].line, "# CALLSITE")
 
+  def testUncached(self):
+    def func(n):
+      if n == 0:
+        return tf_stack.extract_stack()  # COMMENT
+      else:
+        return func(n - 1)
+
+    trace = func(5)
+    full_list = list(trace)
+    del trace[-1]
+    self.assertLess(len(trace), len(full_list))
+    # Since stacktrace modifications are stored in the cache,
+    # the uncached representation doesn't have them.
+    self.assertEqual(len(trace.uncached()), len(full_list))
+
   def testGelItem(self):
 
     def func(n):
