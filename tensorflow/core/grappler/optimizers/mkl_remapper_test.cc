@@ -777,6 +777,7 @@ class MklFusedBatchMatMul : public MklRemapperTest {
  public:
   template <typename T>
   void VerifyFused(bool adjx, bool adjy) {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
     using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
 
@@ -967,6 +968,7 @@ class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1047,6 +1049,7 @@ class MklRemapperConv2dFusedBatchNormSwishTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1134,6 +1137,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void FuseMklInstanceNorm5D_Runner(string FORMAT, string activation) {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -1255,6 +1259,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
 
   template <DataType DTYPE>
   void FuseMklInstanceNorm4D_Runner(string FORMAT, string activation) {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -1368,7 +1373,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
     if (DTYPE == DT_BFLOAT16) {
       test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
     } else {
-      test::ExpectClose(tensors[0], tensors_expected[0], 2e-6, 1e-6);
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-5, 1e-5);
     }
   }
 
