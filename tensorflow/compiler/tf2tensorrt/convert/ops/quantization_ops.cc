@@ -270,17 +270,103 @@ struct QDQOpSpec<ops::FakeQuantWithMinMaxVars> {
   struct Attrs {
     int num_bits;
     bool narrow_range;
+    float min_range;
+    float max_range;
+    std::string round_mode;
+    UniformQuantizationScales scales;
   };
 
   static Status ValidateQDQForExplicitPrecision(
       const std::vector<TRT_TensorOrWeights>& inputs, const NodeDef& node_def,
       Attrs* args) {
-    return errors::Unimplemented("");
+    AttrSlice attrs(node_def);
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "narrow_range", &args->narrow_range));
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "num_bits", &args->num_bits));
+    if (args->narrow_range) {
+      return errors::Unimplemented("FakeQuantWithMinMaxVars is not supported ",
+                                    "with `narrow_range=True`.");
+    }
+    // FakeQuantWithMinMaxVars does not take round_mode as an input, hard code
+    // it to TRT's reccomended round mode.
+    args->round_mode = "HALF_TO_EVEN";
+    const float min_range = inputs.at(1).weights().template GetPointer<float>()[0];
+    const float max_range = inputs.at(2).weights().template GetPointer<float>()[0];
+    TRT_ENSURE(min_range < 0);
+    TRT_ENSURE(max_range > 0);
+    // Adjust the min & max range be perfectly symmetric.
+    const float range = std::max(abs(min_range), abs(max_range));
+    args->min_range = range * -1.0f;
+    args->max_range = range;
+    args->scales = ComputeQuantizationRange<float>(
+        /*signed_input=*/true, args->num_bits, args->narrow_range, &args->min_range,
+        &args->max_range);
+    TRT_ENSURE(args->scales.dequantize_scale[0] != 0);
+    TRT_ENSURE(args->scales.quantize_scale[0] != 0);
+    return OkStatus();
   }
 
   static Status ConvertExplicit(const OpConverterParams* params,
                                 const Attrs& args) {
-    return errors::Unimplemented("");
+    const auto& node_def = params->node_def;
+    StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
+        params->converter->network(), params->weight_store);
+
+    StatusOr<nvinfer1::ITensor*> qdq_input =
+        ExlicitQDQInputToTensor(&*builder, params, params->inputs.at(0));
+    TRT_ENSURE_PTR_OK(qdq_input);
+
+    const int required_dims = params->use_implicit_batch ? 3 : 4;
+    const nvinfer1::Dims idims = (*qdq_input)->getDimensions();
+    nvinfer1::Dims intermediate_dims = idims;
+
+    auto actual_dims = params->inputs.at(0).GetTrtDims();
+    TRT_ENSURE(idims.nbDims > 0);
+    if (idims.nbDims < required_dims) {
+      const int nb_extra_dims = required_dims - idims.nbDims;
+      intermediate_dims.nbDims = required_dims;
+      std::vector<int> ones(nb_extra_dims, 1);
+      TRT_ENSURE(ones.size() == nb_extra_dims && nb_extra_dims > 0);
+
+      if (!params->use_implicit_batch) {
+        intermediate_dims.d[0] = idims.d[0];
+        std::copy(ones.begin(), ones.end(), intermediate_dims.d + 1);
+        std::copy_n(idims.d + 1, idims.nbDims - 1,
+                    intermediate_dims.d + ones.size() + 1);
+      } else {
+        std::copy(ones.begin(), ones.end(), intermediate_dims.d);
+        std::copy_n(idims.d, idims.nbDims, intermediate_dims.d + ones.size());
+      }
+
+      LOG(WARNING) << absl::StrCat(
+          node_def.name(), ":", node_def.op(), ": tensor ",
+          (*qdq_input)->getName(), " has shape ", DebugString(idims),
+          " but TRT scale layer requires at least 3 dims excluding batch dim, "
+          "trying to recover by inserting 1's to create shape ",
+          DebugString(intermediate_dims));  
+      StatusOr<nvinfer1::IShuffleLayer*> reshape =
+          builder->Reshape(*qdq_input, intermediate_dims);
+      TRT_ENSURE_PTR_OK(reshape);
+      *qdq_input = (*reshape)->getOutput(0);
+    }
+
+    VLOG(1) << "[ExplicitPrecision]" << node_def.op() << ": " << node_def.name()
+            << " computed scales: " << args.scales << " from min/max ranges "
+            << args.min_range << "/" << args.max_range;
+
+    StatusOr<nvinfer1::ILayer*> qdq =
+        builder->UniformQuantizeDequantizeExplicit(
+            *qdq_input, args.scales.quantize_scale[0],
+            args.scales.dequantize_scale[0], node_def.name());
+    TRT_ENSURE_PTR_OK(qdq);
+    ITensorProxyPtr final_output = (*qdq)->getOutput(0);
+    if (idims.nbDims != intermediate_dims.nbDims) {
+      StatusOr<nvinfer1::IShuffleLayer*> undo_reshape =
+          builder->Reshape(*qdq_input, idims);
+      TRT_ENSURE_PTR_OK(undo_reshape);
+      final_output = (*undo_reshape)->getOutput(0);
+    }
+    params->outputs->push_back(final_output);
+    return OkStatus();
   }
 };
 

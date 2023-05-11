@@ -34,8 +34,9 @@ constexpr std::array<const char*, 4> kQuantizationOpNames = {
 
 // Operations with supported conversion to Q/DQ ops in TensorRT explicit
 // precision mode.
-constexpr std::array<const char*, 1> kExplicitQuantizationOpNames = {
+constexpr std::array<const char*, 2> kExplicitQuantizationOpNames = {
     "QuantizeAndDequantizeV2",
+    "FakeQuantWithMinMaxVars"
 };
 
 // Contains two scaling factors for quantization and dequantization
