@@ -40,13 +40,8 @@ namespace tensorflow {
 static Eigen::internal::CacheSizes cache_sizes = Eigen::internal::CacheSizes();
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-<<<<<<< HEAD
 inline bool ExecuteSingleThreadedGemm(int64_t m, int64_t n, int64_t k,
                                       int bytes) {
-=======
-inline bool ExecuteSingleThreadedGemm(int64_t m, int64_t n,
-                                      int64_t k, int bytes) {
->>>>>>> 96fce4b6739b792fff9d8abe2cecdaf1c0211338
   // Ideally we would like to determine blocking and then come up with
   // a heuristic but what we are targeting are very small models whose
   // total size is < x*L2. So we will do this simple calculation
