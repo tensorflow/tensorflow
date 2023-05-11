@@ -582,9 +582,19 @@ double ReshardingCostMixedMeshShape(
 // If a sharding is [8, 4] for the complete mesh shape, we convert it to [8, 1]
 // given [1, 8, 1] as the partial mesh shape.
 // total_num_devices should equal to the product of mesh_shape elements.
-bool AdjustShardingsWithPartialMeshShape(
+StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices);
+    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
+    bool crash_on_error);
+
+inline bool AdjustShardingsWithPartialMeshShape(
+    const std::vector<HloInstruction*>& instructions,
+    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
+  auto result = AdjustShardingsWithPartialMeshShape(instructions, mesh_shape,
+                                                    total_num_devices, true);
+  CHECK(result.ok());
+  return *result;
+}
 
 // Decompose mesh shapes into partial mesh shapes so that we can solve the auto
 // sharding problem iteratively. Returns partial mesh shapes with larger

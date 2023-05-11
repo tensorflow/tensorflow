@@ -4077,11 +4077,16 @@ StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
       total_devices *= i;
     }
     if (mesh_idx != partial_mesh_shapes.size() - 1) {
-      bool changed = spmd::AdjustShardingsWithPartialMeshShape(
-          sequence.instructions(), mesh_shape, total_devices);
-      LOG(INFO)
-          << "Shardings are adjusted based on current partial mesh shape: "
-          << changed;
+      auto changed_or = spmd::AdjustShardingsWithPartialMeshShape(
+          sequence.instructions(), mesh_shape, total_devices,
+          /* crash_on_error */ !option_.try_multiple_mesh_shapes);
+      if (changed_or.ok()) {
+        LOG(INFO)
+            << "Shardings are adjusted based on current partial mesh shape: "
+            << *changed_or;
+      } else {
+        return changed_or;
+      }
     }
     std::vector<int64_t> device_mesh_ids = std::vector<int64_t>(total_devices);
     std::iota(device_mesh_ids.begin(), device_mesh_ids.end(), 0);
