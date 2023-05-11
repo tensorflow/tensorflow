@@ -36,7 +36,9 @@ class ConcurrentRegionStatus {
       const ServiceExecutableRunOptions* run_options,
       int num_borrowed_streams = 10);
 
-  absl::Status StartConcurrentRegion();
+  ~ConcurrentRegionStatus();
+
+  absl::Status StartConcurrentRegion(se::Stream* capture_stream);
   void EndConcurrentRegion();
 
   // Get a stream on which the concurrent-executable kernel runs. It returns a
@@ -44,15 +46,17 @@ class ConcurrentRegionStatus {
   // graph.
   se::Stream* GetNextStream();
 
-  bool is_in_concurrent_region();
+  bool IsInConcurrentRegion();
 
  private:
   int num_borrowed_streams_;
   std::vector<StreamPool::Ptr> borrowed_streams_;
 
-  bool is_in_concurrent_region_;
   int32_t stream_index_;
   const ServiceExecutableRunOptions* run_options_;
+
+  // It is set to nullptr if not in a concurrent region.
+  se::Stream* capture_stream_;
 };
 
 }  // namespace gpu
