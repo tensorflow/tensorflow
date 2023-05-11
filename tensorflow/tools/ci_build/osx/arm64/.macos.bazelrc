@@ -1,0 +1,87 @@
+# This bazelrc can build a CPU-supporting TF package.
+
+# Set DEVELOPER_DIR to select a version of Xcode.
+build --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+
+# Build TensorFlow v2
+build --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
+
+# Prevent double-compilation of some TF code
+# > TF's gen_api_init_files has a genrule to run the core TensorFlow code
+# > on the host machine. If we don't have --distinct_host_configuration=false,
+# > the core TensorFlow code will be built once for the host and once for the
+# > target platform.
+# See also https://docs.bazel.build/versions/master/guide.html#build-configurations-and-cross-compilation
+build --distinct_host_configuration=false
+
+# Disable nccl support for macOS.
+build --define=no_nccl_support=true
+
+# Suppress all warning messages
+build --output_filter=^$
+
+# Disable MKL
+build --define=tensorflow_mkldnn_contraction_kernel=0
+
+# Settings for MacOS on ARM CPUs.
+build --cpu=darwin_arm64
+build --macos_minimum_os=11.0
+
+# Test-related settings below this point.
+test --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
+
+# Increase the test timeout as tests often take longer on mac.
+test --test_timeout=300,450,1200,3600
+
+# Only run small and medium tests. Some tests initially fail but eventually
+# succeed so set flaky_test_attempts=3. If it fails on all three tries, then
+# the test is reported as failed.
+test --flaky_test_attempts=3 --test_size_filters=small,medium
+
+# Only build what is required to run the tests
+test --build_tests_only --keep_going
+
+# "nonpip" tests are regular py_test tests.
+# Pass --config=nonpip_filters to run the same suite of tests. If you want to run just
+# one test for investigation, you don't need --config=nonpip_filters; just run the
+# bazel test invocation as normal.
+test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:nonpip_filters --test_lang_filters=cc,py
+test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xla/service/gpu/... -//tensorflow/compiler/xla/tools/multihost_hlo_runner/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/... -//tensorflow/compiler/xla/tests:local_client_aot_test_computation -//tensorflow/compiler/xla/tests:local_client_aot_test_helper -//tensorflow/compiler/xla/tests:local_client_aot_test
+
+# "pip tests" run a similar suite of tests the "nonpip" tests, but do something
+# odd to attempt to validate the quality of the pip package. The wheel is
+# installed into a virtual environment, and then that venv is used to run all
+# bazel tests with a special flag "--define=no_tensorflow_py_deps=true", which
+# drops all the bazel dependencies for each py_test; this makes all the tests
+# use the wheel's TensorFlow installation instead of the one made available
+# through bazel. This must be done in a different root directory, //bazel_pip/...,
+# because "import tensorflow" run from the root directory would instead import
+# the folder instead of the venv package.
+#
+# Pass --config=pip to run the same suite of tests. If you want to run just one
+# test for investigation, you'll need --config=pip_base instead, and then you
+# can specify whichever target you want.
+test:pip_base --define=no_tensorflow_py_deps=true
+test:pip_filters --build_tag_filters=-nopip,-no_pip,-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:pip_filters --test_tag_filters=-nopip,-no_pip,-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:pip_filters --test_lang_filters=py
+test:pip --config=pip_base --config=pip_filters -- //bazel_pip/tensorflow/python/...
+
+# For building libtensorflow archives
+build:libtensorflow_filters --action_env TF_NEED_HDFS=0
+build:libtensorflow_filters --action_env TF_NEED_ROCM=0 --action_env TF_NEED_MKL=0
+build:libtensorflow_filters --action_env COMPUTECPP_PATH="/usr/local"
+test:libtensorflow_test --config=libtensorflow_filters -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
+build:libtensorflow_build --config=libtensorflow_filters  -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
+
+# For continuous builds
+# nodistinct_host_configuration saves building twice a lot of targets
+test:continuous_filters --nodistinct_host_configuration --keep_going
+test:continuous_filters --build_tests_only --test_output=errors --flaky_test_attempts=3
+test:continuous_filters --test_size_filters=small,medium --test_timeout=300,450,1200,3600
+test:continuous_filters --test_tag_filters=-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:continuous_filters --build_tag_filters=-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+
+test:continuous --config=continuous_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/... -//tensorflow/compiler/xla/tests:local_client_aot_test_computation -//tensorflow/compiler/xla/tests:local_client_aot_test_helper -//tensorflow/compiler/xla/tests:local_client_aot_test
