@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 152
+_version = 153
 
 # Version number for MLIR:Python components.
 mlir_api_version = 49
@@ -109,7 +109,21 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
 DeviceTopology = _xla.DeviceTopology
 
 
-def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+def make_tfrt_tpu_c_api_device_topology(
+    topology_name: Optional[str] = None, **kwargs
+) -> DeviceTopology:
+  """Creates a PJRT C API TopologyDescription."""
+
+  if not _use_pjrt_c_api():
+    raise NotImplementedError(
+        'make_tfrt_tpu_c_api_device_topology only works with the pjrt c-api.'
+    )
+  if topology_name is not None or kwargs:
+    raise NotImplementedError(
+        'Unsupported arguments to'
+        ' make_tfrt_tpu_c_api_device_topology(topology_name=%s, %s)'
+        % (repr(topology_name), repr(kwargs))
+    )
   return _xla.get_default_c_api_topology('tpu')
 
 

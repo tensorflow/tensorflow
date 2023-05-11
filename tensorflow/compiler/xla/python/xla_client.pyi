@@ -97,7 +97,7 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> C
   ...
 
 
-def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **kwargs) -> DeviceTopology:
   ...
 
 
