@@ -918,31 +918,22 @@ tsl::StatusOr<lmhlo_gpu::FusedMhaDagSignature> AsLhloFusedMhaDagSignature(
   switch (kind) {
     case xla::gpu::CudnnfMHAKind::kBmmBmm:
       return lmhlo_gpu::FusedMhaDagSignature::Default;
-      break;
     case xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmax:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmax;
-      break;
     case xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmaxDropout;
-      break;
     case xla::gpu::CudnnfMHAKind::kScaleMaskSoftmax:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmax;
-      break;
     case xla::gpu::CudnnfMHAKind::kScaleMaskSoftmaxDropout:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmaxDropout;
-      break;
     case xla::gpu::CudnnfMHAKind::kSoftmaxDropout:
       return lmhlo_gpu::FusedMhaDagSignature::SoftmaxDropout;
-      break;
     case xla::gpu::CudnnfMHAKind::kSoftmax:
       return lmhlo_gpu::FusedMhaDagSignature::Softmax;
-      break;
     case xla::gpu::CudnnfMHAKind::kScaleBiasSoftmax:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmax;
-      break;
     case xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout;
-      break;
     default:
       return xla::InternalError("unknown cudnn fmha kind");
   }

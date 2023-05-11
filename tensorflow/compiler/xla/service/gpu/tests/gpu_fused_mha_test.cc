@@ -75,14 +75,12 @@ protected:
         std::unique_ptr<HloModule> optimized_verified_module,
         GetOptimizedModule(std::move(verified_module)));
 
-    int count = 0;
-    for (auto inst :
-         optimized_verified_module->entry_computation()->instructions()) {
-      if (inst->opcode() == HloOpcode::kCustomCall &&
-          absl::StrContains(inst->custom_call_target(), prefix)) {
-        count++;
-      }
-    }
+    auto count = absl::c_count_if(
+        optimized_verified_module->entry_computation()->instructions(),
+        [&](const HloInstruction *inst) {
+          return inst->opcode() == HloOpcode::kCustomCall &&
+                 absl::StrContains(inst->custom_call_target(), prefix);
+        });
     EXPECT_EQ(count, 1);
   }
 
