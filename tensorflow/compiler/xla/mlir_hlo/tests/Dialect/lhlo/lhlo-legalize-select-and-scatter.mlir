@@ -47,14 +47,14 @@ func.func @select_and_scatter(%arg: memref<112x112xf32>,
 
 // Parallel loop to initialize the output buffer.
 // CHECK: %[[INIT:.*]] = "memref.load"(%[[INIT_BUF]]) : (memref<f32>) -> f32
-// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C112]], %[[C112]], %[[C1]], %[[C1]]) ({
+// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C112]], %[[C112]], %[[C1]], %[[C1]]) <{{.*}}> ({
 // CHECK: ^bb0(%[[I:.*]]: index, %[[J:.*]]: index):
 // CHECK:   "memref.store"(%[[INIT]], %[[RESULT_BUF]], %[[I]], %[[J]])
 // CHECK:   "scf.yield"() : () -> ()
 // CHECK: })
 
 // Parallel loop over source buffer to compute scattered values.
-// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C56]], %[[C56]], %[[C1]], %[[C1]]) ({
+// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C56]], %[[C56]], %[[C1]], %[[C1]]) <{{.*}}> ({
 // CHECK: ^bb0(%[[II:.*]]: index, %[[JJ:.*]]: index):
 
 // Window loop w.r.t. first dim.
