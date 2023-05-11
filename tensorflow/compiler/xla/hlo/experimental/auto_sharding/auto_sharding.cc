@@ -264,7 +264,8 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
                             communication_cost,
                             memory_cost,
                             {std::move(resharding_costs)},
-                            {}}));
+                            // {}}));
+                            {*output_spec}}));
     }
   }
   return strategies;
@@ -2831,21 +2832,54 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
       // GetShardingStrategy, which is invoked below does not currently support
       // such instructions. Implement this support.
       if (inst->shape().IsTuple()) {
-        continue;
-      }
-      const ShardingStrategy& stra =
-          GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
-      if (stra.input_shardings.empty()) {
-        continue;
-      }
-      if (inst->opcode() == HloOpcode::kGetTupleElement) {
-        FixMixedMeshShapeReshardingGetTupleElement(inst, inst->sharding(),
-                                                   device_mesh);
+        switch (inst->opcode()) {
+          case HloOpcode::kReduce:
+          case HloOpcode::kSort: {
+            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+              const ShardingStrategy& stra = GetShardingStrategyForTuple(
+                  inst, i, strategy_map, cost_graph, s_val);
+              if (stra.input_shardings.size() > i) {
+                FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
+                                            device_mesh, resharding_cache);
+              }
+            }
+            break;
+          }
+          case HloOpcode::kTuple: {
+            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+              const ShardingStrategy& stra = GetShardingStrategyForTuple(
+                  inst, i, strategy_map, cost_graph, s_val);
+              CHECK_EQ(stra.input_shardings.size(), 1);
+              FixMixedMeshShapeResharding(inst, i, stra.input_shardings[0],
+                                          device_mesh, resharding_cache);
+            }
+            break;
+          }
+          case HloOpcode::kWhile:
+          case HloOpcode::kConditional: {
+            break;
+          }
+          case HloOpcode::kParameter: {
+            break;
+          }
+          default:
+            LOG(FATAL) << "Unhandled instruction: " + inst->ToString();
+        }
       } else {
-        for (size_t i = 0; i < inst->operand_count(); ++i) {
-          if (stra.input_shardings.size() > i) {
-            FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
-                                        device_mesh, resharding_cache);
+        const ShardingStrategy& stra =
+            GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
+        if (stra.input_shardings.empty()) {
+          continue;
+        }
+        if (inst->opcode() == HloOpcode::kGetTupleElement) {
+          FixMixedMeshShapeReshardingGetTupleElement(inst, inst->sharding(),
+                                                     device_mesh);
+        } else {
+          for (size_t i = 0; i < inst->operand_count(); ++i) {
+            if (stra.input_shardings.size() > i) {
+              FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
+                                          device_mesh, resharding_cache);
+            }
           }
         }
       }
@@ -4273,9 +4307,12 @@ StatusOr<bool> AutoSharding::Run(
     AutoShardingOption this_option = option_;
     this_option.device_mesh_shape = mesh_shapes[i];
     auto pass = new AutoShardingImplementation(this_option);
-    auto module_clone = module->Clone();
+    auto module_clone = module->Clone("");
+    module_clone->set_layout_canonicalization_callback(
+        module->layout_canonicalization_callback());
     auto pass_result =
         pass->RunAutoSharding(module_clone.get(), execution_threads);
+
     changed[i] = pass_result;
     objective_values[i] = pass->GetSolverOptimalObjectiveValue();
     modules[i] = std::move(module_clone);
@@ -4310,6 +4347,9 @@ StatusOr<bool> AutoSharding::Run(
 
       module->ReplaceComputations(computation_replacements);
       module->MoveComputationsFrom(modules[min_mesh_shape_index].get());
+
+      *module->config().mutable_entry_computation_layout() =
+          modules[min_mesh_shape_index]->entry_computation_layout();
 
       module_is_changed = true;
     } else if (!*changed[min_mesh_shape_index]) {

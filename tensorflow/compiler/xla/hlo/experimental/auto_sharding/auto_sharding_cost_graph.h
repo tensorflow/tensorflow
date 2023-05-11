@@ -343,6 +343,19 @@ inline const ShardingStrategy& GetShardingStrategy(
   return strategies->leaf_vector[stra_idx];
 }
 
+// Get the final sharding strategy according to the ilp solution.
+inline const ShardingStrategy& GetShardingStrategyForTuple(
+    const HloInstruction* inst, size_t index, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const int64_t> s_val) {
+  const StrategyVector* tuple_strategies = strategy_map.at(inst).get();
+  CHECK(tuple_strategies->is_tuple);
+  CHECK_LT(index, tuple_strategies->childs.size());
+  const auto& strategies = tuple_strategies->childs[index];
+  int node_idx = strategies->id;
+  int stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
+  return strategies->leaf_vector[stra_idx];
+}
+
 }  // namespace spmd
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
