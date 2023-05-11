@@ -2841,7 +2841,6 @@ py_library(
         ":control_flow_ops",
         ":math_ops",
         ":sparse_ops_gen",
-        ":special_math_ops",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:fast_tensor_util",
