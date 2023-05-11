@@ -857,6 +857,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "repository_test",
+    size = "small",
+    srcs = ["repository_test.cc"],
+    deps = [
+        ":repository",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "xplane_to_tool_names",
     srcs = ["xplane_to_tool_names.cc"],
