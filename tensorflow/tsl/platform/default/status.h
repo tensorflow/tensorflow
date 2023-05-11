@@ -26,6 +26,9 @@ namespace tsl {
 #define TF_INTERNAL_HAVE_BUILTIN_LINE_FILE 1
 #endif
 
+#define MAYBE_ADD_SOURCE_LOCATION(status) \
+  {}
+
 class SourceLocationImpl {
  public:
   uint32_t line() const { return line_; }
