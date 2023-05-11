@@ -520,6 +520,7 @@ tf_gen_op_wrapper_private_py(
     name = "functional_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
     ],
 )
@@ -879,6 +880,7 @@ tf_gen_op_wrapper_private_py(
     name = "random_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
 )
