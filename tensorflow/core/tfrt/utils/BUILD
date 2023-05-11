@@ -13,6 +13,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/infra/mira/distributed/...",
         "//learning/serving/...",
         "//quality/webanswers/...",
         "//smartass/brain/inference/...",
