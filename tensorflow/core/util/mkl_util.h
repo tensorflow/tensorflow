@@ -2200,21 +2200,27 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(to_strides_outer_blocks);
 #else
     // TODO(intel-tf): dnnl_memory_extra_desc_t (from/to_desc.extra) can no
-    // longer be queried in oneDNN v3.x. We may have to refactor reorder cache
-    // in the future to compare two dnnl::memory::desc's directly via operator==
-    // instead of storing all their fields in the reorder cache.
+    // longer be queried in oneDNN v3.x. In oneDNN v2.x, this was used to
+    // create a unique key for int8 reorder primitive cache. To overcome this
+    // limitation in oneDNN v3.x, we are using md.get_size() instead. Note that
+    // get_size() has the limitation that it can return the same value for both
+    // s8s8 and zero point compensation. Since we currently support only s8s8
+    // compensation, this needs to be refactored once we support zero point
+    // compensation.
     key_creator.AddAsKey(static_cast<int>(from_inner_nblks));
     key_creator.AddAsKey(from_inner_blks);
     key_creator.AddAsKey(from_inner_idxs);
     key_creator.AddAsKey(static_cast<int>(from_desc.get_data_type()));
     key_creator.AddAsKey(from_dims);
     key_creator.AddAsKey(from_strides);
+    key_creator.AddAsKey(static_cast<size_t>(from_desc.get_size()));
     key_creator.AddAsKey(static_cast<int>(to_inner_nblks));
     key_creator.AddAsKey(to_inner_blks);
     key_creator.AddAsKey(to_inner_idxs);
     key_creator.AddAsKey(static_cast<int>(to_desc.get_data_type()));
     key_creator.AddAsKey(to_dims);
     key_creator.AddAsKey(to_strides);
+    key_creator.AddAsKey(static_cast<size_t>(to_desc.get_size()));
 #endif  // !ENABLE_ONEDNN_V3
     return key_creator.GetKey();
   }
