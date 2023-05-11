@@ -27,6 +27,8 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
@@ -329,7 +331,7 @@ Status CompileToLocalExecutable(
   // in the ResourceMgr.
   ResourceMgr* rm = ctx->resource_manager();
   if (!rm) {
-    return errors::Internal("No resource manager.");
+    return absl::InternalError("No resource manager.");
   }
 
   XlaDeviceCompiler* xla_device_compiler;
@@ -378,7 +380,7 @@ Status CompileToPjRtLoadedExecutable(
   // in the ResourceMgr.
   ResourceMgr* rm = ctx.resource_manager();
   if (!rm) {
-    return errors::Internal("No resource manager.");
+    return absl::InternalError("No resource manager.");
   }
 
   PjRtDeviceCompiler* pjrt_device_compiler;

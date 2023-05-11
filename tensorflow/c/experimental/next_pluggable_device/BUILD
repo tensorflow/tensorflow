@@ -32,6 +32,8 @@ cc_library(
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

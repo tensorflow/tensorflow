@@ -60,6 +60,8 @@ cc_library(
         "//tensorflow/compiler/jit:xla_compile_util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

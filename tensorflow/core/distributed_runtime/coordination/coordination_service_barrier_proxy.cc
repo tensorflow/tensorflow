@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/errors.h"
@@ -33,15 +35,15 @@ std::pair<Status, bool> BarrierProxy::Wait() {
   mutex_lock l(mu_);
   if (status_set_) {
     return std::make_pair(
-        errors::FailedPrecondition(
-            "The barrier has already passed or timed out. key=", key_),
+        absl::FailedPreconditionError(absl::StrCat(
+            "The barrier has already passed or timed out. key=", key_)),
         false);
   }
   if (num_entered_ >= num_local_threads_) {
-    return std::make_pair(
-        errors::FailedPrecondition("Wait() called too many (>",
-                                   num_local_threads_, ") times. key=", key_),
-        false);
+    return std::make_pair(absl::FailedPreconditionError(absl::StrCat(
+                              "Wait() called too many (>", num_local_threads_,
+                              ") times. key=", key_)),
+                          false);
   }
   // Now that `Wait` has passed pre-condition check, the thread has entered the
   // barrier.
@@ -71,7 +73,8 @@ std::pair<Status, bool> BarrierProxy::Wait() {
         // cancelled for any reason.
         agent_->CancelBarrier(key_).IgnoreError();
       }
-      status_ = errors::DeadlineExceeded("BarrierProxy timeout: key=", key_);
+      status_ = absl::DeadlineExceededError(
+          absl::StrCat("BarrierProxy timeout: key=", key_));
       status_set_ = true;
       cv_.notify_all();
     }
