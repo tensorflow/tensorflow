@@ -291,7 +291,8 @@ enum StatType {
   kDuration,
   kBufferSize,
   kTransfers,
-  kLastStatType = kTransfers,
+  kModelInfo,
+  kLastStatType = kModelInfo,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {
