@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "linenoise.h"
@@ -42,7 +43,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
   string buf_str = buf;
   if (buf_str.find(' ') == buf_str.npos) {
     for (const char* opt : kCmds) {
-      if (string(opt).find(buf_str) == 0) {
+      if (absl::StartsWith(string(opt), buf_str)) {
         linenoiseAddCompletion(lc, opt);
       }
     }
@@ -56,7 +57,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
     buf_str = buf_str.substr(last_dash + 1, kint32max);
   }
   for (const char* opt : kOptions) {
-    if (string(opt).find(buf_str) == 0) {
+    if (absl::StartsWith(string(opt), buf_str)) {
       linenoiseAddCompletion(lc, (prefix + opt).c_str());
     }
   }

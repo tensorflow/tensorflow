@@ -61,7 +61,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
           absl::StrFormat("E.g. Unknown output type: %s, Valid types: %s\n",
                           *output_type, absl::StrJoin(output_types, ",")));
     }
-    kv_split = absl::StrSplit(output_opt.substr(opt_split + 1), ",",
+    kv_split = absl::StrSplit(output_opt.substr(opt_split + 1), ',',
                               absl::SkipEmpty());
   }
 
@@ -92,7 +92,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
 
   for (const string& kv_str : kv_split) {
     const std::vector<string> kv =
-        absl::StrSplit(kv_str, "=", absl::SkipEmpty());
+        absl::StrSplit(kv_str, '=', absl::SkipEmpty());
     if (kv.size() < 2) {
       return tensorflow::Status(
           absl::StatusCode::kInvalidArgument,
