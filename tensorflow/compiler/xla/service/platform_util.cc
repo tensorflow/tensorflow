@@ -223,7 +223,7 @@ PlatformUtil::GetStreamExecutors(
               LOG(WARNING) << "unable to create StreamExecutor for "
                            << platform->Name() << ":" << device_ordinal << ": "
                            << "Stream ID :" << stream_id << ": "
-                           << executor_status.status().error_message();
+                           << executor_status.status().message();
             }
           }
           VLOG(1) << "Finished device init " << device_ordinal;

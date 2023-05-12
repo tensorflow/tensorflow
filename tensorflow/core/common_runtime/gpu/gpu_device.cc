@@ -1657,7 +1657,8 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
         static_cast<Bytes>(bytes_limit), dev_locality, tf_device_id,
         GetShortDeviceDescription(platform_device_id, *desc), gpu_allocators[i],
         ProcessState::singleton()->GetCPUAllocator(numa_node));
-    LOG(INFO) << "Created device " << device_name << " with "
+    LOG(INFO) << "Created device "
+              << (is_multi_stream_ ? stream_name : device_name) << " with "
               << (bytes_limit >> 20) << " MB memory: "
               << " -> " << GetShortDeviceDescription(platform_device_id, *desc);
     if (is_multi_stream_) {
