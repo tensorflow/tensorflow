@@ -302,11 +302,6 @@ static mlir::Attribute GetLayoutAttribute(mlir::Builder& b,
   return b.getIndexTensorAttr(layout);
 }
 
-mlir::Attribute GetShardingAttribute(mlir::Builder& b,
-                                     const xla::HloSharding& sharding) {
-  return b.getStringAttr(sharding.ToString(/*include_metadata=*/true));
-}
-
 mlir::Attribute GetFrontendAttributes(
     mlir::Builder& b, const xla::FrontendAttributes& attributes) {
   llvm::SmallVector<mlir::NamedAttribute> attrs;
@@ -414,9 +409,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     HloParameterInstruction* parameter =
         Cast<HloParameterInstruction>(entry.value());
     if (parameter->has_sharding()) {
-      function.setArgAttr(
-          entry.index(), kShardingAttr,
-          GetShardingAttribute(*builder_, parameter->sharding()));
+      function.setArgAttr(entry.index(), kShardingAttr,
+                          ConvertSharding(parameter->sharding(), builder_));
     }
     if (parameter->frontend_attributes().map_size() > 0) {
       function.setArgAttr(
@@ -444,7 +438,7 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
                       function.getNumResults());
     }
     function.setResultAttr(0, kShardingAttr,
-                           GetShardingAttribute(*builder_, result->sharding()));
+                           ConvertSharding(result->sharding(), builder_));
   }
   if (computation.execution_thread() != "main") {
     function->setAttr("execution_thread",
@@ -668,8 +662,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   llvm::SmallVector<NamedAttribute, 10> attributes;
   if (instruction->has_sharding()) {
     attributes.push_back(builder_->getNamedAttr(
-        kShardingAttr,
-        GetShardingAttribute(*builder_, instruction->sharding())));
+        kShardingAttr, ConvertSharding(instruction->sharding(), builder_)));
   }
 
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
@@ -1845,12 +1838,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           &instruction->user_side_metadata());
       attributes.push_back(builder_->getNamedAttr(
           "exit_metadata",
-          builder_->getStringAttr(
-              (*exit_metadata)->sharding()->ToProto().SerializeAsString())));
+          ConvertSharding(*(*exit_metadata)->sharding(), builder_)));
       attributes.push_back(builder_->getNamedAttr(
           "entry_metadata",
-          builder_->getStringAttr(
-              (*entry_metadata)->sharding()->ToProto().SerializeAsString())));
+          ConvertSharding(*(*entry_metadata)->sharding(), builder_)));
 
       return func_builder
           ->create<mlir::mhlo::DomainOp>(loc, result_type, operands, attributes)

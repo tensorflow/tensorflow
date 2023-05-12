@@ -549,24 +549,14 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   return output;
 }
 
-// Extracts sharding from attribute string.
-static std::optional<xla::OpSharding> CreateOpShardingFromStringRef(
-    llvm::StringRef sharding_str) {
-  xla::OpSharding sharding_proto;
-  if (sharding_proto.ParseFromString(sharding_str.str())) return sharding_proto;
-  StatusOr<xla::HloSharding> sharding = xla::ParseSharding(sharding_str.str());
-  if (sharding.ok()) return sharding->ToProto();
-  return std::nullopt;
-}
-
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the
 // op doesn't have a sharding attribute or the sharding attribute is invalid,
 // returns std::nullopt.
 static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
-  auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
-  if (!sharding) return std::nullopt;
-  return CreateOpShardingFromStringRef(sharding.getValue());
+  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
+  if (!shardingAttr) return std::nullopt;
+  return xla::ConvertSharding(shardingAttr.getValue());
 }
 
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
@@ -632,14 +622,14 @@ static void ExtractShardingsFromFunction(
   for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto sharding =
             function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr))
-      (*arg_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
+      (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
 
   ret_shardings->resize(function.getNumResults(),
                         std::optional<xla::OpSharding>());
   for (int i = 0, end = function.getNumResults(); i < end; ++i)
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr))
-      (*ret_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
+      (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
 }
 
 namespace mlir {
@@ -1449,9 +1439,9 @@ LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getOperand(), valueMap, &operand, op)))
     return failure();
 
-  auto entry = CreateOpShardingFromStringRef(op.getEntryMetadata());
+  auto entry = xla::ConvertSharding(op.getEntryMetadata());
   if (!entry) return failure();
-  auto exit = CreateOpShardingFromStringRef(op.getExitMetadata());
+  auto exit = xla::ConvertSharding(op.getExitMetadata());
   if (!exit) return failure();
 
   valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
@@ -3527,14 +3517,13 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   if (auto spmd_output_sharding = module->getAttrOfType<mlir::StringAttr>(
           "mhlo.spmd_output_sharding")) {
     *hlo_module.mutable_spmd_output_sharding() =
-        *CreateOpShardingFromStringRef(spmd_output_sharding.getValue());
+        *xla::ConvertSharding(spmd_output_sharding.getValue());
   }
   if (auto spmd_parameters_sharding = module->getAttrOfType<mlir::ArrayAttr>(
           "mhlo.spmd_parameters_shardings")) {
     for (const auto& sharding : spmd_parameters_sharding.getValue()) {
       *hlo_module.add_spmd_parameters_shardings() =
-          *CreateOpShardingFromStringRef(
-              sharding.cast<mlir::StringAttr>().getValue());
+          *xla::ConvertSharding(sharding.cast<mlir::StringAttr>().getValue());
     }
   }
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);

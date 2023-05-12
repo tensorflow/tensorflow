@@ -486,5 +486,4 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
                          llvm_ir::DumpToString(op));
   }
 }
-
 }  // namespace xla

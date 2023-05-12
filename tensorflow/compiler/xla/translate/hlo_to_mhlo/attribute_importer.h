@@ -84,6 +84,19 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
 StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
                                                   mlir::Builder* builder);
 
+// Returns a StringAttr that carries a prettyprinted representation of the
+// given HLO C++ sharding.
+// Always succeeds and returns a non-empty attribute.
+mlir::Attribute ConvertSharding(const xla::HloSharding& sharding,
+                                mlir::Builder* builder);
+
+// Returns a StringAttr that carries a prettyprinted representation of the
+// given HLO proto sharding.
+// Will fail and return an empty attribute if the proto sharding cannot be
+// converted to the C++ sharding.
+mlir::Attribute ConvertSharding(const xla::OpSharding& sharding,
+                                mlir::Builder* builder);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_ATTRIBUTE_IMPORTER_H_
