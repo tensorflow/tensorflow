@@ -1758,7 +1758,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     size_t required_bytes;
     TF_LITE_ENSURE_OK(
         &context_,
-        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, &context_));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
 
@@ -1813,7 +1813,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     // they will require.
     TF_LITE_ENSURE_OK(
         &context_,
-        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, &context_));
   }
 
   TfLiteAllocationType allocation_type = kTfLiteArenaRw;
@@ -1865,7 +1865,7 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       size_t bytesRequired;
       TfLiteStatus status =
           tflite::BytesRequired(tensor->type, new_size->data, new_size->size,
-                                &bytesRequired, context_);
+                                &bytesRequired, &context_);
       if (status != kTfLiteOk) {
         TfLiteIntArrayFree(new_size);
         return kTfLiteError;
