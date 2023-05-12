@@ -119,7 +119,7 @@ class ConvertTensorTest : public ::testing::Test {
     TF_ASSERT_OK(value_or.status());
     auto attr = value_or.value();
 
-    EXPECT_EQ(attr.getType().getElementType(), expected_ty);
+    EXPECT_EQ(attr.getShapedType().getElementType(), expected_ty);
 
     Tensor out;
     TF_ASSERT_OK(ConvertToTensor(attr, &out));

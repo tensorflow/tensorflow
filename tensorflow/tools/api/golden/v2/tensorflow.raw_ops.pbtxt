@@ -1141,6 +1141,10 @@ tf_module {
     argspec: "args=[\'input\', \'tfdbg_context_id\', \'op_name\', \'output_slot\', \'tensor_debug_mode\', \'debug_urls\', \'circular_buffer_size\', \'tfdbg_run_id\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'-1\', \'-1\', \'[]\', \'1000\', \'\', \'None\'], "
   }
   member_method {
+    name: "DebugIdentityV3"
+    argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'io_of_node\', \'is_input\', \'io_index\', \'debug_urls\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'False\', \'-1\', \'[]\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "DebugNanCount"
     argspec: "args=[\'input\', \'device_name\', \'tensor_name\', \'debug_urls\', \'gated_grpc\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'[]\', \'False\', \'None\'], "
   }
@@ -4253,6 +4257,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SnapshotChunkDataset"
+    argspec: "args=[\'chunk_file\', \'output_types\', \'output_shapes\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "SnapshotDataset"
     argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'shard_size_bytes\', \'pending_snapshot_expiry_seconds\', \'num_reader_threads\', \'reader_buffer_size\', \'num_writer_threads\', \'writer_buffer_size\', \'shuffle_on_read\', \'seed\', \'seed2\', \'mode\', \'snapshot_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'10737418240\', \'86400\', \'1\', \'1\', \'1\', \'1\', \'False\', \'0\', \'0\', \'auto\', \'\', \'None\'], "
   }
@@ -5290,7 +5298,7 @@ tf_module {
   }
   member_method {
     name: "TopKV2"
-    argspec: "args=[\'input\', \'k\', \'sorted\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input\', \'k\', \'sorted\', \'index_type\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "Transpose"

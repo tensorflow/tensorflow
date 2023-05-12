@@ -159,6 +159,9 @@ struct AutoShardingOption {
   std::vector<double> device_mesh_beta;
   // Load the strategy vector instead of solving one.
   bool load_strategy = false;
+  // Explore other mesh shapes with the same number of devices as the provided
+  // one for a potentially better auto-sharding solution.
+  bool try_multiple_mesh_shapes = false;
   std::vector<int64_t> strategy_vector;
 
   std::string ToString() {
@@ -172,6 +175,8 @@ struct AutoShardingOption {
           absl::StrCat("memory_budget_per_device: ",
                        memory_budget_per_device / (1024 * 1024 * 1024), " GB"));
     }
+    lines.push_back(
+        absl::StrCat("try_multiple_mesh_shapes: ", try_multiple_mesh_shapes));
     lines.push_back(
         absl::StrCat("force_all_gather_cost: ", force_all_gather_cost));
 
@@ -315,16 +320,15 @@ struct AutoShardingOption {
   }
 };
 
-class AutoSharding : public HloModulePass {
+class AutoShardingImplementation {
  public:
-  explicit AutoSharding(const AutoShardingOption& option);
-  ~AutoSharding() override = default;
-  absl::string_view name() const override { return "auto_sharding"; }
+  explicit AutoShardingImplementation(const AutoShardingOption& option);
+  ~AutoShardingImplementation() = default;
 
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  // using HloPassInterface::Run;
+  StatusOr<bool> RunAutoSharding(
       HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Removes SPMD annotations (if there are) to test AutoSharding on manually
   // annotated graphs.
@@ -340,8 +344,38 @@ class AutoSharding : public HloModulePass {
   //     tensorflow/compiler/xla/pjrt/utils.cc
   Status CanonicalizeLayouts(HloModule* module);
 
+  // Returns the optimal objective value that the ILP solver computes
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
  private:
   AutoShardingOption option_;
+
+  // Stores the optimal value of the objective the solver found. This is used to
+  // chose the best mesh shape when the try_multiple_mesh_shapes option is on.
+  double solver_optimal_objective_value_ = -1.0;
+};
+
+class AutoSharding : public HloModulePass {
+ public:
+  explicit AutoSharding(const AutoShardingOption& option);
+  ~AutoSharding() override = default;
+  absl::string_view name() const override { return "auto_sharding"; }
+
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
+ private:
+  AutoShardingOption option_;
+  // Stores the optimal value of the objective the solver found.
+  double solver_optimal_objective_value_ = -1.0;
 };
 
 namespace spmd {
@@ -427,7 +461,6 @@ bool HasReduceScatterOpportunity(
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
-
 }  // namespace spmd
 }  // namespace xla
 

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/spmd/custom_call_handler.h"
@@ -1624,8 +1624,9 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   VLOG(5) << "Before reshard: " << p_hlo.hlo_->ToString();
   HloInstruction* zero = CreateZero(
       ShapeUtil::MakeShape(hlo_->shape().element_type(), {}), state_.b);
+  HloSharding sharding_copy = sharding();
   auto padded_phlo = ReshardDataForPad(zero, pc, p_hlo, padded_base_shape,
-                                       sharding(), state_.b);
+                                       sharding_copy, state_.b);
   CHECK(padded_phlo.has_value());
   VLOG(5) << "Resharded: " << padded_phlo->sharded_input->ToString();
   VLOG(5) << "Padded Window: " << padded_phlo->shard_window.DebugString();

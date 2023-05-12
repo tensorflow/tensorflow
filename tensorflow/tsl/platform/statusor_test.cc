@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/config.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -69,11 +70,6 @@ static_assert(!std::is_default_constructible<NoDefaultConstructor>(),
 StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
   // Uses implicit constructor from T&&
   return std::unique_ptr<int>(new int(0));
-}
-
-TEST(StatusOr, ElementType) {
-  static_assert(std::is_same<StatusOr<int>::element_type, int>(), "");
-  static_assert(std::is_same<StatusOr<char>::element_type, char>(), "");
 }
 
 TEST(StatusOr, NullPointerStatusOr) {
@@ -165,12 +161,12 @@ TEST(StatusOr, TestMoveWithValuesAndErrors) {
   // Overwrite the value in status_or with an error.
   status_or = std::move(error1);
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error1", status_or.status().error_message());
+  EXPECT_EQ("error1", status_or.status().message());
 
   // Overwrite the error in status_or with another error.
   status_or = std::move(error2);
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error2", status_or.status().error_message());
+  EXPECT_EQ("error2", status_or.status().message());
 
   // Overwrite the error with a value.
   status_or = std::move(value2);
@@ -196,12 +192,12 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
   // Overwrite the value in status_or with an error.
   status_or = error1;
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error1", status_or.status().error_message());
+  EXPECT_EQ("error1", status_or.status().message());
 
   // Overwrite the error in status_or with another error.
   status_or = error2;
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error2", status_or.status().error_message());
+  EXPECT_EQ("error2", status_or.status().message());
 
   // Overwrite the error with a value.
   status_or = value2;
@@ -210,8 +206,8 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
 
   // Verify original values unchanged.
   EXPECT_EQ(std::string(1000, '1'), value1.value());
-  EXPECT_EQ("error1", error1.status().error_message());
-  EXPECT_EQ("error2", error2.status().error_message());
+  EXPECT_EQ("error1", error1.status().message());
+  EXPECT_EQ("error2", error2.status().message());
   EXPECT_EQ(std::string(1000, '2'), value2.value());
 }
 
@@ -223,10 +219,28 @@ TEST(StatusOr, TestDefaultCtor) {
 
 TEST(StatusOrDeathTest, TestDefaultCtorValue) {
   StatusOr<int> thing;
+#ifdef ABSL_HAVE_EXCEPTIONS
+  try {
+    thing.value();
+    ADD_FAILURE()
+        << "value() returned successfully while the access is illegal";
+  } catch (absl::BadStatusOrAccess& ex) {
+  }
+#else
   EXPECT_DEATH(thing.value(), "");
+#endif
 
   const StatusOr<int> thing2;
+#ifdef ABSL_HAVE_EXCEPTIONS
+  try {
+    thing.value();
+    ADD_FAILURE()
+        << "value() returned successfully while the access is illegal";
+  } catch (absl::BadStatusOrAccess& ex) {
+  }
+#else
   EXPECT_DEATH(thing.value(), "");
+#endif
 }
 
 TEST(StatusOr, TestStatusCtor) {
@@ -317,12 +331,30 @@ TEST(StatusOr, TestValueConst) {
 
 TEST(StatusOrDeathTest, TestValueNotOk) {
   StatusOr<int> thing(Status(absl::StatusCode::kCancelled, "cancelled"));
+#ifdef ABSL_HAVE_EXCEPTIONS
+  try {
+    thing.value();
+    ADD_FAILURE()
+        << "value() returned successfully while the access is illegal";
+  } catch (absl::BadStatusOrAccess& ex) {
+  }
+#else
   EXPECT_DEATH(thing.value(), "cancelled");
+#endif
 }
 
 TEST(StatusOrDeathTest, TestValueNotOkConst) {
   const StatusOr<int> thing(Status(absl::StatusCode::kUnknown, ""));
+#ifdef ABSL_HAVE_EXCEPTIONS
+  try {
+    thing.value();
+    ADD_FAILURE()
+        << "value() returned successfully while the access is illegal";
+  } catch (absl::BadStatusOrAccess& ex) {
+  }
+#else
   EXPECT_DEATH(thing.value(), "");
+#endif
 }
 
 TEST(StatusOr, TestPointerDefaultCtor) {
@@ -333,7 +365,16 @@ TEST(StatusOr, TestPointerDefaultCtor) {
 
 TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
   StatusOr<int*> thing;
+#ifdef ABSL_HAVE_EXCEPTIONS
+  try {
+    thing.value();
+    ADD_FAILURE()
+        << "value() returned successfully while the access is illegal";
+  } catch (absl::BadStatusOrAccess& ex) {
+  }
+#else
   EXPECT_DEATH(thing.value(), "");
+#endif
 }
 
 TEST(StatusOr, TestPointerStatusCtor) {
@@ -418,11 +459,6 @@ TEST(StatusOr, TestArrowOperator) {
   EXPECT_EQ(*uptr->get(), 0);
 }
 
-TEST(StatusOr, TestArrowOperatorNotOk) {
-  StatusOr<Base1> error(Status(absl::StatusCode::kCancelled, "cancelled"));
-  EXPECT_DEATH(error->pad_++, "cancelled");
-}
-
 TEST(StatusOr, TestStarOperator) {
   StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
   EXPECT_EQ(**uptr, 0);
@@ -441,16 +477,6 @@ TEST(StatusOr, TestStarOperatorDeath) {
 //   std::vector<StatusOr<EvilType>> v(5);
 //   v.reserve(v.capacity() + 10);
 // }
-
-TEST(StatusOrDeathTest, TestPointerValueNotOk) {
-  StatusOr<int*> thing(Status(absl::StatusCode::kCancelled, "cancelled"));
-  EXPECT_DEATH(thing.value(), "cancelled");
-}
-
-TEST(StatusOrDeathTest, TestPointerValueNotOkConst) {
-  const StatusOr<int*> thing(Status(absl::StatusCode::kCancelled, "cancelled"));
-  EXPECT_DEATH(thing.value(), "cancelled");
-}
 
 static StatusOr<int> MakeStatus() { return 100; }
 // A factory to help us benchmark the various factory styles. All of

@@ -852,9 +852,103 @@ class MklFusedBatchMatMul : public MklRemapperTest {
 
     auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-    std::is_same<T, float>::value
-        ? test::ExpectClose(tensors_expected[0], tensors[0], 1e-6, 1e-6)
-        : test::ExpectClose(tensors_expected[0], tensors[0], 1e-2, 1e-2);
+    float atol = 1e-6, rtol = 1e-6;
+    if (std::is_same<T, bfloat16>::value) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    }
+    test::ExpectClose(tensors_expected[0], tensors[0], atol, rtol);
+  }
+
+  template <typename T>
+  void VerifyPreceedingScalarMul(bool adjx, bool adjy) {
+    using ::tensorflow::ops::Placeholder;
+    using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
+
+    int b0 = 2;
+    int b1 = 2;
+    int m = 32;
+    int k = 16;
+    int n = 64;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape =
+        adjx ? TensorShape({b0, b1, k, m}) : TensorShape({b0, b1, m, k});
+    auto weight_shape =
+        adjy ? TensorShape({b0, b1, n, k}) : TensorShape({b0, b1, k, n});
+    auto add_shape = TensorShape({b0, 1, m, n});
+
+    auto input_placeholder_shape = ops::Placeholder::Shape(input_shape);
+    auto weight_placeholder_shape = ops::Placeholder::Shape(weight_shape);
+    auto add_placeholder_shape = ops::Placeholder::Shape(add_shape);
+
+    const DataType dtype = DataTypeToEnum<T>::v();
+    auto input =
+        Placeholder(s.WithOpName("input"), dtype, input_placeholder_shape);
+    auto weight =
+        Placeholder(s.WithOpName("weight"), dtype, weight_placeholder_shape);
+    auto addend =
+        Placeholder(s.WithOpName("addend"), dtype, add_placeholder_shape);
+
+    auto scale_const = ops::Const(s.WithOpName("scale_const"), {0.1f});
+    auto scale = ops::Cast(s.WithOpName("scale"), scale_const, dtype);
+    auto mul = ops::Multiply(s.WithOpName("mul"), input, scale);
+    auto batchmatmul =
+        ops::BatchMatMulV2(s.WithOpName("batchmatmul"), mul, weight,
+                           ops::BatchMatMulV2::Attrs().AdjX(adjx).AdjY(adjy));
+    auto add = ops::Add(s.WithOpName("add"), batchmatmul, addend);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), add);
+
+    Tensor input_t = Tensor(dtype, input_shape);
+    Tensor weight_t = Tensor(dtype, weight_shape);
+    Tensor add_t = Tensor(dtype, add_shape);
+    input_t.flat<T>() =
+        input_t.flat<T>().template setRandom<normal_generator>();
+    weight_t.flat<T>() =
+        weight_t.flat<T>().template setRandom<normal_generator>();
+    add_t.flat<T>() = add_t.flat<T>().template setRandom<normal_generator>();
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"weight", weight_t}, {"addend", add_t}};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "add") {
+        EXPECT_EQ("_MklFusedBatchMatMulV2", node.op());
+        EXPECT_EQ("input", node.input(0));
+        EXPECT_EQ("weight", node.input(1));
+        EXPECT_EQ("scale", node.input(2));
+        EXPECT_EQ("addend", node.input(3));
+        const auto fused_ops = node.attr().at("fused_ops").list().s();
+        EXPECT_EQ(2, fused_ops.size());
+        EXPECT_EQ("Mul", fused_ops[0]);
+        found++;
+        EXPECT_EQ("Add", fused_ops[1]);
+        found++;
+      }
+    }
+    EXPECT_EQ(2, found);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    float atol = 1e-6, rtol = 1e-6;
+    if (std::is_same<T, bfloat16>::value) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    }
+    test::ExpectClose(tensors_expected[0], tensors[0], atol, rtol);
   }
 };
 
@@ -863,6 +957,14 @@ TEST_F(MklFusedBatchMatMul, MulAndAdd) {
     for (const auto adjy : {false, true}) {
       this->VerifyFused<float>(adjx, adjy);
       this->VerifyFused<bfloat16>(adjx, adjy);
+    }
+}
+
+TEST_F(MklFusedBatchMatMul, MulAndAdd2) {
+  for (const auto adjx : {false, true})
+    for (const auto adjy : {false, true}) {
+      this->VerifyPreceedingScalarMul<float>(adjx, adjy);
+      this->VerifyPreceedingScalarMul<bfloat16>(adjx, adjy);
     }
 }
 
@@ -1121,6 +1223,296 @@ class MklRemapperConv2dFusedBatchNormSwishTest : public GrapplerTest {
 };
 
 TEST_F(MklRemapperConv2dFusedBatchNormSwishTest, F32) { RunTest<DT_FLOAT>(); }
+
+class MklFuseInstanceNormTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void FuseMklInstanceNorm5D_Runner(string FORMAT, string activation) {
+    using ::tensorflow::ops::Placeholder;
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    TensorShape input_shape, filter_shape, add_shape, scale_shift_shape;
+    if (FORMAT == "NCDHW") {
+      input_shape = TensorShape({4, 8, 3, 3, 4});
+      add_shape = TensorShape({1, 16, 1, 1, 1});
+      scale_shift_shape = TensorShape({1, 16, 1, 1, 1});
+    } else {
+      input_shape = TensorShape({4, 3, 3, 4, 8});
+      add_shape = TensorShape({1, 1, 1, 1, 16});
+      scale_shift_shape = TensorShape({1, 1, 1, 1, 16});
+    }
+
+    filter_shape = TensorShape({1, 1, 1, 8, 16});
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>(input_shape);
+    auto filter_t = GenerateTensorWithSetRandom<DTYPE>(filter_shape);
+    auto add_input = GenerateTensorWithSetRandom<DTYPE>(scale_shift_shape);
+    auto scale_input = GenerateTensorWithSetRandom<DTYPE>(scale_shift_shape);
+    auto shift_input = GenerateTensorWithSetRandom<DTYPE>(scale_shift_shape);
+
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    T epsilon_value = static_cast<T>(0.00001);
+    auto epsilon_tensor =
+        GenerateConstantTensor<DTYPE>(TensorShape({}), epsilon_value);
+
+    std::vector<int> strides = {1, 1, 1, 1, 1};
+    auto input = Placeholder(s.WithOpName("input"), DTYPE,
+                             ops::Placeholder::Shape(input_shape));
+    auto filter = Placeholder(s.WithOpName("filter"), DTYPE,
+                              ops::Placeholder::Shape(filter_shape));
+    ops::Conv3D::Attrs conv_attrs = ops::Conv3D::Attrs().DataFormat(FORMAT);
+    auto conv = ops::Conv3D(s.WithOpName("conv"), input, filter, strides,
+                            "SAME", conv_attrs);
+
+    auto add_const =
+        ops::Const(s.WithOpName("add_const"), Input::Initializer(add_input));
+    auto add = ops::Add(s.WithOpName("conv_add"), add_const, conv);
+
+    auto r_indices =
+        (FORMAT == "NCDHW")
+            ? ops::Const(s.WithOpName("r_indices"), {2, 3, 4}, {3})
+            : ops::Const(s.WithOpName("r_indices"), {1, 2, 3}, {3});
+    ops::Mean::Attrs mean_attrs = ops::Mean::Attrs().KeepDims(true);
+    auto mean = ops::Mean(s.WithOpName("mean"), add, r_indices, mean_attrs);
+    auto s_diff = ops::SquaredDifference(s.WithOpName("s_diff"), add, mean);
+    auto variance =
+        ops::Mean(s.WithOpName("variance"), s_diff, r_indices, mean_attrs);
+
+    auto epsilon =
+        ops::Const(s.WithOpName("epsilon"), Input::Initializer(epsilon_tensor));
+    auto add_1 = ops::AddV2(s.WithOpName("add_1"), variance, epsilon);
+    auto rsqrt = ops::Rsqrt(s.WithOpName("rsqrt"), add_1);
+    auto g_const =
+        ops::Const(s.WithOpName("g_const"), Input::Initializer(scale_input));
+    auto mul = ops::Mul(s.WithOpName("mul"), rsqrt, g_const);
+    auto mul_1 = ops::Mul(s.WithOpName("mul_1"), add, mul);
+    auto mul_2 = ops::Mul(s.WithOpName("mul_2"), mean, mul);
+    auto b_const =
+        ops::Const(s.WithOpName("b_const"), Input::Initializer(shift_input));
+    auto sub = ops::Sub(s.WithOpName("sub"), b_const, mul_2);
+    auto add_2 = ops::AddV2(s.WithOpName("add_2"), mul_1, sub);
+
+    ops::Identity fetch = [&]() -> ops::Identity {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+      if (activation == "None") {
+        return ops::Identity(fetch, add_2);
+      } else if (activation == "Relu") {
+        return ops::Identity(fetch, ops::Relu(activate, add_2));
+      } else if (activation == "LeakyRelu") {
+        auto attr = ops::internal::LeakyRelu::Alpha(0.3f);
+        return ops::Identity(fetch,
+                             ops::internal::LeakyRelu(activate, add_2, attr));
+      }
+      return ops::Identity(fetch, add_2);
+    }();
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"filter", filter_t}};
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    string fused_node_name = (activation == "None") ? "add_2" : "activation";
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == fused_node_name) {
+        EXPECT_EQ(node.op(), "_MklFusedInstanceNorm");
+        ASSERT_EQ(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "conv_add");
+        EXPECT_EQ(node.input(1), "g_const");
+        EXPECT_EQ(node.input(2), "b_const");
+        found++;
+      }
+    }
+
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    if (DTYPE == DT_BFLOAT16) {
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+    } else {
+      test::ExpectClose(tensors[0], tensors_expected[0], 2e-6, 1e-6);
+    }
+  }
+
+  template <DataType DTYPE>
+  void FuseMklInstanceNorm4D_Runner(string FORMAT, string activation) {
+    using ::tensorflow::ops::Placeholder;
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    TensorShape input_shape, filter_shape, add_shape, scale_shift_shape;
+    if (FORMAT == "NCHW") {
+      input_shape = TensorShape({4, 3, 32, 32});
+      add_shape = TensorShape({1, 3, 1, 1});
+      scale_shift_shape = TensorShape({1, 3, 1, 1});
+    } else {
+      input_shape = TensorShape({4, 32, 32, 3});
+      add_shape = TensorShape({1, 1, 1, 3});
+      scale_shift_shape = TensorShape({1, 1, 1, 3});
+    }
+    filter_shape = TensorShape({2, 2, 3, 3});
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>(input_shape);
+    auto filter_t = GenerateTensorWithSetRandom<DTYPE>(filter_shape);
+    auto add_input = GenerateTensorWithSetRandom<DTYPE>(scale_shift_shape);
+    auto scale_input = GenerateTensorWithSetRandom<DTYPE>(scale_shift_shape);
+    auto shift_input = GenerateTensorWithSetRandom<DTYPE>(scale_shift_shape);
+
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    T epsilon_value = static_cast<T>(0.00001);
+    auto epsilon_tensor =
+        GenerateConstantTensor<DTYPE>(TensorShape({}), epsilon_value);
+
+    std::vector<int> strides = {1, 1, 1, 1};
+    auto input = Placeholder(s.WithOpName("input"), DTYPE,
+                             ops::Placeholder::Shape(input_shape));
+    auto filter = Placeholder(s.WithOpName("filter"), DTYPE,
+                              ops::Placeholder::Shape(filter_shape));
+    ops::Conv2D::Attrs conv_attrs = ops::Conv2D::Attrs().DataFormat(FORMAT);
+    auto conv = ops::Conv2D(s.WithOpName("conv"), input, filter, strides,
+                            "SAME", conv_attrs);
+
+    auto add_const =
+        ops::Const(s.WithOpName("add_const"), Input::Initializer(add_input));
+    auto add = ops::Add(s.WithOpName("conv_add"), add_const, conv);
+
+    auto r_indices = (FORMAT == "NCHW")
+                         ? ops::Const(s.WithOpName("r_indices"), {2, 3}, {2})
+                         : ops::Const(s.WithOpName("r_indices"), {1, 2}, {2});
+    ops::Mean::Attrs mean_attrs = ops::Mean::Attrs().KeepDims(true);
+    auto mean = ops::Mean(s.WithOpName("mean"), add, r_indices, mean_attrs);
+    auto s_diff = ops::SquaredDifference(s.WithOpName("s_diff"), add, mean);
+    auto variance =
+        ops::Mean(s.WithOpName("variance"), s_diff, r_indices, mean_attrs);
+
+    auto epsilon =
+        ops::Const(s.WithOpName("epsilon"), Input::Initializer(epsilon_tensor));
+    auto add_1 = ops::AddV2(s.WithOpName("add_1"), variance, epsilon);
+    auto rsqrt = ops::Rsqrt(s.WithOpName("rsqrt"), add_1);
+    auto g_const =
+        ops::Const(s.WithOpName("g_const"), Input::Initializer(scale_input));
+    auto mul = ops::Mul(s.WithOpName("mul"), rsqrt, g_const);
+    auto mul_1 = ops::Mul(s.WithOpName("mul_1"), add, mul);
+    auto mul_2 = ops::Mul(s.WithOpName("mul_2"), mean, mul);
+    auto b_const =
+        ops::Const(s.WithOpName("b_const"), Input::Initializer(shift_input));
+    auto sub = ops::Sub(s.WithOpName("sub"), b_const, mul_2);
+    auto add_2 = ops::AddV2(s.WithOpName("add_2"), mul_1, sub);
+
+    ops::Identity fetch = [&]() -> ops::Identity {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+      if (activation == "None") {
+        return ops::Identity(fetch, add_2);
+      } else if (activation == "Relu") {
+        return ops::Identity(fetch, ops::Relu(activate, add_2));
+      } else if (activation == "LeakyRelu") {
+        auto attr = ops::internal::LeakyRelu::Alpha(0.3f);
+        return ops::Identity(fetch,
+                             ops::internal::LeakyRelu(activate, add_2, attr));
+      }
+      return ops::Identity(fetch, add_2);
+    }();
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"filter", filter_t}};
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    string fused_node_name = (activation == "None") ? "add_2" : "activation";
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == fused_node_name) {
+        EXPECT_EQ(node.op(), "_MklFusedInstanceNorm");
+        ASSERT_EQ(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "conv_add");
+        EXPECT_EQ(node.input(1), "g_const");
+        EXPECT_EQ(node.input(2), "b_const");
+        found++;
+      }
+    }
+
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    if (DTYPE == DT_BFLOAT16) {
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+    } else {
+      test::ExpectClose(tensors[0], tensors_expected[0], 2e-6, 1e-6);
+    }
+  }
+
+  template <DataType DTYPE>
+  void FuseMklInstanceNorm4D(string FORMAT, bool add_activation = false) {
+    if (!add_activation) {
+      return FuseMklInstanceNorm4D_Runner<DTYPE>(FORMAT, "None");
+    }
+    for (const string& activation : {"Relu", "LeakyRelu"}) {
+      FuseMklInstanceNorm4D_Runner<DTYPE>(FORMAT, activation);
+    }
+  }
+
+  template <DataType DTYPE>
+  void FuseMklInstanceNorm5D(string FORMAT, bool add_activation = false) {
+    if (!add_activation) {
+      return FuseMklInstanceNorm5D_Runner<DTYPE>(FORMAT, "None");
+    }
+    for (const string& activation : {"Relu", "LeakyRelu"}) {
+      FuseMklInstanceNorm5D_Runner<DTYPE>(FORMAT, activation);
+    }
+  }
+};
+
+TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNorm5D_FP32_NDHWC) {
+  FuseMklInstanceNorm5D<DT_FLOAT>("NDHWC");
+}
+TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNorm5D_FP32_NCDHW) {
+  FuseMklInstanceNorm5D<DT_FLOAT>("NCDHW");
+}
+TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNorm4D_FP32_NHWC) {
+  FuseMklInstanceNorm4D<DT_FLOAT>("NHWC");
+}
+TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNorm4D_FP32_NCHW) {
+  FuseMklInstanceNorm4D<DT_FLOAT>("NCHW");
+}
+TEST_F(MklFuseInstanceNormTest,
+       FuseMklInstanceNormWithActivation5D_FP32_NDHWC) {
+  FuseMklInstanceNorm5D<DT_FLOAT>("NDHWC", true);
+}
+TEST_F(MklFuseInstanceNormTest,
+       FuseMklInstanceNormWithActivation5D_FP32_NCDHW) {
+  FuseMklInstanceNorm5D<DT_FLOAT>("NCDHW", true);
+}
+TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNormWithActivation4D_FP32_NHWC) {
+  FuseMklInstanceNorm4D<DT_FLOAT>("NHWC", true);
+}
+TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNormWithActivation4D_FP32_NCHW) {
+  FuseMklInstanceNorm4D<DT_FLOAT>("NCHW", true);
+}
 
 }  // namespace grappler
 }  // namespace tensorflow

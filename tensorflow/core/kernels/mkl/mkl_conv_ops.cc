@@ -38,6 +38,28 @@ using ReorderPd = dnnl::reorder::primitive_desc;
 
 namespace tensorflow {
 
+#ifndef ENABLE_ONEDNN_V3
+#define APPEND_DEPTHWISE(wei_dt, bias_dt, dst_dt, kernel, stride, padding, \
+                         scales_mask, scales)                              \
+  append_dw(wei_dt, bias_dt, dst_dt, kernel, stride, padding, scales_mask, \
+            scales)
+#define APPEND_ELTWISE(scale, alg, alpha, beta) \
+  append_eltwise(scale, alg, alpha, beta)
+#define GET_DATA_TYPE data_type()
+#define SET_FUSE_ACTIVATION_FOR_RELU6 \
+  set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu, 6.0)
+#define SET_MKL_LAYOUT(md) SetMklLayout(&md)
+#else
+#define APPEND_DEPTHWISE(wei_dt, bias_dt, dst_dt, kernel, stride, padding, \
+                         scales_mask, scales)                              \
+  append_dw(wei_dt, bias_dt, dst_dt, kernel, stride, padding)
+#define APPEND_ELTWISE(scale, alg, alpha, beta) append_eltwise(alg, alpha, beta)
+#define GET_DATA_TYPE get_data_type()
+#define SET_FUSE_ACTIVATION_FOR_RELU6 \
+  set_fuse_activation(true, dnnl::algorithm::eltwise_clip, 0.0, 6.0)
+#define SET_MKL_LAYOUT(md) SetMklLayout(md)
+#endif  // !ENABLE_ONEDNN_V3
+
 // TODO(intel-tf) Remove this once old API of quantized ops is abandoned
 namespace quantized_fusions {
 string none[] = {""};
@@ -134,8 +156,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     // should happen under the lock.
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
-    // TODO(intel-tf): Create a common function and avoid the duplicate code
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
     context_.filter_mem->set_data_handle(
@@ -156,6 +177,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)), *fwd_stream);
+    if (sp_data) {
+      context_.sp_mem->set_data_handle(static_cast<void*>(sp_data),
+                                       *fwd_stream);
+    }
 #else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)));
@@ -177,11 +202,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
-#endif  // !ENABLE_ONEDNN_OPENMP
-    if (sp_data) {
-      context_.sp_mem->set_data_handle(static_cast<void*>(sp_data),
-                                       *fwd_stream);
-    }
+    if (sp_data) context_.sp_mem->set_data_handle(static_cast<void*>(sp_data));
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
 
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
@@ -240,7 +262,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
     std::shared_ptr<dnnl::memory> bn_offset_mem;
 
     // Desc & primitive desc
+#ifndef ENABLE_ONEDNN_V3
     std::shared_ptr<dnnl::convolution_forward::desc> fwd_desc;
+#endif  // !ENABLE_ONEDNN_V3
+    std::shared_ptr<ConvFwdPd> fwd_pd;
 
     // Memory desc
     std::shared_ptr<dnnl::memory::desc> src_md;
@@ -255,7 +280,6 @@ class MklConvFwdPrimitive : public MklPrimitive {
     std::shared_ptr<dnnl::memory::desc> bn_offset_md;
 
     // Convolution primitive
-    std::shared_ptr<ConvFwdPd> fwd_pd;
     std::shared_ptr<dnnl::primitive> conv_fwd;
 
     std::vector<dnnl::primitive> fwd_primitives;
@@ -271,7 +295,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
           bn_mean_mem(nullptr),
           bn_rsqrt_mem(nullptr),
           bn_offset_mem(nullptr),
+#ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           src_md(nullptr),
           filter_md(nullptr),
           bias_md(nullptr),
@@ -281,7 +307,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
           bn_rsqrt_md(nullptr),
           bn_offset_md(nullptr),
           fwd_pd(nullptr),
-          conv_fwd(nullptr) {}
+          conv_fwd(nullptr) {
+    }
   };
 
   void Setup(const MklConvFwdParams& convFwdDims) {
@@ -306,6 +333,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
       context_.bias_md.reset(new memory::desc({convFwdDims.bias_dims},
                                               MklDnnType<Tbias>(),
                                               memory::format_tag::any));
+#ifndef ENABLE_ONEDNN_V3
       // Create a convolution descriptor
       context_.fwd_desc.reset(new convolution_forward::desc(
           prop_kind::forward, dnnl::algorithm::convolution_direct,
@@ -318,6 +346,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
           *context_.src_md, *context_.filter_md, *context_.dst_md,
           convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_left,
           convFwdDims.padding_right));
+#endif  // !ENABLE_ONEDNN_V3
     }
 
     if (!convFwdDims.fuse_bn_dims.empty()) {
@@ -348,18 +377,28 @@ class MklConvFwdPrimitive : public MklPrimitive {
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, post_op_param.alg, op_alpha,
+          // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
+          post_ops.APPEND_ELTWISE(op_scale, post_op_param.alg, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "sum") {
           DCHECK_EQ(post_op_param.param.size(), 1);
           float op_scale = post_op_param.param[0];
           post_ops.append_sum(op_scale);
         } else if (post_op_param.name == "output_scale") {
+#ifndef ENABLE_ONEDNN_V3
           if (post_op_param.param.size() == 1) {
             post_ops_attr.set_output_scales(0, post_op_param.param);
           } else {
             post_ops_attr.set_output_scales(2, post_op_param.param);
           }
+#else
+          // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
+          // and return a status instead of using DCHECK_EQ
+          DCHECK_EQ(post_op_param.param.size(), 1);
+          post_ops_attr.set_scales_mask(DNNL_ARG_SRC, 0);
+          post_ops_attr.set_scales_mask(DNNL_ARG_WEIGHTS, 0);
+          post_ops_attr.set_scales_mask(DNNL_ARG_DST, 0);
+#endif  // !ENABLE_ONEDNN_V3
         } else if (post_op_param.name == "fuse_bn") {
           post_ops.append_binary(dnnl::algorithm::binary_sub,
                                  *context_.bn_mean_md);
@@ -378,8 +417,24 @@ class MklConvFwdPrimitive : public MklPrimitive {
       }
       post_ops_attr.set_post_ops(post_ops);
     }
+#ifndef ENABLE_ONEDNN_V3
     context_.fwd_pd.reset(
         new ConvFwdPd(*context_.fwd_desc, post_ops_attr, cpu_engine_));
+#else
+    if (!convFwdDims.bias_dims.empty()) {
+      context_.fwd_pd.reset(new ConvFwdPd(
+          cpu_engine_, prop_kind::forward, dnnl::algorithm::convolution_direct,
+          *context_.src_md, *context_.filter_md, *context_.bias_md,
+          *context_.dst_md, convFwdDims.strides, convFwdDims.dilations,
+          convFwdDims.padding_left, convFwdDims.padding_right, post_ops_attr));
+    } else {
+      context_.fwd_pd.reset(new ConvFwdPd(
+          cpu_engine_, prop_kind::forward, dnnl::algorithm::convolution_direct,
+          *context_.src_md, *context_.filter_md, *context_.dst_md,
+          convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_left,
+          convFwdDims.padding_right, post_ops_attr));
+    }
+#endif  // !ENABLE_ONEDNN_V3
 
     // Create memory primitive based on dummy data
     context_.src_mem.reset(
@@ -636,11 +691,14 @@ class MklConvOp : public OpKernel {
       // Input tensors
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
-
       OP_REQUIRES(
           context, filter_tensor.NumElements() > 0,
           errors::InvalidArgument("filter must not have zero elements "
                                   "(i.e. all dimensions must be non-zero)"));
+
+      if (std::is_same<Tinput, float>::value) {
+        (void)SetFPMathMode();
+      }
 
       MklDnnShape src_mkl_shape, filter_mkl_shape;
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape, native_format);
@@ -817,6 +875,7 @@ class MklConvOp : public OpKernel {
 
       // TODO(intel-tf): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
+      MklDnnThreadPool eigen_tp(context);
       conv_fwd =
           MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output>::Get(
               convFwdDims, do_not_cache);
@@ -854,6 +913,8 @@ class MklConvOp : public OpKernel {
         // Tensorflow format to MKL format by caching the filter when it is
         // converted for the first time. This cached filter can then be reused
         // in subsequent iterations.
+#ifndef ENABLE_ONEDNN_V3
+        // TODO(intel-tf): Enable weight caching for oneDNN v3.x
         if (is_filter_const_) {
           if (IsFilterCacheEmpty(context)) {
             // Cache filter if it is not already cached.
@@ -863,6 +924,7 @@ class MklConvOp : public OpKernel {
           filter_data = GetCachedFilter(context, conv_fwd_pd->weights_desc());
           is_filter_cached = (filter_data != nullptr);
         }
+#endif  // !ENABLE_ONEDNN_V3
         if (!is_filter_cached) {
           filter.SetUsrMem(filter_md, &filter_tensor);
           if (filter_out_tensor == nullptr) {
@@ -887,7 +949,6 @@ class MklConvOp : public OpKernel {
 
       // Execute convolution
       std::shared_ptr<stream> fwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
       fwd_cpu_stream.reset(CreateStream(&eigen_tp, conv_fwd->GetEngine()));
       if (fuse_biasadd_) {
         const Tensor& bias_tensor = MklGetInput(context, kInputIndex_Bias);
@@ -1013,12 +1074,13 @@ class MklConvOp : public OpKernel {
   void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
   bool get_fuse_biasadd() { return fuse_biasadd_; }
   void set_fuse_activation(bool fuse_activation, dnnl::algorithm activation_alg,
-                           float alpha_or_upbound = 0.0) {
+                           float alpha_or_upbound = 0.0, float beta = 0.0) {
     fuse_activation_ = fuse_activation;
     activation_alg_ = activation_alg;
     // This variable is used for alpha in leakyrelu or upper bound in relu6
     // depending on the context
     alpha_or_upbound_ = alpha_or_upbound;
+    beta_ = beta;
   }
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
@@ -1075,8 +1137,10 @@ class MklConvOp : public OpKernel {
             {"fuse_bn", dnnl::algorithm::undef, {1.0}, ""});
       }
       if (fuse_activation_) {
-        params.post_op_params.push_back(
-            {"activation", activation_alg_, {1.0, alpha_or_upbound_, 0.0}, ""});
+        params.post_op_params.push_back({"activation",
+                                         activation_alg_,
+                                         {1.0, alpha_or_upbound_, beta_},
+                                         ""});
       }
     }
   }
@@ -1101,13 +1165,21 @@ class MklConvOp : public OpKernel {
     auto dst_md = conv_prim_desc.dst_desc();
 
     if (!std::is_same<Ttemp_output, Toutput>::value) {
+#ifndef ENABLE_ONEDNN_V3
       dst_md.data.data_type =
           static_cast<dnnl_data_type_t>(MklDnnType<Toutput>());
+#else
+      // Since oneDNN v3.x exposes only an opaque memory descriptor, re-create
+      // the same dst_md as before, but with type == Toutput
+      dst_md =
+          memory::desc(output_dims_mkl_order, MklDnnType<Toutput>(),
+                       MklTensorFormatToMklDnnDataFormat(output_tf_format));
+#endif  // !ENABLE_ONEDNN_V3
     }
 
     // Allocate shape of MKL tensor
     output_mkl_shape->SetMklTensor(true);
-    output_mkl_shape->SetMklLayout(&dst_md);
+    output_mkl_shape->SET_MKL_LAYOUT(dst_md);
     output_mkl_shape->SetElemType(MklDnnType<Toutput>());
     output_mkl_shape->SetTfLayout(output_dims_mkl_order.size(),
                                   output_dims_mkl_order, output_tf_format);
@@ -1205,6 +1277,7 @@ class MklConvOp : public OpKernel {
   // This variable is used for alpha in leakyrelu or upper bound in relu6
   // depending on the context
   float alpha_or_upbound_ = 0.0;
+  float beta_ = 0.0;
   dnnl::algorithm activation_alg_ = dnnl::algorithm::undef;
 
   int input_index_pad_ = 2;
@@ -1270,7 +1343,7 @@ class MklConvOp : public OpKernel {
     // Allocate shape of MKL tensor
     MklDnnShape filter_mkl_shape;
     filter_mkl_shape.SetMklTensor(true);
-    filter_mkl_shape.SetMklLayout(&filter_md);
+    filter_mkl_shape.SET_MKL_LAYOUT(filter_md);
     filter_mkl_shape.SetElemType(MklDnnType<Tfilter>());
 
     // The format of the filter is actually OIhw8i8o, but TF doesn't support
@@ -1327,6 +1400,8 @@ class MklConvOp : public OpKernel {
     memcpy(cached_filter_data, filter_data, cached_filter_data_size);
   }
 
+#ifndef ENABLE_ONEDNN_V3
+  // TODO(intel-tf): This function is no longer used and needs to be removed
   bool AreMemoryDescriptorsEqual(const memory::desc& filter_md,
                                  const Tensor& cached_filter_md) {
     auto filter_md_data = filter_md.data;
@@ -1343,6 +1418,7 @@ class MklConvOp : public OpKernel {
     }
     return true;
   }
+#endif  // !ENABLE_ONEDNN_V3
 
   Tfilter* GetCachedFilter(OpKernelContext* context,
                            const memory::desc& filter_md)
@@ -1393,8 +1469,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"Relu"}) {
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
     } else if (fused_ops == std::vector<string>{"Relu6"}) {
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->SET_FUSE_ACTIVATION_FOR_RELU6;
     } else if (fused_ops == std::vector<string>{"Elu"}) {
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
     } else if (fused_ops == std::vector<string>{"LeakyRelu"}) {
@@ -1419,8 +1494,7 @@ class MklFusedConvOp
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->SET_FUSE_ACTIVATION_FOR_RELU6;
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
@@ -1464,8 +1538,7 @@ class MklFusedConvOp
           errors::InvalidArgument(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
       this->set_fuse_bn(true, epsilon);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->SET_FUSE_ACTIVATION_FOR_RELU6;
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Elu"}) {
       float epsilon;
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
@@ -1509,8 +1582,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->SET_FUSE_ACTIVATION_FOR_RELU6;
       OP_REQUIRES(
           context, num_args == 2,
           errors::InvalidArgument(
@@ -1536,6 +1608,12 @@ class MklFusedConvOp
           context, num_args == 2,
           errors::InvalidArgument(
               "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Mish"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_mish, 1.0);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "_FusedConv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "_MklSwish"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_swish, 1.0);
@@ -1602,8 +1680,7 @@ class MklFusedDepthwiseConvOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->SET_FUSE_ACTIVATION_FOR_RELU6;
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
@@ -2110,11 +2187,20 @@ class MklQuantizedConvOp
              std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
       }
       dnnl::primitive_attr reorder_attr;
+#ifndef ENABLE_ONEDNN_V3
       if (depth == 1) {
         reorder_attr.set_output_scales(0, scales);
       } else {
         reorder_attr.set_output_scales(2, scales);
       }
+#else
+      // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
+      // and return a status instead of using DCHECK_EQ
+      DCHECK_EQ(depth, 1);
+      reorder_attr.set_scales_mask(DNNL_ARG_SRC, 0);
+      reorder_attr.set_scales_mask(DNNL_ARG_WEIGHTS, 0);
+      reorder_attr.set_scales_mask(DNNL_ARG_DST, 0);
+#endif  // !ENABLE_ONEDNN_V3
       auto summand_md = memory::desc(output_dims_mkl_order, MklDnnType<Tbias>(),
                                      memory::format_tag::nhwc);
       void* summand_buf =
@@ -2173,11 +2259,20 @@ class MklQuantizedConvOp
     }
     if (!is_bias_const_ || IsBiasCacheEmpty(context) || !scales_are_valid) {
       dnnl::primitive_attr bias_attr;
+#ifndef ENABLE_ONEDNN_V3
       if (depth == 1) {
         bias_attr.set_output_scales(0, scales_);
       } else {
         bias_attr.set_output_scales(1, scales_);
       }
+#else
+      // TODO(intel-tf): Enable this for int8 when using oneDNN v3.x
+      // and return a status instead of using DCHECK_EQ
+      DCHECK_EQ(depth, 1);
+      bias_attr.set_scales_mask(DNNL_ARG_SRC, 0);
+      bias_attr.set_scales_mask(DNNL_ARG_WEIGHTS, 0);
+      bias_attr.set_scales_mask(DNNL_ARG_DST, 0);
+#endif  // !ENABLE_ONEDNN_V3
 
       auto bias_md = memory::desc({static_cast<int>(bias_tensor.NumElements())},
                                   MklDnnType<Tbias>(), memory::format_tag::x);
@@ -2363,13 +2458,15 @@ class MklFusedConv3DOp
                      context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Mish"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_mish);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->SET_FUSE_ACTIVATION_FOR_RELU6;
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
@@ -2383,8 +2480,7 @@ class MklFusedConv3DOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->SET_FUSE_ACTIVATION_FOR_RELU6;
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
@@ -2811,5 +2907,12 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
     NoOp);
+
+#undef APPEND_DEPTHWISE
+#undef APPEND_ELTWISE
+#undef GET_DATA_TYPE
+#undef SET_FUSE_ACTIVATION_FOR_RELU6
+#undef SET_MKL_LAYOUT
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

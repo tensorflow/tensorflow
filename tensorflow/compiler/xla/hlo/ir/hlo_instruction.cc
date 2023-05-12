@@ -372,6 +372,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                computations(0), proto.is_stable());
       break;
     }
+    case HloOpcode::kTopK: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "TopK instruction should have exactly 1 operand but has "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "TopK instruction should one called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction =
+          CreateTopK(shape, all_operands()[0], proto.k(), computations(0));
+      break;
+    }
     case HloOpcode::kTranspose:
       instruction =
           CreateTranspose(shape, operands(0),
@@ -1054,6 +1065,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
     const Shape& shape, int64_t iota_dimension) {
   return std::make_unique<HloIotaInstruction>(shape, iota_dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTopK(
+    const Shape& shape, HloInstruction* input, int64_t k,
+    HloComputation* compare) {
+  return std::make_unique<HloTopKInstruction>(shape, input, k, compare);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -2102,6 +2119,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -2693,6 +2711,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2901,6 +2920,7 @@ bool HloInstruction::has_to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
       return true;
     case HloOpcode::kCustomCall:
       // CustomCall can have a to_apply computation, but it is not required to
@@ -3342,7 +3362,7 @@ void HloInstruction::PrintExtraAttributes(
                opcode() == HloOpcode::kReduceScatter ||
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
-               opcode() == HloOpcode::kSort) {
+               opcode() == HloOpcode::kTopK || opcode() == HloOpcode::kSort) {
       if (!called_computations().empty()) {
         printer.Next([this, &options](Printer* printer) {
           printer->Append("to_apply=");
@@ -3435,6 +3455,7 @@ void HloInstruction::PrintExtraAttributes(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
+      case HloOpcode::kTopK:
         if (!called_computations().empty()) {
           printer.Next([this, &new_options](Printer* printer) {
             printer->Append("to_apply=\n");
@@ -3838,6 +3859,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCopyDone(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
+    case HloOpcode::kTopK:
+      return visitor->HandleTopK(this);
     case HloOpcode::kRecvDone:
       return visitor->HandleRecvDone(this);
     case HloOpcode::kSend:
@@ -4766,7 +4789,8 @@ HloInstruction* HloInstruction::fused_parameter(
   return Cast<HloFusionInstruction>(this)->fused_parameter(parameter_number);
 }
 
-const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+const HloInstruction::InstructionVector& HloInstruction::fused_parameters()
+    const {
   return Cast<HloFusionInstruction>(this)->fused_parameters();
 }
 

@@ -17,12 +17,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/runtime/fallback_batch_kernel.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 
@@ -75,6 +78,20 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
       return std::make_unique<FallbackBatchTask>(this->tfrt_exec_ctx);
     }
   };
+
+  static StatusOr<tfrt::ResourceContext*> GetClientGraphResourceContext(
+      OpKernelContext* context) {
+    const tfrt::ExecutionContext* exec_ctx = nullptr;
+    TF_RETURN_IF_ERROR(GetTfrtExecutionContext(context, &exec_ctx));
+    const auto* fallback_request_state =
+        exec_ctx->request_ctx()
+            ->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
+    // If `client_graph_resource_context` is null, it implies that it's safe to
+    // fall back to the per-model resource context.
+    return fallback_request_state->client_graph_resource_context() != nullptr
+               ? fallback_request_state->client_graph_resource_context()
+               : exec_ctx->resource_context();
+  }
 
   static StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
       OpKernelContext* context) {
@@ -278,12 +295,12 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
     std::function<void(const Status&)> done) const {
-  llvm::SmallVector<AsyncValue*, 8> arguments;
+  std::vector<tsl::RCReference<AsyncValue>> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
-  arguments.push_back(tfrt::GetReadyChain().release());
+  arguments.push_back(tfrt::GetReadyChain());
   for (auto& input : inputs) {
-    arguments.push_back(TFTensorToFallbackTensor(input).release());
+    arguments.push_back(TFTensorToFallbackTensor(input));
   }
   llvm::SmallVector<RCReference<AsyncValue>, 4> results;
   results.resize(bef_func_->result_types().size());
@@ -314,7 +331,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
   batch_exec_ctx.set_location(exec_ctx.location());
 
-  bef_func_->ExecuteAsync(batch_exec_ctx, arguments, results);
+  bef_func_->ExecuteAsync(batch_exec_ctx, std::move(arguments), results);
   // There is a comment in tensorflow/core/kernels/batch_kernels.cc
   // counterpart of this method that blocking here seems to improve
   // latency/throughput in practice with how the batching library manage
@@ -322,9 +339,6 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   // this behavior for now, should reconsider when we redo the batching
   // kernels.
   batch_exec_ctx.work_queue().Await(results);
-  for (AsyncValue* arg : arguments) {
-    arg->DropRef();
-  }
 
   // The first result is a Chain.
   combined_outputs->reserve(results.size() - 1);

@@ -29,6 +29,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
+        # copybara:uncomment "//learning/infra/mira/distributed/...",
     ],
 )
 

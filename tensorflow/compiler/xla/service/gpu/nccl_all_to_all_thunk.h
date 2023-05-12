@@ -18,10 +18,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -48,26 +46,6 @@ class NcclAllToAllThunkBase : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
-class NcclAllToAllThunk : public NcclAllToAllThunkBase {
- public:
-  NcclAllToAllThunk(ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
-                    std::vector<Buffer> buffers);
-
-  // Returns whether the given instruction can be lowered to a nccl all-to-all
-  // call.
-  static bool CanImplement(mlir::lmhlo::AllToAllOp op);
-
-  static const char* GetName() { return "AllToAll"; }
-  static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64_t replica_count,
-                           int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllToAllOp op);
-  static constexpr bool IsAsync() { return false; }
-
- protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
-};
-
 class NcclAllToAllStartThunk : public NcclAllToAllThunkBase {
  public:
   NcclAllToAllStartThunk(ThunkInfo thunk_info,
@@ -76,9 +54,11 @@ class NcclAllToAllStartThunk : public NcclAllToAllThunkBase {
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
-  static bool CanImplement(mlir::lmhlo_gpu::AllToAllStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::AllToAllStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
 
-  static const char* GetName() { return "AllToAllStart"; }
+  static const char* GetHloOpName() { return "all-to-all-start"; }
   static bool IsDegenerate(mlir::lmhlo_gpu::AllToAllStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(

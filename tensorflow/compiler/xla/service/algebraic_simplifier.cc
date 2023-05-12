@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -70,6 +70,8 @@ namespace xla {
 namespace {
 
 namespace m = match;
+
+using primitive_util::NativeTypeOf;
 
 // Unwraps broadcasts hunting for a constant.  If we find one, checks if the
 // constant contains only the given value.
@@ -144,18 +146,17 @@ std::optional<double> GetConstantValue(const HloInstruction* inst) {
   if (!ShapeUtil::IsEffectiveScalar(inst->shape())) {
     return std::nullopt;
   }
-  switch (inst->shape().element_type()) {
-    case F16:
-      return static_cast<float>(inst->literal().GetFirstElement<half>());
-    case BF16:
-      return static_cast<float>(inst->literal().GetFirstElement<bfloat16>());
-    case F32:
-      return inst->literal().GetFirstElement<float>();
-    case F64:
-      return inst->literal().GetFirstElement<double>();
-    default:
-      return std::nullopt;
-  }
+  return primitive_util::PrimitiveTypeSwitch<std::optional<double>>(
+      [&](auto primitive_type_constant) -> std::optional<double> {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return static_cast<double>(
+              inst->literal().GetFirstElement<NativeT>());
+        }
+        return std::nullopt;
+      },
+      inst->shape().element_type());
 }
 
 static bool IsScalarConstant(const HloInstruction* hlo,
@@ -228,21 +229,7 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
                      m::Shape().IsEffectiveScalar())))) {
     return false;
   }
-  auto val = [&]() -> std::optional<double> {
-    switch (c->shape().element_type()) {
-      case BF16:
-        return static_cast<double>(c->literal().GetFirstElement<bfloat16>());
-      case F16:
-        return static_cast<double>(c->literal().GetFirstElement<Eigen::half>());
-      case F32:
-        return c->literal().GetFirstElement<float>();
-      case F64:
-        return c->literal().GetFirstElement<double>();
-      default:
-        // Cowardly refuse to consider complex types.
-        return std::nullopt;
-    }
-  }();
+  auto val = GetConstantValue(c);
   if (!val) {
     return false;
   }
@@ -453,18 +440,18 @@ bool IsOpCodeMultiplyCommutative(HloOpcode opcode) {
 
 std::unique_ptr<HloInstruction> MakeScalarInstruction(HloInstruction* target,
                                                       float multiplier) {
-  switch (target->shape().element_type()) {
-    case BF16:
-      return HloInstruction::CreateConstant(LiteralUtil::ConvertF32ToBF16(
-          LiteralUtil::CreateR0<float>(multiplier)));
-      break;
-    case F32:
-      return HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<float>(multiplier));
-      break;
-    default:
-      LOG(FATAL) << "Unsupported data type: " << target->shape().element_type();
-  }
+  return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+      [&](auto primitive_type_constant) -> std::unique_ptr<HloInstruction> {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<NativeT>(static_cast<NativeT>(multiplier)));
+        }
+        LOG(FATAL) << "Unsupported data type: "
+                   << target->shape().element_type();
+      },
+      target->shape().element_type());
 }
 
 }  // namespace
@@ -1687,6 +1674,83 @@ AlgebraicSimplifierVisitor::TrySimplifyTautologicalBitcastConvert(
   return true;
 }
 
+Status
+AlgebraicSimplifierVisitor::TryRemoveUpcastAndDowncastSurroundingBinaryOp(
+    HloInstruction* convert_instruction) {
+  HloInstruction* arg_1 = nullptr;
+  HloInstruction* arg_2 = nullptr;
+  HloInstruction* bin_op_instr = nullptr;
+  HloInstruction* final_convert_instr = nullptr;
+
+  // TODO(b/277095115): Instead, consider a more broad matching here which will
+  // also catch constants. For an example, look at
+  // cudnn_fused_conv_rewriter.cc's IsLosslesslyConvertibleTo().
+  auto arg_1_pattern = m::Convert(m::Op(&arg_1)).WithOneUser();
+  auto arg_2_pattern = m::Convert(m::Op(&arg_2)).WithOneUser();
+
+  auto is_unsigned_int_pred = [](const HloInstruction* instr) {
+    // Only unsigned integer division/remainder is safe. Signed integer division
+    // can result in undefined behavior. For example, in S8 consider -128/-1.
+    return primitive_util::IsUnsignedIntegralType(
+        instr->shape().element_type());
+  };
+
+  auto bin_op_pattern =
+      m::Convert(&final_convert_instr,
+                 m::AnyOf<HloInstruction>(
+                     m::Add(&bin_op_instr, arg_1_pattern, arg_2_pattern),
+                     m::Subtract(&bin_op_instr, arg_1_pattern, arg_2_pattern),
+                     m::Multiply(&bin_op_instr, arg_1_pattern, arg_2_pattern),
+                     m::Divide(&bin_op_instr, arg_1_pattern, arg_2_pattern)
+                         .WithPredicate(is_unsigned_int_pred),
+                     m::Remainder(&bin_op_instr, arg_1_pattern, arg_2_pattern)
+                         .WithPredicate(is_unsigned_int_pred))
+                     .WithOneUser());
+
+  if (!Match(convert_instruction, bin_op_pattern)) {
+    return OkStatus();
+  }
+
+  const PrimitiveType arg_1_type = arg_1->shape().element_type();
+  const PrimitiveType arg_2_type = arg_2->shape().element_type();
+  const PrimitiveType final_type = final_convert_instr->shape().element_type();
+
+  if (arg_1_type != final_type || arg_2_type != final_type) {
+    // Only match when the series of instructions ends with the same types that
+    // it started with.
+    return OkStatus();
+  }
+
+  const PrimitiveType bin_op_type = bin_op_instr->shape().element_type();
+  if (!primitive_util::IsIntegralType(final_type) ||
+      !primitive_util::IsIntegralType(bin_op_type) ||
+      (primitive_util::IsSignedIntegralType(final_type) !=
+       primitive_util::IsSignedIntegralType(bin_op_type)) ||
+      (primitive_util::IsUnsignedIntegralType(final_type) !=
+       primitive_util::IsUnsignedIntegralType(bin_op_type))) {
+    // So far, only the safety of this transformation with same signedness
+    // integer types has been verified.
+    // TODO(b/277095299): Add support for floating point types.
+    return OkStatus();
+  }
+
+  // Ensure that bin_op_type can represent everything that final_type can. This
+  // is ensuring that the pattern is matching the case when we upcast, perform
+  // the op, and then downcast.
+  if (!primitive_util::CastPreservesValues(final_type, bin_op_type)) {
+    return OkStatus();
+  }
+
+  // Change the type of the binary op to the smaller type.
+  HloComputation* computation = convert_instruction->parent();
+  HloInstruction* new_bin_op =
+      computation->AddInstruction(bin_op_instr->CloneWithNewOperands(
+          ShapeUtil::ChangeElementType(bin_op_instr->shape(), final_type),
+          {arg_1, arg_2}));
+  TF_RETURN_IF_ERROR(ReplaceInstruction(final_convert_instr, new_bin_op));
+  return OkStatus();
+}
+
 static HloInstruction* BuildTupleConstant(HloComputation* computation,
                                           const LiteralSlice& literal,
                                           AlgebraicSimplifier* simplifier) {
@@ -1954,7 +2018,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A/sqrt(B) => A*rsqrt(X).
-  if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b))))) {
+  if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b)).WithOneUse()))) {
     auto* rsqrt = divide->mutable_operand(1)->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kRsqrt, b));
     return ReplaceWithNewInstruction(
@@ -1963,7 +2027,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A/rsqrt(B) => A*sqrt(B).
-  if (Match(divide, m::Divide(m::Op(&a), m::Rsqrt(m::Op(&b))))) {
+  if (Match(divide, m::Divide(m::Op(&a), m::Rsqrt(m::Op(&b)).WithOneUse()))) {
     auto* sqrt = divide->mutable_operand(1)->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kSqrt, b));
     return ReplaceWithNewInstruction(
@@ -1984,37 +2048,30 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       (Match(b, m::Constant(&c)) || Match(b, m::Broadcast(m::Constant(&c))))) {
     Shape result_shape = c->literal().shape();
     Literal new_literal(result_shape);
-    switch (result_shape.element_type()) {
-      case F16:
-        TF_RETURN_IF_ERROR(InvertConstant<half>(*c, &new_literal));
-        break;
-      case F32:
-        TF_RETURN_IF_ERROR(InvertConstant<float>(*c, &new_literal));
-        break;
-      case BF16:
-        TF_RETURN_IF_ERROR(InvertConstant<bfloat16>(*c, &new_literal));
-        break;
-      case F64:
-        TF_RETURN_IF_ERROR(InvertConstant<double>(*c, &new_literal));
-        break;
-      case C64:
-        TF_RETURN_IF_ERROR(InvertConstant<complex64>(*c, &new_literal));
-        break;
-      case C128:
-        TF_RETURN_IF_ERROR(InvertConstant<complex128>(*c, &new_literal));
-        break;
-      default:
-        return OkStatus();
-    }
-    auto inverse = c->AddInstruction(
-        simplifier_->CreateConstantWithLayoutUpdated(new_literal.Clone()));
-    if (b != c) {
-      inverse = b->AddInstruction(HloInstruction::CreateBroadcast(
-          b->shape(), inverse, b->dimensions()));
-    }
-    TF_ASSIGN_OR_RETURN(auto new_divide,
-                        MakeBinaryHlo(HloOpcode::kMultiply, a, inverse));
-    return ReplaceInstruction(divide, new_divide);
+    return primitive_util::PrimitiveTypeSwitch<Status>(
+        [&](auto primitive_type_constant) -> Status {
+          if constexpr (primitive_util::IsFloatingPointType(
+                            primitive_type_constant) ||
+                        primitive_util::IsComplexType(
+                            primitive_type_constant)) {
+            using NativeT = NativeTypeOf<primitive_type_constant>;
+            TF_RETURN_IF_ERROR(InvertConstant<NativeT>(*c, &new_literal));
+
+            auto inverse =
+                c->AddInstruction(simplifier_->CreateConstantWithLayoutUpdated(
+                    new_literal.Clone()));
+            if (b != c) {
+              inverse = b->AddInstruction(HloInstruction::CreateBroadcast(
+                  b->shape(), inverse, b->dimensions()));
+            }
+            TF_ASSIGN_OR_RETURN(
+                auto new_divide,
+                MakeBinaryHlo(HloOpcode::kMultiply, a, inverse));
+            return ReplaceInstruction(divide, new_divide);
+          }
+          return OkStatus();
+        },
+        result_shape.element_type());
   }
 
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
@@ -3787,7 +3844,8 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
     return ReplaceInstruction(convert,
                               convert->mutable_operand(0)->mutable_operand(0));
   }
-  return OkStatus();
+
+  return TryRemoveUpcastAndDowncastSurroundingBinaryOp(convert);
 }
 
 // Complex(Real(c), Imag(c)) -> c
@@ -6813,6 +6871,48 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     if (did_transform) {
       MarkAsChanged();
       return OkStatus();
+    }
+  }
+
+  // transpose(broadcast(x)) -> broadcast(x), if the transpose leaves the
+  // relative order of the dimensions of `x` unchanged.
+  //
+  // To understand the permutations logic here, consider a simple case.
+  //
+  //  bcast = f32[1,2,3,4] broadcast(f32[2,4] x), dimensions={1,3}
+  //  trans = f32[2,3,1,4] transpose(f32[1,2,3,4] bcast), dimensions={1,2,0,3}
+  //
+  // We want to transform this into
+  //
+  //  bcast' = f32[2,3,1,4] broadcast(f32[2,4] x), dimensions={0,3}
+  //
+  // The algorithm to compute bcast'.dimensions() is:
+  //
+  //  * Let p' be the inverse of trans.dimensions(); in the example, {2,0,1,3}.
+  //  * bcast'.dimensions() is [p'[dim] for dim in bcast.dimensions()].  In the
+  //    example, p'[1] = 0, meaning that broadcast dim 1 (size 2) ends up at
+  //    index 0 after the transpose.
+  //
+  // We also need to check that bcast'.dimensions() is "sorted the same" as
+  // bcast.dimensions() -- otherwise, we're simply moving the transpose into the
+  // broadcast op.  For now we cowardly refuse to consider broadcasts except
+  // where their dimensions() are sorted, so we need only check that
+  // bcast'.dimensions() is sorted.
+  //
+  // No one-user requirement on the transpose because having two different
+  // broadcasts of x should be cheap -- certainly cheaper than using the
+  // fully-materialized broadcasted+transposed value.
+  if (operand->opcode() == HloOpcode::kBroadcast &&
+      absl::c_is_sorted(operand->dimensions())) {
+    auto inv_perm = InversePermutation(transpose->dimensions());
+    absl::InlinedVector<int64_t, 8> new_bcast_dims;
+    for (int64_t dim : operand->dimensions()) {
+      new_bcast_dims.push_back(inv_perm[dim]);
+    }
+    if (absl::c_is_sorted(new_bcast_dims)) {
+      return ReplaceInstruction(
+          transpose, MakeBroadcastHlo(operand->mutable_operand(0),
+                                      new_bcast_dims, transpose->shape()));
     }
   }
 

@@ -68,7 +68,7 @@ struct PyArray_Storage {
   std::optional<Shape> dynamic_shape = std::nullopt;
 
   // Doubly-linked list of all PyArrays known to the client. Protected by the
-  // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
+  // GIL. Since multiple PyArrays may share the same PjRtBuffer, there may be
   // duplicate PjRtBuffers in this list.
   PyArray_Storage* next;
   PyArray_Storage* prev;
@@ -83,11 +83,6 @@ class PyArray : public pybind11::object {
   PyArray() = default;
 
   // "__init__" methods. Only used in python
-  static void PyInit(pybind11::object self, pybind11::object aval,
-                     pybind11::object sharding,
-                     absl::Span<const PyBuffer::object> py_buffers,
-                     bool committed, bool skip_checks);
-
   static void PyInit(pybind11::object self, pybind11::object aval,
                      pybind11::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
@@ -188,6 +183,7 @@ class PyArray : public pybind11::object {
 
   pybind11::object arrays();
   Status set_arrays(pybind11::object obj);
+  StatusOr<PyArray> FullyReplicatedShard();
 
   int num_shards() const {
     ifrt::Array* ifrt_array_ptr = ifrt_array();
@@ -254,7 +250,6 @@ class PyArrayResultHandler {
   PyArrayResultHandler(pybind11::object aval, pybind11::object sharding,
                        bool committed, bool skip_checks);
 
-  PyArray Call(absl::Span<const PyBuffer::object> py_buffers) const;
   PyArray Call(absl::Span<const PyArray> py_arrays) const;
   PyArray Call(PyArray py_array) const;
 

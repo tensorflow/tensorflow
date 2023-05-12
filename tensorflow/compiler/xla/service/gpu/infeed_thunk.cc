@@ -62,7 +62,7 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         &stream, block_status.error_message());
+                         &stream, block_status.message());
   }
 
   VLOG(2) << "Infeeding to GPU complete";

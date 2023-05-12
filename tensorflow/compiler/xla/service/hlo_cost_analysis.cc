@@ -780,6 +780,19 @@ int64_t HloCostAnalysis::GetConvolutionFlops(const HloInstruction* convolution,
     // Loop over each point in the kernel.
     for (int64_t kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
          ++kernel_idx) {
+      // Skip loop for trivial stride() and base_dilation()
+      if (window_dim.stride() == 1 && window_dim.base_dilation() == 1) {
+        const int64_t undilated_index_base =
+            window_dim.padding_low() -
+            kernel_idx * window_dim.window_dilation();
+        valid_position_count += std::max<int64_t>(
+            std::min<int64_t>(
+                input_limits[spatial_dimension] + undilated_index_base,
+                output_limits[spatial_dimension]) -
+                std::max<int64_t>(undilated_index_base, 0l),
+            0l);
+        continue;
+      }
       // Loop over each point in the output.
       for (int64_t output_idx = 0;
            output_idx < output_limits[spatial_dimension]; ++output_idx) {
@@ -1144,6 +1157,11 @@ Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   // actual properties of the op depend on the backend implementation.
   int64_t elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
   current_properties_[kFlopsKey] = elements * Log2Ceiling<uint64_t>(elements);
+  return OkStatus();
+}
+
+Status HloCostAnalysis::HandleTopK(const HloInstruction* topk) {
+  // TODO(cheshire): Cost analysis for TopK.
   return OkStatus();
 }
 

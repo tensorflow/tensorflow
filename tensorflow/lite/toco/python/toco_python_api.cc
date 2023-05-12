@@ -57,7 +57,7 @@ void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
                                  toco::TocoFlags* toco_flags,
                                  const std::string& input_contents_txt,
                                  const std::string& output_file_contents_txt,
-                                 const std::string& error_message,
+                                 absl::string_view error_message,
                                  GraphVizDumpOptions* dump_options) {
   // Make sure the graphviz file will be dumped under the same folder.
   dump_options->dump_graphviz = toco_flags->conversion_summary_dir();
@@ -212,7 +212,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
       if (!toco_flags.conversion_summary_dir().empty()) {
         PopulateConversionLogHelper(
             model_flags, &toco_flags, input_contents_txt,
-            output_file_contents_txt, status.error_message(), &dump_options);
+            output_file_contents_txt, status.message(), &dump_options);
       }
     }
   } else {
@@ -221,7 +221,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_Exception, status.error_message().c_str());
+    PyErr_SetString(PyExc_Exception, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
   if (extended_return && !enable_mlir_converter) {

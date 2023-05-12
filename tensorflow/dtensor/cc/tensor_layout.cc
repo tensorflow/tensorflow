@@ -406,7 +406,9 @@ std::vector<std::string> Mesh::hosts() const {
 std::string Mesh::device_type() const {
   if (IsEmpty()) return std::string();
   std::string device;
-  if (!global_devices_.empty()) {
+  if (IsSingleDevice()) {
+    device = single_device_;
+  } else if (!global_devices_.empty()) {
     device = global_devices_[0];
   } else {
     device = local_devices_[0];
@@ -541,6 +543,7 @@ uint64 Mesh::GlobalFingerprint() const {
   std::string mesh_str;
   // Add mesh dimensions
   absl::InlinedVector<std::string, 4> mesh_dim_lst;
+  mesh_dim_lst.reserve(mesh_dims_.size());
   for (const auto& dim : mesh_dims_)
     mesh_dim_lst.push_back(absl::StrCat(dim.name, "=", dim.size));
   mesh_str += absl::StrJoin(mesh_dim_lst, ",") + "|";
@@ -1308,48 +1311,31 @@ StatusOr<Layout> Layout::GetLayoutWithReducedDims(
   return Layout::FromProto(output_layout).value();
 }
 
-StatusOr<Layout> Layout::Truncate(int64 split_point, bool end) const {
+Layout Layout::Truncate(int64 split_point, bool end) const {
   if ((split_point == 0 && end) || (split_point == rank() && !end))
     return *this;
 
-  dtensor::LayoutProto output_layout;
-  TF_ASSIGN_OR_RETURN(*output_layout.mutable_mesh_config(), mesh().ToProto());
+  Layout output_layout(*this);
 
+  auto& specs = output_layout.sharding_specs_;
   if (end) {
-    for (int i = split_point; i < rank(); ++i)
-      *output_layout.add_sharding_specs() = dim(i);
+    specs.erase(specs.begin(), specs.begin() + split_point);
   } else {
-    for (int i = 0; i < split_point; ++i)
-      *output_layout.add_sharding_specs() = dim(i);
+    specs.resize(split_point);
   }
-  return Layout::FromProto(output_layout).value();
+  return output_layout;
 }
 
-namespace {
-// Adds unsharded sharding specs to layout.
-Layout PadLayout(const int64 rank, const bool is_padding_before,
-                 const Layout& layout) {
-  if (rank <= layout.rank()) return layout;
+Layout Layout::LeftPad(int64_t rank) const {
+  if (rank <= this->rank()) return *this;
 
-  // Create list of padding sharding specs.
-  const int n = rank - layout.rank();
-  std::vector<ShardingSpec> new_specs(n);
-  for (int i = 0; i < n; ++i)
-    new_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+  Layout output_layout(*this);
 
-  // Define concatenation point of layout specs.
-  auto concat_point = is_padding_before ? new_specs.end() : new_specs.begin();
-
-  // Concatenate old layout specs and new unsharded specs.
-  new_specs.insert(concat_point, layout.sharding_specs().begin(),
-                   layout.sharding_specs().end());
-  return Layout::GetLayout(new_specs, layout.mesh()).value();
-}
-}  // namespace
-
-Layout Layout::LeftPad(int64 rank) const {
-  bool is_padding_before = true;
-  return PadLayout(rank, is_padding_before, *this);
+  auto& specs = output_layout.sharding_specs_;
+  ShardingSpec spec;
+  spec.set_sharding_spec(Layout::kUnshardedDim);
+  specs.insert(specs.begin(), rank - this->rank(), spec);
+  return output_layout;
 }
 
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,

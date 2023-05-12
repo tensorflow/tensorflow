@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for array operations."""
 
+from tensorflow.core.config import flags
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -141,6 +142,12 @@ class ArrayOpTest(test.TestCase):
         Exception, "Shape must be rank 2 but is rank 3"
     ):
       gen_array_ops.lower_bound(arg0, arg1)
+
+  def testShapeDefaultIn32(self):
+    # The tf_shape_default_int64 flag should NOT be set when this test runs
+    self.assertFalse(flags.config().tf_shape_default_int64.value())
+    s1 = array_ops.shape_v2(array_ops.zeros([1, 2]))
+    self.assertEqual(s1.dtype, dtypes.int32)
 
 
 if __name__ == "__main__":

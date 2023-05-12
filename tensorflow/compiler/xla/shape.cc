@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -111,22 +113,14 @@ std::string Shape::ToString(bool print_layout) const {
 }
 
 bool Shape::IsInteger() const {
-  switch (element_type()) {
-    case PrimitiveType::S8:
-    case PrimitiveType::S16:
-    case PrimitiveType::S32:
-    case PrimitiveType::S64:
-    case PrimitiveType::U8:
-    case PrimitiveType::U16:
-    case PrimitiveType::U32:
-    case PrimitiveType::U64:
-      return true;
-    case PrimitiveType::TUPLE:
-      return absl::c_any_of(tuple_shapes_,
-                            [](const Shape& s) { return s.IsInteger(); });
-    default:
-      return false;
+  if (primitive_util::IsIntegralType(element_type())) {
+    return true;
   }
+  if (IsTuple()) {
+    return absl::c_any_of(tuple_shapes_,
+                          [](const Shape& s) { return s.IsInteger(); });
+  }
+  return false;
 }
 
 bool Shape::is_static() const {
@@ -157,6 +151,15 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
         (*layout_->mutable_minor_to_major())[i] -= 1;
       }
       ++i;
+    }
+    // Delete the corresponding dim level types.
+    if (LayoutUtil::IsSparse(this->layout())) {
+      auto* mut_dlt = layout_->mutable_dim_level_types();
+      auto* mut_dim_unique = layout_->mutable_dim_unique();
+      auto* mut_dim_ordered = layout_->mutable_dim_ordered();
+      mut_dlt->erase(mut_dlt->begin() + dim_to_delete);
+      mut_dim_unique->erase(mut_dim_unique->begin() + dim_to_delete);
+      mut_dim_ordered->erase(mut_dim_ordered->begin() + dim_to_delete);
     }
   }
 }

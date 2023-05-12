@@ -2290,7 +2290,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: count is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -2336,7 +2336,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: data is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -2382,7 +2382,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: while is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -8401,9 +8401,7 @@ ENTRY %reshape {
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "custom-call");
   ASSERT_NE(instruction, nullptr);
-  EXPECT_THAT(
-      instruction,
-      op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,2,2]0,1,2,3}"));
 }
 
 TEST_P(ParameterizedMetadataTest, PropagateThroughSingleUsers) {

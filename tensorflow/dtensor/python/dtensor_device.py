@@ -33,8 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.util import _pywrap_utils
 
 
 # TODO(allenl): Allow something other than "CUSTOM" so we don't need device
@@ -192,11 +191,6 @@ class DTensorDevice(object):
     """
     if not context.executing_eagerly():
       raise RuntimeError("`pack` must be called eagerly.")
-    if any(
-        issubclass(type(t), resource_variable_ops.BaseResourceVariable)
-        for t in tensors):
-      raise TypeError(
-          "Received Variable input to Pack, Variable is not supported.")
     self._register_mesh(layout.mesh)
     with ops.device(self.name):
       if all(isinstance(t, sparse_tensor.SparseTensor) for t in tensors):
@@ -243,9 +237,6 @@ class DTensorDevice(object):
     """
     if not context.executing_eagerly():
       raise RuntimeError("`unpack` must be called eagerly.")
-    if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
-      raise TypeError(
-          "Received Variable input to unpack, Variable is not supported.")
     try:
       tensors = _pywrap_dtensor_device.Unpack(
           context.context()._handle,  # pylint: disable=protected-access
@@ -283,7 +274,7 @@ class DTensorDevice(object):
     """
     if not context.executing_eagerly():
       raise RuntimeError("`fetch_layout` must be called eagerly.")
-    if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
+    if _pywrap_utils.IsVariable(dtensor):
       dtensor = dtensor.read_value()
     try:
       layout_string = _pywrap_dtensor_device.FetchLayout(
@@ -292,6 +283,9 @@ class DTensorDevice(object):
           self._device_info)
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
+
+    if layout_string is None:
+      return None
     return layout_lib.Layout.from_string(layout_string)
 
   def is_dtensor(self, tensor: Any) -> bool:
@@ -313,9 +307,8 @@ class DTensorDevice(object):
       raise RuntimeError("`is_dtensor` must be called eagerly.")
     if not tensor_util.is_tensor(tensor):
       return False
-    if isinstance(tensor, variables.Variable):
-      # Get the resource handle for tf.Variable
-      tensor = tensor._handle   # pylint: disable=protected-access
+    if _pywrap_utils.IsVariable(tensor):
+      tensor = tensor._handle  # pylint: disable=protected-access
     return _pywrap_dtensor_device.IsDTensor(
         context.context()._handle,  # pylint: disable=protected-access
         tensor,

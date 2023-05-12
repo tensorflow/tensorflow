@@ -152,6 +152,9 @@ absl::Status XlaThreeFry::operator()(const ExecutableRunOptions*,
   switch (values_buffer.dtype) {
     case S8:
     case U8:
+      FillBuffer<uint8_t>(values_buffer.data, state_out_buffer.data,
+                          values_buffer.size_in_bytes, threefry2x32, ctr, key);
+      break;
     case F16:
     case U16:
     case S16:
@@ -197,6 +200,9 @@ absl::Status XlaPhilox::operator()(const ExecutableRunOptions*,
   switch (values_buffer.dtype) {
     case S8:
     case U8:
+      FillBuffer<uint8_t>(values_buffer.data, state_out_buffer.data,
+                          values_buffer.size_in_bytes, philox4x32, ctr, key);
+      break;
     case F16:
     case U16:
     case S16:

@@ -164,6 +164,7 @@ cc_test(
     srcs = ["c_api_test.cc"],
     copts = tflite_copts(),
     data = [
+        "//tensorflow/lite:testdata/2_subgraphs.bin",
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/custom_sinh.bin",
@@ -175,6 +176,7 @@ cc_test(
         ":common",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
@@ -188,6 +190,7 @@ cc_test(
     srcs = ["c_api_test.cc"],
     copts = tflite_copts(),
     data = [
+        "//tensorflow/lite:testdata/2_subgraphs.bin",
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/custom_sinh.bin",
@@ -200,6 +203,7 @@ cc_test(
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:selectively_built_c_api_test_lib",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",

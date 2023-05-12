@@ -98,7 +98,7 @@ void KernelFallbackEmitError(
       absl::Status(
           ToAbslStatus(status).code(),
           tfrt::StrCat(model_info, "error running kernel fallback kernel ",
-                       op_name, ": ", status.error_message())));
+                       op_name, ": ", status.message())));
   std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
 }
@@ -207,7 +207,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
           absl::Status(ToAbslStatus(context.status()).code(),
                        tfrt::StrCat("error running kernel fallback kernel ",
                                     context.op_kernel().name(), ": ",
-                                    context.status().error_message())));
+                                    context.status().message())));
       for (auto& result : async_state->result_refs)
         result.SetError(diag.status);
       async_state->chain.SetError(diag.status);
@@ -527,7 +527,11 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
                                   *fallback_request_state, *kernel_runner,
                                   kernel_runner->IsAsync(), device);
 
-  // Finish recording the op execution time, given a non-null cost recorder.
+  // Finish recording the op execution time, given a non-null
+  // cost recorder.
+  //
+  // TODO(b/259602527): Measure async op costs more accurately with whole
+  // execution time. (It's not urgent because async ops are rare.)
   if (cost_recorder != nullptr) {
     op_chain->AndThen(
         [cost_recorder, run_start_time_ns, op_key = frame.op_key().GetValue()] {

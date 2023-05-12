@@ -190,6 +190,7 @@ DECL_CONVERT_OP(FakeQuant);
 DECL_CONVERT_OP(While);
 DECL_CONVERT_OP(Real);
 DECL_CONVERT_OP(Imag);
+DECL_CONVERT_OP(RFFT2d);
 
 #undef DECL_CONVERT_OP
 
@@ -826,7 +827,7 @@ LogicalResult ConvertTFLSignOp::matchAndRewrite(
   RankedTensorType output_type =
       tfl_sign_op.getResult().getType().cast<RankedTensorType>();
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertSignOp(rewriter, op, tfl_sign_op.getX(), output_type);
   if (!result) return failure();
 
@@ -1269,6 +1270,30 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
   return success();
 }
 
+// Returns a new type based on an input type and slicing information.
+// If the input is quantized per axis, slices the scale and zp arrays.
+// In any other case, returns the original type.
+RankedTensorType getTypeForSlice(RankedTensorType type, int64_t slice_size,
+                                 int64_t offset) {
+  if (auto per_channel_qtype =
+          dyn_cast<quant::UniformQuantizedPerAxisType>(type.getElementType())) {
+    SmallVector<double> output_scale_arr(
+        per_channel_qtype.getScales().begin() + offset,
+        per_channel_qtype.getScales().begin() + offset + slice_size);
+    SmallVector<int64_t> output_zp_arr(
+        per_channel_qtype.getZeroPoints().begin() + offset,
+        per_channel_qtype.getZeroPoints().begin() + offset + slice_size);
+    auto output_per_channel_qtype = quant::UniformQuantizedPerAxisType::get(
+        per_channel_qtype.getFlags(), per_channel_qtype.getStorageType(),
+        per_channel_qtype.getExpressedType(), output_scale_arr, output_zp_arr,
+        per_channel_qtype.getQuantizedDimension(),
+        per_channel_qtype.getStorageTypeMin(),
+        per_channel_qtype.getStorageTypeMax());
+    return RankedTensorType::get(type.getShape(), output_per_channel_qtype);
+  }
+  return type;
+}
+
 Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   auto input_type = dyn_cast<RankedTensorType>(op.getInput().getType());
   auto filter_type = dyn_cast<RankedTensorType>(op.getFilter().getType());
@@ -1308,13 +1333,22 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   auto bias_slice_ty =
       RankedTensorType::get(bias_size_val, bias_type.getElementType());
 
-  auto per_conv_out_type = RankedTensorType::get(
+  auto per_conv_out_ty = RankedTensorType::get(
       {output_type.getDimSize(0), output_type.getDimSize(1),
        output_type.getDimSize(2), output_type.getDimSize(3) / num_groups},
       output_type.getElementType());
 
   // Create a separate convolution for each group
   for (int i = 0; i < num_groups; ++i) {
+    auto verified_input_slice_ty =
+        getTypeForSlice(input_slice_ty, filter_channels, i * filter_channels);
+    auto verified_filter_slice_ty =
+        getTypeForSlice(filter_slice_ty, filter_channels, i * filter_channels);
+    auto verified_bias_slice_ty =
+        getTypeForSlice(bias_slice_ty, filter_channels, i * filter_channels);
+    auto verified_per_conv_out_ty =
+        getTypeForSlice(per_conv_out_ty, filter_channels, i * filter_channels);
+
     // Slice the input
     SmallVector<int64_t, 4> input_start_vals(rank, 0);
     input_start_vals.back() = i * filter_channels;
@@ -1322,7 +1356,8 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
         rewriter.getDenseI64ArrayAttr(input_start_vals);
 
     auto slice_input = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), input_slice_ty, op.getInput(), input_start, input_size);
+        op->getLoc(), verified_input_slice_ty, op.getInput(), input_start,
+        input_size);
 
     // Slice the filter
     SmallVector<int64_t, 4> filter_start_vals(rank, 0);
@@ -1331,19 +1366,20 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
         rewriter.getDenseI64ArrayAttr(filter_start_vals);
 
     auto slice_filter = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), filter_slice_ty, op.getFilter(), filter_start,
+        op->getLoc(), verified_filter_slice_ty, op.getFilter(), filter_start,
         filter_size);
 
     // Slice the bias
     DenseI64ArrayAttr bias_start =
         rewriter.getDenseI64ArrayAttr(i * filter_channels);
     auto slice_bias = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), bias_slice_ty, op.getBias(), bias_start, bias_size);
+        op->getLoc(), verified_bias_slice_ty, op.getBias(), bias_start,
+        bias_size);
 
     // Create a convolution for each set of slices
     auto conv = rewriter.create<TFL::Conv2DOp>(
-        op->getLoc(), per_conv_out_type, slice_input, slice_filter, slice_bias,
-        op.getDilationHFactor(), op.getDilationWFactor(),
+        op->getLoc(), verified_per_conv_out_ty, slice_input, slice_filter,
+        slice_bias, op.getDilationHFactor(), op.getDilationWFactor(),
         op.getFusedActivationFunction(), op.getPadding(), op.getStrideH(),
         op.getStrideW());
 
@@ -2152,8 +2188,8 @@ LogicalResult ConvertTFLRankOp::matchAndRewrite(
   RankedTensorType rank_type =
       RankedTensorType::get({1}, rewriter.getIntegerType(32));
   auto rank_attr = DenseI32ArrayAttr::get(rewriter.getContext(), {rank});
-  auto rank_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                    rank_type, rank_attr);
+  auto rank_const = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, op->getLoc(), rank_type, rank_attr.cast<ElementsAttr>());
 
   rewriter.replaceOp(op, {rank_const.getResult()});
 
@@ -2185,8 +2221,8 @@ LogicalResult ConvertTFLShapeOp::matchAndRewrite(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
   auto shape_attr =
       DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(shape_arr));
-  auto shape_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                     shape_type, shape_attr);
+  auto shape_const = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, op->getLoc(), shape_type, shape_attr.cast<ElementsAttr>());
 
   rewriter.replaceOp(op, {shape_const.getResult()});
 
@@ -2253,12 +2289,13 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
   if (!matchPattern(tfl_fill_op.getInput(), m_Constant(&value_elem)))
     return failure();
 
-  RankedTensorType fill_type = RankedTensorType::get(
-      ArrayRef<int64_t>(dims_vals), value_elem.getType().getElementType());
+  RankedTensorType fill_type =
+      RankedTensorType::get(ArrayRef<int64_t>(dims_vals),
+                            value_elem.getShapedType().getElementType());
   DenseArrayAttr fill_attr;
 
   // Convert to a compatible zero type.
-  if (value_elem.getType().getElementType().isa<FloatType>()) {
+  if (value_elem.getShapedType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
         total_size, value_elem.getValues<APFloat>()[0].convertToFloat());
     fill_attr =
@@ -2269,8 +2306,8 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
     fill_attr =
         DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(fill_arr));
   }
-  auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                       fill_type, fill_attr);
+  auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, op->getLoc(), fill_type, fill_attr.cast<ElementsAttr>());
   rewriter.replaceOp(op, {fill_const_op.getResult()});
 
   return success();
@@ -3524,21 +3561,20 @@ static LogicalResult LegalizeQuantizedPrelu(Operation* op,
 
   // Perform an element-wise multiplication on rescaled alpha and input for
   // PReLU.
-    Value alpha = tfl_prelu_op.getAlpha();
-    ShapedType alpha_type = alpha.getType().cast<ShapedType>();
-    UniformQuantizedType alpha_qtype =
-        alpha_type.getElementType().cast<UniformQuantizedType>();
+  Value alpha = tfl_prelu_op.getAlpha();
+  ShapedType alpha_type = alpha.getType().cast<ShapedType>();
+  UniformQuantizedType alpha_qtype =
+      alpha_type.getElementType().cast<UniformQuantizedType>();
 
-    Value op_rescale_alpha = removeZeroPointAndCastToInt32(
-        rewriter, op, alpha, alpha_qtype.getZeroPoint());
+  Value op_rescale_alpha = removeZeroPointAndCastToInt32(
+      rewriter, op, alpha, alpha_qtype.getZeroPoint());
 
-    Value op_mul =
-        CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
-                                      op_rescale_in, op_rescale_alpha, 0);
+  Value op_mul = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), rescale_type, op_rescale_in, op_rescale_alpha, 0);
 
-    op_rescale_slope_in = buildRescale(
-        rewriter, op, output_type, op_mul, scale_alpha,
-        /* input_zp = */ 0, output_qtype.getZeroPoint(), true, true);
+  op_rescale_slope_in =
+      buildRescale(rewriter, op, output_type, op_mul, scale_alpha,
+                   /* input_zp = */ 0, output_qtype.getZeroPoint(), true, true);
 
   Value op_rescale_identity_in = buildRescale(
       rewriter, op, output_type, input, scale_identity,
@@ -3904,7 +3940,7 @@ LogicalResult ConvertTFLConstOp::matchAndRewrite(
   if (!output_type) return failure();
 
   ElementsAttr elements = tfl_const_op.getValue();
-  Type element_type = elements.getType().getElementType();
+  Type element_type = elements.getShapedType().getElementType();
   if (output_type.getElementType().isa<quant::QuantizedType>()) {
     output_type = RankedTensorType::get(output_type.getShape(), element_type);
   }
@@ -4349,6 +4385,74 @@ LogicalResult ConvertTFLImagOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto rfft2d_op = cast<TFL::RFFT2dOp>(op);
+  auto loc = op->getLoc();
+  Value input = rfft2d_op.getInput();
+
+  auto input_type = dyn_cast<RankedTensorType>(input.getType());
+  auto output_type = dyn_cast<ShapedType>(rfft2d_op.getResult().getType());
+
+  if (!input_type || !output_type) {
+    return rewriter.notifyMatchFailure(op, "ranked input/output required");
+  }
+
+  if (!input_type.getElementType().isF32()) {
+    return rewriter.notifyMatchFailure(op, "input type must be fp32");
+  }
+
+  Value fft_length_value = rfft2d_op.getFftLength();
+  llvm::SmallVector<int32_t> fft_length;
+  if (failed(getVectorFromValue32(fft_length_value, fft_length))) {
+    return rewriter.notifyMatchFailure(op, "fft_length is not a constant");
+  }
+
+  auto fp32_ty = UnrankedTensorType::get(rewriter.getF32Type());
+
+  // Padding is automatically inserted during the lowering when
+  // fft_length > input shape. However, to take care of the
+  // case fft_length < input shape we need to crop the input.
+  const int64_t rank = input_type.getRank();
+  auto input_shape = input_type.getShape();
+  if (fft_length[0] < input_shape[rank - 2] ||
+      fft_length[1] < input_shape[rank - 1]) {
+    llvm::SmallVector<int64_t> slice_begin(rank, 0);
+    llvm::SmallVector<int64_t> slice_size;
+    for (auto dim : input_type.getShape().drop_back(2)) {
+      slice_size.push_back(dim);
+    }
+    slice_size.push_back(fft_length[0]);
+    slice_size.push_back(fft_length[1]);
+    input = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, loc, fp32_ty, input,
+        rewriter.getDenseI64ArrayAttr(slice_begin),
+        rewriter.getDenseI64ArrayAttr(slice_size));
+  }
+
+  auto rfft2d =
+      CreateOpAndInfer<tosa::RFFT2dOp>(rewriter, loc, fp32_ty, fp32_ty, input);
+
+  auto output_shape = output_type.getShape();
+  llvm::SmallVector<int64_t> new_shape{output_shape};
+  new_shape.push_back(1);
+  auto reshape_1 = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, fp32_ty, rfft2d.getResult(0),
+      rewriter.getDenseI64ArrayAttr(new_shape));
+  auto reshape_2 = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, fp32_ty, rfft2d.getResult(1),
+      rewriter.getDenseI64ArrayAttr(new_shape));
+
+  llvm::SmallVector<Value, 2> values = {reshape_1, reshape_2};
+  auto concat = CreateOpAndInfer<tosa::ConcatOp>(rewriter, loc, fp32_ty, values,
+                                                 rewriter.getI64IntegerAttr(3));
+
+  CreateReplaceOpAndInfer<mlir::UnrealizedConversionCastOp>(
+      rewriter, op, output_type, concat.getResult());
+
+  return success();
+}
+
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
@@ -4485,6 +4589,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLWhile);
   DEF_PATTERN_INSERT(TFLReal);
   DEF_PATTERN_INSERT(TFLImag);
+  DEF_PATTERN_INSERT(TFLRFFT2d);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.

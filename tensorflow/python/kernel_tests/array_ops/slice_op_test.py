@@ -181,7 +181,8 @@ class SliceTest(test.TestCase):
     input_val = 0
     # Test with constant input; shape inference fails.
     with self.assertRaisesWithPredicateMatch(
-        (ValueError, errors_impl.InvalidArgumentError), "out of range"):
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Attempting to slice scalar input."):
       constant_op.constant(input_val)[:].get_shape()
 
     # Test evaluating with non-constant input; kernel execution fails.

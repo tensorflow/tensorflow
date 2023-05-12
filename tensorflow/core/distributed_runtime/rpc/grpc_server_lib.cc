@@ -26,6 +26,7 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -151,6 +152,12 @@ Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
       if (server_def.port() != 0) {
         *port = server_def.port();
       } else {
+        if (server_def.replica() != 0) {
+          return errors::InvalidArgument(
+              "An explicit server port must be specified when using jobs "
+              "with multiple replicas: ",
+              server_def.DebugString());
+        }
         auto colon_index = iter->second.find_last_of(':');
         if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
                                    port)) {
@@ -193,9 +200,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   sess_opts.config = config;
 
   // Configure shared devices between master and worker.
-  string name_prefix =
-      strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
-                      "/task:", server_def_.task_index());
+  string name_prefix = strings::StrCat("/job:", server_def_.job_name(),
+                                       "/replica:", server_def_.replica(),
+                                       "/task:", server_def_.task_index());
   if (opts.local_device_mgr == nullptr) {
     std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(
@@ -206,7 +213,6 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     worker_env_.device_mgr = opts.local_device_mgr;
     owned_device_manager_.reset(nullptr);
   }
-  worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
 
   int num_tasks = 0;
@@ -249,7 +255,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   const Status status =
       ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false, &reuse_port);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   auto server_build_option =
       reuse_port
@@ -355,20 +361,24 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                     GrpcChannelSpec* channel_spec) {
-  for (const auto& job : options.cluster_def->job()) {
+  for (const auto& job : options.cluster_def.job()) {
     std::map<int, string> host_ports;
     for (const auto& task : job.tasks()) {
-      string& host_port = host_ports[task.first];
-      if (!host_port.empty()) {
-        return errors::InvalidArgument("JobDef for job \"", job.name(),
-                                       "\" specified two addresses for task \"",
-                                       task.first, "\": ", host_port, " and ",
-                                       task.second);
+      std::vector<std::string> parts = absl::StrSplit(task.second, ':');
+      int port = -1;
+      if (parts.size() == 2) {
+        if (!absl::SimpleAtoi(parts[1], &port)) {
+          return errors::InvalidArgument("Failed to parse port.", task.second);
+        }
       }
-      if (job.name() == *options.job_name && task.first == options.task_index) {
-        host_port = strings::StrCat(host_name_, ":", bound_port_);
+
+      // Some test cases pass in `localhost:0` as a hack to dynamically allocate
+      // the worker port. We swap in the bound worker port when we see this
+      // pattern.
+      if (job.name() == options.job_name && task.first == options.task_index) {
+        host_ports[task.first] = strings::StrCat(host_name_, ":", bound_port_);
       } else {
-        host_port = task.second;
+        host_ports[task.first] = task.second;
       }
     }
     TF_RETURN_IF_ERROR(channel_spec->AddHostPortsJob(job.name(), host_ports));
@@ -378,11 +388,11 @@ Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
 
 Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                       WorkerCacheInterface** worker_cache) {
-  if (options.job_name == nullptr || options.job_name->empty()) {
+  if (options.job_name.empty()) {
     Status s = errors::InvalidArgument(
         "The master (current machine) is not included in the provided "
         "cluster_def. ",
-        options.cluster_def->DebugString());
+        options.cluster_def.DebugString());
     LOG(WARNING) << s;
     return s;
   }
@@ -390,14 +400,11 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
 
-  if (options.rpc_options == nullptr) {
-    return errors::InvalidArgument(
-        "rpc_options not set in WorkerCacheFactoryOptions");
-  }
   std::shared_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
-      channel_spec, GetChannelCreationFunction(), *options.rpc_options));
+      channel_spec, GetChannelCreationFunction(), options.rpc_options));
 
-  string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
+  string name_prefix = strings::StrCat("/job:", options.job_name,
+                                       "/replica:", options.replica_index,
                                        "/task:", options.task_index);
 
   const string host_port = channel_cache->TranslateTask(name_prefix);

@@ -237,6 +237,32 @@ TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunksByRenaming) {
               IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 6, 7, 8, 9)));
 }
 
+TEST(SnapshotStreamWriterCheckpointTest,
+     SyncCheckpointsWithSingleChunkByRenaming) {
+  const int64_t range = 10;
+  const std::string compression = tsl::io::compression::kSnappy;
+  const DatasetDef dataset = testing::RangeDataset(range);
+  const int64_t stream_index = 0;
+  TF_ASSERT_OK_AND_ASSIGN(const std::string snapshot_path,
+                          CreateSnapshotDirectory());
+  TF_ASSERT_OK_AND_ASSIGN(
+      testing::PartialSnapshotWriter partial_writer,
+      testing::PartialSnapshotWriter::Create(dataset, snapshot_path,
+                                             stream_index, compression));
+
+  TF_ASSERT_OK(partial_writer.WriteUncommittedChunks({0}));
+  TF_ASSERT_OK(partial_writer.WriteCheckpoints({0}));
+
+  SnapshotWriterParams writer_params{snapshot_path, stream_index, compression,
+                                     Env::Default()};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          testing::TestIterator(dataset));
+  SnapshotStreamWriter writer(writer_params, std::move(iterator));
+  EXPECT_THAT(writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
+              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+}
+
 TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunksByDeleting) {
   const int64_t range = 10;
   const std::string compression = tsl::io::compression::kNone;

@@ -20,14 +20,18 @@ limitations under the License.
 #include <string.h>
 
 #include <initializer_list>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace {
@@ -915,6 +919,82 @@ TEST_F(KernelUtilTest, HasUnspecifiedDimension) {
   EXPECT_FALSE(HasUnspecifiedDimension(&tensor));
 
   TfLiteIntArrayFree(shape_sig);
+}
+
+// Sets up a TFLite context and default values to initialize/resize test
+// tensors.
+class SetTensorAllocationTypeTest : public testing::Test {
+ public:
+  SetTensorAllocationTypeTest() { tensor_.type = kTfLiteInt32; }
+  ~SetTensorAllocationTypeTest() override { TfLiteTensorFree(&tensor_); }
+
+ protected:
+  Interpreter interpreter_;
+  TfLiteContext& context_ = *interpreter_.primary_subgraph().context();
+  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> dims_ =
+      BuildTfLiteIntArray({2, 3, 4});
+  TfLiteTensor tensor_{};
+};
+
+TEST_F(SetTensorAllocationTypeTest,
+       SetUnallocatedDynamicTensorToDynamicIsANoop) {
+  tensor_.allocation_type = kTfLiteDynamic;
+  SetTensorToDynamic(&tensor_);
+  EXPECT_EQ(tensor_.data.data, nullptr);
+  EXPECT_EQ(tensor_.allocation_type, kTfLiteDynamic);
+}
+
+TEST_F(SetTensorAllocationTypeTest, SetAllocatedDynamicTensorToDynamicIsANoop) {
+  tensor_.allocation_type = kTfLiteDynamic;
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_.release()),
+            kTfLiteOk);
+  const void* const original_data = tensor_.data.data;
+  SetTensorToDynamic(&tensor_);
+  EXPECT_EQ(tensor_.data.data, original_data);
+  EXPECT_EQ(tensor_.allocation_type, kTfLiteDynamic);
+}
+
+TEST_F(SetTensorAllocationTypeTest,
+       SetAllocatedPersistentRoTensorToDynamicFreesExistingTensorData) {
+  tensor_.allocation_type = kTfLitePersistentRo;
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_.release()),
+            kTfLiteOk);
+
+  // Leak checker will raise an error if data is not freed.
+  SetTensorToDynamic(&tensor_);
+  EXPECT_EQ(tensor_.data.data, nullptr);
+  EXPECT_EQ(tensor_.allocation_type, kTfLiteDynamic);
+}
+
+TEST_F(SetTensorAllocationTypeTest,
+       SetUnallocatedPersistentRoTensorToPersistentRoIsANoop) {
+  tensor_.allocation_type = kTfLitePersistentRo;
+  SetTensorToPersistentRo(&tensor_);
+  EXPECT_EQ(tensor_.data.data, nullptr);
+  EXPECT_EQ(tensor_.allocation_type, kTfLitePersistentRo);
+}
+
+TEST_F(SetTensorAllocationTypeTest,
+       SetAllocatedPersistentRoTensorToPersistentRoIsANoop) {
+  tensor_.allocation_type = kTfLitePersistentRo;
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_.release()),
+            kTfLiteOk);
+  const void* const original_data = tensor_.data.data;
+  SetTensorToPersistentRo(&tensor_);
+  EXPECT_EQ(tensor_.data.data, original_data);
+  EXPECT_EQ(tensor_.allocation_type, kTfLitePersistentRo);
+}
+
+TEST_F(SetTensorAllocationTypeTest,
+       SetAllocatedDynamicTensorToPersistentRoFreesExistingTensorData) {
+  tensor_.allocation_type = kTfLiteDynamic;
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_.release()),
+            kTfLiteOk);
+
+  // Leak checker will raise an error if data is not freed.
+  SetTensorToPersistentRo(&tensor_);
+  EXPECT_EQ(tensor_.data.data, nullptr);
+  EXPECT_EQ(tensor_.allocation_type, kTfLitePersistentRo);
 }
 
 }  // namespace

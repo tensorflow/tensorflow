@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -56,6 +55,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 #include "tensorflow/lite/util.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tflite {
 
@@ -83,6 +83,7 @@ inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
     max = 7;
   }
 
+  q.reserve(data.size());
   for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
         min, std::min<float>(max, std::round(zero_point + (f / scale))))));
@@ -697,6 +698,10 @@ class SingleOpModel {
   int CountNumberOfDelegatedPartitions() const;
   int GetNumberOfAppliedDelegates() const { return num_applied_delegates_; }
 
+  // Tell TF Lite runtime to apply default delegates (i.e. XNNPACK delegate)
+  // when handling this op-level model.
+  void SetApplyDefaultDelegates() { bypass_default_delegates_ = false; }
+
  protected:
   int32_t GetTensorSize(int index) const;
 
@@ -1029,7 +1034,8 @@ class SingleOpModel {
 
   // Whether to bypass the application of TF Lite default delegates (i.e.
   // XNNPACK delegate) at rutnime.
-  bool bypass_default_delegates_ = false;
+  // True by default as delegated graphs are tested elsewhere.
+  bool bypass_default_delegates_ = true;
 };
 
 // Populate string tensors.
@@ -1214,7 +1220,7 @@ class DimsAreMatcher {
 
   // Required method to implement for matcher objects. We overload on
   // both `TfLiteTensor*` and `TfLiteIntArray` for flexibility.
-  bool MatchAndExplain(TfLiteIntArray* arg,
+  bool MatchAndExplain(const TfLiteIntArray* arg,
                        testing::MatchResultListener* result_listener) const {
     if (arg == nullptr) {
       *result_listener << "dims are null";
@@ -1227,7 +1233,7 @@ class DimsAreMatcher {
     return false;
   }
 
-  bool MatchAndExplain(TfLiteTensor* arg,
+  bool MatchAndExplain(const TfLiteTensor* arg,
                        testing::MatchResultListener* result_listener) const {
     return MatchAndExplain(arg->dims, result_listener);
   }

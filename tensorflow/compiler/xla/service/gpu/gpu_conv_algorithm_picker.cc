@@ -112,7 +112,7 @@ StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
 
 StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
     const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend,
-    bool use_fallback) {
+    bool use_fallback, bool deterministic_ops) {
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
                       GetDNNConvKindFromCudnnConvKind(config.kind));
 
@@ -146,7 +146,8 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
           /* leakyrelu_alpha = */ 0.0, stream, config.input_descriptor,
           config.filter_descriptor, config.bias_descriptor,
           config.output_descriptor, config.conv_desc, use_fallback,
-          config.fusion->mode, &runners));
+          config.fusion->mode, se::NumericOptions{deterministic_ops},
+          &runners));
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
@@ -171,7 +172,8 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
           /* filter_data = */ DeviceMemoryBase(nullptr),
           config.output_descriptor,
           /* output_data = */ DeviceMemoryBase(nullptr), config.conv_desc,
-          use_fallback, nullptr, &runners));
+          use_fallback, nullptr, se::NumericOptions{deterministic_ops},
+          &runners));
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
@@ -191,7 +193,8 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
                     se::DeviceMemoryBase result_buffer,
                     se::StreamExecutor* stream_exec,
-                    ScratchAllocator* scratch_allocator, se::Stream* stream) {
+                    ScratchAllocator* scratch_allocator, se::Stream* stream,
+                    bool deterministic_ops) {
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
@@ -210,7 +213,7 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
       params.config->filter_descriptor, params.filter_buf,
       params.config->output_descriptor, params.output_buf,
       params.config->conv_desc, /* use_fallback = */ false, scratch_allocator,
-      &runners));
+      se::NumericOptions{deterministic_ops}, &runners));
 
   return runners;
 }
@@ -824,16 +827,18 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   const bool cudnn_frontend_enabled =
       debug_options.xla_gpu_enable_cudnn_frontend();
+  const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
 
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm suffices. It doesn't make
   // this algorithm considered correct, though.
   std::optional<ReferenceResult> reference_result;
 
-  TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
-                      GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                                    cudnn_frontend_enabled,
-                                    /* use_fallback = */ false));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<MaybeFusedConvRunner> runners,
+      GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
+                    cudnn_frontend_enabled,
+                    /* use_fallback = */ false, deterministic_ops));
 
   std::vector<AutotuneResult> profile_results;
   for (auto& runner_cache : runners) {
@@ -853,10 +858,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       LOG(WARNING) << "Conv: " << runtime_arguments.canonical_hlo.value();
     }
 
-    TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> fallback_runners,
-                        GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                                      cudnn_frontend_enabled,
-                                      /* use_fallback = */ true));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<MaybeFusedConvRunner> fallback_runners,
+        GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
+                      cudnn_frontend_enabled,
+                      /* use_fallback = */ true, deterministic_ops));
 
     for (auto& runner_cache : fallback_runners) {
       TF_ASSIGN_OR_RETURN(
@@ -924,6 +930,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
 #if GOOGLE_CUDA
   Shape output_shape = conv_config.output_shape;
   HloModuleConfig hlo_module_config;
+  hlo_module_config.set_debug_options(*debug_options);
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* allocator = run_options->allocator();
   se::RedzoneAllocator input_output_allocator(
@@ -950,6 +957,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     se::Stream* stream) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr->ToString()));
+
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+  const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
 
   se::StreamExecutor* stream_exec = std::get<DeviceConfig>(config_).stream_exec;
   const auto device_ordinal = stream_exec->device_ordinal();
@@ -986,7 +997,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners,
       GetMIOpenAlgorithms(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                          stream_exec, &scratch_allocator, stream));
+                          stream_exec, &scratch_allocator, stream,
+                          deterministic_ops));
 
   std::vector<AutotuneResult> profile_results;
 

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <jni.h>
 
-#include "tensorflow/lite/core/shims/c/shims_test_util.h"
+#include "tensorflow/lite/c/test_util.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 
 extern "C" {

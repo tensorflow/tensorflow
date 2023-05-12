@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -192,6 +193,33 @@ void HloModule::MarkFusionDuplications(
         }
       }
     }
+  }
+}
+
+void HloModule::MoveComputationsFrom(HloModule* module) {
+  for (size_t i = 0; i < module->computation_count(); ++i) {
+    for (auto* instruction : module->computations_[i]->instructions()) {
+      instruction->ClearUniqueIdInternal();
+    }
+    module->computations_[i]->ClearUniqueIdInternal();
+    auto computation_raw_ptr = module->computations_[i].get();
+    if (computation_raw_ptr->IsEntryComputation()) {
+      this->entry_computation_ = nullptr;
+    }
+    this->AddComputationInternal(
+        std::move(module->computations_[i]),
+        /*is_entry=*/computation_raw_ptr->IsEntryComputation(),
+        /*uniquify_identifiers=*/false,
+        /*preserve_entry_layouts=*/false);
+    // Pick unique IDs for each instruction.
+    for (auto* instruction : computation_raw_ptr->instructions()) {
+      instruction->SetUniqueId(NewUniqueInstructionId());
+    }
+    // Set unique id to this computation_raw_ptr.
+    CHECK_NE(computation_raw_ptr->root_instruction()->unique_id(), -1)
+        << "Root has no valid id: " << computation_raw_ptr->ToString();
+    computation_raw_ptr->SetUniqueId(
+        computation_raw_ptr->root_instruction()->unique_id());
   }
 }
 
@@ -1037,6 +1065,13 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
+  const tsl::Fprint128 fingerprint = tsl::Fingerprint128(ToString(options));
+  absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
+                             sizeof(tsl::Fprint128));
+  return absl::BytesToHexString(fp_bytes);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -17,7 +17,6 @@ import os
 import threading
 import time
 
-# Google-internal import(s).
 from tensorflow.core.util import event_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
@@ -63,7 +62,8 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
     """
 
     if log_usage:
-      pass  # No logging for open-source.
+      # TODO(juanantoniomc): Finalize log_usage deprecation by removing arg.
+      pass
 
     framework.NonInteractiveDebugWrapperSession.__init__(
         self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter,

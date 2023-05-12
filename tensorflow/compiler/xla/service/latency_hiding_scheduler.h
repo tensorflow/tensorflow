@@ -42,10 +42,11 @@ enum class ResourceType {
   kAllGather = 2,
   kAllReduce = 3,
   kCollectivePermute = 4,
-  kSendRecv = 5,
-  kSendHost = 6,
-  kRecvHost = 7,
-  kNumResources = 8,
+  kReduceScatter = 5,
+  kSendRecv = 6,
+  kSendHost = 7,
+  kRecvHost = 8,
+  kNumResources = 9,
   kTargetDefinedResourcesBound = 10000,
 };
 
@@ -80,6 +81,7 @@ struct SchedulerConfig {
   int64_t all_to_all_overlap_limit = 1;
   int64_t all_gather_overlap_limit = 1;
   int64_t all_reduce_overlap_limit = 1;
+  int64_t reduce_scatter_overlap_limit = 1;
   int64_t send_recv_overlap_limit = 1;
   int64_t send_recv_host_overlap_limit = 1;
   bool schedule_send_recvs = false;
@@ -105,6 +107,8 @@ class LatencyEstimator {
   // Returns the core frequency used in latency estimation.
   virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
+
+  static bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target);
 };
 
 // Implementation of LatencyEstimator using an approximate cost model.
@@ -181,7 +185,7 @@ class AsyncTracker {
 
   // Returns the hazard type that describes how to resolve the conflicts when
   // multiple instructions attempt to use the given resource type concurrently.
-  // Default resources have a hazard type of kSerial.
+  // Default resources have a hazard type of kUnshareable.
   virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
   explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
@@ -242,7 +246,9 @@ class HloGraphNode {
   TimeCost GetCost() const { return cost_; }
   void SetCost(TimeCost cost) { cost_ = cost; }
   TimeCost GetAsyncDepth() const { return async_depth_; }
+  TimeCost GetDepth() const { return depth_; }
   void SetAsyncDepth(TimeCost async_depth) { async_depth_ = async_depth; }
+  void SetDepth(TimeCost depth) { depth_ = depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
   ResourcesVector GetResources() const { return resources_; }
@@ -300,6 +306,7 @@ class HloGraphNode {
     absl::StrAppend(&result, "Outdegree: ", outdegree_, "\n");
     absl::StrAppend(&result, "Cost: ", cost_, "\n");
     absl::StrAppend(&result, "Async Depth: ", async_depth_, "\n");
+    absl::StrAppend(&result, "Depth: ", depth_, "\n");
     absl::StrAppend(&result, "Force Delay: ", force_delay_, "\n");
     absl::StrAppend(&result, "Predecessors:\n");
     for (const HloEdge& e : predecessors_) {
@@ -344,6 +351,8 @@ class HloGraphNode {
   TimeCost cost_ = 0.0;
   // Depth in latency terms of a node based on Async operation cost on the path.
   TimeCost async_depth_ = 0.0;
+  // Depth in latency terms of node based on distance to the entry nodes.
+  TimeCost depth_ = 0.0;
   // AsyncResources used by the node.
   ResourcesVector resources_;
   // Force the scheduling of the nodes with attribute set as late as possible.
@@ -592,6 +601,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   struct ScheduleCandidate {
     HloGraphNode* node = nullptr;
     std::optional<std::pair<int64_t, int64_t>> pressure_change;
+    std::optional<HloGraphNode::TimeCost> estimated_connected_send_ready_time;
     std::optional<bool> resource_constrained;
   };
 
@@ -776,6 +786,14 @@ class LatencyHidingScheduler : public HloModulePass {
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   absl::flat_hash_set<HloComputation*> computations_to_schedule_;
 };
+
+struct CanonicalAsyncOp {
+  HloOpcode outer;  // kAsyncStart or kAsyncDone
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
+                    // or kReduceScatter
+};
+
+CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo);
 
 }  // namespace xla
 

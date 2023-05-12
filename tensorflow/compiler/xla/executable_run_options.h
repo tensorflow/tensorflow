@@ -21,6 +21,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+
 // These classes are forward declared so that ExecutableRunOptions can be linked
 // into an XLA-compiled binary without having to link all of the pointed-to
 // objects (e.g., for an ahead-of-time compiled CPU binary, the gpu tools don't
@@ -38,17 +41,11 @@ struct ThreadPoolDevice;
 }  // namespace Eigen
 
 namespace tsl {
-class Status;
-template <typename T>
-class StatusOr;
 template <typename T>
 class AsyncValueRef;
 }  // namespace tsl
 
 namespace xla {
-
-using ::tsl::Status;    // TENSORFLOW_STATUS_OK
-using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 class DeviceAssignment;
 class ExecutionProfile;
@@ -96,19 +93,23 @@ using ThenExecuteFunction =
 
 // Callback for sending device buffer to a channel. Returned event will be
 // recorded on a `stream` once the send operation is completed and data was
-// copied from the `src` memory.
+// copied from the `src` memory. `frontend_attrs` contains frontend specific
+// attributes for the send.
 using SendDeviceMemoryFunction =
-    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        const stream_executor::DeviceMemoryBase& src)>;
+        const stream_executor::DeviceMemoryBase& src,
+        const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
 
 // Callback for receiving device buffer from a channel. Returned event will be
 // recorded on a `stream` once the recv operation is completed and data was
-// copied into the `dst` memory.
+// copied into the `dst` memory. `frontend_attrs` contains frontend specific
+// attributes for the receive.
 using RecvDeviceMemoryFunction =
-    std::function<StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        stream_executor::DeviceMemoryBase* dst)>;
+        stream_executor::DeviceMemoryBase* dst,
+        const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
 
 // Class containing options for running a LocalExecutable.
 class ExecutableRunOptions {

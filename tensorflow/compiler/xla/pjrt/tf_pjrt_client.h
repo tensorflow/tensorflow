@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -158,6 +159,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->SerializeExecutable();
   }
 
+  StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return wrapped_->GetCompileOptions();
+  }
+
  private:
   TfPjRtClient* client_;
   std::unique_ptr<PjRtLoadedExecutable> wrapped_;
@@ -170,6 +175,7 @@ class TfPjRtClient : public PjRtClient {
   static std::unique_ptr<TfPjRtClient> CreateTfPjRtClient(
       std::unique_ptr<PjRtClient> wrapped);
   explicit TfPjRtClient(std::unique_ptr<PjRtClient> wrapped);
+  ~TfPjRtClient() override;
   int process_index() const override { return wrapped_->process_index(); }
   int device_count() const override { return wrapped_->device_count(); }
   int addressable_device_count() const override {
@@ -186,6 +192,10 @@ class TfPjRtClient : public PjRtClient {
   }
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override {
+    if (wrapped_ == nullptr) {
+      return tsl::errors::Internal(
+          "Wrapped PJRT client in TfPjRtClient is already destoryed.");
+    }
     return wrapped_->LookupAddressableDevice(local_hardware_id);
   }
   PjRtPlatformId platform_id() const override {
@@ -247,6 +257,16 @@ class TfPjRtClient : public PjRtClient {
     return WrapBuffer(wrapped_->BufferFromHostBuffer(
         data, type, dims, byte_strides, host_buffer_semantics,
         on_done_with_host_buffer, device));
+  }
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) override {
+    return WrapBuffer(wrapped_->BufferFromHostBuffer(
+        data, type, dims, byte_strides, host_buffer_semantics,
+        on_done_with_host_buffer, device, device_layout));
   }
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {

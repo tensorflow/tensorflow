@@ -21,14 +21,14 @@ import sys
 
 from absl import logging
 
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.function.capture import restore_captures
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint import restore
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -121,7 +121,7 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+  def _call_flat(self, args, captured_inputs):
 
     def get_handle(x):
       return x.handle if distribute_utils.is_distributed_variable(x) else x
@@ -130,7 +130,7 @@ class _WrapperFunction(function.ConcreteFunction):
       return _unused_handle() if distribute_utils.is_distributed_variable(x)   \
           else x
 
-    if (ds_context.get_replica_context() is not None or
+    if (distribute_lib.get_replica_context() is not None or
         values_util.is_saving_non_distributed()):
       # If we're in the replica context or are saving a non-distributed version
       # of the model, we resolve the captured variables to the corresponding
@@ -143,8 +143,7 @@ class _WrapperFunction(function.ConcreteFunction):
       captured_inputs = list(map(get_handle, captured_inputs))
     else:  # cross-replica context
       captured_inputs = list(map(get_unused_handle, captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
-                                                    cancellation_manager)
+    return super()._call_flat(args, captured_inputs)
 
 
 class Loader(object):
@@ -168,6 +167,33 @@ class Loader(object):
     self._restored_concrete_functions = set()
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
+
+    # Metagraph has a mapping from FunctionDef name to aliases
+    self._concrete_function_aliases = meta_graph.meta_info_def.function_aliases
+    self.function_aliases = {}
+    if self._save_options.experimental_load_function_aliases:
+      # Create a mapping from aliases to polymorphic restored functions or lists
+      # of concrete functions. This mapping can later be used with SaveOptions
+      # when re-saving the loaded object to a SavedModel. We start with a
+      # mapping from aliases to lists of concrete functions. Later in
+      # _recreate_function, on a entry by entry basis, we replace lists with
+      # polymorphic restored functions if the concrete function associated with
+      # a restored function is identical to a list of concrete functions in an
+      # entry.
+      concrete_func_list_by_alias = collections.defaultdict(list)
+      for concrete_func_name, alias in self._concrete_function_aliases.items():
+        if concrete_func_name not in self._concrete_functions:
+          logging.warn(
+              (
+                  "ConcreteFunction `%s` is listed in function alias but it"
+                  " is not found."
+              ),
+              concrete_func_name,
+          )
+          continue
+        concrete_function = self._concrete_functions[concrete_func_name]
+        concrete_func_list_by_alias[alias].append(concrete_function)
+      self.function_aliases = dict(concrete_func_list_by_alias)
 
     self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
@@ -682,6 +708,39 @@ class Loader(object):
         proto, self._concrete_functions)
     for name in proto.concrete_functions:
       self._setup_function_captures(name, dependencies)
+
+    # If the list of concrete functions associated with this polymorphic
+    # restored function is identical to a list of concrete functions found in
+    # the function alias mapping, we replace the latter with this restored
+    # function. Also see comments in the __init__ method.
+    if self._save_options.experimental_load_function_aliases:
+      if proto.concrete_functions and all(
+          name in self._concrete_function_aliases
+          for name in proto.concrete_functions
+      ):
+        alias = self._concrete_function_aliases[
+            next(iter(proto.concrete_functions))
+        ]
+        aliased = self.function_aliases.get(alias)
+        assert isinstance(aliased, list)
+        # Note that we cannot compare f.name below with proto.concrete_functions
+        # because the former is new name for the restored ConcreteFunction
+        # object while the latter is the old name in the original proto.
+        if set(f.name for f in aliased) == set(
+            f.name for f in fn._list_all_concrete_functions()  # pylint: disable=protected-access
+        ):
+          self.function_aliases[alias] = fn
+        else:
+          logging.warn(
+              (
+                  "Not aliasing '%s' to polymorphic restored function because"
+                  " of mismatched concrete functions: %s vs %s"
+              ),
+              alias,
+              set(f.name for f in aliased),
+              set(f.name for f in fn._list_all_concrete_functions()),  # pylint: disable=protected-access
+          )
+
     return fn, setattr
 
   def _recreate_bare_concrete_function(self, proto, dependencies):
@@ -982,6 +1041,15 @@ def load_partial(export_dir, filters, tags=None, options=None):
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
     metrics.IncrementRead(write_version="2")
+
+    if options.experimental_load_function_aliases:
+      if hasattr(root, "function_aliases"):
+        raise ValueError(
+            "Could not load with experimental_load_function_aliases option"
+            " because the top-level object already has an attributed with name"
+            " 'function_aliases'"
+        )
+      root.function_aliases = loader.function_aliases
   else:
     if filters:
       raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
@@ -997,7 +1065,12 @@ def load_partial(export_dir, filters, tags=None, options=None):
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
   except FileNotFoundError:
-    logging.exception("Unable to load fingerprint when loading saved model.")
+    logging.info(
+        "Fingerprint not found. Saved model loading will continue.")
+    singleprint = ""
+  except RuntimeError:
+    logging.exception(
+        "Fingerprint was found, but there was an error when reading the proto.")
     singleprint = ""
   else:
     metrics.SetReadFingerprint(

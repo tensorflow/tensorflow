@@ -124,9 +124,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -138,6 +135,9 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ] + if_not_windows([
         "//tensorflow/core:sparse_ops_op_lib",
         "//tensorflow/core:parsing_ops_op_lib",

@@ -88,3 +88,40 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-SAME:      }
 // CHECK:       %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG0]], %[[ARG1]])
 // CHECK:       return %[[RES]]
+
+// CHECK-JFLT-LABEL: @binary_sub
+// CHECK-JFLT:  %[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>
+// CHECK-JFLT:  %[[LIMIT:.*]] = arith.constant 4294967296
+// CHECK-JFLT:  %[[SHAPE1:.*]] = shape.shape_of %[[ARG0]] : tensor<*xf32> -> tensor<?xindex>
+// CHECK-JFLT:  %[[ELEMENTCOUNT1:.*]] = shape.num_elements %[[SHAPE1]] : tensor<?xindex> -> index
+// CHECK-JFLT:  %[[COMP1:.*]] = arith.cmpi sgt, %[[ELEMENTCOUNT1]], %[[LIMIT]] : index
+// CHECK-JFLT:  %[[SHAPE2:.*]] = shape.shape_of %[[ARG1]] : tensor<*xf32> -> tensor<?xindex>
+// CHECK-JFLT:  %[[ELEMENTCOUNT2:.*]] = shape.num_elements %[[SHAPE2]] : tensor<?xindex> -> index
+// CHECK-JFLT:  %[[COMP2:.*]]  = arith.cmpi sgt, %[[ELEMENTCOUNT2]], %[[LIMIT]] : index
+// CHECK-JFLT:  %[[COMPRES:.*]] = arith.ori %[[COMP1]], %[[COMP2]] : i1
+// CHECK-JFLT:  %[[IFRES:.*]] = scf.if %[[COMPRES]] -> (tensor<*xf32>) {
+// CHECK-JFLT:       %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
+// CHECK-JFLT-SAME:      "
+// CHECK-JFLT-SAME:      module {
+// CHECK-JFLT-SAME:        func @main(%[[ARG0_JIT:.*]]: tensor<*xf32>, %[[ARG1_JIT:.*]]: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-JFLT-SAME:          attributes {tf_entry}
+// CHECK-JFLT-SAME:        {
+// CHECK-JFLT-SAME:          %[[RES_JIT:.*]] = \22tf.Sub\22(%[[ARG0_JIT]], %[[ARG1_JIT]])
+// CHECK-JFLT-SAME:          return %[[RES_JIT]]
+// CHECK-JFLT-SAME:        }
+// CHECK-JFLT-SAME:      }
+// CHECK-JFLT-SAME:      "
+// CHECK-JFLT-SAME:      {
+// CHECK-JFLT-SAME:        cpuCodegen = false
+// CHECK-JFLT-SAME:        enableFtz = false
+// CHECK-JFLT-SAME:        maxSupportedRank = 32 : i64
+// CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
+// CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
+// CHECK-JFLT-SAME:      }
+// CHECK-JFLT:       %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG0]], %[[ARG1]])
+// CHECK-JFLT: scf.yield %[[RES]] : tensor<*xf32>
+// CHECK-JFLT:     } else {
+// CHECK-JFLT:       %[[RES2:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK-JFLT:       scf.yield %[[RES2]] : tensor<*xf32>
+// CHECK-JFLT:     }
+// CHECK-JFLT:       return %[[IFRES]]

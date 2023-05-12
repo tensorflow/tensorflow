@@ -15,6 +15,7 @@ package_group(
     packages = [
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
+        "//tensorflow/core/tfrt/utils/debug/...",
     ],
 )
 
@@ -167,6 +168,7 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:standard_ops",  # build_cleaner: keep
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -294,6 +296,7 @@ pytype_strict_binary(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:standard_ops",  # build_cleaner: keep
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
@@ -605,11 +608,13 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "//tensorflow/core/tfrt/graph_executor:config",
+        "//tensorflow/core/tfrt/graph_executor:test_config_proto_cc",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_mira_impl",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
-        "@com_google_googletest//:gtest",
+        "//testing/base/public:gunit_for_library_testonly",
         "@tf_runtime//:core_runtime_alwayslink",
     ],
     alwayslink = 1,

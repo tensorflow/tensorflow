@@ -202,20 +202,24 @@ void BuildMlirSubmodule(py::module& m) {
   py::module mlir_module = m.def_submodule("mlir", "MLIR/XLA integration");
 
   mlir_module.def("xla_computation_to_mlir_module",
-                  &PyXlaComputationToMlirModule, py::arg("computation"),
-                  py::arg("emit_stable_hlo") = true);
+                  xla::ValueOrThrowWrapper(PyXlaComputationToMlirModule),
+                  py::arg("computation"), py::arg("emit_stable_hlo") = true);
   mlir_module.def("mlir_module_to_xla_computation",
-                  &PyMlirModuleToXlaComputation, py::arg("mlir_module"),
-                  py::arg("use_tuple_args") = false,
+                  xla::ValueOrThrowWrapper(PyMlirModuleToXlaComputation),
+                  py::arg("mlir_module"), py::arg("use_tuple_args") = false,
                   py::arg("return_tuple") = false);
-  mlir_module.def("mhlo_to_stablehlo", &PyMhloToStablehlo,
+  mlir_module.def("mhlo_to_stablehlo",
+                  xla::ValueOrThrowWrapper(PyMhloToStablehlo),
                   py::arg("mlir_module"));
-  mlir_module.def("stablehlo_to_mhlo", &PyStablehloToMhlo,
+  mlir_module.def("stablehlo_to_mhlo",
+                  xla::ValueOrThrowWrapper(PyStablehloToMhlo),
                   py::arg("mlir_module"));
-  mlir_module.def("serialize_portable_artifact", &PySerializePortableArtifact,
+  mlir_module.def("serialize_portable_artifact",
+                  xla::ValueOrThrowWrapper(PySerializePortableArtifact),
                   py::arg("mlir_module"), py::arg("target"));
   mlir_module.def("deserialize_portable_artifact",
-                  &PyDeserializePortableArtifact, py::arg("mlir_module"));
+                  xla::ValueOrThrowWrapper(PyDeserializePortableArtifact),
+                  py::arg("mlir_module"));
 }
 
 }  // namespace xla

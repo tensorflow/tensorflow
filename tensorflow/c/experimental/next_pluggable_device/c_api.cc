@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
@@ -110,9 +112,9 @@ TF_VariableInfo* TF_CreateVariableInfoFromContext(TF_OpKernelContext* ctx,
   const tensorflow::Tensor& arg_tensor = cc_ctx->input(index);
   tsl::Status cc_status;
   if (arg_tensor.dtype() != tensorflow::DT_RESOURCE) {
-    cc_status = tsl::errors::InvalidArgument(
-        "Trying to obtain resource handle from Input[", index,
-        "], which is not type DT_RESOURCE.");
+    cc_status = absl::InvalidArgumentError(
+        absl::StrCat("Trying to obtain resource handle from Input[", index,
+                     "], which is not type DT_RESOURCE."));
     tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
@@ -140,12 +142,12 @@ void TF_AllocateTempForVariableInfo(TF_OpKernelContext* ctx,
   auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelContext*>(ctx);
   tsl::Status cc_status;
   if (var_info == nullptr) {
-    cc_status = tsl::errors::InvalidArgument("TF_VariableInfo is NULL.");
+    cc_status = absl::InvalidArgumentError("TF_VariableInfo is NULL.");
     tsl::Set_TF_Status_from_Status(status, cc_status);
     return;
   }
   if (var_info->var_info.var() == nullptr) {
-    cc_status = tsl::errors::InvalidArgument(
+    cc_status = absl::InvalidArgumentError(
         "VariableInfo does not track a resource variable.");
     tsl::Set_TF_Status_from_Status(status, cc_status);
     return;
@@ -161,12 +163,12 @@ TF_Tensor* TF_GetTensorFromVariableInfo(TF_VariableInfo* var_info,
                                         TF_Status* status) {
   tsl::Status cc_status;
   if (var_info == nullptr) {
-    cc_status = tsl::errors::InvalidArgument("TF_VariableInfo is NULL.");
+    cc_status = absl::InvalidArgumentError("TF_VariableInfo is NULL.");
     tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
   if (var_info->var_info.var() == nullptr) {
-    cc_status = tsl::errors::InvalidArgument(
+    cc_status = absl::InvalidArgumentError(
         "VariableInfo does not track a resource variable.");
     tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
@@ -263,8 +265,9 @@ PJRT_Client* TF_GetPjRtCClient(const char* device_type, TF_Status* status) {
       tensorflow::down_cast<xla::PjRtCApiClient*>(*pjrt_client);
   if (pjrt_c_api_client == nullptr) {
     tensorflow::Set_TF_Status_from_Status(
-        status, tsl::errors::Internal("PjRtClient for ", device_type,
-                                      " is not type PjRtCApiClient"));
+        status,
+        absl::InternalError(absl::StrCat("PjRtClient for ", device_type,
+                                         " is not type PjRtCApiClient")));
     return nullptr;
   }
   TF_SetStatus(status, TF_OK, "");
@@ -282,8 +285,7 @@ PJRT_Buffer* TF_GetPjRtCBuffer(TF_Tensor* c_tensor, TF_Status* status) {
       tensorflow::AsyncValueTensor::FromTensor(&tensor);
   if (av_tensor == nullptr || av_tensor->GetBuffer() == nullptr) {
     tensorflow::Set_TF_Status_from_Status(
-        status,
-        tsl::errors::Internal("Input tensor does not have PjRtBuffer."));
+        status, absl::InternalError("Input tensor does not have PjRtBuffer."));
     return nullptr;
   }
   auto* c_api_buffer =
@@ -291,7 +293,7 @@ PJRT_Buffer* TF_GetPjRtCBuffer(TF_Tensor* c_tensor, TF_Status* status) {
   if (c_api_buffer == nullptr) {
     tensorflow::Set_TF_Status_from_Status(
         status,
-        tsl::errors::Internal(
+        absl::InternalError(
             "The PjRtBuffer in the tensor is not type PjRtCApiBuffer."));
     return nullptr;
   }
@@ -317,12 +319,20 @@ void TF_CreatePjRtBuffer(TF_Tensor* c_tensor, PJRT_Buffer* c_buffer,
       tensorflow::down_cast<xla::PjRtCApiClient*>(*pjrt_client);
   if (pjrt_c_api_client == nullptr) {
     tensorflow::Set_TF_Status_from_Status(
-        status, tsl::errors::Internal("PjRtClient for ", device_type,
-                                      " is not type PjRtCApiClient"));
+        status,
+        absl::InternalError(absl::StrCat("PjRtClient for ", device_type,
+                                         " is not type PjRtCApiClient")));
     return;
   }
   tensorflow::AsyncValueTensor* av_tensor =
       tensorflow::AsyncValueTensor::FromTensor(&tensor);
+  if (av_tensor == nullptr) {
+    tensorflow::Set_TF_Status_from_Status(
+        status,
+        absl::InternalError(
+            "The tensor to set PjRtBuffer is not an AsyncValueTensor."));
+    return;
+  }
   av_tensor->SetBuffer(
       std::make_unique<xla::PjRtCApiBuffer>(pjrt_c_api_client, c_buffer));
   TF_SetStatus(status, TF_OK, "");

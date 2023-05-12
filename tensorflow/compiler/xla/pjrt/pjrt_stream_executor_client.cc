@@ -145,14 +145,6 @@ StatusOr<LocalDeviceState*> PjRtStreamExecutorDevice::GetLocalDeviceState()
   return InvalidArgument("Device %s is not a local device.", DebugString());
 }
 
-absl::string_view PjRtStreamExecutorDevice::DebugString() const {
-  return debug_string_;
-}
-
-absl::string_view PjRtStreamExecutorDevice::ToString() const {
-  return to_string_;
-}
-
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
   if (devices.empty()) {
@@ -691,12 +683,13 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    const Layout* device_layout) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
-  Shape shape = ShapeUtil::MakeShape(type, dims);
+  Shape device_shape = ShapeUtil::MakeShape(type, dims);
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
-          << shape.ToString() << " device: " << device->DebugString();
+          << device_shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
@@ -705,20 +698,24 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
     TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(shape, absl::MakeSpan(tmp_strides)));
+        ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
-  int64_t size = ShapeUtil::ByteSizeOf(shape);
+  int64_t size = ShapeUtil::ByteSizeOf(device_shape);
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(Shape compact_shape,
-                      transfer_manager->ChooseCompactLayoutForShape(shape));
-  absl::InlinedVector<int64_t, 4> compact_shape_strides(
-      compact_shape.dimensions_size());
-  TF_RETURN_IF_ERROR(ShapeUtil::ByteStrides(
-      compact_shape, absl::MakeSpan(compact_shape_strides)));
+  if (device_layout != nullptr) {
+    *(device_shape.mutable_layout()) = *device_layout;
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        device_shape,
+        transfer_manager->ChooseCompactLayoutForShape(device_shape));
+  }
+  absl::InlinedVector<int64_t, 4> shape_strides(device_shape.dimensions_size());
+  TF_RETURN_IF_ERROR(
+      ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
-      (size == 0 || *byte_strides == compact_shape_strides);
+      (size == 0 || *byte_strides == shape_strides);
   // The CPU platform is special because the "host" and the "device" are in the
   // same memory space. If the input shape is in the correct layout and we don't
   // want to defer the copy onto a thread, we can use the following fast
@@ -769,13 +766,13 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
           definition_events, std::move(on_delete_callback));
       return std::unique_ptr<PjRtBuffer>(
           std::make_unique<PjRtStreamExecutorBuffer>(
-              shape, std::move(device_buffer), this, device));
+              device_shape, std::move(device_buffer), this, device));
     }
   }
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
-      AllocateDestinationBuffer(compact_shape, device, local_device,
+      AllocateDestinationBuffer(device_shape, device, local_device,
                                 local_device->host_to_device_stream(),
                                 /*is_uninitialized_create=*/false, this));
 
@@ -800,7 +797,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   std::shared_ptr<TransposePlan> transpose;
   if (!host_and_device_strides_equal) {
     absl::InlinedVector<int64_t, 4> permutation(dims.size());
-    absl::c_reverse_copy(compact_shape.layout().minor_to_major(),
+    absl::c_reverse_copy(device_shape.layout().minor_to_major(),
                          permutation.begin());
     absl::MutexLock lock(&transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose,
@@ -833,7 +830,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d =
       [local_client = client(), transfer_manager, local_device, data, size,
-       movable_device_buffer{device_buffer.ToClosure()}, shape,
+       movable_device_buffer{device_buffer.ToClosure()}, device_shape,
        py_buffer{py_buffer.get()},
        on_device_shape{py_buffer->on_device_shape()},
        staging_buffer{std::move(staging_buffer)},
@@ -901,6 +898,17 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     thread_pool()->Schedule(transfer_h2d);
   }
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+  return BufferFromHostBuffer(data, type, dims, byte_strides,
+                              host_buffer_semantics, on_done_with_host_buffer,
+                              device, /*device_layout=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1962,8 +1970,10 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     tsl::thread::ThreadPool* thread_pool) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                            const se::DeviceMemoryBase&) {
+    return [device_ordinal](
+               int64_t channel_id, se::Stream*, const Shape&,
+               const se::DeviceMemoryBase&,
+               const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to send a buffer to the channel_id=%d, there was no send "
           "callbacks registered for the device_ordinal=%d",
@@ -1975,9 +1985,10 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   absl::Span<const SendCallback> callbacks =
       options.send_callbacks[device_ordinal];
 
-  return [callbacks, thread_pool](int64_t channel_id, se::Stream* stream,
-                                  const Shape& shape,
-                                  const se::DeviceMemoryBase& src)
+  return [callbacks, thread_pool](
+             int64_t channel_id, se::Stream* stream, const Shape& shape,
+             const se::DeviceMemoryBase& src,
+             const absl::flat_hash_map<std::string, std::string>&)
              -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -2013,7 +2024,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
         done_event.SetError(absl::InternalError(absl::StrFormat(
             "failed to synchronize send operation with a stream: %s",
-            st.error_message())));
+            st.message())));
         return;
       }
 
@@ -2114,8 +2125,10 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     int device_ordinal, const ExecuteOptions& options) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                            se::DeviceMemoryBase*) {
+    return [device_ordinal](
+               int64_t channel_id, se::Stream*, const Shape&,
+               se::DeviceMemoryBase*,
+               const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to receive a buffer from the channel_id=%d, there was no "
           "recv callbacks registered for the device_ordinal=%d",
@@ -2127,9 +2140,10 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   absl::Span<const RecvCallback> callbacks =
       options.recv_callbacks[device_ordinal];
 
-  return [callbacks](
-             int64_t channel_id, se::Stream* stream, const Shape& shape,
-             se::DeviceMemoryBase* dst) -> StatusOr<AsyncValueRef<se::Event>> {
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     se::DeviceMemoryBase* dst,
+                     const absl::flat_hash_map<std::string, std::string>&)
+             -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Recv from channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
@@ -2163,6 +2177,8 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
+// When `options` has non-zero `launch_id`, use `launch_id` instead of `run_id`
+// to initialize `run_options`.
 StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
@@ -2239,6 +2255,12 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     // before the buffer is mutated. Usage holds are excluded during a donation
     // hold so we know that the set of usage events won't be modified while we
     // are enqueueing.
+    if (device_state->allocation_model() ==
+        LocalDeviceState::kComputeSynchronized) {
+      GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/false,
+                            &events);
+    }
+
     GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/must_donate,
                           &events);
   }
@@ -2282,7 +2304,11 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   run_options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   run_options.set_device_assignment(device_assignment.get());
-  run_options.set_run_id(run_id);
+  if (options.launch_id != 0) {
+    run_options.set_run_id(RunId(options.launch_id));
+  } else {
+    run_options.set_run_id(run_id);
+  }
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
   run_options.set_launch_id(options.launch_id);
@@ -2582,7 +2608,7 @@ PjRtStreamExecutorExecutable::Execute(
                "terminated. Aborting process to work around deadlock. "
                "Failure message (there may have been multiple failures, see "
                "the error log for all failures): \n\n"
-            << first_failure_status.error_message();
+            << first_failure_status.message();
       }
     }
   }

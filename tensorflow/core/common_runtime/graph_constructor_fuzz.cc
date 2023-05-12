@@ -32,7 +32,7 @@ FUZZ_TEST(GraphDefFuzz, FuzzImportGraphDef);
 void FuzzGraphEndToEndSimpleFixedInput(const GraphDef& graph_def) {
   // Load an arbitrary graph and run a session on it using simple input.
   ImportGraphDefOptions options;
-  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Status status =
       ImportGraphDef(options, graph_def, graph.get(), nullptr, nullptr);
   if (!status.ok()) {
@@ -43,7 +43,7 @@ void FuzzGraphEndToEndSimpleFixedInput(const GraphDef& graph_def) {
   SessionOptions sess_options;
   std::unique_ptr<Session> sess =
       std::unique_ptr<Session>(NewSession(sess_options));
-  status = sess.get()->Create(gdef);
+  status = sess->Create(gdef);
   if (!status.ok()) {
     return;
   }
@@ -63,6 +63,35 @@ void FuzzGraphEndToEndSimpleFixedInput(const GraphDef& graph_def) {
   status = sess->Run(inputs, output_names, target_names, &outputs);
 }
 FUZZ_TEST(GraphDefFuzz, FuzzGraphEndToEndSimpleFixedInput);
+
+void FuzzGraphEndToEndAllStatic(const GraphDef& graph_def) {
+  // Load an arbitrary graph and run a session on it. No input or output is
+  // provided and the reason is we aim for the graph itself to embed all
+  // values needed for the computations. In this sense we enable the fuzzer
+  // to explore any arbitrary graph computation.
+  ImportGraphDefOptions options;
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  Status status =
+      ImportGraphDef(options, graph_def, graph.get(), nullptr, nullptr);
+  if (!status.ok()) {
+    return;
+  }
+  GraphDef gdef;
+  graph->ToGraphDef(&gdef);
+  SessionOptions sess_options;
+  auto sess = std::unique_ptr<Session>(NewSession(sess_options));
+  status = sess->Create(gdef);
+  if (!status.ok()) {
+    return;
+  }
+
+  std::vector<std::pair<string, Tensor>> inputs = {};
+  std::vector<string> output_names = {};
+  std::vector<string> target_names = {};
+  std::vector<Tensor> outputs = {};
+  status = sess->Run(inputs, output_names, target_names, &outputs);
+}
+FUZZ_TEST(GraphDefFuzz, FuzzGraphEndToEndAllStatic);
 
 }  // namespace
 }  // namespace tensorflow::fuzzing

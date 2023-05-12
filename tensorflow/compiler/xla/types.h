@@ -23,6 +23,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 
 namespace xla {
@@ -76,6 +77,12 @@ struct i4 {
   bool operator<=(const int64_t other) const { return v <= other; }
   bool operator>=(const int64_t other) const { return v >= other; }
 
+  i4 operator-() const { return i4(-v); }
+  i4 operator++(int) {
+    i4 tmp(*this);
+    v = (v + 1) & 0x0F;
+    return tmp;
+  }
   i4& operator++() {
     v = (v + 1) & 0x0F;
     return *this;
@@ -91,6 +98,11 @@ struct i4 {
     is >> value;
     num = i4(static_cast<UnderlyingTy>(value));
     return is;
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const i4& i) {
+    absl::Format(&sink, "%d", i.v);
   }
 
   std::string to_string() const { return std::to_string(v); }

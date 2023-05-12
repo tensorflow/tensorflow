@@ -44,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 145
+_version = 153
 
 # Version number for MLIR:Python components.
-mlir_api_version = 47
+mlir_api_version = 49
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -104,6 +104,31 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
   if options is None:
     options = {}
   return _xla.get_c_api_client('tpu', options)
+
+
+DeviceTopology = _xla.DeviceTopology
+
+
+def make_tfrt_tpu_c_api_device_topology(
+    topology_name: Optional[str] = None, **kwargs
+) -> DeviceTopology:
+  """Creates a PJRT C API TopologyDescription."""
+
+  if not _use_pjrt_c_api():
+    raise NotImplementedError(
+        'make_tfrt_tpu_c_api_device_topology only works with the pjrt c-api.'
+    )
+  if topology_name is not None or kwargs:
+    raise NotImplementedError(
+        'Unsupported arguments to'
+        ' make_tfrt_tpu_c_api_device_topology(topology_name=%s, %s)'
+        % (repr(topology_name), repr(kwargs))
+    )
+  return _xla.get_default_c_api_topology('tpu')
+
+
+def pjrt_plugin_loaded(plugin_name: str) -> bool:
+  return _xla.pjrt_plugin_loaded(plugin_name)
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
@@ -197,6 +222,7 @@ PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = ml_dtypes.bfloat16
 float8_e4m3fn = ml_dtypes.float8_e4m3fn
+float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11
 float8_e5m2 = ml_dtypes.float8_e5m2
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
@@ -210,6 +236,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
+    PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
@@ -454,9 +481,7 @@ XlaComputation = _xla.XlaComputation
 XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
-Buffer = _xla.Buffer
 ArrayImpl = _xla.ArrayImpl
-DeviceArrayBase = _xla.DeviceArrayBase
 LoadedExecutable = _xla.LoadedExecutable
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
@@ -506,6 +531,7 @@ def register_custom_call_target(
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target
 register_custom_call_partitioner = _xla.register_custom_call_partitioner
+encode_inspect_sharding_callback = _xla.encode_inspect_sharding_callback
 hlo_sharding_util = _xla.hlo_sharding_util
 
 

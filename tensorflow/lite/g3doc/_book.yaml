@@ -118,6 +118,9 @@ upper_tabs:
         path: /lite/android/tutorials/audio_classification
 
       - heading: "Hardware acceleration"
+      - title: "Acceleration service"
+        path: /lite/android/acceleration_service
+        status: experimental
       - title: "GPU delegate"
         path: /lite/android/delegates/gpu
       - title: "NNAPI delegate"

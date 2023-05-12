@@ -91,6 +91,9 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, int axis,
     case kTfLiteInt32:
       TF_LITE_CONCATENATION(int32);
       break;
+    case kTfLiteUInt32:
+      TF_LITE_CONCATENATION(uint32_t);
+      break;
     case kTfLiteUInt8:
       TF_LITE_CONCATENATION_QUANTIZED();
       break;
@@ -138,7 +141,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
                      input_type == kTfLiteInt32 || input_type == kTfLiteInt64 ||
-                     input_type == kTfLiteBool);
+                     input_type == kTfLiteBool || input_type == kTfLiteUInt32);
 
   // Output dimensions will match input dimensions, except 'axis', which
   // will be the sum of inputs

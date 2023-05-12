@@ -18,6 +18,7 @@ import collections
 import os
 import re
 
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,9 +32,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
+
 # A mock for ``tf_stack.FrameSummary``.
 FrameSummary = collections.namedtuple(
-    "StackFrame", ["filename", "lineno", "name", "line"])
+    "StackFrame", ["filename", "lineno", "name", "line"]
+)
 
 # TODO(feyu): convert tests to tf function from graph when appropriate.
 
@@ -41,15 +44,12 @@ FrameSummary = collections.namedtuple(
 def _make_frame_with_filename(tb, idx, filename):
   """Return a copy of an existing stack frame with a new filename."""
   frame = tb[idx]
-  return FrameSummary(
-      filename,
-      frame.lineno,
-      frame.name,
-      frame.line)
+  return FrameSummary(filename, frame.lineno, frame.name, frame.line)
 
 
-def _modify_op_stack_with_filenames(tb, num_user_frames, user_filename,
-                                    num_inner_tf_frames):
+def _modify_op_stack_with_filenames(
+    tb, num_user_frames, user_filename, num_inner_tf_frames
+):
   """Replace traceback with a new traceback using special filenames."""
   tf_filename = error_interpolation._FRAMEWORK_PATH_PREFIXES[0] + "%d.py"
   user_filename = os.path.join("%d", "my_favorite_file.py")
@@ -75,14 +75,17 @@ class ComputeDeviceSummaryFromOpTest(test.TestCase):
   def testCorrectFormatWithActiveDeviceAssignments(self):
     assignments = []
     assignments.append(
-        traceable_stack.TraceableObject(
-            "/cpu:0", filename="hope.py", lineno=24))
+        traceable_stack.TraceableObject("/cpu:0", filename="hope.py", lineno=24)
+    )
     assignments.append(
         traceable_stack.TraceableObject(
-            "/gpu:2", filename="please.py", lineno=42))
+            "/gpu:2", filename="please.py", lineno=42
+        )
+    )
 
     summary = error_interpolation._compute_device_summary_from_list(
-        "nodename", assignments, prefix="  ")
+        "nodename", assignments, prefix="  "
+    )
 
     self.assertIn("nodename", summary)
     self.assertIn("tf.device(/cpu:0)", summary)
@@ -93,7 +96,8 @@ class ComputeDeviceSummaryFromOpTest(test.TestCase):
   def testCorrectFormatWhenNoColocationsWereActive(self):
     device_assignment_list = []
     summary = error_interpolation._compute_device_summary_from_list(
-        "nodename", device_assignment_list, prefix="  ")
+        "nodename", device_assignment_list, prefix="  "
+    )
     self.assertIn("nodename", summary)
     self.assertIn("No device assignments", summary)
 
@@ -102,15 +106,18 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
 
   def testCorrectFormatWithActiveColocations(self):
     t_obj_1 = traceable_stack.TraceableObject(
-        None, filename="test_1.py", lineno=27)
+        None, filename="test_1.py", lineno=27
+    )
     t_obj_2 = traceable_stack.TraceableObject(
-        None, filename="test_2.py", lineno=38)
+        None, filename="test_2.py", lineno=38
+    )
     colocation_dict = {
         "test_node_1": t_obj_1,
         "test_node_2": t_obj_2,
     }
     summary = error_interpolation._compute_colocation_summary_from_dict(
-        "node_name", colocation_dict, prefix="  ")
+        "node_name", colocation_dict, prefix="  "
+    )
     self.assertIn("node_name", summary)
     self.assertIn("colocate_with(test_node_1)", summary)
     self.assertIn("<test_1.py:27>", summary)
@@ -120,7 +127,8 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
   def testCorrectFormatWhenNoColocationsWereActive(self):
     colocation_dict = {}
     summary = error_interpolation._compute_colocation_summary_from_dict(
-        "node_name", colocation_dict, prefix="  ")
+        "node_name", colocation_dict, prefix="  "
+    )
     self.assertIn("node_name", summary)
     self.assertIn("No node-device colocations", summary)
 
@@ -139,8 +147,9 @@ class CreateGraphDebugInfoDefTest(test.TestCase):
       if flc.file_index == file_index:
         found_flc = flc
         break
-    self.assertIsNotNone(found_flc,
-                         "Could not find a stack trace entry for file")
+    self.assertIsNotNone(
+        found_flc, "Could not find a stack trace entry for file"
+    )
     return found_flc
 
   def testStackTraceExtraction(self):
@@ -167,36 +176,120 @@ class CreateGraphDebugInfoDefTest(test.TestCase):
           node_def=node_def_copy,
           inputs=[],
           control_inputs=[],
-          extract_traceback=False)
+          extract_traceback=False,
+      )
 
       non_traceback_op = ops.Operation._from_c_op(c_op, ops.get_default_graph())
       self.assertIsNone(non_traceback_op.traceback)
 
-      export_ops = [("", global_op), ("func1", op1), ("func2", op2),
-                    ("func2", non_traceback_op)]
+      export_ops = [
+          ("", global_op),
+          ("func1", op1),
+          ("func2", op2),
+          ("func2", non_traceback_op),
+      ]
       graph_debug_info = error_interpolation.create_graph_debug_info_def(
-          export_ops)
+          export_ops
+      )
       this_file_index = -1
       for file_index, file_name in enumerate(graph_debug_info.files):
         if "{}error_interpolation_test.py".format(os.sep) in file_name:
           this_file_index = file_index
       self.assertGreaterEqual(
-          this_file_index, 0,
-          "Could not find this file in trace:" + repr(graph_debug_info))
+          this_file_index,
+          0,
+          "Could not find this file in trace:" + repr(graph_debug_info),
+      )
 
       # Verify the traces exist for each op.
-      global_flc = self._getFirstStackTraceForFile(graph_debug_info, "Global@",
-                                                   this_file_index)
-      op1_flc = self._getFirstStackTraceForFile(graph_debug_info, "One@func1",
-                                                this_file_index)
-      op2_flc = self._getFirstStackTraceForFile(graph_debug_info, "Two@func2",
-                                                this_file_index)
+      global_flc = self._getFirstStackTraceForFile(
+          graph_debug_info, "Global@", this_file_index
+      )
+      op1_flc = self._getFirstStackTraceForFile(
+          graph_debug_info, "One@func1", this_file_index
+      )
+      op2_flc = self._getFirstStackTraceForFile(
+          graph_debug_info, "Two@func2", this_file_index
+      )
 
       self.assertNotIn("NonTraceback@func2", graph_debug_info.traces)
 
       global_line = global_flc.line
       self.assertEqual(op1_flc.line, global_line + 1, "op1 not on next line")
       self.assertEqual(op2_flc.line, global_line + 2, "op2 not on next line")
+
+
+class MergeGraphDebugInfoDefTest(test.TestCase):
+
+  def testMerges(self):
+    fn_1 = graph_debug_info_pb2.GraphDebugInfo(
+        files=["a.py", "b.py", "c.py"],
+        traces={
+            "node_1": graph_debug_info_pb2.GraphDebugInfo.StackTrace(
+                file_line_cols=[
+                    graph_debug_info_pb2.GraphDebugInfo.FileLineCol(
+                        file_index=0, line=19, col=2
+                    )
+                ]
+            ),
+            "node_2": graph_debug_info_pb2.GraphDebugInfo.StackTrace(
+                file_line_cols=[
+                    graph_debug_info_pb2.GraphDebugInfo.FileLineCol(
+                        file_index=1, line=33, col=4
+                    )
+                ]
+            ),
+        },
+    )
+
+    fn_2 = graph_debug_info_pb2.GraphDebugInfo(
+        files=["c.py", "a.py", "b.py"],
+        traces={
+            "node_1": graph_debug_info_pb2.GraphDebugInfo.StackTrace(
+                file_line_cols=[
+                    graph_debug_info_pb2.GraphDebugInfo.FileLineCol(
+                        file_index=0, line=9, col=6
+                    )
+                ]
+            ),
+            "node_2": graph_debug_info_pb2.GraphDebugInfo.StackTrace(
+                file_line_cols=[
+                    graph_debug_info_pb2.GraphDebugInfo.FileLineCol(
+                        file_index=1, line=56, col=7
+                    )
+                ]
+            ),
+        },
+    )
+
+    result = error_interpolation.merge_graph_debug_info_def(
+        [("fn_1", fn_1), ("fn_2", fn_2)]
+    )
+
+    self.assertEqual(set(result.files), {"b.py", "a.py", "c.py"})
+    self.assertLen(result.traces, 4)
+
+    # Check file names are correctly indexed.
+    self.assertEqual(
+        result.files[result.traces["node_1@fn_1"].file_line_cols[0].file_index],
+        "a.py",
+    )
+    self.assertEqual(
+        result.files[result.traces["node_2@fn_1"].file_line_cols[0].file_index],
+        "b.py",
+    )
+    self.assertEqual(
+        result.files[result.traces["node_1@fn_2"].file_line_cols[0].file_index],
+        "c.py",
+    )
+    self.assertEqual(
+        result.files[result.traces["node_2@fn_2"].file_line_cols[0].file_index],
+        "a.py",
+    )
+
+    # Check properties of a node.
+    self.assertEqual(result.traces["node_1@fn_1"].file_line_cols[0].line, 19)
+    self.assertEqual(result.traces["node_1@fn_1"].file_line_cols[0].col, 2)
 
 
 class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
@@ -209,7 +302,8 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
           local_op.traceback,
           num_user_frames=3,
           user_filename=user_filename,
-          num_inner_tf_frames=5)
+          num_inner_tf_frames=5,
+      )
       idx = error_interpolation._find_index_of_defining_frame(modified_tb)
       # Expected frame is 6th from the end because there are 5 inner frames with
       # TF filenames.
@@ -224,7 +318,8 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
           local_op.traceback[:7],  # Truncate stack to known length.
           num_user_frames=0,
           user_filename="user_file.py",
-          num_inner_tf_frames=7)
+          num_inner_tf_frames=7,
+      )
       idx = error_interpolation._find_index_of_defining_frame(modified_tb)
       self.assertEqual(0, idx)
 
@@ -232,15 +327,17 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       normal_string = "This is just a normal string"
-      interpolated_string = error_interpolation.interpolate(
-          normal_string, ops.get_default_graph())
+      interpolated_string = error_interpolation.interpolate_graph(
+          normal_string, ops.get_default_graph()
+      )
       self.assertIn(normal_string, interpolated_string)
 
   def testOneTagWithAFakeNameResultsInPlaceholders(self):
     with ops.Graph().as_default():
       one_tag_string = "{{node MinusOne}}"
-      interpolated_string = error_interpolation.interpolate(
-          one_tag_string, ops.get_default_graph())
+      interpolated_string = error_interpolation.interpolate_graph(
+          one_tag_string, ops.get_default_graph()
+      )
       self.assertIn(one_tag_string, interpolated_string)
 
   def testOneTagWithAFakeFunctionTag(self):
@@ -249,8 +346,9 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
       one_tag_with_a_fake_function_tag = "{{function_node fake}}{{node One}}"
-      interpolated_string = error_interpolation.interpolate(
-          one_tag_with_a_fake_function_tag, ops.get_default_graph())
+      interpolated_string = error_interpolation.interpolate_graph(
+          one_tag_with_a_fake_function_tag, ops.get_default_graph()
+      )
       # Fragments the expression to avoid matching the pattern itself.
       expected_regex = re.compile(rf"node 'One'.*{defined_at}", re.DOTALL)
       self.assertRegex(interpolated_string, expected_regex)
@@ -264,11 +362,13 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(2, name="Two")
       constant_op.constant(3, name="Three")
       two_tags_no_seps = "{{node One}}{{node Three}}"
-      interpolated_string = error_interpolation.interpolate(
-          two_tags_no_seps, ops.get_default_graph())
+      interpolated_string = error_interpolation.interpolate_graph(
+          two_tags_no_seps, ops.get_default_graph()
+      )
       # Fragments the expression to avoid matching the pattern itself.
       expected_regex = re.compile(
-          rf"node 'One'.*{defined_at}.*node 'Three'.*{defined_at}", re.DOTALL)
+          rf"node 'One'.*{defined_at}.*node 'Three'.*{defined_at}", re.DOTALL
+      )
       self.assertRegex(interpolated_string, expected_regex)
 
   def testTwoTagsWithSeps(self):
@@ -278,11 +378,13 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(2, name="Two")
       constant_op.constant(3, name="Three")
       two_tags_with_seps = ";;;{{node Two}},,,{{node Three}};;;"
-      interpolated_string = error_interpolation.interpolate(
-          two_tags_with_seps, ops.get_default_graph())
+      interpolated_string = error_interpolation.interpolate_graph(
+          two_tags_with_seps, ops.get_default_graph()
+      )
       # Fragments the expression to avoid matching the pattern itself.
       expected_regex = re.compile(
-          rf"node 'Two'.*{defined_at}.*node 'Three'.*{defined_at}", re.DOTALL)
+          rf"node 'Two'.*{defined_at}.*node 'Three'.*{defined_at}", re.DOTALL
+      )
       self.assertRegex(interpolated_string, expected_regex)
 
   def testNewLine(self):
@@ -291,8 +393,9 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
       newline = "\n\n;;;{{node One}};;;"
-      interpolated_string = error_interpolation.interpolate(
-          newline, ops.get_default_graph())
+      interpolated_string = error_interpolation.interpolate_graph(
+          newline, ops.get_default_graph()
+      )
       expected_regex = re.compile(rf"node 'One'.*{defined_at}", re.DOTALL)
       self.assertRegex(interpolated_string, expected_regex)
 
@@ -301,7 +404,6 @@ class OperationDefinedAtTraceTest(test.TestCase):
 
   @test_util.run_v2_only
   def testSimpleCall(self):
-
     @def_function.function
     def func():
       x = constant_op.constant([[1, 2, 3]])
@@ -310,14 +412,14 @@ class OperationDefinedAtTraceTest(test.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        re.compile(r"defined at.*"
-                   r"in testSimpleCall.*"
-                   r"in func", re.DOTALL)):
+        re.compile(
+            r"defined at.*" r"in testSimpleCall.*" r"in func", re.DOTALL
+        ),
+    ):
       func()
 
   @test_util.run_v2_only
   def testNestedCall(self):
-
     def inner():
       x = constant_op.constant([[1, 2, 3]])
       y = script_ops.eager_py_func(lambda: [[1, 2, 3]], (), dtypes.int32)
@@ -329,10 +431,11 @@ class OperationDefinedAtTraceTest(test.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        re.compile(r"defined at.*"
-                   r"in testNestedCall.*"
-                   r"in func.*"
-                   r"in inner", re.DOTALL)):
+        re.compile(
+            r"defined at.*" r"in testNestedCall.*" r"in func.*" r"in inner",
+            re.DOTALL,
+        ),
+    ):
       func()
 
   @test_util.run_v2_only
@@ -344,9 +447,8 @@ class OperationDefinedAtTraceTest(test.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        re.compile(r"defined at.*"
-                   r"in testAssert.*"
-                   r"in func", re.DOTALL)):
+        re.compile(r"defined at.*" r"in testAssert.*" r"in func", re.DOTALL),
+    ):
       func()
 
   @test_util.run_v2_only
@@ -363,9 +465,10 @@ class OperationDefinedAtTraceTest(test.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        re.compile(r"defined at.*"
-                   r"in testControlFlow.*"
-                   r"in func", re.DOTALL)):
+        re.compile(
+            r"defined at.*" r"in testControlFlow.*" r"in func", re.DOTALL
+        ),
+    ):
       func()
 
 
@@ -374,17 +477,21 @@ class IsFrameworkFilenameTest(test.TestCase):
   def testAllowsUnitTests(self):
     self.assertFalse(
         error_interpolation._is_framework_filename(
-            error_interpolation._FRAMEWORK_PATH_PREFIXES[0] + "foobar_test.py"))
+            error_interpolation._FRAMEWORK_PATH_PREFIXES[0] + "foobar_test.py"
+        )
+    )
 
   def testFrameworkPythonFile(self):
     self.assertTrue(
-        error_interpolation._is_framework_filename(
-            error_interpolation.__file__))
+        error_interpolation._is_framework_filename(error_interpolation.__file__)
+    )
 
   def testEmbedded(self):
     self.assertTrue(
         error_interpolation._is_framework_filename(
-            "<embedded stdlib>/context_lib.py"))
+            "<embedded stdlib>/context_lib.py"
+        )
+    )
 
 
 if __name__ == "__main__":

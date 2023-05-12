@@ -194,6 +194,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:

@@ -24,9 +24,9 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-using tensorflow::profiler::Device;
-using tensorflow::profiler::Trace;
-using tensorflow::profiler::TraceEvent;
+using tsl::profiler::Device;
+using tsl::profiler::Trace;
+using tsl::profiler::TraceEvent;
 
 template <typename /*Comparable*/ Event>
 class AnyTraceContainer {

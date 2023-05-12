@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -335,7 +336,7 @@ TEST_F(ExecutorTest, OpError) {
   Create(std::move(g));
   FunctionCallFrame call_frame({}, {});
   // Fails due to invalid dtype.
-  EXPECT_TRUE(errors::IsInvalidArgument(Run(&call_frame)));
+  EXPECT_TRUE(absl::IsInvalidArgument(Run(&call_frame)));
 }
 
 TEST_F(ExecutorTest, ControlDependenciesFromSpecialNodes) {

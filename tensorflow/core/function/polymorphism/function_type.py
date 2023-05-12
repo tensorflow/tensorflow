@@ -75,12 +75,14 @@ class Parameter(inspect.Parameter):
 
   @classmethod
   def from_proto(cls, proto: Any) -> "Parameter":
+    """Generate a Parameter from the proto representation."""
     deserialized_type_constraint = serialization.deserialize(
         proto.type_constraint) if proto.HasField("type_constraint") else None
     return Parameter(proto.name, PROTO_TO_PY_ENUM[proto.kind],
                      proto.is_optional, deserialized_type_constraint)
 
   def to_proto(self) -> function_type_pb2.Parameter:
+    """Generate a proto representation of the Parameter."""
     serialized_type_constraint = serialization.serialize(
         self.type_constraint) if self.type_constraint else None
     return function_type_pb2.Parameter(
@@ -154,7 +156,25 @@ class Parameter(inspect.Parameter):
 
 
 class FunctionType(inspect.Signature):
-  """Represents the signature of a polymorphic/monomorphic function."""
+  """Represents the type of a TensorFlow function.
+
+  FunctionType is the canonical way to represent the input/output contract of
+  all kinds of functions within the tf.function domain, including:
+    - Polymorphic Function
+    - Concrete Function
+    - Atomic Function
+
+  It provides consistent, centralized and layered logic for:
+    - Canonicalization of Python input arguments
+    - Type-based dispatch to monomorphic functions
+    - Packing/unpacking structured python values to Tensors
+    - Generation of structured placeholder values for tracing
+
+  Additionaly, it also provides:
+    - Lossless serialization
+    - Native integration with Python function signature representation
+    - Seamless migration from older representation formats
+  """
 
   def __init__(self,
                parameters: Sequence[inspect.Parameter],
@@ -165,11 +185,22 @@ class FunctionType(inspect.Signature):
 
   @property
   def parameters(self) -> Mapping[str, Any]:
+    """Returns an ordered mapping of parameter name to specification."""
     return super().parameters
 
   @property
   def captures(self) -> collections.OrderedDict:
+    """Returns an ordered mapping of capture id to type."""
     return self._captures
+
+  @property
+  def output(self) -> Optional[trace.TraceType]:
+    """Return the output TraceType if specified."""
+    return (
+        self.return_annotation
+        if self.return_annotation is not self.empty
+        else None
+    )
 
   # TODO(fmuham): Use this method instead of fullargspec and tf_inspect.
   @classmethod
@@ -202,6 +233,7 @@ class FunctionType(inspect.Signature):
 
   @classmethod
   def from_proto(cls, proto: Any) -> "FunctionType":
+    """Generate a FunctionType from the proto representation."""
     return FunctionType([Parameter.from_proto(p) for p in proto.parameters],
                         collections.OrderedDict([
                             (c.name,
@@ -210,6 +242,7 @@ class FunctionType(inspect.Signature):
                         ]))
 
   def to_proto(self) -> Any:
+    """Generate a proto representation from the FunctionType."""
     return function_type_pb2.FunctionType(
         parameters=[p.to_proto() for p in self.parameters.values()],
         captures=[
@@ -311,6 +344,25 @@ class FunctionType(inspect.Signature):
 
     return inspect.BoundArguments(self, arguments)
 
+  @property
+  def flat_inputs(self):
+    """Flat tensor inputs accepted by this FunctionType."""
+    if not hasattr(self, "_cached_flat_inputs"):
+      self._cached_flat_inputs = []
+      for p in self.parameters.values():
+        self._cached_flat_inputs.extend(p.type_constraint._flatten())  # pylint: disable=protected-access
+
+    return self._cached_flat_inputs
+
+  @property
+  def flat_outputs(self):
+    """Flat tensor outputs returned by this FunctionType."""
+    if not hasattr(self, "_cached_flat_outputs"):
+      if self.output is not None:
+        self._cached_flat_outputs = self.output._flatten()   # pylint: disable=protected-access
+
+    return self._cached_flat_outputs
+
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, FunctionType):
       return NotImplemented
@@ -362,7 +414,9 @@ def sanitize_arg_name(name: str) -> str:
 
 
 # TODO(fmuham): Consider forcing kind to be always POSITIONAL_OR_KEYWORD.
-def _make_validated_mono_param(name, value, kind, type_context, poly_type):
+def _make_validated_mono_param(
+    name, value, kind, type_context, poly_type
+) -> Parameter:
   """Generates and validates a parameter for Monomorphic FunctionType."""
   mono_type = trace_type.from_value(value, type_context)
 
@@ -442,7 +496,7 @@ def canonicalize_to_monomorphic(
 # TODO(fmuham): Share code with canonicalize_to_monomorphic.
 # TODO(fmuham): Lift unnecessary restrictions on input_signature validity.
 def add_type_constraints(function_type: FunctionType, input_signature: Any,
-                         default_values: Dict[str, Any]):
+                         default_values: Dict[str, Any]) -> FunctionType:
   """Adds type constraints to a FunctionType based on the input_signature."""
   context = trace_type.InternalTracingContext(is_legacy_signature=True)
   constraints = [trace_type.from_value(c, context) for c in input_signature]
@@ -499,3 +553,74 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
         f"input_signature contains {len(constraints)} extra type constraints.")
 
   return FunctionType(parameters)
+
+
+def from_structured_signature(
+    input_signature, output_signature=None, capture_types=None
+) -> FunctionType:
+  """Generates a FunctionType from legacy signature representation."""
+  args, kwargs = input_signature
+  parameters = []
+
+  for i, arg in enumerate(args):
+    parameters.append(
+        Parameter(
+            "arg_" + str(i),
+            Parameter.POSITIONAL_ONLY,
+            False,
+            trace_type.from_value(
+                arg, trace_type.InternalTracingContext(is_legacy_signature=True)
+            ),
+        )
+    )
+
+  for name, kwarg in kwargs.items():
+    parameters.append(
+        Parameter(
+            sanitize_arg_name(name),
+            Parameter.KEYWORD_ONLY,
+            False,
+            trace_type.from_value(
+                kwarg,
+                trace_type.InternalTracingContext(is_legacy_signature=True),
+            ),
+        )
+    )
+
+  if output_signature is None:
+    return_type = None
+  else:
+    return_type = trace_type.from_value(
+        output_signature,
+        trace_type.InternalTracingContext(is_legacy_signature=True),
+    )
+
+  return FunctionType(
+      parameters, capture_types or {}, return_annotation=return_type
+  )
+
+
+def to_structured_signature(function_type: FunctionType) -> Tuple[Any, Any]:
+  """Returns structured input and output signatures from a FunctionType."""
+  def to_signature(x_type):
+    if x_type is None:
+      raise TypeError(
+          "Can not generate structured signature if FunctionType is not fully"
+          f" specified. Received {function_type}"
+      )
+    return x_type.placeholder_value(
+        trace_type.InternalPlaceholderContext(unnest_only=True)
+    )
+
+  args_signature = []
+  kwargs_signature = {}
+  for p in function_type.parameters.values():
+    if p.kind == Parameter.POSITIONAL_ONLY:
+      args_signature.append(to_signature(p.type_constraint))
+    else:
+      kwargs_signature[p.name] = to_signature(p.type_constraint)
+
+  input_signature = (tuple(args_signature), kwargs_signature)
+  output_signature = to_signature(function_type.output)
+
+  return input_signature, output_signature

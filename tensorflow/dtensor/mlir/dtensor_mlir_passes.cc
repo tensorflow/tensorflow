@@ -93,6 +93,10 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm->addPass(mlir::createInlinerPass());
 
+  // An additional shape inference to catch any newly created constants
+  // from canonicalizer.
+  pm->addPass(mlir::TF::CreateTFShapeInferencePass());
+
   // Ensure that all functions have `device_id` as 0th argument.
   pm->addPass(CreateDTensorPropagateDeviceIdToFunctionArgs());
 
@@ -228,6 +232,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addPass(CreateDTensorAllReduceLoweringPass());
 
   pm->addPass(CreateDTensorAllScatterLoweringPass());
+
+  pm->addPass(CreateDTensorAllToAllLoweringPass());
 
   // Group together multiple device clusters assigned to the same mesh. Repeat
   // this for every mesh to support multi-mesh. Collective lowering may have

@@ -100,8 +100,7 @@ void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
         if (!sharding.ok()) {
           return layout_op.emitOpError()
                  << "Failed to convert layout to sharding for "
-                 << layout.ToString() << ": "
-                 << sharding.status().error_message();
+                 << layout.ToString() << ": " << sharding.status().message();
         }
         mlir::OpBuilder builder(layout_op);
         auto sharding_attr =

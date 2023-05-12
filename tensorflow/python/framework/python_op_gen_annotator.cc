@@ -24,8 +24,6 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/framework/kythe_metadata.pb.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
 
@@ -69,7 +67,7 @@ string GeneratedCodeAnnotator::BuildKytheMetadata() {
 
     VName* vname = meta->mutable_source_vname();
     vname->set_signature(absl::StrFormat(
-        "@%d:%d@tensorflow/op#%s#%s#%s", offsets.source_start,
+        "@%d:%d@tensorflow_op#%s#%s#%s", offsets.source_start,
         offsets.source_end, name, kKytheCorpus, offsets.file_path));
     vname->set_corpus(std::string(kKytheCorpus));
     vname->set_path(offsets.file_path);

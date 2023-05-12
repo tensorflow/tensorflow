@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -60,7 +62,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
@@ -103,27 +108,32 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
   return std::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
+bool RootInstructionIsTuple(const xla::HloModule& hlo_module) {
+  xla::HloInstruction* root_instruction =
+      hlo_module.entry_computation()->root_instruction();
+
+  return root_instruction->opcode() == xla::HloOpcode::kTuple;
+}
+
 };  // namespace
 
 LogicalResult Tf2XlaRewriter::RewriteOp(Operation* op,
                                         PatternRewriter& rewriter,
                                         const std::string& device_type,
-                                        bool is_module_pass,
                                         bool use_tf2xla_hlo_importer) {
-  Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type, is_module_pass,
+  Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type,
                                  use_tf2xla_hlo_importer);
   return tf2xla_rewriter.LegalizeOp();
 }
 
 Tf2XlaRewriter::Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
                                const std::string& device_type,
-                               bool is_module_pass,
                                bool use_tf2xla_hlo_importer)
     : op_(op),
       device_type_(device_type),
       rewriter_(rewriter),
       hlo_builder_(op->getName().getStringRef().str(), rewriter_, op->getLoc(),
-                   /*build_functions=*/is_module_pass),
+                   /*build_functions=*/true),
       context_(nullptr),
       use_tf2xla_hlo_importer_(use_tf2xla_hlo_importer),
       xla_builder_(op_->getName().getStringRef().str()) {}
@@ -132,60 +142,53 @@ Tf2XlaRewriter::~Tf2XlaRewriter() {
   if (context_) context_->Unref();
 }
 
-tsl::StatusOr<std::string>
-Tf2XlaRewriter::CreateUniqueTranslatedFunctionName() {
-  ModuleOp parent_module = op_->getParentOfType<ModuleOp>();
-  for (int i = 0; i < INT_MAX; i++) {
-    std::string renamed_kernel =
-        absl::StrCat("translated_tf2xla_kernel_",
-                     op_->getName().getStringRef().str(), "_", i);
+tsl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
+    XlaComputation& computation) {
+  xla::DebugOptions debug_options;
+  TF_ASSIGN_OR_RETURN(auto hlo_module_config,
+                      xla::HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), debug_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::HloModule> hlo_module,
+      xla::HloModule::CreateFromProto(computation.proto(), hlo_module_config));
 
-    mlir::func::FuncOp candidate_func =
-        parent_module.lookupSymbol<mlir::func::FuncOp>(renamed_kernel);
-    if (!candidate_func) {
-      return renamed_kernel;
-    }
+  if (!RootInstructionIsTuple(*hlo_module)) {
+    return tsl::errors::InvalidArgument("Imported XLA Root is not a tuple op");
   }
 
-  return tsl::errors::AlreadyExists(
-      absl::StrCat("Could not create a unique function name for op ",
-                   op_->getName().getStringRef().str()));
-}
-
-tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::ImportXlaComputation(
-    xla::XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> computed_module,
-                      CreateModuleFromXlaComputation(computation));
-
-  auto xla_source_function =
-      computed_module->lookupSymbol<mlir::func::FuncOp>("main");
-  if (!xla_source_function) {
-    return tsl::errors::NotFound("Could not find 'main' HLO imported function");
+  if (op_->getNumOperands() !=
+      hlo_module->entry_computation()->num_parameters()) {
+    return tsl::errors::InvalidArgument(
+        "Entry computation does not have equal number of parameters to op "
+        "operands");
   }
 
-  TF_ASSIGN_OR_RETURN(std::string translated_function_name,
-                      CreateUniqueTranslatedFunctionName());
+  ModuleOp mlir_module = op_->getParentOfType<ModuleOp>();
+  mlir::OpBuilder builder(op_);
+  mlir::SymbolTable symbol_table(mlir_module);
 
-  FuncOp mhlo_function = xla_source_function.clone();
-  mhlo_function.setName(translated_function_name);
+  llvm::SmallVector<mlir::Value> arguments;
+  for (int i = 0; i < op_->getNumOperands(); i++) {
+    arguments.push_back(op_->getOperand(i));
+  }
 
-  ModuleOp parent_module = op_->getParentOfType<ModuleOp>();
-  parent_module.push_back(mhlo_function);
+  // Ideally we could use the Function Importer but it increases compilation
+  // time when we have a model with thousands of tf2xla op fallbacks. At time
+  // of writing, this caused compilation time to be greater than 2x slower.
+  // So we have to directly import these instructions.
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value root_value,
+      xla::HloFunctionImporter::ImportInstructions(
+          *hlo_module->entry_computation(), arguments, symbol_table, &builder));
 
-  return mhlo_function;
-}
+  mhlo::TupleOp root_tuple =
+      mlir::dyn_cast_or_null<mhlo::TupleOp>(root_value.getDefiningOp());
+  if (!root_tuple) {
+    return tsl::errors::InvalidArgument(
+        "Imported XLA Root Value is not a tuple op");
+  }
 
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-Tf2XlaRewriter::CreateModuleFromXlaComputation(
-    xla::XlaComputation& computation) {
-  mlir::OwningOpRef<mlir::ModuleOp> temp_module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(op_->getContext()));
-
-  TF_RETURN_IF_ERROR(
-      xla::ConvertHloToMlirHlo(temp_module.get(), &computation.proto(),
-                               /*import_all_computations=*/true));
-
-  return temp_module;
+  return root_tuple;
 }
 
 LogicalResult Tf2XlaRewriter::PrepareParams() {
@@ -408,20 +411,18 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
 
   if (failed(VerifyOpResults(op_context))) return failure();
 
-  FuncOp translated_function;
+  mhlo::TupleOp tuple_result;
   if (use_tf2xla_hlo_importer_) {
-    StatusOr<FuncOp> translated_function_or_status =
+    StatusOr<mhlo::TupleOp> tuple_result_or_status =
         CompileWithHloImporter(op_context);
-    if (!translated_function_or_status.ok()) {
-      return op_->emitRemark()
-             << translated_function_or_status.status().ToString();
+    if (!tuple_result_or_status.ok()) {
+      return op_->emitRemark() << tuple_result_or_status.status().ToString();
     }
-    translated_function = translated_function_or_status.value();
+    tuple_result = tuple_result_or_status.value();
   }
 
   llvm::SmallVector<Value> output_values;
-  if (failed(
-          GetKernelOutputs(op_context, translated_function, output_values))) {
+  if (failed(GetKernelOutputs(op_context, tuple_result, output_values))) {
     return failure();
   }
 
@@ -429,16 +430,15 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   return success();
 }
 
-tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::CompileWithHloImporter(
+tsl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::CompileWithHloImporter(
     tensorflow::OpKernelContext& op_context) {
   if (!use_tf2xla_hlo_importer_) {
     return tsl::errors::InvalidArgument(
         "Cannot compile with HloImporter because it isn't supported");
   }
 
-  // TODO(b/275806664): Support multiple output values from HLO module importer.
-  // We wrap all the output values of a TF op into a tuple and return that
-  // from the module importer.
+  // XLA can only return a single value. Wrap all output op return values
+  // in a Tuple op that gets unpacked later.
   std::vector<xla::XlaOp> output_values;
   for (int i = 0, e = op_->getNumResults(); i < e; i++) {
     tensorflow::Tensor* output = op_context.mutable_output(i);
@@ -479,68 +479,27 @@ mlir::LogicalResult Tf2XlaRewriter::VerifyOpResults(
 // multiple values. We get around this by returning a tuple as an XLA op. We
 // then unpack it here to return the multiple values instead.
 mlir::LogicalResult Tf2XlaRewriter::UnpackTupleResults(
-    mlir::func::FuncOp translated_function) {
-  if (translated_function.getBlocks().size() != 1) {
-    return op_->emitRemark() << "Translated function has more than one block. "
-                                "This isn't supported yet.";
+    mhlo::TupleOp tuple_result, llvm::SmallVector<Value>& outputs) {
+  if (tuple_result->getNumOperands() != op_->getNumResults()) {
+    return op_->emitRemark() << "Translated TF2XLA tuple has different "
+                                "number of results than original op";
   }
 
-  func::ReturnOp xla_return_op = llvm::dyn_cast<func::ReturnOp>(
-      translated_function.back().getTerminator());
-  if (!xla_return_op) {
-    return op_->emitRemark() << "Could not find return value";
+  for (int i = 0; i < tuple_result->getNumOperands(); i++) {
+    outputs.push_back(tuple_result->getOperand(i));
   }
 
-  if (xla_return_op->getNumOperands() != 1) {
-    return op_->emitRemark() << "Return value has more than one op, returning";
-  }
-
-  mhlo::TupleOp tuple_result = llvm::dyn_cast<mhlo::TupleOp>(
-      xla_return_op->getOperand(0).getDefiningOp());
-  if (!tuple_result) {
-    return op_->emitRemark()
-           << "Translated Function didn't return a tuple type";
-  }
-
-  xla_return_op->setOperands(tuple_result->getOperands());
   tuple_result.getOperation()->erase();
-
-  // Update the function signature to return the underlying values instead of
-  // a tuple type.
-  FunctionType new_type = FunctionType::get(
-      op_->getContext(), op_->getOperandTypes(), op_->getResultTypes());
-  translated_function.setType(new_type);
-
-  return success();
-}
-
-mlir::LogicalResult Tf2XlaRewriter::InsertCallToTranslatedFunction(
-    mlir::func::FuncOp translated_function, llvm::SmallVector<Value>& outputs) {
-  if (translated_function.getFunctionType().getNumResults() !=
-      op_->getNumResults()) {
-    return op_->emitRemark() << "Translated function doesn't have the same "
-                                "number of results as the original op";
-  }
-
-  mlir::OpBuilder builder(op_);
-  auto call_op = builder.create<mlir::func::CallOp>(
-      op_->getLoc(), translated_function, op_->getOperands());
-
-  for (int i = 0; i < op_->getNumResults(); i++) {
-    outputs.emplace_back(call_op.getResult(i));
-  }
-
   return success();
 }
 
 mlir::LogicalResult Tf2XlaRewriter::GetKernelOutputs(
-    tensorflow::OpKernelContext& op_context,
-    mlir::func::FuncOp translated_function, llvm::SmallVector<Value>& outputs) {
+    tensorflow::OpKernelContext& op_context, mhlo::TupleOp tuple_results,
+    llvm::SmallVector<Value>& outputs) {
   outputs.reserve(op_->getNumResults());
 
   if (use_tf2xla_hlo_importer_) {
-    if (failed(UnpackTupleResults(translated_function))) return failure();
-    return InsertCallToTranslatedFunction(translated_function, outputs);
+    return UnpackTupleResults(tuple_results, outputs);
   }
 
   for (int i = 0, e = op_->getNumResults(); i < e; i++) {
@@ -559,6 +518,14 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(
     Value operand, Operation* op, int64_t operand_index) {
   ElementsAttr const_attr;
   auto defining_op = operand.getDefiningOp();
+
+  ::xla::XlaOp xla_op;
+  if (use_tf2xla_hlo_importer_) {
+    xla_op = xla::Parameter(&xla_builder_, operand_index,
+                            xla::TypeToShape(operand.getType()),
+                            std::to_string(operand_index));
+  }
+
   if (defining_op && matchPattern(defining_op, m_Constant(&const_attr))) {
     tensorflow::Tensor tensor;
     auto status = tensorflow::ConvertToTensor(const_attr, &tensor);
@@ -568,24 +535,10 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(
       return tensorflow::XlaExpression::Invalid();
     }
 
-    if (use_tf2xla_hlo_importer_) {
-      std::string operand_name = std::to_string(operand_index);
-      // TODO(b/274677205): This may be bad from an inlining perspective since
-      // we're going from a known constant to a parameter type. Figure out how
-      // to plumb the constant instead.
-      xla::Parameter(&xla_builder_, operand_index,
-                     xla::TypeToShape(operand.getType()), operand_name);
-    }
-
     return tensorflow::XlaExpression::Constant(tensor);
   }
 
-  ::xla::XlaOp xla_op;
-  if (use_tf2xla_hlo_importer_) {
-    xla_op = xla::Parameter(&xla_builder_, operand_index,
-                            xla::TypeToShape(operand.getType()),
-                            std::to_string(operand_index));
-  } else {
+  if (!use_tf2xla_hlo_importer_) {
     auto xla_op_or = hlo_builder_.MakeXlaOp(operand);
     if (!xla_op_or.ok()) {
       op->emitRemark() << "skipping legalization due to "

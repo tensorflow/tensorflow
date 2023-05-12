@@ -30,8 +30,8 @@ cc_test(
         "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
     ],
     deps = [
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_cc_proto",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native:latency_benchmark",
         "@com_google_googletest//:gtest_main",
@@ -48,8 +48,8 @@ cc_test(
         "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_sample_stable_delegate_settings.json",
     ],
     deps = [
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native:accuracy_benchmark",

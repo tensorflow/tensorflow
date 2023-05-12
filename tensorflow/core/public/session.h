@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -145,12 +146,12 @@ class Session {
   //
   /// NOTE: This API is still experimental and may change.
   virtual Status Create(const RunOptions& run_options, const GraphDef& graph) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Create(const RunOptions& run_options, const GraphDef& graph) is not "
         "supported for this session.");
   }
   virtual Status Extend(const RunOptions& run_options, const GraphDef& graph) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Extend(const RunOptions& run_options, const GraphDef& graph) is not "
         "supported for this session.");
   }
@@ -163,7 +164,7 @@ class Session {
   }
 #endif
   virtual Status Close(const RunOptions& run_options) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Close(const RunOptions& run_options) is not supported for this "
         "session.");
   }
@@ -188,7 +189,7 @@ class Session {
                      const std::vector<std::string>& target_tensor_names,
                      std::vector<Tensor>* outputs, RunMetadata* run_metadata,
                      const thread::ThreadPoolOptions& threadpool_options) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Run with threadpool is not supported for this session.");
   }
 
@@ -232,7 +233,7 @@ class Session {
   // Sets `*output` to the `DeviceMgr` that owns accessible devices in the
   // address-space of the caller.
   virtual Status LocalDeviceManager(const DeviceMgr** output) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "LocalDeviceManager is not supported for this session.");
   }
 
@@ -244,7 +245,7 @@ class Session {
   /// NOTE: This API is still experimental and may change.
   virtual Status MakeCallable(const CallableOptions& callable_options,
                               CallableHandle* out_handle) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "MakeCallable is not supported for this session.");
   }
 
@@ -259,7 +260,7 @@ class Session {
                              const std::vector<Tensor>& feed_tensors,
                              std::vector<Tensor>* fetch_tensors,
                              RunMetadata* run_metadata) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "RunCallable is not supported for this session.");
   }
 
@@ -275,7 +276,7 @@ class Session {
       CallableHandle handle, const std::vector<Tensor>& feed_tensors,
       std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
       const thread::ThreadPoolOptions& threadpool_options) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "RunCallable with threadpool is not supported for this session.");
   }
 
@@ -283,7 +284,7 @@ class Session {
   /// session.
   /// NOTE: This API is still experimental and may change.
   virtual Status ReleaseCallable(CallableHandle handle) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "ReleaseCallable is not supported for this session.");
   }
 
@@ -306,7 +307,8 @@ class Session {
   ///
   /// NOTE: This API is still experimental and may change.
   virtual Status Finalize() {
-    return errors::Unimplemented("Finalize is not supported for this session.");
+    return absl::UnimplementedError(
+        "Finalize is not supported for this session.");
   }
 };
 
@@ -354,6 +356,9 @@ Status Reset(const SessionOptions& options,
 /// *Strongly prefer* the version of NewSession that returns Status,
 /// which contains more helpful error information.
 Session* NewSession(const SessionOptions& options);
+
+/// \brief Export the metric that indicates the session is created.
+void SetSessionCreatedMetric();
 
 }  // end namespace tensorflow
 

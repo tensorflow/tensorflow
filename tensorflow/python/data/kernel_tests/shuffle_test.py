@@ -42,6 +42,17 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
 
 
+def make_variable_size_dataset(per_epoch_data):
+  repeat_counter = [0]
+
+  def gen():
+    for each in per_epoch_data[repeat_counter[0]]:
+      yield each
+    repeat_counter[0] += 1
+
+  return dataset_ops.Dataset.from_generator(gen, dtypes.int64)
+
+
 class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
@@ -152,8 +163,9 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testDefaultArguments(self):
     components = [0, 1, 2, 3, 4]
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).shuffle(
-        5).repeat()
+    dataset = (
+        dataset_ops.Dataset.from_tensor_slices(components).shuffle(5).repeat()
+    )
     get_next = self.getNext(dataset)
     counts = collections.defaultdict(lambda: 0)
     for _ in range(10):
@@ -162,6 +174,62 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     for i in range(5):
       self.assertEqual(10, counts[i])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testUnknownCardinality(self):
+    components = [0, 1, 2, 3, 4]
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).shuffle(
+        dataset_ops.UNKNOWN
+    )
+    get_next = self.getNext(dataset)
+    counts = collections.defaultdict(lambda: 0)
+    for _ in range(1):
+      for _ in range(5):
+        counts[self.evaluate(get_next())] += 1
+
+    for i in range(5):
+      self.assertEqual(1, counts[i])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testUnknownCardinalityWithRepeatedShuffle(self):
+    components = [0, 1, 2, 3, 4]
+    dataset = (
+        dataset_ops.Dataset.from_tensor_slices(components)
+        .shuffle(dataset_ops.UNKNOWN)
+        .repeat()
+    )
+    get_next = self.getNext(dataset)
+    counts = collections.defaultdict(lambda: 0)
+    for _ in range(10):
+      for _ in range(5):
+        counts[self.evaluate(get_next())] += 1
+
+    for i in range(5):
+      self.assertEqual(10, counts[i])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testUnknownCardinalityWithIncreasingBufferSize(self):
+    epoch_1 = list(range(5))
+    epoch_2 = list(range(10, 17))
+    epoch_3 = list(range(20, 28))
+
+    ds = make_variable_size_dataset([epoch_1, epoch_2, epoch_3])
+    ds = ds.shuffle(dataset_ops.UNKNOWN).repeat(3)
+
+    expected = epoch_1 + epoch_2 + epoch_3
+    self.assertDatasetProduces(ds, expected, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testUnknownCardinalityWithVariableBufferSize(self):
+    epoch_1 = list(range(5))
+    epoch_2 = list(range(10, 13))
+    epoch_3 = list(range(20, 27))
+
+    ds = make_variable_size_dataset([epoch_1, epoch_2, epoch_3])
+    ds = ds.shuffle(dataset_ops.UNKNOWN).repeat(3)
+
+    expected = epoch_1 + epoch_2 + epoch_3
+    self.assertDatasetProduces(ds, expected, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testInputInitializations(self):
@@ -467,7 +535,7 @@ class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           combinations.combine(
               symbolic_checkpoint=[True, False],
               reshuffle_each_iteration=[True, False],
-              buffer_size=[1, 3, 5, 8, 10],
+              buffer_size=[1, 3, 5, 8, 10, dataset_ops.UNKNOWN],
           ),
       )
   )

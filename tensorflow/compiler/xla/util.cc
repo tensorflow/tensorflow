@@ -112,14 +112,12 @@ ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(context, ": ", prior.error_message())};
+  return Status{prior.code(), absl::StrCat(context, ": ", prior.message())};
 }
 
 Status AppendStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(prior.error_message(), ": ", context)};
+  return Status{prior.code(), absl::StrCat(prior.message(), ": ", context)};
 }
 
 std::string Reindent(absl::string_view original,
@@ -163,6 +161,11 @@ std::string RoundTripFpToString(tsl::float8_e5m2 value) {
 }
 
 std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value) {
   std::string result = GenericRoundTripFpToString(value);
   return result;
 }

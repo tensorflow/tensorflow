@@ -221,8 +221,8 @@ void ReplaceWithNoOp(NodeDef* node, const GraphOptimizerContext& ctx) {
   ctx.node_map->RemoveInputs(node->name());
   ctx.graph_properties->ClearInputProperties(node->name());
   ctx.graph_properties->ClearOutputProperties(node->name());
+  ChangeToNoOp(node);
   EraseRegularNodeAttributes(node);
-  node->set_op("NoOp");
   node->clear_input();
 }
 
@@ -3128,7 +3128,7 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
     Status status = SetTensorValue(type, num_inputs, &t);
     if (!status.ok()) {
       return errors::Internal("Failed to create const node: ",
-                              status.error_message());
+                              status.message());
     }
 
     TensorValue value(&t);
@@ -3137,7 +3137,7 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
                                             new_const_node);
     if (!status.ok()) {
       return errors::Internal("Failed to create const node: ",
-                              status.error_message());
+                              status.message());
     }
     new_const_node->set_device(node->device());
     MaybeAddControlInput(NodeName(node->input(0)), new_const_node,
@@ -4450,7 +4450,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
                                          /*include_tensor_values=*/false);
   const bool can_use_shapes = status.ok();
   if (!can_use_shapes) {
-    VLOG(1) << "Shape inference failed." << status.error_message();
+    VLOG(1) << "Shape inference failed." << status.message();
   }
 
   // Perform the optimizations.

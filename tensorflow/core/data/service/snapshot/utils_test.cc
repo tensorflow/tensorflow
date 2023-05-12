@@ -67,15 +67,6 @@ TEST(UtilsTest, EstimatedMixedElementsSizeBytes) {
 
 TEST(UtilsTest, EmptyTensor) { EXPECT_GT(EstimatedSizeBytes({Tensor()}), 0); }
 
-TEST(UtilsTest, StreamAssignmentChanged) {
-  Status stream_assignment_changed =
-      StreamAssignmentChanged("worker_address", /*stream_index=*/0);
-  EXPECT_TRUE(IsStreamAssignmentChanged(stream_assignment_changed));
-  EXPECT_FALSE(IsStreamAssignmentChanged(OkStatus()));
-  EXPECT_FALSE(IsStreamAssignmentChanged(
-      errors::FailedPrecondition("Not stream assignment changed.")));
-}
-
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

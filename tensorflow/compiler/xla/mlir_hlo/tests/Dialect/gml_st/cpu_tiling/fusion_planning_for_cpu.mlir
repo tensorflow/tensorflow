@@ -28,16 +28,16 @@ func.func @reverse_reduce_map(%input: tensor<?x?xf32>, %init0: tensor<?x?xf32>,
 // CHECK-SAME: %[[INIT1:.*]]: tensor
 
 // CHECK:       %[[FUSION0:.*]] = gml_st.fusion
-// CHECK-SAME:      (%[[BB_INPUT:.*]] = %[[INPUT]]: tensor<?x?xf32>,
-// CHECK-SAME:      %[[BB_INIT0:.*]] = %[[INIT0]]: tensor<?x?xf32>
+// CHECK-SAME:      ins(%[[BB_INPUT:.*]] = %[[INPUT]]: tensor<?x?xf32>
+// CHECK-SAME:      inits(%[[BB_INIT0:.*]] = %[[INIT0]]: tensor<?x?xf32>
 // CHECK-NEXT:    %[[SORTED:.*]] = thlo.sort
 // CHECK-SAME:      ins(%[[BB_INPUT]]
 // CHECK-SAME:      outs(%[[BB_INIT0]]
 // CHECK:         gml_st.yield %[[SORTED]]
 
 // CHECK:       %[[FUSION1:.*]] = gml_st.fusion
-// CHECK-SAME:      (%[[BB_INPUT:.*]] = %[[FUSION0]]: tensor<?x?xf32>,
-// CHECK-SAME:      %[[BB_INIT1:.*]] = %[[INIT1]]: tensor<?xf32>
+// CHECK-SAME:      ins(%[[BB_INPUT:.*]] = %[[FUSION0]]: tensor<?x?xf32>
+// CHECK-SAME:      inits(%[[BB_INIT1:.*]] = %[[INIT1]]: tensor<?xf32>
 // CHECK:         %[[REDUCED:.*]] = linalg.reduce
 // CHECK-SAME:      ins(%[[BB_INPUT]]
 // CHECK-SAME:      outs(%[[BB_INIT1]]
@@ -211,13 +211,13 @@ func.func @fused_matmul(%arg0: tensor<1x32xf32>, %arg1: tensor<32x10xf32>,
 // CHECK-LABEL: func @fused_matmul
 // CHECK-SAME:      (%[[ARG0:.*]]: tensor<1x32xf32>, %[[ARG1:.*]]: tensor<32x10xf32>
 // CHECK-SAME:      %[[ARG2:.*]]: tensor<10xf32>
-// CHECK:         %[[C0:.*]] = arith.constant 0
 // CHECK:         %[[EMPTY:.*]] = tensor.empty()
 // CHECK:         gml_st.fusion
-// CHECK-SAME:        (%[[ARG2_:.*]] = %[[ARG2]]: tensor<10xf32>
-// CHECK-SAME:        %[[ARG0_:.*]] = %[[ARG0]]: tensor<1x32xf32>
-// CHECK-SAME:        %[[ARG1_:.*]] = %[[ARG1]]: tensor<32x10xf32>
-// CHECK-SAME:        %[[EMPTY_:.*]] = %[[EMPTY]]: tensor<1x10xf32>
+// CHECK-SAME:        ins(%[[ARG2_:.*]] = %[[ARG2]]: tensor<10xf32>
+// CHECK-SAME:            %[[ARG0_:.*]] = %[[ARG0]]: tensor<1x32xf32>
+// CHECK-SAME:            %[[ARG1_:.*]] = %[[ARG1]]: tensor<32x10xf32>
+// CHECK-SAME:        inits(%[[EMPTY_:.*]] = %[[EMPTY]]: tensor<1x10xf32>
+// CHECK:           %[[C0:.*]] = arith.constant 0
 // CHECK:           %[[EXPANDED:.*]] = tensor.expand_shape %[[ARG2_]]
 // CHECK:           %[[TMP:.*]] = tensor.empty
 // CHECK:           %[[FILLED:.*]] = linalg.fill
@@ -305,9 +305,9 @@ func.func @tensor_empty_init(%input: tensor<?xf32>)
 // CHECK:         %[[DIM:.*]] = tensor.dim
 // CHECK:         %[[EMPTY:.*]] = tensor.empty
 // CHECK:         gml_st.fusion
-// CHECK-SAME:        %[[DIM_:.*]] = %[[DIM]]: index
-// CHECK-SAME:        %[[ARG0_:.*]] = %[[ARG0]]: tensor<?xf32>
-// CHECK-SAME:        %[[EMPTY_:.*]] = %[[EMPTY]]
+// CHECK-SAME:        ins(%[[DIM_:.*]] = %[[DIM]]: index
+// CHECK-SAME:            %[[ARG0_:.*]] = %[[ARG0]]: tensor<?xf32>
+// CHECK-SAME:        inits(%[[EMPTY_:.*]] = %[[EMPTY]]
 // CHECK:           %[[TMP:.*]] = tensor.empty(%[[DIM_]])
 // CHECK:           %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:        outs(%[[TMP]]
@@ -373,9 +373,9 @@ func.func @shared_tensor_empty_dynamic(%input: tensor<?xf32>, %size : index)
 // CHECK-SAME:       %[[ARG0:.*]]: tensor<?xf32>, %[[SIZE:.*]]: index
 // CHECK:         %[[EMPTY:.*]] = tensor.empty(%[[SIZE]]) : tensor<?xf32>
 // CHECK:         %[[FUSION:.*]] = gml_st.fusion
-// CHECK-SAME:        %[[ARG2:.*]] = %[[SIZE]]: index,
-// CHECK-SAME:        %[[ARG3:.*]] = %[[ARG0]]: tensor<?xf32>,
-// CHECK-SAME:        %[[ARG4:.*]] = %[[EMPTY]]: tensor<?xf32>
+// CHECK-SAME:        ins(%[[ARG2:.*]] = %[[SIZE]]: index,
+// CHECK-SAME:            %[[ARG3:.*]] = %[[ARG0]]: tensor<?xf32>
+// CHECK-SAME:        inits(%[[ARG4:.*]] = %[[EMPTY]]: tensor<?xf32>
 // CHECK:           %[[EMPTY_0:.*]] = tensor.empty(%[[ARG2]]) : tensor<?xf32>
 // CHECK:           %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:        ins(%[[ARG3]] {{.*}} outs(%[[EMPTY_0]]
@@ -403,9 +403,9 @@ func.func @shared_linalg_fill_dynamic(%input: tensor<?x?xf32>, %size : index)
 }
 
 // CHECK-LABEL:    func.func @shared_linalg_fill_dynamic
-// CHECK:          %[[CST:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:          %[[EMPTY:.*]] = tensor.empty
 // CHECK:          %[[FUSION:.*]] = gml_st.fusion
+// CHECK:            %[[CST:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:            %[[FILL:.*]] = linalg.fill
 // CHECK:            %[[REDUCED:.*]] = linalg.reduce {{.*}} outs(%[[FILL]]
 // CHECK:          %[[FUSION_0:.*]] = gml_st.fusion

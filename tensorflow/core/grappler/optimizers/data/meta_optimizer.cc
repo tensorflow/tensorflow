@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/meta_optimizer.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -174,7 +175,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
   if (status.ok()) {
     // The optimizer succeeded and wrote the optimized graph to result.
     item->graph.Swap(&result);
-  } else if (errors::IsAborted(status)) {
+  } else if (absl::IsAborted(status)) {
     // A status of errors::Aborted just means that the optimizer was a no-op and
     // did not populate result. Swallow the error status and leave the original
     // graph in item.

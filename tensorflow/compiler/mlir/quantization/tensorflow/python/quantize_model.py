@@ -51,7 +51,7 @@ _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 
 # Default minimum number of elements in the weights for them to be quantized
-# during dynamic range quantization (DRQ).
+# during dynamic range quantization (DRQ) and weight-only quantization.
 _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
 
 # Name of the saved model assets directory.
@@ -464,6 +464,7 @@ def _run_graph_for_calibration(
     signature_keys: Sequence[str],
     tags: Collection[str],
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    force_graph_mode_calibration: bool,
 ) -> None:
   """Runs the graph for calibration using representative datasets.
 
@@ -478,6 +479,8 @@ def _run_graph_for_calibration(
       `signature_keys` contains more than one signature key,
       `representative_datsaet` should be a mapping that maps each signature keys
       to the corresponding representative dataset.
+    force_graph_mode_calibration: If set to true, it forces calibration in graph
+      model instead of eager mode when the context is in eager mode.
 
   Raises:
     ValueError iff:
@@ -498,11 +501,13 @@ def _run_graph_for_calibration(
     representative_dataset_map = {signature_keys[0]: representative_dataset}
 
   try:
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not force_graph_mode_calibration:
+      logging.info('Calibration step is executed in eager mode.')
       _run_graph_for_calibration_eager_mode(
           float_model_dir, tags, representative_dataset_map
       )
     else:
+      logging.info('Calibration step is executed in graph mode.')
       _run_graph_for_calibration_graph_mode(
           float_model_dir, tags, representative_dataset_map
       )
@@ -733,6 +738,7 @@ def _run_static_range_ptq(
       signature_def_keys,
       tags,
       representative_dataset,
+      quant_opts.force_graph_mode_calibration,
   )
   _add_calibration_statistics(graph_def)
 
@@ -1016,12 +1022,26 @@ def _populate_quantization_options_default_values(
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True
 
-  if quantization_options.enable_per_channel_quantization and (
-      quantization_options.op_set != quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+  # TODO(b/281595329): Implement static range quantization per-channel support
+  if quantization_options.enable_per_channel_quantization and not (
+      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+      or quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform '
-        'Quantized opset only.'
+        'Quantized opset and Weight-only.'
+    )
+
+  if (
+      quantization_options.enable_per_channel_quantization
+      and quantization_options.enable_legacy_weight_only
+      and quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
+  ):
+    raise ValueError(
+        'Weight-only per-channel is only supported with'
+        'enable_legacy_weight_only disabled'
     )
 
   if (

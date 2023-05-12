@@ -54,6 +54,7 @@ cc_library(
         ":eager_client",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -99,9 +100,6 @@ cc_library(
         ":cluster_function_library_runtime",
         ":remote_mgr",
         ":remote_tensor_handle",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
@@ -114,11 +112,17 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/distributed_runtime:message_wrappers",
+        "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -145,6 +149,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
     ],

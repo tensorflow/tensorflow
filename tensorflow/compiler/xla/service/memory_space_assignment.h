@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment.pb.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 
 namespace xla {
@@ -152,6 +153,46 @@ class MemorySpaceAssignmentCostAnalysis {
   float GetMemoryBoundedness(
       const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
       Cache* cache = nullptr) const;
+
+  // If enabled in Options::pipeline_overhead_window_size_mib, returns the
+  // overhead of accessing the default memory, in seconds. The source of the
+  // overhead is the software pipelining ovehead. The lowering of the operations
+  // typically use tiling to copy one window at a time from default memory, and
+  // perform compute:
+  //
+  // Pipeline overhead:                          <->
+  //                        +----+----+----+----+
+  // Copy from default mem: |    |    |    |    |
+  //                        +----+----+----+----+
+  //                            \    \    \    \
+  //                             \    \    \    \
+  //                              V    V    V    V
+  //                             +--+ +--+ +--+ +--+
+  // Compute:                    |  | |  | |  | |  |
+  //                             +--+ +--+ +--+ +--+
+  float GetDefaultMemoryAccessOverhead(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
+
+  // Returns the amount of time the default memory bandwidth is idle, while
+  // executing this instruction, in seconds.  This value can be multiplied with
+  // the default memory bandwidth to get the amount of bytes that are available
+  // to be copied to/from default memory during the execution of this
+  // instruction.
+  float GetDefaultMemoryBandwidthIdleTime(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
+
+  // Returns the bytes accessed from alternate memory.
+  float GetBytesAccessedFromAlternateMemory(
+      const HloInstruction& instruction,
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
 
   // Returns the elapsed time in seconds due to compute only.
   float GetInstructionElapsedDueToCompute(
@@ -720,6 +761,8 @@ class MemorySpaceAssignment {
     std::optional<int64_t> cross_program_prefetch_index_;
   };
 
+  // TODO(b/275905276): create a SlicedCopyAllocation
+
   // An allocation in the default memory space that mirrors another Allocation
   // object. This is useful to model an eviction that happens before a while op
   // so that we don't need to redundantly evict the buffer after the while op as
@@ -1239,9 +1282,16 @@ struct Options {
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
 
+  // The window size used to calculate the pipeline overhead when HLO accesses
+  // the default memory, in MiB.
+  float pipeline_overhead_window_size_mib = 0;
+
   // Config to filter prefetches and update preferred prefetch times for the
   // filtered prefetches according to an update config.
   std::vector<FilterUpdatePreferredPrefetch> filter_update_preferred_prefetches;
+
+  // Options for slicing prefetches into smaller asynchronously copied pieces.
+  SlicedPrefetchOptions sliced_prefetch_options;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1490,6 +1540,9 @@ class AlternateMemoryBestFitHeap
     absl::Span<const int64_t> all_use_times;
   };
 
+  // TODO(b/275905276): create a SlicedAllocationRequest that contains the
+  // original AllocationRequest, plus slice times and sizes
+
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -1637,6 +1690,10 @@ class AlternateMemoryBestFitHeap
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
+  // TODO(b/275905276): change FindBestChunkCandidate() signature to take a
+  // SlicedAllocationRequest (which can indicate 0 slices), and return a
+  // vector of chunks
+
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
   // it is given.
@@ -1714,6 +1771,8 @@ class AlternateMemoryBestFitHeap
       MemorySpaceAssignment::AllocationSequence* allocations,
       AliasedOffset* aliased_offset, float resource,
       std::optional<int> cross_program_prefetch_index = std::nullopt);
+
+  // TODO(b/275905276): create AddAsyncSlicedCopy
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back

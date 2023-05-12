@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -split-input-file -xla-lmhlo-to-cpu-runtime \
+// RUN: xla-cpu-opt %s -split-input-file -xla-cpu-to-cpu-runtime \
 // RUN:   | FileCheck %s
 
 // CHECK: func @test
@@ -7,12 +7,14 @@
 func.func @test(%arg0: memref<f32>) {
   // CHECK: call @[[CUSTOM_CALL:.*]](%[[ARG0]])
   // CHECK-SAME:   api_version = 2 : i32
+  // CHECK-SAME:   backend_config = ""
   // CHECK-SAME:   call_target_name = "target"
   // CHECK-SAME:   num_results = 1 : i32
   // CHECK-SAME:   output_tuple = false
   // CHECK-SAME: : (memref<f32>) -> ()
   "lmhlo.custom_call"(%arg0) ({}) {
     api_version = 2 : i32,
+    backend_config = "",
     call_target_name = "target",
     operand_segment_sizes = array<i32: 0, 1>
   } : (memref<f32>) -> ()
@@ -42,11 +44,13 @@ func.func @test_with_mapping(
   // CHECK: call @[[CUSTOM_CALL:.*]](%[[ARG0]], %[[HOLE]], %[[ARG1]], %[[HOLE]],
   // CHECK-SAME:  %[[ARG2]], %[[ARG3]], %[[HOLE]], %[[ARG4]])
   // CHECK-SAME:   api_version = 1 : i32
+  // CHECK-SAME:   backend_config = ""
   // CHECK-SAME:   call_target_name = "target"
   // CHECK-SAME:   num_results = 4 : i32
   // CHECK-SAME:   output_tuple = true
   "lmhlo.custom_call"(%arg0, %arg1, %arg2, %arg3, %arg4) ({}) {
     api_version = 1 : i32,
+    backend_config = "",
     call_target_name = "target",
     operand_segment_sizes = array<i32: 2, 3>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<

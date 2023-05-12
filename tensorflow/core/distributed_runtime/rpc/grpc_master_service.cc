@@ -30,6 +30,8 @@ limitations under the License.
 // RunGraph on workers.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 
+#include <string>
+
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/master.h"
@@ -207,7 +209,8 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
           if (call->request.store_errors_in_response_body() && !status.ok()) {
             call->response.set_status_code(
                 static_cast<error::Code>(status.code()));
-            call->response.set_status_error_message(status.error_message());
+            call->response.set_status_error_message(
+                std::string(status.message()));
             call->SendResponse(ToGrpcStatus(OkStatus()));
           } else {
             call->SendResponse(ToGrpcStatus(status));

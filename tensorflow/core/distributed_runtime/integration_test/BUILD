@@ -28,7 +28,7 @@ tf_cuda_library(
 
 tf_cuda_cc_test(
     name = "c_api_coordination_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_coordination_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
@@ -81,7 +81,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_multi_client_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_multi_client_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [

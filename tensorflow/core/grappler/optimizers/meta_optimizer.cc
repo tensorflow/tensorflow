@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -938,14 +939,14 @@ Status MetaOptimizer::RunOptimizer(
   string message;
   if (!status.ok()) {
     *optimized_graph = std::move(optimized_item->graph);
-    if (errors::IsAborted(status)) {
+    if (absl::IsAborted(status)) {
       // By convention we (ab-)use the Aborted error code to signal that the
       // optimizer returned without performing any changes to the graph.
       message = strings::StrCat(optimizer->name(),
                                 " did nothing. time = ", duration_ms, "ms.");
       // Swallow the non-critical error.
       status = OkStatus();
-    } else if (errors::IsDeadlineExceeded(status)) {
+    } else if (absl::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
       LOG(WARNING) << optimizer->name() << " failed: " << message;
@@ -1382,7 +1383,7 @@ Status OptimizeGraph(
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {
     Status added_device = item.AddDevice(d->name());
-    if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    if (!added_device.ok()) VLOG(3) << added_device.message();
   }
   VLOG(3) << "Grappler available devices: "
           << absl::StrJoin(item.devices(), ", ");

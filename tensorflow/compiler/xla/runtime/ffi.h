@@ -83,6 +83,13 @@ class FfiModulesState {
   std::vector<std::unique_ptr<Module::State>> state_;
 };
 
+// Gets the underlying FFI stream from the `user_data`.
+XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
+                                const DiagnosticEngine* diagnostic);
+
+void RegisterXlaFfiStreamProvider(
+    XLA_FFI_Stream* (*)(const CustomCall::UserData*, const DiagnosticEngine*));
+
 }  // namespace ffi
 }  // namespace runtime
 }  // namespace xla

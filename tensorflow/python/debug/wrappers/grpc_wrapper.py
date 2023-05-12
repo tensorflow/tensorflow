@@ -17,7 +17,6 @@ import signal
 import sys
 import traceback
 
-# Google-internal import(s).
 from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.wrappers import framework
 
@@ -92,7 +91,8 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
     """
 
     if log_usage:
-      pass  # No logging for open-source.
+      # TODO(juanantoniomc): Finalize log_usage deprecation by removing arg.
+      pass
 
     framework.NonInteractiveDebugWrapperSession.__init__(
         self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter)

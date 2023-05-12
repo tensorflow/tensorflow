@@ -18,7 +18,6 @@ import os
 import sys
 import tempfile
 
-# Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
@@ -74,7 +73,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """
 
     if log_usage:
-      pass  # No logging for open-source.
+      # TODO(juanantoniomc): Finalize log_usage deprecation by removing arg.
+      pass
 
     framework.BaseDebugWrapperSession.__init__(
         self, sess, thread_name_filter=thread_name_filter)

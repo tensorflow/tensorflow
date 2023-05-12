@@ -107,6 +107,22 @@ Status ExtractDims(mlir::Operation* op,
 }
 
 template <>
+Status ExtractDims<mlir::TF::L2LossOp>(
+    mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
+    bool* keep_dims, bool* matched) {
+  if (!llvm::isa<mlir::TF::L2LossOp>(op)) return OkStatus();
+  auto loss_op = llvm::cast<mlir::TF::L2LossOp>(op);
+  *reduced_dims = llvm::SmallVector<int64_t, 4>{};
+  reduced_dims->resize(ValueRank(loss_op->getOperand(0)));
+  for (int i = 0; i < reduced_dims->size(); ++i) {
+    (*reduced_dims)[i] = i;
+  }
+  *keep_dims = false;
+  *matched = true;
+  return OkStatus();
+}
+
+template <>
 Status ExtractDims<mlir::TF::BiasAddGradOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
@@ -133,11 +149,24 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
   return OkStatus();
 }
 
+template <>
+Status ExtractDims<mlir::TF::EncodePngOp>(
+    mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
+    bool* keep_dims, bool* matched) {
+  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return OkStatus();
+  *reduced_dims = {-3, -2, -1};
+  *keep_dims = false;
+  *matched = true;
+  return OkStatus();
+}
+
 Status ExtractReductionParameters(mlir::Operation* op,
                                   absl::flat_hash_set<int>& reduced_dims_set,
                                   bool& keep_dims) {
   llvm::SmallVector<int64_t, 4> reduced_dims;
   bool matched = false;
+  TF_RETURN_IF_ERROR(ExtractDims<mlir::TF::EncodePngOp>(op, &reduced_dims,
+                                                        &keep_dims, &matched));
   TF_RETURN_IF_ERROR(
       ExtractDims<mlir::TF::SumOp>(op, &reduced_dims, &keep_dims, &matched));
   TF_RETURN_IF_ERROR(
@@ -152,6 +181,8 @@ Status ExtractReductionParameters(mlir::Operation* op,
       ExtractDims<mlir::TF::MeanOp>(op, &reduced_dims, &keep_dims, &matched));
   TF_RETURN_IF_ERROR(
       ExtractDims<mlir::TF::ProdOp>(op, &reduced_dims, &keep_dims, &matched));
+  TF_RETURN_IF_ERROR(
+      ExtractDims<mlir::TF::L2LossOp>(op, &reduced_dims, &keep_dims, &matched));
   TF_RETURN_IF_ERROR(ExtractDims<mlir::TF::BiasAddGradOp>(
       op, &reduced_dims, &keep_dims, &matched));
 
@@ -165,10 +196,6 @@ Status ExtractReductionParameters(mlir::Operation* op,
 
 StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,
                                      const Layout& input_layout) {
-  //  The output layout for L2Loss is scalar replicated mesh, where rank = 0.
-  if (mlir::isa<mlir::TF::L2LossOp>(op))
-    return Layout::ReplicatedOnMesh(input_layout.mesh(), /*rank=*/0);
-
   absl::flat_hash_set<int> reduced_dims_set;
   bool keep_dims;
   TF_RETURN_IF_ERROR(
@@ -209,8 +236,8 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
   InferSPMDExpandedLocalShape(op);
 
   mlir::Operation* reduce_op;
-  if (mlir::isa<mlir::TF::SumOp, mlir::TF::L2LossOp, mlir::TF::BiasAddGradOp>(
-          op)) {
+  if (mlir::isa<mlir::TF::SumOp, mlir::TF::L2LossOp, mlir::TF::BiasAddGradOp,
+                mlir::TF::EncodePngOp>(op)) {
     TF_ASSIGN_OR_RETURN(
         reduce_op,
         EmitAllReduce(builder, output_layout, reduced_dims, op, kReduceOpAdd));
@@ -278,15 +305,6 @@ StatusOr<llvm::DenseMap<int, Layout>> ReduceSPMDExpander::ComputeLayoutBackward(
 
   Layout output_layout = output_layouts.lookup(0);
   TF_ASSIGN_OR_RETURN(auto input_shape, GetShapeOfValue(op->getOperand(0)));
-
-  // The output layout for L2Loss is scalar replicated mesh, then output
-  // always is rank 0. As L2Loss does not care about its input layout, clear
-  // the layout so we make no request.
-  if (mlir::isa<mlir::TF::L2LossOp>(op)) {
-    // TODO(b/178423341) Update this once the bug is fixed.
-    return llvm::DenseMap<int, Layout>(
-        {{0, Layout::AnyOnMesh(mesh, ValueRank(op->getOperand(0)))}});
-  }
 
   std::vector<std::string> inferred_operand_layout_str;
 

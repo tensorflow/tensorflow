@@ -1214,8 +1214,7 @@ void LoadDynamicKernelsInternal() {
         Status s = IsProbablySafeToLoad(fullpath);
         if (!s.ok() && override_abi_check) {
           LOG(WARNING) << "Loading UNSAFE library " << fullpath
-                       << " because ABI check override is set: "
-                       << s.error_message();
+                       << " because ABI check override is set: " << s.message();
         }
         if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
@@ -1224,7 +1223,7 @@ void LoadDynamicKernelsInternal() {
               env->LoadDynamicLibrary(fullpath.c_str(), &unused_filehandle));
         } else {
           LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
-                       << s.error_message();
+                       << s.message();
         }
       }
     }

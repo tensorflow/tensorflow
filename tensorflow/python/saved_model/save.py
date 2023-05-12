@@ -36,6 +36,7 @@ from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
@@ -72,9 +73,12 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import resource
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import trace_saveable_util
+from tensorflow.python.types import core as types_core
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
+# Placeholder for protosplitter import.
+
 
 _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
 
@@ -269,7 +273,7 @@ class _SaveableView(object):
 
     untraced_functions = self.augmented_graph_view.untraced_functions
     if untraced_functions:
-      logging.warning(
+      logging.info(
           "Found untraced functions such as %s while saving (showing %d of %d)."
           " These functions will not be directly callable after loading.",
           ", ".join(untraced_functions[:_NUM_DISPLAY_UNTRACED_FUNCTIONS]),
@@ -389,10 +393,10 @@ class _SaveableView(object):
     # TODO(b/205007558): Handle MirroredVariables and other types of variables
     # which may need special casing.
     object_map = object_identity.ObjectIdentityDictionary()
-    tensor_map = {}
+    tensor_map = object_identity.ObjectIdentityDictionary()
     asset_info = _AssetInfo(
         asset_defs=[],
-        asset_initializers_by_resource={},
+        asset_initializers_by_resource=object_identity.ObjectIdentityDictionary(),
         asset_filename_map={},
         asset_index={})
 
@@ -497,8 +501,9 @@ def _to_safe_name_scope(signature_key, user_input_name):
   return re.sub(r"[^A-Za-z0-9_.\\-]", "_", invalid_prefix_stripped)
 
 
-def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
-                                              function_name):
+def _map_function_arguments_to_created_inputs(
+    function_arguments, signature_key, function_name, defaults=None
+):
   """Creates exterior placeholders in the exported graph for function arguments.
 
   Functions have two types of inputs: tensors captured from the outside (eager)
@@ -513,6 +518,8 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
     function_arguments: A list of argument placeholders in the function body.
     signature_key: The name of the signature being exported, for error messages.
     function_name: The name of the function, for error messages.
+    defaults: A dictionary mapping signature_key to dictionary of
+      user_specified_name to Tensor representing default values.
 
   Returns:
     A tuple of (mapped_inputs, exterior_placeholders)
@@ -558,16 +565,27 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
           "structures unless unique names are specified for each. Use "
           "tf.TensorSpec(..., name=...) to provide a name for a Tensor "
           "input.")
-    arg_placeholder = array_ops.placeholder(
-        shape=placeholder.shape,
-        dtype=placeholder.dtype,
-        name=_to_safe_name_scope(signature_key, user_input_name))
-    exterior_argument_placeholders[user_input_name] = arg_placeholder
-    mapped_inputs.append(arg_placeholder)
+    default_value = defaults.get(signature_key, {}).get(user_input_name)
+    if default_value is not None:
+      placeholder_with_default = array_ops.placeholder_with_default(
+          input=default_value.numpy(),
+          shape=placeholder.shape,
+          name=_to_safe_name_scope(signature_key, user_input_name),
+      )
+      exterior_argument_placeholders[user_input_name] = placeholder_with_default
+      mapped_inputs.append(placeholder_with_default)
+    else:
+      arg_placeholder = array_ops.placeholder(
+          shape=placeholder.shape,
+          dtype=placeholder.dtype,
+          name=_to_safe_name_scope(signature_key, user_input_name),
+      )
+      exterior_argument_placeholders[user_input_name] = arg_placeholder
+      mapped_inputs.append(arg_placeholder)
   return mapped_inputs, exterior_argument_placeholders
 
 
-def _generate_signatures(signature_functions, object_map):
+def _generate_signatures(signature_functions, object_map, defaults=None):
   """Validates and calls `signature_functions` in the exported graph.
 
   Args:
@@ -576,6 +594,8 @@ def _generate_signatures(signature_functions, object_map):
       which will be used to generate SignatureDefs.
     object_map: A dictionary that contains mappings from signature functions to
       concrete functions in the exported graph.
+    defaults: A dictionary mapping signature_key to dictionary of
+      user_specified_name to Tensor representing default values.
 
   Returns:
     Each function in the `signature_functions` dictionary is called with
@@ -600,8 +620,10 @@ def _generate_signatures(signature_functions, object_map):
     else:
       argument_inputs = function.graph.inputs
     mapped_inputs, exterior_argument_placeholders = (
-        _map_function_arguments_to_created_inputs(argument_inputs,
-                                                  signature_key, function.name))
+        _map_function_arguments_to_created_inputs(
+            argument_inputs, signature_key, function.name, defaults
+        )
+    )
     kwarg_names = list(
         sorted(
             object_map[function].function.structured_input_signature[1].keys()))
@@ -612,7 +634,9 @@ def _generate_signatures(signature_functions, object_map):
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_argument_placeholders),
         _tensor_dict_to_tensorinfo(outputs),
-        method_name=signature_constants.PREDICT_METHOD_NAME)
+        method_name=signature_constants.PREDICT_METHOD_NAME,
+        defaults=defaults.get(signature_key, None),
+    )
   return signatures
 
 
@@ -786,8 +810,14 @@ def _trace_gradient_functions(graph, saveable_view):
       saveable_view.gradient_defs.append(grad_def)
 
 
-def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
-                         namespace_whitelist, save_custom_gradients):
+def _fill_meta_graph_def(
+    meta_graph_def,
+    saveable_view,
+    signature_functions,
+    namespace_whitelist,
+    save_custom_gradients,
+    defaults=None,
+):
   """Generates a MetaGraph which calls `signature_functions`.
 
   Args:
@@ -797,6 +827,8 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       functions containing signatures to add to the MetaGraph.
     namespace_whitelist: List of strings containing whitelisted op namespaces.
     save_custom_gradients: Whether to save custom gradients.
+    defaults: A dictionary mapping signature_key to dictionary of
+      user_specified_name to Tensor representing default values.
 
   Returns:
     A tuple of (_AssetInfo, Graph) containing the captured assets and
@@ -809,7 +841,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   resource_initializer_ops = []
   with exported_graph.as_default():
     object_map, tensor_map, asset_info = saveable_view.map_resources()
-    signatures = _generate_signatures(signature_functions, object_map)
+    signatures = _generate_signatures(signature_functions, object_map, defaults)
   if save_custom_gradients:
     # Custom gradients functions must be traced in the same context as the
     # when they are registered.
@@ -1044,18 +1076,16 @@ def _export_debug_info(exported_graph, export_dir):
     exported_graph: A Graph that has been created by tracing a saveable view.
     export_dir: SavedModel directory in which to write the debug info.
   """
-  exported_operations = []
+  per_fn_info = []
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
     fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
     if not isinstance(fn, defun.AtomicFunction):  # pylint: disable=protected-access
       continue
 
-    fn_graph = fn.graph
-    for fn_op in fn_graph.get_operations():
-      exported_operations.append((fn_name, fn_op))
+    per_fn_info.append((fn_name, fn.graph_debug_info))
 
-  graph_debug_info = error_interpolation.create_graph_debug_info_def(
-      exported_operations)
+  graph_debug_info = error_interpolation.merge_graph_debug_info_def(
+      per_fn_info)
   file_io.atomic_write_string_to_file(
       file_io.join(
           path_helpers.get_or_create_debug_dir(export_dir),
@@ -1071,7 +1101,7 @@ def save(obj, export_dir, signatures=None, options=None):
   """Exports a [tf.Module](https://www.tensorflow.org/api_docs/python/tf/Module) (and subclasses) `obj` to [SavedModel format](https://www.tensorflow.org/guide/saved_model#the_savedmodel_format_on_disk).
 
   The `obj` must inherit from the [`Trackable`
-  class](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/tracking/base.py#L591).
+  class](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/trackable/base.py#L278).
 
   Example usage:
 
@@ -1313,14 +1343,19 @@ def save_and_return_nodes(obj,
   # as we build up the C++ API.
   pywrap_saved_model.Save(export_dir)
 
-  saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+  if options.experimental_image_format:
+    prefix = file_io.join(
+        compat.as_str(export_dir),
+        "saved_model")
+    proto_splitter.SavedModelSplitter(saved_model).write(prefix)
+  else:
+    saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+    fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
 
-  fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
-
-  path = file_io.join(
-      compat.as_str(export_dir),
-      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
-  file_io.atomic_write_string_to_file(path, saved_model_serialized)
+    path = file_io.join(
+        compat.as_str(export_dir),
+        compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
+    file_io.atomic_write_string_to_file(path, saved_model_serialized)
 
   # Save debug info, if requested.
   if options.save_debug_info:
@@ -1396,8 +1431,9 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
     signatures = signature_serialization.find_function_to_export(
         augmented_graph_view)
 
-  signatures, wrapped_functions = (
-      signature_serialization.canonicalize_signatures(signatures))
+  signatures, wrapped_functions, defaults = (
+      signature_serialization.canonicalize_signatures(signatures)
+  )
   signature_serialization.validate_augmented_graph_view(augmented_graph_view)
   signature_map = signature_serialization.create_signature_map(signatures)
   augmented_graph_view.set_signature(signature_map, wrapped_functions)
@@ -1406,18 +1442,35 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
   saveable_view = _SaveableView(augmented_graph_view, options)
   object_saver = checkpoint.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
-      meta_graph_def, saveable_view, signatures, options.namespace_whitelist,
-      options.experimental_custom_gradients)
+      meta_graph_def,
+      saveable_view,
+      signatures,
+      options.namespace_whitelist,
+      options.experimental_custom_gradients,
+      defaults,
+  )
   if options.function_aliases:
     function_aliases = meta_graph_def.meta_info_def.function_aliases
     for alias, func in options.function_aliases.items():
-      for fdef in func._list_all_concrete_functions():  # pylint: disable=protected-access
-        function_aliases[fdef.name] = alias
-
+      if isinstance(func, types_core.ConcreteFunction):
+        function_aliases[func.name] = alias
+      elif isinstance(func, polymorphic_function.Function):
+        for fdef in func._list_all_concrete_functions():  # pylint: disable=protected-access
+          function_aliases[fdef.name] = alias
+      elif isinstance(func, collections.abc.Iterable) and all(
+          isinstance(x, types_core.ConcreteFunction) for x in func
+      ):
+        for entry in func:
+          function_aliases[entry.name] = alias
+      else:
+        raise TypeError(
+            f"Unsupported type f{type(func)}. Functions in `function_aliases`"
+            " should be created by tf.function, or concrete functions, or"
+            " collections of concrete functions."
+        )
   object_graph_proto = _serialize_object_graph(saveable_view,
                                                asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-
   return (meta_graph_def, exported_graph, object_saver, asset_info,
           saveable_view.nodes, saveable_view.node_paths)
 

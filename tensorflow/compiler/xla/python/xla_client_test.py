@@ -37,6 +37,7 @@ except ImportError:
 
 bfloat16 = xla_client.bfloat16
 float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
 float8_e5m2 = xla_client.float8_e5m2
 ops = xla_client.ops
 xla_computation_to_mlir_module = (
@@ -81,21 +82,15 @@ def TestFactory(xla_backend,
                 pathways=False):
   tests = []
 
-  if not cloud_tpu:
-    int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
-    # TODO(phawkins): test np.float16, where supported.
-    float_dtypes = [bfloat16, np.float32, np.float64]
-    complex_dtypes = [np.complex64, np.complex128]
-    standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  else:
-    int_dtypes = [np.int32, np.uint32]
-    float_dtypes = [np.float32]
-    complex_dtypes = [np.complex64]
-    standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+  int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
+  # TODO(phawkins): test np.float16, where supported.
+  float_dtypes = [bfloat16, np.float32, np.float64]
+  complex_dtypes = [np.complex64, np.complex128]
+  standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
   # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
   # standard_dtypes is only used for BufferProtocolTest so we only test fp8
   # round trip tests.
-  standard_dtypes += [float8_e4m3fn, float8_e5m2]
+  standard_dtypes += [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -236,8 +231,6 @@ def TestFactory(xla_backend,
         "dtype": dtype,
     } for dtype in int_dtypes + float_dtypes)
     def testConstantScalarSum(self, dtype):
-      if dtype == np.int8 and self.backend.platform == "tpu":
-        self.skipTest("TPU doesn't support int8")
       c = self._NewComputation()
       ops.Add(ops.Constant(c, dtype(1.11)), ops.Constant(c, dtype(3.14)))
       self._ExecuteAndCompareClose(c, expected=[dtype(1.11) + dtype(3.14)])
@@ -670,31 +663,6 @@ def TestFactory(xla_backend,
               "BlockHostUntilReady() called on deleted or donated buffer")):
         buffer.block_until_ready()
 
-    @unittest.skipIf(pjrt_c_api, "b/264472918")
-    def testDeviceArrayBaseSignatures(self):
-      # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
-      # and thus needs to correctly implement the following methods.
-      arg = np.array([[1., 2., 3.]], np.float32)
-      buffer = self.backend.buffer_from_pyval(arg)
-      if not isinstance(buffer, xla_client.DeviceArrayBase):
-        raise unittest.SkipTest(
-            "The objectof type {} do not extend DeviceArrayBase".format(
-                type(buffer)))
-
-      self.assertEqual(buffer.__array_priority__, 100)
-      self.assertEqual(buffer.shape, (1, 3))
-      self.assertEqual(buffer.dtype, np.float32)
-      self.assertEqual(buffer.size, 3)
-      self.assertEqual(buffer.ndim, 2)
-
-      self.assertIs(buffer, buffer.block_until_ready())
-      self.assertTrue(buffer.is_ready())
-      buffer.delete()
-      with self.assertRaises(xla_client.XlaRuntimeError):
-        buffer.block_until_ready()
-      with self.assertRaises(xla_client.XlaRuntimeError):
-        buffer.is_ready()
-
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
         self.skipTest("TPU Driver doesn't support OnDeviceSizeInBytes.")
@@ -759,12 +727,15 @@ def TestFactory(xla_backend,
 
     def testStandardTypes(self):
       for dtype in standard_dtypes:
-        if dtype == bfloat16 or dtype == np.complex128:
+        if dtype == np.complex128:
           continue
-        # NV FP8 not supported on TPU.
-        if (dtype in [float8_e4m3fn, float8_e5m2] and
-            self.backend.platform == "tpu"):
-          continue
+        # float8_e4m3b11fnuz not supported on some TPU backends.
+        if (
+            dtype in [float8_e4m3b11fnuz]
+            and self.backend.platform == "tpu"
+        ):
+          if self.backend.platform_version.find("TPU") == -1:
+            continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
         arr = np.asarray(arr)
         self.assertEqual(dtype, type(arr[0]))
@@ -2582,9 +2553,7 @@ def TestFactory(xla_backend,
       self.assertLen(executable.hlo_modules(), 1)
 
       serialized = self.backend.serialize_executable(executable)
-      deserialized = self.backend.deserialize_executable(
-          serialized,
-          executable.hlo_modules()[0], options)
+      deserialized = self.backend.deserialize_executable(serialized, options)
 
       expected, = xla_client.execute_with_python_values(executable, (),
                                                         self.backend)
@@ -2950,18 +2919,14 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens([])
       self.assertLen(results, 1)
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
     def testExecuteShardedOverloadBufferInput(self):
       arg = np.arange(12, dtype=np.int16).reshape(3, 4)
@@ -2980,9 +2945,7 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
           [[buffer]])
@@ -2990,9 +2953,7 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
   tests.append(ExecuteShardedOverloadTest)
 

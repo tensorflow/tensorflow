@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
@@ -118,12 +119,6 @@ std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
   return result;
 }
 
-bool DnnSupport::GetConvolveAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
-}
-
 tsl::Status DnnSupport::GetConvolveRunners(
     bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
     dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
@@ -135,6 +130,7 @@ tsl::Status DnnSupport::GetConvolveRunners(
     DeviceMemoryBase /*output_data*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
+    const NumericOptions& /*numeric_options*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
   return tsl::errors::Unimplemented("GetConvolveRunners not implemented.");
 }
@@ -160,7 +156,7 @@ tsl::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode,
+    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   return tsl::errors::Unimplemented("GetFusedConvolveRunners not implemented.");
 }
@@ -170,7 +166,7 @@ tsl::Status DnnSupport::GetFusedMatmulRunners(
     dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
     bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k, int64_t lda,
     int64_t ldb, int64_t ldc, dnn::ActivationMode activation_mode,
-    bool use_fallback,
+    bool use_fallback, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   return tsl::errors::Unimplemented("GetFusedMatmulRunners not implemented.");
@@ -270,16 +266,32 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
-bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
+tsl::Status DnnSupport::DoPoolForward(
+    DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const NumericOptions& numeric_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
+    ScratchAllocator* workspace_allocator) {
+  // Ignore numeric options. Subclasses can override this method to use it.
+  return DoPoolForward(element_type, stream, pooling_dimensions,
+                       input_dimensions, input_data, output_dimensions,
+                       output_data, workspace_allocator);
 }
 
-bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
+tsl::Status DnnSupport::DoPoolBackward(
+    DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const NumericOptions& numeric_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
+    DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
+    ScratchAllocator* workspace_allocator) {
+  // Ignore numeric options. Subclasses can override this method to use it.
+  return DoPoolBackward(element_type, stream, pooling_dimensions,
+                        input_dimensions, input_data, output_dimensions,
+                        output_data, input_diff_data, output_diff_data,
+                        workspace_allocator);
 }
 
 std::string QuantizedActivationModeString(QuantizedActivationMode mode) {
@@ -1118,7 +1130,7 @@ bool DnnSupport::IsStatusOk(const tsl::Status& status, bool report_error) {
     return true;
   }
   if (report_error) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   return false;
 }

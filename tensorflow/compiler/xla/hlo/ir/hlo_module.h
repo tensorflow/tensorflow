@@ -129,6 +129,10 @@ class HloModule {
   const std::string& name() const { return name_; }
   void set_name(std::string name) { name_ = std::move(name); }
 
+  // Move computations from the input module to this one, while ensuring that
+  // the names of instructions within the computations are unchanged.
+  void MoveComputationsFrom(HloModule* module);
+
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
   std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
@@ -583,6 +587,11 @@ class HloModule {
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
+
+  // Get 128-bit fingerprint of the module by printing it using the given print
+  // options.
+  std::string GetFingerprint128(const HloPrintOptions& options =
+                                    HloPrintOptions::ModuleFingerprint()) const;
 
  private:
   HloComputation* AddComputationInternal(

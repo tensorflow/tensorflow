@@ -113,7 +113,7 @@ class ConvBackpropInputOp : public XlaOpKernel {
     xla::XlaOp input_sizes = ctx->Input(0);
     StatusOr<xla::XlaOp> in_backprop = MakeXlaBackpropInputConvOp(
         ctx->op_kernel().type_string(), input_shape, ctx->Input(1),
-        ctx->Input(2), attrs_, nullptr, &input_sizes);
+        ctx->Input(2), attrs_, &input_sizes);
     OP_REQUIRES_OK(ctx, in_backprop.status());
     ctx->SetOutput(0, in_backprop.value());
   }

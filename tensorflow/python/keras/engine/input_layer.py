@@ -15,7 +15,7 @@
 # pylint: disable=protected-access
 """Input layer code (`Input` and `InputLayer`)."""
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -112,7 +112,7 @@ class InputLayer(base_layer.Layer):
     self._init_ragged = ragged
     self._init_type_spec = type_spec
 
-    strategy = distribution_strategy_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
     if strategy and batch_size is not None and \
         distributed_training_utils.global_batch_size_supported(strategy):
       if batch_size % strategy.num_replicas_in_sync != 0:

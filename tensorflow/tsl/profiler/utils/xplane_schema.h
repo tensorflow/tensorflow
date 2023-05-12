@@ -43,6 +43,8 @@ TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
+// Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
+TF_CONST_INIT extern const absl::string_view kTpuNonCorePlaneNamePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
 TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
@@ -69,6 +71,7 @@ TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
+TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 
 // GPU device vendors.
 TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
@@ -288,7 +291,8 @@ enum StatType {
   kDuration,
   kBufferSize,
   kTransfers,
-  kLastStatType = kTransfers,
+  kModelInfo,
+  kLastStatType = kModelInfo,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {
@@ -399,6 +403,22 @@ class XFlow {
 
   static_assert(sizeof(encoded_) == sizeof(uint64_t), "Must be 64 bits.");
 };
+
+// String constants for XProf TraceMes for DCN Messages.
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnReceive;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSend;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSendFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleTopologyDiscovery;
+TF_CONST_INIT extern const absl::string_view kMegaScaleBarrier;
+TF_CONST_INIT extern const absl::string_view kMegaScaleHostCommand;
+TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferFinished;
+TF_CONST_INIT extern const char kXProfMetadataKey[];
+TF_CONST_INIT extern const char kXProfMetadataFlow[];
+TF_CONST_INIT extern const char kXProfMetadataTransfers[];
+TF_CONST_INIT extern const char kXProfMetadataBufferSize[];
 
 }  // namespace profiler
 }  // namespace tsl

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -72,7 +73,7 @@ class BufferAllocations {
   Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
                   absl::Span<const BufferAllocation> allocations);
 
-  std::string ToString() {
+  std::string ToString() const {
     std::string out;
     for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
       const auto& buf = buffers_[i];

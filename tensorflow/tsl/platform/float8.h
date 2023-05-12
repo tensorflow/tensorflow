@@ -40,6 +40,9 @@ class float8_e5m2;
 
 template <typename Derived>
 class float8_base {
+  // Constructor tag to allow constexpr construction from bit representation.
+  struct ConstructFromRepTag {};
+
  public:
   constexpr float8_base() : rep_(0) {}
 
@@ -56,6 +59,7 @@ class float8_base {
       : float8_base(ConvertFrom(bf16).rep(), ConstructFromRepTag{}) {}
   explicit EIGEN_DEVICE_FUNC float8_base(Eigen::half f16)
       : float8_base(ConvertFrom(f16).rep(), ConstructFromRepTag{}) {}
+  constexpr float8_base(uint8_t rep, ConstructFromRepTag) : rep_{rep} {}
 
   constexpr uint8_t rep() const { return rep_; }
 
@@ -177,11 +181,6 @@ class float8_base {
   }
 
  private:
-  // Constructor tag to allow constexpr construction from bit representation.
-  struct ConstructFromRepTag {};
-
-  constexpr float8_base(uint8_t rep, ConstructFromRepTag) : rep_{rep} {}
-
   static EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC std::pair<uint8_t, uint8_t>
   SignAndMagnitude(Derived x) {
     const uint8_t x_abs_bits =
@@ -441,7 +440,7 @@ struct numeric_limits_float8_e4m3fn : public numeric_limits_float8_base {
   static constexpr float8_e4m3fn min() {
     return float8_e4m3fn::FromRep(0b0'0001 << kMantissaBits);
   }
-  // -(1 + 0b110 * 2^-3) * 2^(0b1111 - 7) = -1.75 * 2^8 = 448
+  // -(1 + 0b110 * 2^-3) * 2^(0b1111 - 7) = -1.75 * 2^8 = -448
   static constexpr float8_e4m3fn lowest() {
     return float8_e4m3fn::FromRep(0b1'1111'110);
   }
@@ -822,7 +821,7 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
   static constexpr int kToExponentBias = ToTraits::kExponentBias;
   static constexpr ToBits kToExponentMask = ToTraits::kExponentMask;
 
-  // `WideBits` is wide enough to accomodate the largest exponent and mantissa
+  // `WideBits` is wide enough to accommodate the largest exponent and mantissa
   // in either `From` or `To`.
   static constexpr int kWideBits =
       (std::max(kToMantissaBits, kFromMantissaBits)) +  // Max significand.
@@ -979,7 +978,9 @@ struct ConvertImpl<Eigen::half, float8_e5m2, kSaturate, kTruncate> {
     uint16_t abs_bits = from_bits & 0x7FFF;
     if (abs_bits == 0x7C00) {
       return float8_e5m2::FromRep(from_bits >> 8);
-    } else if (abs_bits > 0x7C00) {
+    }
+
+    if (abs_bits > 0x7C00) {
       // IEEE 754-2019 6.2.1: "A quiet NaN bit string should be encoded with the
       // first bit (d1) of the trailing significand field T being 1."
       // IEEE 754-2019 6.2.3: "Conversion of a quiet NaN to a floating-point

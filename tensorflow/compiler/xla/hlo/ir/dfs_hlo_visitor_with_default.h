@@ -248,6 +248,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleSend(HloInstructionPtr send) override {
     return DefaultAction(send);
   }
+  Status HandleTopK(HloInstructionPtr topk) override {
+    return DefaultAction(topk);
+  }
   Status HandleSendDone(HloInstructionPtr send_done) override {
     return DefaultAction(send_done);
   }

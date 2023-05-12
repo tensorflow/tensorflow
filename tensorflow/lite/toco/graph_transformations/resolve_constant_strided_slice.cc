@@ -29,7 +29,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
                   Array* output_array) {
   // The TensorFlow documentation for StridedSlice is a bit ambiguous in places
   // (https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/strided-slice).
-  // Use the source code at /third_party/tensorflow/core/util/strided_op.cc as
+  // Use the source code at tensorflow/core/util/strided_op.cc as
   // "master documentation".
 
   CHECK(input_array.data_type == Type);

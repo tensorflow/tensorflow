@@ -129,25 +129,6 @@ StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape, int value) {
   return literal;
 }
 
-void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
-  auto set_manual_sharding = [](HloInstruction* hlo) {
-    if (!hlo->has_sharding()) {
-      hlo->set_sharding(
-          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
-    }
-  };
-  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
-       ++i) {
-    HloInstruction* param =
-        hlo_module->entry_computation()->parameter_instruction(i);
-    set_manual_sharding(param);
-  }
-
-  HloInstruction* entry_root =
-      hlo_module->entry_computation()->root_instruction();
-  set_manual_sharding(entry_root);
-}
-
 }  // namespace
 
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
@@ -272,6 +253,25 @@ std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode) {
   }
 }
 
+void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
+  auto set_manual_sharding = [](HloInstruction* hlo) {
+    if (!hlo->has_sharding()) {
+      hlo->set_sharding(
+          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
+    }
+  };
+  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
+       ++i) {
+    HloInstruction* param =
+        hlo_module->entry_computation()->parameter_instruction(i);
+    set_manual_sharding(param);
+  }
+
+  HloInstruction* entry_root =
+      hlo_module->entry_computation()->root_instruction();
+  set_manual_sharding(entry_root);
+}
+
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
   return GetStreamExecutorGpuClient(
       /*asynchronous=*/true, GpuAllocatorConfig(),
@@ -318,7 +318,7 @@ StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
   if (task_id == 0) {
-    // Overwrite xla_dump_to only if its not empty, to preserve `xla_dump_to`
+    // Overwrite xla_dump_to only if it's not empty, to preserve `xla_dump_to`
     // from parsed XLA_FLAGS env (already populated in debug_options).
     if (!raw_options.xla_dump_to.empty()) {
       debug_options.set_xla_dump_to(raw_options.xla_dump_to);
@@ -925,8 +925,7 @@ std::vector<std::vector<PjRtBuffer*>> CreateArgumentPointersBasedOnAliasing(
 }
 
 std::vector<Shape> GetArgumentShapes(const HloModule& module) {
-  const std::vector<HloInstruction*>& params =
-      module.entry_computation()->parameter_instructions();
+  const auto& params = module.entry_computation()->parameter_instructions();
   std::vector<Shape> argument_shapes;
   argument_shapes.reserve(params.size());
   for (int i = 0; i < static_cast<int>(params.size()); ++i) {
@@ -1048,6 +1047,9 @@ FunctionalHloRunner::RunInternal(
             << repeat << ").";
     if (repeat == running_options.num_repeats - 1) {
       execute_options.untuple_result = default_untuple_result;
+      if (running_options.profiler != nullptr) {
+        running_options.profiler->CreateSession();
+      }
     }
     TF_ASSIGN_OR_RETURN(output_buffers,
                         executable->Execute(argument_ptrs, execute_options));
@@ -1072,10 +1074,14 @@ FunctionalHloRunner::RunInternal(
       }
     }
   }
+
   TF_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
                                         running_options.log_input_output()));
+  if (running_options.profiler != nullptr) {
+    running_options.profiler->UploadSession();
+  }
   return results;
 }
 

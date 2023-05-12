@@ -34,7 +34,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops.resource_variable_ops import UninitializedVariable
 from tensorflow.python.ops.variables import Variable
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.tpu.tpu_embedding_v2 import TPUEmbedding
 from tensorflow.python.util import object_identity
 
 # Captures the timestamp of the first Checkpoint instantiation or end of a write
@@ -44,6 +43,10 @@ _END_TIME_OF_LAST_ASYNC_WRITE_LOCK = threading.Lock()
 
 # API label for cell names used in async checkpoint metrics.
 _ASYNC_CHECKPOINT = "async_checkpoint"
+
+# Name of TPUEmbedding attribute. This is a temporary workaround
+# to identify TPUEmbedding while avoiding import cycles.
+_TPU_EMBEDDING_ATTR = "_create_copy_for_async_checkpoint"
 
 
 def _get_duration_microseconds(start_time_seconds, end_time_seconds):
@@ -119,6 +122,8 @@ class AsyncCheckpointHelper:
     # Register to join the async save thread upon exit.
     atexit.register(self._join_async_save_thread)
 
+    self._async_error = None
+
     global _END_TIME_OF_LAST_ASYNC_WRITE
     with _END_TIME_OF_LAST_ASYNC_WRITE_LOCK:
       if _END_TIME_OF_LAST_ASYNC_WRITE is None:
@@ -132,7 +137,8 @@ class AsyncCheckpointHelper:
                       hangining the accelerators idle during function tracing.
     """
     for accelerator_var, cpu_var in self._object_map.items():
-      if isinstance(accelerator_var, (ShardedVariable, TPUEmbedding)):
+      if isinstance(accelerator_var, ShardedVariable) or hasattr(
+          accelerator_var, _TPU_EMBEDDING_ATTR):
         # Skip for SharededVariable and TPUEmbedding as their sub-variables will
         # be copied over separately through other entries in the object map.
         continue
@@ -147,7 +153,8 @@ class AsyncCheckpointHelper:
                       hangining the accelerators idle during function tracing.
     """
     for accelerator_var, cpu_var in self._object_map.items():
-      if isinstance(accelerator_var, (ShardedVariable, TPUEmbedding)):
+      if isinstance(accelerator_var, ShardedVariable) or hasattr(
+          accelerator_var, _TPU_EMBEDDING_ATTR):
         # Skip for SharededVariable and TPUEmbedding as their sub-variables will
         # be copied over separately through other entries in the object map.
         continue
@@ -174,7 +181,7 @@ class AsyncCheckpointHelper:
 
       if isinstance(current_trackable, (Variable, ShardedVariable)):
         self._copy_trackable(current_trackable)
-      if isinstance(current_trackable, TPUEmbedding):
+      if hasattr(current_trackable, _TPU_EMBEDDING_ATTR):
         self._handle_tpu_embedding(current_trackable)
 
       for child in current_trackable._trackable_children(
@@ -200,7 +207,7 @@ class AsyncCheckpointHelper:
     for v in self._checkpoint_items.values():
       if isinstance(v, (Variable, ShardedVariable)):
         self._copy_trackable(v)
-      elif isinstance(v, TPUEmbedding):
+      elif hasattr(v, _TPU_EMBEDDING_ATTR):
         self._handle_tpu_embedding(v)
       to_traverse.append(v)
       visited.add(v)
@@ -208,8 +215,8 @@ class AsyncCheckpointHelper:
 
     # Copy for the slot variables.
     for current_trackable in self._original_nodes:
-          # Note: dir() is used rather than hasattr() here to avoid triggering
-          # custom __getattr__ code, see b/152031870 for context.
+      # Note: dir() is used rather than hasattr() here to avoid triggering
+      # custom __getattr__ code, see b/152031870 for context.
       if "get_slot_names" in dir(current_trackable):
         slot_names = current_trackable.get_slot_names()
         for slot_name in slot_names:
@@ -227,7 +234,7 @@ class AsyncCheckpointHelper:
     # Initiate the underlying Checkpoint instance with the copied items.
     self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
     # Initiate the underlying Checkpoint instance's save_counter.
-    save_counter = self._checkpoint.save_counter
+    save_counter = self._checkpoint.save_counter.numpy()
     logging.info("Initializing async checkpoint's save_counter: %d",
                  save_counter)
 
@@ -239,6 +246,19 @@ class AsyncCheckpointHelper:
         target=self._async_save, daemon=True)
     self._async_save_thread.start()
 
+  def _check_async_thread_error(self):
+    """Expose the most recent error from the async saving thread to the caller.
+    """
+    if self._async_error:
+      e = self._async_error
+      self._async_error = None
+      logging.error("Propagating the most recent error from the async thread "
+                    "before joining: %s", str(e))
+      # This allows the registered at-exit method '_join_async_save_thread' to
+      # acquire the semaphore instead of timing out.
+      self._writer_sem.release()
+      raise e
+
   def _join_async_save_thread(self):
     """Join the async save thread.
 
@@ -248,6 +268,9 @@ class AsyncCheckpointHelper:
     3). Trigger the async save thread to check and fail the while-predicate.
     4). Join the async save thread. (The thread may finish before joining.)
     """
+    # Expose the async thread error (if any) before joining the thread.
+    self._check_async_thread_error()
+
     if self._writer_sem.acquire(timeout=300):  # Step-1.
       self._async_save_thread_shutdown = True  # Step-2.
       self._reader_sem.release()  # Step-3.
@@ -274,18 +297,21 @@ class AsyncCheckpointHelper:
         # would clear the placement policy and make localhost the default
         # placement, while the main thread's default placement would be the
         # master worker's CPU:0.
-        with ops.device(self._default_device):
-          with checkpoint_context.async_metrics_context():
-            if self._use_checkpoint_save:
-              self._checkpoint.save(self._save_file_prefix,
-                                    self._checkpoint_options)
-            else:
-              self._checkpoint._write(  # pylint: disable=protected-access
-                  self._save_file_prefix,
-                  options=self._checkpoint_options,
-                  write_done_callback=self._async_write_done_callback)
-        # Allow the next checkpoint event to overwrite the cpu-copied variables.
-        self._writer_sem.release()
+        try:
+          with ops.device(self._default_device):
+            with checkpoint_context.async_metrics_context():
+              if self._use_checkpoint_save:
+                self._checkpoint.save(self._save_file_prefix,
+                                      self._checkpoint_options)
+              else:
+                self._checkpoint._write(  # pylint: disable=protected-access
+                    self._save_file_prefix,
+                    options=self._checkpoint_options,
+                    write_done_callback=self._async_write_done_callback)
+        except Exception as e:   # # pylint: disable=broad-except
+          self._async_error = e
+        finally:
+          self._writer_sem.release()
 
         async_save_end_time = time.time()
         metrics.AddAsyncCheckpointWriteDuration(
@@ -362,19 +388,24 @@ class AsyncCheckpointHelper:
     Raises:
       AttributeError: if the input trackable is not TPUEmbedding type.
     """
-    if not isinstance(tpu_embedding, TPUEmbedding):
-      raise AttributeError("Expecting TPUEmbedding type; got %s" %
-                           type(tpu_embedding))
+    if not hasattr(
+        tpu_embedding, _TPU_EMBEDDING_ATTR
+    ) or not callable(tpu_embedding._create_copy_for_async_checkpoint):  # pylint: disable=protected-access
+      raise AttributeError(
+          "Expecting TPUEmbedding type; got %s" % type(tpu_embedding)
+      )
 
     # Create a dummy TPUEmbedding object and add it to the object_map. This is
     # to prevent the TPUEmbedding's save_callback from being triggered because
     # the embedding values have already being retrieved by AsyncCheckpoint.
     # pylint: disable=protected-access
-    new_embedding = TPUEmbedding(
+    new_embedding = tpu_embedding._create_copy_for_async_checkpoint(
         feature_config=tpu_embedding._feature_config,
-        optimizer=tpu_embedding._table_config[0].optimizer,
-        pipeline_execution_with_tensor_core=tpu_embedding
-        ._pipeline_execution_with_tensor_core)
+        optimizer=tpu_embedding._table_config[0]
+        if tpu_embedding._table_config
+        else None,
+        pipeline_execution_with_tensor_core=tpu_embedding._pipeline_execution_with_tensor_core,
+    )
     self._object_map[tpu_embedding] = new_embedding
     # pylint: enable=protected-access
 
@@ -435,6 +466,12 @@ class AsyncCheckpointHelper:
     if self._writer_sem.acquire():
       self._copy_to_cpu()
 
+    # Surface the error from the async thread, if any.
+    # This step should come after the sem acquision step in the above, so that
+    # it makes sure it waits until the previous async save finishes storing the
+    # error.
+    self._check_async_thread_error()
+
     # Trigger the async thread to checkpoint the cpu-copied variables.
     # Need to wait until the weight copying finishes before checkpoint save.
     context.async_wait()
@@ -483,6 +520,12 @@ class AsyncCheckpointHelper:
     # Copy the variable values to the host CPU.
     if self._writer_sem.acquire():
       self._copy_to_cpu()
+
+    # Surface the error from the async thread, if any.
+    # This step should come after the sem acquision step in the above, so that
+    # it makes sure it waits until the previous async save finishes storing the
+    # error.
+    self._check_async_thread_error()
 
     # Retrieve the save counter from the underlying checkpoint object to
     # re-construct the full path of the checkpoint file.

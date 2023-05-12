@@ -123,15 +123,15 @@ ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
 // and have at least one operand, result type can be inferred using the first
 // operand's type.
 
-#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
-  LogicalResult Op::inferReturnTypeComponents(                                \
-      MLIRContext* context, std::optional<Location> location,                 \
-      ValueShapeRange operands, DictionaryAttr attributes,                    \
-      RegionRange regions,                                                    \
-      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
-    return inferReturnTypeComponentsFromOperands(context, location, operands, \
-                                                 attributes, regions,         \
-                                                 inferredReturnShapes);       \
+#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                \
+  LogicalResult Op::inferReturnTypeComponents(                        \
+      MLIRContext* context, std::optional<Location> location,         \
+      ValueShapeRange operands, DictionaryAttr attributes,            \
+      OpaqueProperties properties, RegionRange regions,               \
+      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {  \
+    return inferReturnTypeComponentsFromOperands(                     \
+        context, location, operands, attributes, properties, regions, \
+        inferredReturnShapes);                                        \
   }
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"

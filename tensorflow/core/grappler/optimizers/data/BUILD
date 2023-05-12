@@ -49,9 +49,6 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:dataset_utils",
@@ -62,6 +59,10 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/kernels/data:shard_dataset_op",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -132,7 +133,6 @@ cc_library(
         ":function_utils",
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/grappler:grappler_item",
@@ -141,6 +141,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -279,7 +280,6 @@ cc_library(
         ":fusion_utils",
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/grappler:grappler_item",
@@ -289,6 +289,7 @@ cc_library(
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -319,7 +320,6 @@ cc_library(
         ":function_utils",
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/grappler:grappler_item",
@@ -328,6 +328,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -483,7 +484,6 @@ cc_library(
         ":graph_utils",
         ":optimizer_base",
         ":split_utils",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:framework",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/grappler:grappler_item",
@@ -492,6 +492,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -523,14 +524,14 @@ cc_library(
     deps = [
         ":function_utils",
         ":graph_utils",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
 )
 
@@ -593,7 +594,6 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
@@ -601,6 +601,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -629,8 +630,6 @@ cc_library(
         ":fusion_utils",
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -642,6 +641,8 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/kernels:function_ops",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -672,7 +673,6 @@ cc_library(
         ":fusion_utils",
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/grappler:grappler_item",
@@ -682,6 +682,7 @@ cc_library(
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -714,7 +715,6 @@ cc_library(
         ":function_utils",
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/grappler:grappler_item",
@@ -723,6 +723,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -748,8 +749,6 @@ cc_library(
     srcs = ["meta_optimizer.cc"],
     hdrs = ["meta_optimizer.h"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/grappler:grappler_item",
@@ -757,6 +756,9 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:functions",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -771,7 +773,6 @@ cc_library(
         ":function_utils",
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
@@ -779,6 +780,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -919,7 +921,6 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -928,6 +929,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -955,7 +957,6 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -964,6 +965,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -984,6 +986,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/kernels/data",
+        "@com_google_absl//absl/status",
     ],
 )
 

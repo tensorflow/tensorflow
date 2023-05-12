@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -30,6 +33,22 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
+
+namespace m = match;
+
+// TODO(cheshire): Avoid duplication w/ cudnn_vectorize_convolutions.
+static StatusOr<HloComputation*> BuilderToHloComputation(
+    XlaComputation& comp, HloComputation* sibling_computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
+  HloModuleConfig config(program_shape);
+  TF_ASSIGN_OR_RETURN(auto new_module,
+                      HloModule::CreateFromProto(comp.proto(), config));
+
+  HloModule* dest_module = sibling_computation->parent();
+  HloCloneContext context(dest_module);
+  return dest_module->DeepCloneComputation(new_module->entry_computation(),
+                                           &context);
+}
 
 static bool IsNanSafeGt(HloComputation* comp) {
   namespace m = match;
@@ -111,7 +130,21 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Gt(param0, param1);
   };
 
-  auto match_all_compares = [](HloInstruction* root, auto callback) {
+  auto match_default_compare = [](PrimitiveType type) {
+    auto params_with_type = [&](int i, PrimitiveType t) {
+      return m::Parameter(i).WithShape(m::Shape().WithElementType(t));
+    };
+    auto params =
+        std::vector({// Values
+                     params_with_type(0, type), params_with_type(1, type),
+                     // Indices
+                     params_with_type(2, S32), params_with_type(3, S32)});
+    auto const_true = m::Broadcast(m::Constant());
+    auto values_gt = m::Gt(params[0], params[1]);
+    return m::Select(const_true, values_gt, const_true);
+  };
+
+  auto match_all_types = [](HloInstruction* root, auto callback) {
     bool result = false;
     for (auto type : {BF16, F32, S32, U32}) {
       result = result || Match(root, callback(type));
@@ -130,13 +163,15 @@ static bool IsNanSafeGt(HloComputation* comp) {
                m::Gt(match_bitcast_bf16_with_convert(0),
                      match_bitcast_bf16_with_convert(1))) ||
          Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1))) ||
-         match_all_compares(comp->root_instruction(), match_compare);
+         match_all_types(comp->root_instruction(), match_compare) ||
+         match_all_types(comp->root_instruction(), match_default_compare);
 }
 
 // Look for the instructions emitted from: xla/client/lib/sorting.cc
 static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
   namespace m = match;
-  const auto sort_dims = {data->shape().dimensions(sort->sort_dimension())};
+  const std::array<int64_t, 1> sort_dims = {
+      data->shape().dimensions(sort->sort_dimension())};
   auto match_iota = [](auto dims) {
     return m::Iota().WithShape(m::Shape().WithElementType(S32).WithDims(dims));
   };
@@ -310,20 +345,74 @@ StatusOr<bool> TopkRewriter::Run(
 
 class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit TopkDecomposerVisitor(HloPredicate should_decompose)
+      : should_decompose_(should_decompose) {}
+
   Status HandleCustomCall(HloInstruction* inst) override {
+    if (should_decompose_ && !should_decompose_(inst)) {
+      return OkStatus();
+    }
     HloCustomCallInstruction* call = DynCast<HloCustomCallInstruction>(inst);
-    HloComputation* comp = inst->parent();
     if (call == nullptr || call->custom_call_target() != "TopK") {
       return OkStatus();
     }
+    HloComputation* comparator = call->to_apply();
+    return DecomposeTopK(call, comparator);
+  }
 
+  Status HandleTopK(HloInstruction* topk) override {
+    if (should_decompose_ && !should_decompose_(topk)) {
+      return OkStatus();
+    }
+    TF_ASSIGN_OR_RETURN(HloComputation * comparator,
+                        CreateVariadicComparator(topk));
+    return DecomposeTopK(topk, comparator);
+  }
+
+ private:
+  StatusOr<HloComputation*> CreateVariadicComparator(HloInstruction* topk) {
+    XlaBuilder b(absl::StrCat("comparator_", topk->name()));
+    std::vector<PrimitiveType> ptypes = {
+        topk->operand(0)->shape().element_type(), PrimitiveType::S32};
+    HloComputation* comparison_computation = topk->to_apply();
+
+    auto comparison = [&]() -> StatusOr<XlaComputation> {
+      if (Match(comparison_computation->root_instruction(),
+                m::Compare(m::Parameter(0), m::Parameter(1))
+                    .WithComparisonDirection(ComparisonDirection::kGt)) ||
+          Match(comparison_computation->root_instruction(),
+                m::Compare(m::Parameter(1), m::Parameter(0))
+                    .WithComparisonDirection(ComparisonDirection::kLt))) {
+        return CreateScalarGtComputation(ptypes, &b);
+      } else if (Match(
+                     comparison_computation->root_instruction(),
+                     m::Compare(m::Parameter(0), m::Parameter(1))
+                         .WithComparisonDirection(ComparisonDirection::kLt)) ||
+                 Match(
+                     comparison_computation->root_instruction(),
+                     m::Compare(m::Parameter(1), m::Parameter(0))
+                         .WithComparisonDirection(ComparisonDirection::kGt))) {
+        return CreateScalarLtComputation(ptypes, &b);
+      } else {
+        return InternalError("Unexpected comparator: %s",
+                             comparison_computation->ToString());
+      }
+    }();
+    TF_RETURN_IF_ERROR(comparison.status());
+    TF_ASSIGN_OR_RETURN(HloComputation * comparator,
+                        BuilderToHloComputation(*comparison, topk->parent()));
+    return comparator;
+  }
+
+  Status DecomposeTopK(HloInstruction* call,
+                       HloComputation* variadic_comparator) {
+    HloComputation* comp = call->parent();
     HloInstruction* input = call->mutable_operand(0);
     Shape iota_shape = input->shape();
     iota_shape.set_element_type(S32);
     size_t sort_dimension = input->shape().dimensions_size() - 1;
     std::vector<int64_t> zeroes(iota_shape.rank(), 0);
     std::vector<int64_t> ones(iota_shape.rank(), 1);
-    HloComputation* comparator = call->to_apply();
     // Apply a slice to a tuple.
     auto slice_tuple = [&](HloInstruction* sort, const size_t index) {
       return comp->AddInstruction(HloInstruction::CreateSlice(
@@ -332,12 +421,12 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
               sort->shape().tuple_shapes(index), sort, index)),
           zeroes, call->shape().tuple_shapes(index).dimensions(), ones));
     };
-    CHECK_NE(comparator, nullptr);
+    CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
-    if (call->user_count() == 1) {
+    if (call->user_count() == 1 && call->users().front()->tuple_index() == 0) {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
           {input->shape()}, sort_dimension, {input}, call->to_apply(),
-          /*is_stable=*/false));
+          /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),
           comp->AddInstruction(HloInstruction::CreateSlice(
@@ -349,8 +438,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
           HloInstruction::CreateIota(iota_shape, iota_shape.rank() - 1));
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
           ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
-          sort_dimension, {input, iota}, call->to_apply(),
-          /*is_stable=*/false));
+          sort_dimension, {input, iota}, variadic_comparator,
+          /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call, comp->AddInstruction(HloInstruction::CreateTuple(
                     {slice_tuple(sort, 0), slice_tuple(sort, 1)}))));
@@ -358,12 +447,16 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     }
     return OkStatus();
   }
+
+ private:
+  HloPredicate should_decompose_;
 };
 
 StatusOr<bool> TopkDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return TopkDecomposerVisitor().RunOnModule(module, execution_threads);
+  return TopkDecomposerVisitor(should_decompose_)
+      .RunOnModule(module, execution_threads);
 }
 
 }  // namespace xla

@@ -35,8 +35,6 @@ cc_library(
     hdrs = ["gl_delegate.h"],
     linkopts = gpu_delegate_linkopts(),
     deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
@@ -58,13 +56,15 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl/converters:phwc4_to_bhwc",
         "//tensorflow/lite/delegates/gpu/gl/kernels:registry",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:best_effort_calculator",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/types:span",
     ] + select({
         "//conditions:default": [
-            "@flatbuffers",
             "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs",
             "//tensorflow/lite/delegates/gpu/gl:metadata_cc_fbs",
             "//tensorflow/lite/delegates/gpu/gl:workgroups_cc_fbs",
             "//tensorflow/lite/schema:schema_fbs",
+            "@flatbuffers",
         ],
         ":tflite_gpu_binary_release": [],
     }) + tflite_extra_gles_deps(),
@@ -240,10 +240,6 @@ cc_library(
     }) + [
         ":api",
         ":delegate_options",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/async:backend_async_kernel_interface",
@@ -265,5 +261,9 @@ cc_library(
         "//tensorflow/lite/profiling/telemetry",
         "//tensorflow/lite/profiling/telemetry:telemetry_status",
         "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )

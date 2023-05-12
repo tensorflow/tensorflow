@@ -279,7 +279,7 @@ TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
   dim_numbers.add_start_index_map(0);
   dim_numbers.set_index_vector_dim(1);
   auto gather = Gather(operand1, indices, dim_numbers, {1});
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   EXPECT_TRUE(ComputeDynamismLiteral(gather, &b).value().Get<bool>({0, 0}));
 }
 
@@ -294,7 +294,7 @@ TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
   dim_numbers.add_start_index_map(0);
   dim_numbers.set_index_vector_dim(1);
   auto gather = Gather(data_operand, indices, dim_numbers, {1});
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Everything is constant, result is also contant.
   EXPECT_FALSE(ComputeDynamismLiteral(gather, &b).value().Get<bool>({0, 0}));
 }
@@ -311,7 +311,7 @@ TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
   dim_numbers.add_start_index_map(0);
   dim_numbers.set_index_vector_dim(1);
   auto gather = Gather(operand1, indices, dim_numbers, {1});
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Everything is constant, result is also contant.
   EXPECT_FALSE(ComputeDynamismLiteral(gather, &b).value().Get<bool>({0, 0}));
 }
@@ -325,7 +325,7 @@ TEST_F(DynamismInferenceTest, InferThroughPad) {
   padding_config.add_dimensions()->set_edge_padding_high(1);
   // After pad the value is [constant, constant, parameter].
   auto pad = Pad(operand1, parameter, padding_config);
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Everything is constant, result is also contant.
   EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).value().Get<bool>({0}));
   EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).value().Get<bool>({1}));
@@ -360,7 +360,7 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
   auto cond = Conditional(parameter, constant, true_computation, constant,
                           false_computation);
   auto gte = GetTupleElement(cond, 0);
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Result is not dynamic.
   EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
@@ -386,7 +386,7 @@ TEST_F(DynamismInferenceTest, InferThroughCall) {
   XlaBuilder b(TestName());
   auto constant = ConstantR0<int32_t>(&b, 3);
   auto call = Call(&b, call_computation, {constant});
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Result is static.
   EXPECT_EQ(ComputeDynamismScalar(call, &b, {}).value(), false);
 }
@@ -419,7 +419,7 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {
   auto cond = Conditional(parameter, constant, true_computation, constant,
                           false_computation);
   auto gte = GetTupleElement(cond, 0);
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Result is dynamic.
   EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
@@ -452,7 +452,7 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalPredIsConstantTrueBranch) {
   auto cond = Conditional(pred, constant, true_computation, constant,
                           false_computation);
   auto gte = GetTupleElement(cond, 0);
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Result is not dynamic.
   EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
@@ -487,7 +487,7 @@ TEST_F(DynamismInferenceTest,
   auto cond =
       Conditional(pred, constant, true_computation, param, false_computation);
   auto gte = GetTupleElement(cond, 0);
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Result is dynamic.
   EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }
@@ -548,7 +548,7 @@ TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
   auto cond =
       Conditional(pred, param, true_computation, param, false_computation);
   auto gte = GetTupleElement(cond, 0);
-  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
   // Result is static.
   EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).value().Get<bool>({}));
 }

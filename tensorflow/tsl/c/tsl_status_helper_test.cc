@@ -32,7 +32,7 @@ TEST(StatusHelper, TestStatusHelper) {
 
   Status another_cc_status(StatusFromTSL_Status(s));
   ASSERT_FALSE(another_cc_status.ok());
-  ASSERT_EQ(std::string("some error"), another_cc_status.error_message());
+  ASSERT_EQ(std::string("some error"), another_cc_status.message());
   ASSERT_EQ(error::INVALID_ARGUMENT, another_cc_status.code());
   // Ensure the payloads are not lost during conversions
   ASSERT_EQ(cc_status.GetPayload("key1"), another_cc_status.GetPayload("key1"));

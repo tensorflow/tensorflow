@@ -350,7 +350,7 @@ class FuncGraph(ops.Graph):
     """
     if key is None:
       key = object()
-    if key not in self._function_captures._by_ref:  # pylint: disable=protected-access
+    if key not in self._function_captures.by_ref_internal:
       trace_ctx = trace_type.InternalTracingContext(True)
       spec = trace_type.from_value(spec, trace_ctx)
 
@@ -391,10 +391,13 @@ class FuncGraph(ops.Graph):
         return spec._to_tensors(ret_nest)  # pylint: disable=protected-access
 
       wrapped_closure.output_spec = spec
-      c = capture_container.ByRefCaptureContainer(
-          spec, placeholder, wrapped_closure)
-      self._function_captures._by_ref[key] = c  # pylint: disable=protected-access
-    return self._function_captures._by_ref[key].internal  # pylint: disable=protected-access
+      self._function_captures.add_or_replace(
+          key=key,
+          external=wrapped_closure,
+          internal=placeholder,
+          tracetype=spec,
+          is_by_ref=True)
+    return self._function_captures.by_ref_internal[key]
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -789,13 +792,19 @@ class FuncGraph(ops.Graph):
       placeholder: Provided placeholder for the tensor.
     """
     self._function_captures.add_or_replace(
-        tensor, placeholder, id(tensor), False)
+        key=id(tensor),
+        external=tensor,
+        internal=placeholder,
+        is_by_ref=False)
     self.inputs.append(placeholder)
 
   def replace_capture(self, tensor, placeholder):
     """Replace already existing capture."""
     self._function_captures.add_or_replace(
-        tensor, placeholder, id(tensor), False)
+        key=id(tensor),
+        external=tensor,
+        internal=placeholder,
+        is_by_ref=False)
 
   def replace_capture_with_deferred_capture(self,
                                             tensor,
@@ -845,33 +854,31 @@ class FuncGraph(ops.Graph):
   @property
   def external_captures(self):
     """External tensors captured by this function."""
-    captures = self._function_captures.by_val_captures.values()
-    return [c.external for c in captures]
+    return list(self._function_captures.by_val_external.values())
 
   @property
   def internal_captures(self):
     """Placeholders in this function corresponding captured tensors."""
-    captures = self._function_captures.by_val_captures.values()
-    return [c.internal for c in captures]
+    return list(self._function_captures.by_val_internal.values())
 
   @property
   def deferred_external_captures(self):
     """Ordered nest of tensors whose placeholders will be fed at call time."""
-    return [
-        c.lambda_fn for c in self._function_captures.by_ref_captures.values()
-    ]
+    return list(self._function_captures.by_ref_external.values())
 
   @property
   def deferred_internal_captures(self):
     """List of nest of placeholders which at call time will be fed."""
-    return [
-        c.internal for c in self._function_captures.by_ref_captures.values()
-    ]
+    return list(self._function_captures.by_ref_internal.values())
 
   @property
   def variable_captures(self):
     """Map of python object ids of variables to variables which are captured."""
     return self.variables
+
+  @property
+  def function_captures(self):
+    return self._function_captures
 
   def mark_as_unsaveable(self, error_message):
     """Marks this FuncGraph as unsaveable.
@@ -916,8 +923,6 @@ def func_graph_from_py_func(name,
                             kwargs,
                             signature=None,
                             func_graph=None,
-                            autograph=False,
-                            autograph_options=None,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None,
@@ -940,10 +945,6 @@ def func_graph_from_py_func(name,
       inputs.
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
-    autograph: whether to use autograph to compile `python_func`.
-      See https://www.tensorflow.org/guide/autograph for more information.
-    autograph_options: additional knobs to control when `autograph=True`.
-      See https://www.tensorflow.org/guide/autograph for more information.
     add_control_dependencies: If True, automatically adds control dependencies
       to ensure program order matches execution order and stateful ops always
       execute.
@@ -1050,62 +1051,28 @@ def func_graph_from_py_func(name,
         x = deps_ctx.mark_as_return(x)
       return x
 
-    try:
-      if autograph:
-        from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
-        _, original_func = tf_decorator.unwrap(python_func)
+    _, original_func = tf_decorator.unwrap(python_func)
+    func_outputs = python_func(*func_args, **func_kwargs)
 
-        def autograph_handler(*args, **kwargs):
-          """Calls a converted version of original_func."""
-          # TODO(mdan): Push this block higher in tf.function's call stack.
-          try:
-            return autograph.converted_call(
-                original_func,
-                args,
-                kwargs,
-                options=autograph.ConversionOptions(
-                    recursive=True,
-                    optional_features=autograph_options,
-                    user_requested=True,
-                ))
-          except Exception as e:  # pylint:disable=broad-except
-            if hasattr(e, "ag_error_metadata"):
-              raise e.ag_error_metadata.to_exception(e)
-            else:
-              raise
+    # invariant: `func_outputs` contains only Tensors, CompositeTensors,
+    # TensorArrays and `None`s.
+    func_outputs = variable_utils.convert_variables_to_tensors(func_outputs)
+    func_outputs = nest.map_structure(
+        convert, func_outputs, expand_composites=True)
 
-        # Wrapping around a decorator allows checks like tf_inspect.getargspec
-        # to be accurate.
-        converted_func = tf_decorator.make_decorator(original_func,
-                                                     autograph_handler)
-        python_func = tf_decorator.rewrap(python_func, original_func,
-                                          converted_func)
-
-      else:
-        _, original_func = tf_decorator.unwrap(python_func)
-
-      func_outputs = python_func(*func_args, **func_kwargs)
-
-      # invariant: `func_outputs` contains only Tensors, CompositeTensors,
-      # TensorArrays and `None`s.
-      func_outputs = variable_utils.convert_variables_to_tensors(func_outputs)
-      func_outputs = nest.map_structure(
-          convert, func_outputs, expand_composites=True)
-
-      # flatten and unflatten func_args and func_kwargs to maintain parity
-      # from flattening which sorts by key
-      func_args = nest.pack_sequence_as(
-          func_args,
-          nest.flatten(func_args, expand_composites=True),
-          expand_composites=True)
-      func_kwargs = nest.pack_sequence_as(
-          func_kwargs,
-          nest.flatten(func_kwargs, expand_composites=True),
-          expand_composites=True)
-      check_func_mutation(func_args_before, func_kwargs_before, func_args,
-                          func_kwargs, original_func)
-    finally:
-      current_scope.set_use_resource(default_use_resource)
+    # flatten and unflatten func_args and func_kwargs to maintain parity
+    # from flattening which sorts by key
+    func_args = nest.pack_sequence_as(
+        func_args,
+        nest.flatten(func_args, expand_composites=True),
+        expand_composites=True)
+    func_kwargs = nest.pack_sequence_as(
+        func_kwargs,
+        nest.flatten(func_kwargs, expand_composites=True),
+        expand_composites=True)
+    check_func_mutation(func_args_before, func_kwargs_before, func_args,
+                        func_kwargs, original_func)
+    current_scope.set_use_resource(default_use_resource)
 
     inputs = []
     for arg in composite_tensor_utils.flatten_with_variables([func_args,
@@ -1114,10 +1081,11 @@ def func_graph_from_py_func(name,
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
         # placeholders.
-        capture = func_graph._function_captures.pop(id(arg.handle))  # pylint: disable=protected-access
-        if capture is None:
+        capture = func_graph._function_captures.pop(id(arg.handle), False)  # pylint: disable=protected-access
+        assert len(capture) >= 2
+        resource_placeholder = capture[1]
+        if resource_placeholder is None:
           continue
-        resource_placeholder = capture.internal
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
@@ -1263,10 +1231,9 @@ def _create_placeholders(args, kwargs, arg_names=None):
   arg_trace_types = trace_type.from_value(tuple(args), signature_context)
   kwarg_trace_types = trace_type.from_value(kwargs, signature_context)
 
-  handledata_mapping = signature_context.get_handledata_mapping()
   placeholder_mapping = signature_context.get_placeholder_mapping()
   placeholder_context = trace_type.InternalPlaceholderContext(
-      ops.get_default_graph(), handledata_mapping, placeholder_mapping)
+      ops.get_default_graph(), placeholder_mapping)
 
   if arg_names is None:
     arg_names = [None] * len(arg_trace_types.components)
@@ -1298,8 +1265,7 @@ def dismantle_func_graph(func_graph):
     func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable after
       this function.
   """
-  func_graph._function_captures._by_ref.clear()  # pylint: disable=protected-access
-  func_graph._function_captures._by_val.clear()  # pylint: disable=protected-access
+  func_graph._function_captures.clear()  # pylint: disable=protected-access
   ops.dismantle_graph(func_graph)
 
 

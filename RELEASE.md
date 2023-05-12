@@ -1,3 +1,57 @@
+# Release 2.14.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+# Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+*  `tf.Tensor`
+    * The class hierarchy for `tf.Tensor` has changed, and there are now
+      explicit `EagerTensor` and `SymbolicTensor` classes for eager and
+      tf.function respectively. Users who relied on the exact type of Tensor
+      (e.g. `type(t) == tf.Tensor`) will need to update their code to use
+      `isinstance(t, tf.Tensor)`. The `tf.is_symbolic_tensor` helper added in
+      2.13 may be used when it is necessary to determine if a value is
+      specifically a symbolic tensor.
+
+# Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+# Bug Fixes and Other Changes
+* `tf.lite`
+    * Strided_Slice now supports `UINT32`.
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.config.experimental.enable_tensor_float_32_execution`
+    * Disabling TensorFloat-32 execution now causes TPUs to use float32
+      precision for float32 matmuls and other ops. TPUs have always used
+      bfloat16 precision for certain ops, like matmul, when such ops had float32
+      inputs. Now, disabling TensorFloat-32 by calling
+      `tf.config.experimental.enable_tensor_float_32_execution(False)` will
+      cause TPUs to use float32 precision for such ops instead of bfloat16.
+
+*  `tf.experimental.dtensor`
+    * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
+      relayouting a tensor according to the layout of another tensor. 
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.13.0
 
 ## Breaking Changes
@@ -18,6 +72,26 @@
        modifying H5 files saved by Keras under a `.keras` extension.
        If this breaks you, simply add `save_format="h5"` to your `.save()` call
        to revert back to the prior behavior.
+    *  Added `keras.utils.TimedThread` utility to run a timed thread every x
+       seconds. It can be used to run a threaded function alongside model
+       training or any other snippet of code.
+    *  In the `keras` PyPI package, accessible symbols are now restricted to
+       symbols that are intended to be public.
+       This may affect your code if you were using `import keras` and you used
+       `keras` functions that were not public APIs, but were accessible in
+       earlier versions with direct imports. In those cases, please use the
+       following guideline:
+        -  The API may be available in the public Keras API under a different
+           name, so make sure to look for it on keras.io or TensorFlow docs
+           and switch to the public version.
+        -  It could also be a simple python or TF utility that you could easily
+           copy over to your own codebase. In those case, just make it your own!
+        -  If you believe it should definitely be a public Keras API,
+           please open a feature request in keras GitHub repo.
+        -  As a workaround, you could import the same private symbol keras
+           `keras.src`, but keep in mind the `src` namespace is not stable and
+           those APIs may change or be removed in the future.
+
 
 * The LMDB kernels have been changed to return an error. This is in preparation
   for completely removing them from TensorFlow. The LMDB dependency that these
@@ -40,6 +114,8 @@
         clustering.
     *   Add int16x8 support for the built-in op `exp`
     *   Add int16x8 support for the built-in op `mirror_pad`
+    *   Add int16x8 support for the built-in ops `space_to_batch_nd` and
+        `batch_to_space_nd`
     *   Add 16-bit int type support for built-in op `less`, `greater_than`,
         `equal`
     *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
@@ -49,6 +125,8 @@
     *   Add 8-bit/16-bit/32-bit int/uint support for the built-in op `right_shift`
     *   Add reference implementation for 16-bit int unquantized `add`.
     *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.
+    *   `add_op` supports broadcasting up to 6 dimensions.
+    *   Add 16-bit support for `top_k`.
 
 *   `tf.keras`
 
@@ -90,6 +168,8 @@
     *   Added support for `class_weight` for 3+ dimensional targets (e.g.
         image segmentation masks) in `Model.fit`.
     *   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
+    *   Remove the `tf.keras.dtensor.experimental.layout_map_scope()`. You can
+        user the `tf.keras.dtensor.experimental.LayoutMap.scope()` instead.
 
 *   `tf.function`:
 
@@ -109,9 +189,20 @@
         typically faster lookup procedure.
 
 *   `tf.data`
-    
+
     *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
         `Dataset.zip(a, b, c)`.
+    *   `tf.data.Dataset.shuffle` now supports full shuffling. To specify that
+        data should be fully shuffled, use
+        `dataset = dataset.shuffle(dataset.cardinality())`. This will load the
+        full dataset into memory so that it can be shuffled, so make sure to
+        only use this with datasets of filenames or other small datasets.
+
+*   `tf.math`
+
+    * `tf.nn.top_k` now supports specifying the output index type via parameter
+       `index_type`.  Supported types are `tf.int16`, `tf.int32`
+       (default), and `tf.int64`.
 
 *   `tf.SavedModel`
 
@@ -127,6 +218,13 @@
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+*   `tf.Variable`
+
+    *   Changed resource variables to inherit from `tf.compat.v2.Variable`
+        instead of `tf.compat.v1.Variable`. Some checks for 
+        `isinstance(v, tf.compat.v1.Variable)` that previously returned True
+        may now return False.
 
 *   `tf.distribute`
 
@@ -154,6 +252,11 @@
 *    `tf.nest`:
     *   Deprecated API `tf.nest.is_sequence` has now been deleted.
         Please use `tf.nest.is_nested` instead.
+
+*   `tf.lite`:
+    *   Add UINT32 support to tfl.pack
+    *   Add INT64 support to tfl.range
+    *   Add UINT32 support to tfl.concatenation
 
 ## Thanks to our Contributors
 
@@ -269,6 +372,7 @@ This release contains contributions from many people at Google, as well as:
 
 ## Security
 
+*   Moving forward, TensorFlow will no longer update [TFSAs](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/security). Please refer instead to our [GitHub security advisories](https://github.com/tensorflow/tensorflow/security/advisories), which are attached to [CVEs](https://cve.mitre.org/cve/).
 *   Fixes an FPE in TFLite in conv kernel [CVE-2023-27579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-27579)
 *   Fixes a double free in Fractional(Max/Avg)Pool [CVE-2023-25801](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25801)
 *   Fixes a null dereference on ParallelConcat with XLA [CVE-2023-25676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-25676)

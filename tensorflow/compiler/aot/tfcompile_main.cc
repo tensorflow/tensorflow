@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
                        "other than flags. See --help.\n\n";
   tensorflow::Status status = tensorflow::tfcompile::Main(flags);
   if (status.code() == absl::StatusCode::kInvalidArgument) {
-    std::cerr << "INVALID ARGUMENTS: " << status.error_message() << "\n\n";
+    std::cerr << "INVALID ARGUMENTS: " << status.message() << "\n\n";
     return 1;
   } else {
     TF_QCHECK_OK(status);

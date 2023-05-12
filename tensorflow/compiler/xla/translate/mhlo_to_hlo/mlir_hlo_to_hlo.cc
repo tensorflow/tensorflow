@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -54,6 +55,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/xla/client/lib/approx_topk.h"
+#include "tensorflow/compiler/xla/client/lib/approx_topk_shape.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -62,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -179,6 +183,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E5M2, tsl::float8_e5m2)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E4M3FN, tsl::float8_e4m3fn)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E4M3B11FNUZ,
+                             tsl::float8_e4m3b11)
     default:
       return tsl::errors::Internal(absl::StrCat(  // NOLINT
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
@@ -289,47 +295,44 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return xla::ConvertReplicaGroups(groups).value();
 }
 
+static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {
+  if (shape.IsArray()) {
+    shape.mutable_layout()->clear_minor_to_major();
+    for (auto l : layout) {
+      shape.mutable_layout()->mutable_minor_to_major()->push_back(
+          l.getSExtValue());
+    }
+  } else if (shape.IsToken()) {
+    assert(layout.empty() && "Invalid layout for token type");
+  } else {
+    assert(!shape.IsTuple() &&
+           "Exporting layout for tuples is not implemented yet");
+    assert(false && "Exporting unknown type with layout");
+  }
+}
+
+static void SetLayout(xla::Shape& shape, mlir::ArrayAttr layouts) {
+  if (shape.IsTuple()) {
+    for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+      SetLayout(*shape.mutable_tuple_shapes(i),
+                layouts[i].cast<mlir::DenseIntElementsAttr>());
+    }
+  } else {
+    assert(layouts.size() == 1);
+    SetLayout(shape, layouts[0].cast<mlir::DenseIntElementsAttr>());
+  }
+}
+
 // Converts types and corresponding layouts into xla shapes with layouts.
 static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
     mlir::TypeRange value_types, mlir::ArrayAttr layouts) {
   std::vector<xla::Shape> shapes_with_layout;
-  for (auto type_and_layout : llvm::zip(value_types, layouts)) {
-    mlir::Type type = std::get<0>(type_and_layout);
-    mlir::Attribute layout = std::get<1>(type_and_layout);
-
-    if (type.isa<mlir::TensorType>()) {
-      shapes_with_layout.emplace_back(xla::TypeToShape(type));
-      auto& shape = shapes_with_layout.back();
-      shape.mutable_layout()->clear_minor_to_major();
-      for (auto l : layout.cast<mlir::DenseIntElementsAttr>()) {
-        shape.mutable_layout()->mutable_minor_to_major()->push_back(
-            l.getSExtValue());
-      }
-    } else if (type.isa<mlir::mhlo::TokenType>()) {
-      assert(mlir::cast<mlir::DenseElementsAttr>(layout).empty() &&
-             "Invalid layout for token type");
-      shapes_with_layout.emplace_back(xla::TypeToShape(type));
-    } else {
-      assert(!type.isa<mlir::TupleType>() &&
-             "Exporting layout for tuples is not implemented yet");
-      assert(false && "Exporting unknown type with layout");
-    }
+  for (auto [type, layout] : llvm::zip(value_types, layouts)) {
+    xla::Shape shape = xla::TypeToShape(type);
+    SetLayout(shape, layout.cast<mlir::DenseIntElementsAttr>());
+    shapes_with_layout.push_back(std::move(shape));
   }
   return shapes_with_layout;
-}
-
-// CustomCallOp result can be of tuple type to pack multiple results into one
-// value. If the custom call result is a tuple, then result layouts represent
-// the layout of each element of the tuple. Nested tuples are currently not
-// supported for export.
-static xla::Shape GetCustomCallResultShapeWithLayout(mlir::Type type,
-                                                     mlir::ArrayAttr layouts) {
-  auto tuple_type = type.dyn_cast<mlir::TupleType>();
-  if (!tuple_type) return ConvertTypesToShapesWithLayout({type}, layouts)[0];
-
-  std::vector<xla::Shape> shapes_with_layouts =
-      ConvertTypesToShapesWithLayout(tuple_type.getTypes(), layouts);
-  return xla::ShapeUtil::MakeTupleShape(shapes_with_layouts);
 }
 
 // Converts StringRef to xla Transpose enum.
@@ -1653,8 +1656,292 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
-  if (op.getNumResults() != 1)
-    return op.emitOpError() << "with multiple results cannot be exported";
+  auto& value_map = *ctx.values;
+  llvm::SmallVector<xla::XlaOp> args;
+  if (failed(GetTuple(op, op.getInputs(), ctx, args))) return failure();
+
+  // Specially handle custom_calls from StableHLO that need stability guarantees
+  // that XLA doesn't provide at the moment.
+  //
+  // In particular, we need 6mo backward compat and 1mo forward compat. This
+  // will be provided by the StableHLO team by updating the following lowering.
+  // This lowering provides that compatibility guarantee, lowering to the
+  // appropriate HLO as the HLO implementing this custom_call may change.
+  //
+  // The only custom_call covered by the guarantee right now is ApproxTopK.
+  // This means that any custom_call with call_target_name = "ApproxTopK"
+  // written against the specification below will continue to behave as
+  // described within the compatibility window.
+  //
+  // The attributes supported by the ApproxTopK custom_call are:
+  //
+  //  - called_computation : This indicates the comparator for scoring entries
+  //  - api_version : always 4, the typed FFI API
+  //  - backend_config : The actual arguments to ApproxTopK. This includes
+  //    + top_k:i64 : the number of results to return
+  //    + reduction_dim:i64 : which dimension to search for the top k elements
+  //    + recall_target:f32: the expected number of top-k entries returned,
+  //        divided by k.
+  //    + aggregate_to_topk:bool : When true, aggregates approximate results to
+  //        top-k. When false, returns the approximate results. The number of
+  //        the approximate results is implementation defined and is greater
+  //        equals to the specified `k`.
+  //    + reduction_input_size_override:i64 : When set to a nonnegative value,
+  //        it overrides the size determined by `input[reduction_dim]` for
+  //        evaluating the recall. This option is useful when the given
+  //        `input` is only a subset of the overall computation in SPMD or
+  //        distributed pipelines, where the true input size cannot be deferred
+  //        by the `input` shape.
+  //    + is_fallback:bool : use the CPU/GPU fallback instead of the TPU
+  //        implementation that uses PartialReduce (optional)
+  //
+  // The operands are a sequence of inputs over which to search, followed
+  // by a list of initial values for each tensor in the first
+  // list. Thus, we must have an even number of operands consisting of a
+  // sequence of tensors with the same shape followed by the same number of
+  // rank-0 tensors with the same element types as the corresponding inputs.
+  // NB. Here, We mean "shape" in the StableHLO/MHLO sense of the dimensions of
+  // a the tensor, excluding the element type, not the the HLO sense, which
+  // includes it.
+  //
+  // Given the above operands and attributes, the custom_call returns tensors
+  // with the same shapes as the inputs (i.e. the first half of the operands),
+  // save for reduction_dim, which may have changed in accordance with the
+  // values of aggregate_to_topk, recall_target, and
+  // reduction_input_size_override above. These tensors will contain slices of
+  // the input tensors perpendicular to that axis, which have approximately the
+  // top values of the comparator along that axis to within recall_target.
+  //
+  // The operands and attributes must obey the following constraints:
+  //
+  // (C1) size(inputs) = size(init_values) = size(results)
+  // (C2) All inputs have the same shape.
+  // (C3) element_type(inputs[i]) = element_type(init_values[i])
+  //                              = element_type(results[i]) for all i in [0, N)
+  // (C4) shape(results[i]) = shape(inputs[i]) except that the dimension size
+  //      of inputs[i] corresponding to reduction_dim_are replaced with a
+  //      value >=k, which can be determined using ApproxTopKReductionOutputSize
+  // (C5) called_computation has type
+  //      (tensor<E0>, tensor<E0>, ..., tensor<EN-1>, tensor<EN-1>) ->
+  //      tensor<i1>
+  //        where Ei = element_type(inputs[i])
+  // (C6) 0 <= reduction_dim < rank(inputs[0])
+  // (C7) 0 < recall_target <= 1.0
+  // (C8) dim(inputs[0],reduction_dim) < reduction_input_size_override
+  //        || reduction_input_size_override < 0
+  //
+  // See arxiv:2206.14286 for more details.
+  //
+  // This feature is at time of writing only used by JAX, and is tested in the
+  // jax2tf backwards compatibility tests.
+
+  if (op.getCallTargetName() == "ApproxTopK") {
+    auto isSupportedAttrName = [](NamedAttribute attr) {
+      auto name = attr.getName();
+      return name == "call_target_name" || name == "backend_config" ||
+             name == "api_version" || name == "called_computations";
+    };
+    for (const auto& attr : op->getAttrs()) {
+      if (!isSupportedAttrName(attr))
+        return op.emitOpError()
+               << attr.getName().getValue()
+               << " is not a supported attribute for ApproxTopK";
+    }
+    auto backend_config =
+        op.getBackendConfigAttr().dyn_cast_or_null<mlir::DictionaryAttr>();
+    if (!backend_config)
+      return op.emitOpError() << "Missing backend_config attribute";
+
+    for (auto attr : backend_config) {
+      auto name = attr.getName();
+      if (!(name == "top_k" || name == "reduction_dim" ||
+            name == "recall_target" || name == "aggregate_to_topk" ||
+            name == "reduction_input_size_override" || name == "is_fallback"))
+        return op.emitOpError()
+               << name.getValue() << " is not a supported backend_config"
+               << " attribute for ApproxTopK";
+    }
+
+    auto checkI64Attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name))
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      auto attr = backend_config.getAs<IntegerAttr>(attr_name);
+      if (!attr || !attr.getType().isInteger(64))
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of i64 type";
+      return success();
+    };
+    auto checkF32Attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name))
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      auto attr = backend_config.getAs<FloatAttr>(attr_name);
+      if (!attr || !attr.getType().isF32())
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of f32 type";
+      return success();
+    };
+    auto checkBoolAttr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name))
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      auto attr = backend_config.getAs<BoolAttr>(attr_name);
+      if (!attr)
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of bool type";
+      return success();
+    };
+    if (failed(checkI64Attr("top_k"))) return failure();
+    if (failed(checkI64Attr("reduction_dim"))) return failure();
+    if (failed(checkF32Attr("recall_target"))) return failure();
+    if (failed(checkBoolAttr("aggregate_to_topk"))) return failure();
+    if (failed(checkI64Attr("reduction_input_size_override"))) return failure();
+    bool has_is_fallback = backend_config.contains("is_fallback");
+    if (has_is_fallback && !backend_config.getAs<BoolAttr>("is_fallback"))
+      return op.emitOpError()
+             << "is_fallback attribute in backend_config must be of bool type";
+
+    int64_t top_k = backend_config.getAs<IntegerAttr>("top_k").getInt();
+    int64_t reduction_dim =
+        backend_config.getAs<IntegerAttr>("reduction_dim").getInt();
+    float recall_target = backend_config.getAs<FloatAttr>("recall_target")
+                              .getValue()
+                              .convertToFloat();
+    bool aggregate_to_topk =
+        backend_config.getAs<BoolAttr>("aggregate_to_topk").getValue();
+    int64_t reduction_input_size_override =
+        backend_config.getAs<IntegerAttr>("reduction_input_size_override")
+            .getInt();
+    bool is_fallback = has_is_fallback &&
+                       backend_config.getAs<BoolAttr>("is_fallback").getValue();
+
+    // (C1)
+    if (args.size() % 2 != 0) {
+      return op.emitOpError() << "ApproxTopK takes an even number of operands.";
+    }
+    auto num_inputs = args.size() / 2;
+    absl::Span<const xla::XlaOp> inputs(args.begin(), num_inputs);
+    absl::Span<const xla::XlaOp> init_values(args.begin() + num_inputs,
+                                             num_inputs);
+    if (num_inputs != op.getNumResults()) {
+      return op.emitOpError() << "num_results does not match num_inputs";
+    }
+
+    SmallVector<RankedTensorType> input_types, init_value_types, result_types;
+    for (size_t i = 0; i < num_inputs; ++i) {
+      auto input_type = op.getOperand(i).getType().dyn_cast<RankedTensorType>();
+      if (!input_type) return failure();
+      input_types.push_back(input_type);
+      auto init_value_type =
+          op.getOperand(num_inputs + i).getType().dyn_cast<RankedTensorType>();
+      if (!init_value_type) return failure();
+      init_value_types.push_back(init_value_type);
+      auto result_type = op.getResult(i).getType().dyn_cast<RankedTensorType>();
+      if (!result_type) return failure();
+      result_types.push_back(result_type);
+    }
+
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      // (C2)
+      if (input_types[0].getShape() != input_types[i].getShape()) {
+        return op.emitOpError() << "input shape mismatch at position " << i;
+      }
+
+      // (C3)
+      if (init_value_types[i].getElementType() !=
+          input_types[i].getElementType()) {
+        return op.emitOpError()
+               << "input and init_value element type mismatch at position "
+               << i;
+      }
+      if (input_types[i].getElementType() != result_types[i].getElementType()) {
+        return op.emitOpError()
+               << "result element type mismatch at position " << i;
+      }
+
+      // (C4)
+      for (size_t j = 0; j < input_types[i].getRank(); ++j) {
+        if (j == reduction_dim) {
+          auto reduction_output_size = xla::ApproxTopKReductionOutputSize(
+              input_types[i].getShape()[j], input_types[i].getRank(), top_k,
+              recall_target, aggregate_to_topk, reduction_input_size_override);
+          if (!reduction_output_size.ok()) return failure();
+          if (result_types[i].getShape()[j] != reduction_output_size->first)
+            return op.emitOpError()
+                   << "ApproxTopK aggregates to k="
+                   << reduction_output_size->first << ", but got "
+                   << result_types[i].getShape()[j];
+          continue;
+        }
+        if (input_types[i].getShape()[j] != result_types[i].getShape()[j]) {
+          return op.emitOpError() << "result shape mismatch at position " << i
+                                  << ", index " << j;
+        }
+      }
+    }
+
+    // (C5)
+    auto called_computations = op.getCalledComputations();
+    if (called_computations.size() != 1) {
+      return op.emitOpError()
+             << "ApproxTopK takes exactly 1 called_computation.";
+    }
+    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+        op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
+    mlir::FunctionType callee_type = callee.getFunctionType();
+    SmallVector<Type, 4> expected_callee_input_types;
+    for (unsigned i = 0; i < num_inputs; ++i) {
+      auto scalar = RankedTensorType::get({}, input_types[i].getElementType());
+      expected_callee_input_types.push_back(scalar);
+      expected_callee_input_types.push_back(scalar);
+    }
+    FunctionType expected_callee_type = mlir::FunctionType::get(
+        op->getContext(), expected_callee_input_types,
+        RankedTensorType::get({}, IntegerType::get(op->getContext(), 1)));
+    if (callee_type != expected_callee_type) {
+      return op.emitOpError()
+             << "called_computation type does not match the expected type. Got "
+             << callee_type << " expected " << expected_callee_type;
+    }
+
+    if (failed(ctx.converter->RunOnFunction(callee))) return failure();
+    xla::XlaComputation& comparator =
+        ctx.converter->GetLoweredComputation(callee);
+
+    // (C6)
+    if (reduction_dim < 0 || reduction_dim > input_types[0].getRank())
+      return op.emitOpError() << "reduction_dim out of range";
+    // (C7)
+    if (recall_target <= 0 || recall_target > 1.0)
+      return op.emitOpError() << "recall_target out of range";
+    // (C8)
+    if (reduction_input_size_override >= 0 &&
+        reduction_input_size_override <
+            input_types[0].getShape()[reduction_dim])
+      return op.emitOpError() << "reduction_input_size_override out of range";
+
+    xla::XlaOp cc_op;
+    if (is_fallback) {
+      cc_op = xla::ApproxTopKFallback(
+          ctx.builder, inputs, init_values, top_k, reduction_dim, comparator,
+          recall_target, aggregate_to_topk, reduction_input_size_override);
+    } else {
+      cc_op = xla::ApproxTopK(ctx.builder, inputs, init_values, top_k,
+                              reduction_dim, comparator, recall_target,
+                              aggregate_to_topk, reduction_input_size_override);
+    }
+    for (const auto& item : llvm::enumerate(op.getResults())) {
+      value_map[item.value()] = xla::GetTupleElement(cc_op, item.index());
+    }
+    return success();
+  }
 
   if (op.getCalledComputations().size() > 1)
     return op.emitOpError()
@@ -1668,9 +1955,6 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
                                "layouts are specified";
   }
 
-  Value result = op.getResult(0);
-  llvm::SmallVector<xla::XlaOp> args;
-  if (failed(GetTuple(op, op.getInputs(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.getApiVersion());
   if (!xla_api_version.ok()) return failure();
 
@@ -1697,57 +1981,69 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   StatusOr<xla::Literal> literal;
+  const xla::Literal* literal_ptr = nullptr;
   auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kLiteralAttr);
   if (literal_attr) {
     literal = CreateArrayLiteralFromAttr(literal_attr, {});
     if (!literal.ok()) return failure();
+    literal_ptr = &*literal;
   }
 
-  auto& value_map = *ctx.values;
   auto aliasInfo =
       xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
   if (!custom_call_schedule.ok()) return failure();
+
+  std::string call_target_name(op.getCallTargetName());
+  xla::Shape result_shape;
+  if (op->getNumResults() == 1) {
+    result_shape = xla::TypeToShape(op.getResult(0).getType());
+  } else {
+    std::vector<xla::Shape> subshapes;
+    for (const auto& item : op.getResults().getType()) {
+      subshapes.push_back(xla::TypeToShape(item));
+    }
+    result_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
+  }
+
+  xla::XlaOp custom_call;
   if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
     xla::XlaComputation& computation =
         ctx.converter->GetLoweredComputation(callee);
-    value_map[result] = xla::CustomCallWithComputation(
-        ctx.builder, std::string(op.getCallTargetName()), args, computation,
-        xla::TypeToShape(result.getType()), backend_config,
-        op.getHasSideEffect(), output_operand_aliasing,
-        /*literal=*/literal.ok() ? &*literal : nullptr,
-        /*schedule=*/*custom_call_schedule,
-        /*api_version=*/*xla_api_version);
-    return success();
-  }
-
-  if (op.getOperandLayouts() && op.getResultLayouts()) {
+    custom_call = xla::CustomCallWithComputation(
+        ctx.builder, call_target_name, args, computation, result_shape,
+        backend_config, op.getHasSideEffect(), output_operand_aliasing,
+        literal_ptr, *custom_call_schedule, *xla_api_version);
+  } else if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
         op.getOperandTypes(), op.getOperandLayouts().value());
-    xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-        result.getType(), op.getResultLayouts().value());
-    value_map[result] = xla::CustomCallWithLayout(
-        ctx.builder, std::string(op.getCallTargetName()), args,
-        result_shape_with_layout, operand_shapes_with_layout, backend_config,
-        op.getHasSideEffect(), output_operand_aliasing,
-        /*literal=*/literal.ok() ? &*literal : nullptr,
-        /*schedule=*/*custom_call_schedule,
-        /*api_version=*/*xla_api_version);
-    return success();
+    SetLayout(result_shape, op.getResultLayouts().value());
+
+    custom_call = xla::CustomCallWithLayout(
+        ctx.builder, call_target_name, args, result_shape,
+        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+        output_operand_aliasing, literal_ptr, *custom_call_schedule,
+        *xla_api_version);
+  } else {
+    custom_call = xla::CustomCall(
+        ctx.builder, call_target_name, args, result_shape, backend_config,
+        op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
+        *custom_call_schedule, *xla_api_version);
   }
 
-  value_map[result] =
-      xla::CustomCall(ctx.builder, std::string(op.getCallTargetName()), args,
-                      xla::TypeToShape(result.getType()), backend_config,
-                      op.getHasSideEffect(), output_operand_aliasing,
-                      /*literal=*/literal.ok() ? &*literal : nullptr,
-                      /*schedule=*/*custom_call_schedule,
-                      /*api_version=*/*xla_api_version);
+  if (op->getNumResults() == 1) {
+    value_map[op.getResult(0)] = custom_call;
+  } else {
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(custom_call, index);
+    }
+  }
+
   return success();
 }
 
@@ -2745,7 +3041,7 @@ LogicalResult ConvertToHloModule::Lower(
                 options_.layout_preference_fn, options_.shape_representation_fn,
                 ret_shardings[index], /*fast_mem=*/false);
         if (!reshape.ok())
-          return inst->emitError() << reshape.status().error_message();
+          return inst->emitError() << reshape.status().message();
 
         returns[index] = reshape.value();
       }
@@ -2923,7 +3219,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
                                       : XlaLayoutPreference::kNoPreference;
     if (!layout_preference_status.ok())
       return block->getParentOp()->emitError()
-             << layout_preference_status.status().error_message();
+             << layout_preference_status.status().message();
 
     auto arg_shape_status = options_.shape_representation_fn
                                 ? options_.shape_representation_fn(
@@ -2932,7 +3228,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
                                 : arg_shape;
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
-             << arg_shape_status.status().error_message();
+             << arg_shape_status.status().message();
 
     arg_shape = std::move(arg_shape_status.value());
 
@@ -2956,14 +3252,14 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
       auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
       if (!hlo_sharding.ok())
         return block->getParentOp()->emitError()
-               << hlo_sharding.status().error_message();
+               << hlo_sharding.status().message();
 
       auto status = RewriteLayoutWithShardedShape(
           hlo_sharding.value(), /*use_fast_memory=*/false,
           options_.layout_preference_fn, options_.shape_representation_fn,
           &(*arg_shapes)[arg_sharding.index()]);
       if (!status.ok())
-        return block->getParentOp()->emitError() << status.error_message();
+        return block->getParentOp()->emitError() << status.message();
 
       *sharding.add_tuple_shardings() = *arg_sharding.value();
     }
@@ -3096,8 +3392,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   auto computation_or =
       return_value.valid() ? builder->Build(return_value) : builder->Build();
   if (!computation_or.ok()) {
-    block->back().emitError(
-        llvm::Twine(computation_or.status().error_message()));
+    block->back().emitError() << computation_or.status().message();
     return failure();
   }
   *result = std::move(computation_or.value());

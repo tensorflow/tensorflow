@@ -272,6 +272,7 @@ cc_library(
         ":strcat",
         ":stringprintf",
         ":types",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:function_ref",
@@ -279,7 +280,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ] + tf_platform_deps("status"),
 )
 
@@ -311,10 +311,6 @@ cc_library(
 
 cc_library(
     name = "statusor",
-    srcs = [
-        "statusor.cc",
-        "statusor_internals.h",
-    ],
     hdrs = ["statusor.h"],
     deps = [
         ":errors",
@@ -322,6 +318,7 @@ cc_library(
         ":macros",
         ":status",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -552,9 +549,7 @@ filegroup(
         "stacktrace.h",
         "status.cc",
         "status.h",
-        "statusor.cc",
         "statusor.h",
-        "statusor_internals.h",
         "str_util.cc",
         "str_util.h",
         "strcat.cc",
@@ -1370,6 +1365,7 @@ tsl_cc_test(
         ":test",
         ":test_benchmark",
         ":test_main",
+        "@com_google_absl//absl/base:config",
     ],
 )
 
@@ -1510,6 +1506,7 @@ tsl_cc_test(
         ":errors",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

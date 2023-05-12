@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -155,7 +157,7 @@ struct GemmOpCapture : public OpCapturePattern {
   }
 };
 
-struct MemrefOpCapture : public OpCapturePattern {
+struct MemcpyOpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
     if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
       // We use a heuristic to identify the direction of the memcpy operation,
@@ -182,6 +184,7 @@ struct MemrefOpCapture : public OpCapturePattern {
 // Capture pure operations by cloning them into graph capture function.
 struct ConstantOpCapture : public CloneOp<arith::ConstantOp> {};
 struct ViewOpCapture : public CloneOp<memref::ViewOp> {};
+struct ReinterpretCastOpCapture : public CloneOp<memref::ReinterpretCastOp> {};
 
 //===----------------------------------------------------------------------===//
 
@@ -329,7 +332,10 @@ static LogicalResult Outline(unsigned ordinal,
   unsigned num_move_captures = llvm::count_if(seq, [](auto capture) {
     return capture.second == OpCapturePattern::Capture::kMove;
   });
-  if (num_move_captures < 2) return failure();
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  int32_t graph_capture_threshold =
+      debug_options.xla_gpu_cuda_graph_capture_threshold();
+  if (num_move_captures < graph_capture_threshold) return failure();
 
   SymbolTable& sym_table = custom_calls.sym_table();
   MLIRContext* ctx = sym_table.getOp()->getContext();
@@ -346,6 +352,15 @@ static LogicalResult Outline(unsigned ordinal,
   auto func = b.create<func::FuncOp>(
       "xla.gpu.cuda.graph.capture",
       FunctionType::get(ctx, TypeRange(ValueRange(args)), TypeRange()));
+
+  for (auto op : seq) {
+    mlir::Operation* captured_op = op.first;
+    if (isa<lmhlo_gpu::GEMMOp>(captured_op)) {
+      func->setAttr(b.getStringAttr("xla.requires_blas"),
+                    BoolAttr::get(ctx, true));
+      break;
+    }
+  }
 
   // Add graph capture function to the module.
   sym_table.insert(func);
@@ -418,7 +433,8 @@ void OutlineCudaGraphsPass::runOnOperation() {
     patterns.emplace_back(new LaunchFuncOpCapture());
     patterns.emplace_back(new ConstantOpCapture());
     patterns.emplace_back(new ViewOpCapture());
-    patterns.emplace_back(new MemrefOpCapture());
+    patterns.emplace_back(new MemcpyOpCapture());
+    patterns.emplace_back(new ReinterpretCastOpCapture());
   }
 
   if (cuda_graph_level_ >= 2) {

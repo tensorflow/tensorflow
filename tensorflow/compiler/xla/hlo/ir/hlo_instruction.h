@@ -553,6 +553,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,
                                                     int64_t iota_dimension);
 
+  // Creates a Top-K instruction.
+  static std::unique_ptr<HloInstruction> CreateTopK(const Shape& shape,
+                                                    HloInstruction* input,
+                                                    int64_t k,
+                                                    HloComputation* compare);
+
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       const Shape& shape, HloInstruction* operand, int64_t index);
@@ -2015,7 +2021,7 @@ class HloInstruction {
   HloInstruction* fused_parameter(int64_t parameter_number) const;
 
   // Delegates to HloFusionInstruction::fused_parameters.
-  const std::vector<HloInstruction*>& fused_parameters() const;
+  const InstructionVector& fused_parameters() const;
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.

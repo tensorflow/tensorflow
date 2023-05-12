@@ -2,6 +2,7 @@
 #  Holds model-specific files. The app will bundle the files into assets.
 
 load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:proto.bzl", "proto_data")
+load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:build_defs.bzl", "accuracy_benchmark_extra_models", "latency_benchmark_extra_models")
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl", "validation_model")
 
 package(
@@ -27,14 +28,26 @@ validation_model(
 
 # Migrate the models into assets folder.
 ACCURACY_MODELS = [
-    "mobilenet_v1_1.0_224_with_validation.tflite",
-    "mobilenet_v1_1.0_224_quant_with_validation.tflite",
-]
+    (
+        "mobilenet_v1_1.0_224_with_validation.tflite",
+        ":mobilenet_v1_1.0_224_with_validation.tflite",
+    ),
+    (
+        "mobilenet_v1_1.0_224_quant_with_validation.tflite",
+        ":mobilenet_v1_1.0_224_quant_with_validation.tflite",
+    ),
+] + accuracy_benchmark_extra_models()
 
 LATENCY_MODELS = [
-    "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
-    "@tflite_mobilenet_quant//:mobilenet_v1_1.0_224_quant.tflite",
-]
+    (
+        "mobilenet_v1_1.0_224.tflite",
+        "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
+    ),
+    (
+        "mobilenet_v1_1.0_224_quant.tflite",
+        "@tflite_mobilenet_quant//:mobilenet_v1_1.0_224_quant.tflite",
+    ),
+] + latency_benchmark_extra_models()
 
 COPY_CMD = """
   srcs=($(SRCS))
@@ -47,15 +60,15 @@ COPY_CMD = """
 
 genrule(
     name = "accuracy_models",
-    srcs = [":%s" % model for model in ACCURACY_MODELS],
-    outs = ["assets/accuracy/%s" % model for model in ACCURACY_MODELS],
+    srcs = [target for _, target in ACCURACY_MODELS],
+    outs = ["assets/accuracy/%s" % name for name, _ in ACCURACY_MODELS],
     cmd = COPY_CMD,
 )
 
 genrule(
     name = "latency_models",
-    srcs = [model for model in LATENCY_MODELS],
-    outs = ["assets/latency/%s" % model.split(":")[-1] for model in LATENCY_MODELS],
+    srcs = [target for _, target in LATENCY_MODELS],
+    outs = ["assets/latency/%s" % name for name, _ in LATENCY_MODELS],
     cmd = COPY_CMD,
 )
 

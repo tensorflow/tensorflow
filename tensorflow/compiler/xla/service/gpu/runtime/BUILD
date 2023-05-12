@@ -1,4 +1,10 @@
 load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load(
+    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -119,6 +125,7 @@ cc_library(
     deps = [
         ":cholesky",
         ":collectives",
+        ":concurrent_region",
         ":conv",
         ":conv_reorder",
         ":cublas_lt_matmul",
@@ -132,6 +139,7 @@ cc_library(
         ":memset",
         ":send_recv",
         ":support",
+        ":topk",
         ":tracing",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
@@ -166,12 +174,135 @@ cc_library(
 )
 
 cc_library(
+    name = "topk_kernel",
+    srcs = if_cuda_is_configured(
+        [
+            "topk_kernel.cc",
+        ],
+    ),
+    hdrs = if_cuda_is_configured(["topk_kernel.h"]),
+    compatible_with = [],
+    deps = [
+        ":topk_kernel_cuda",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",  # build_cleaner: keep
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cuda_library(
+    name = "topk_kernel_cuda",
+    srcs = if_cuda_is_configured(
+        [
+            "topk_kernel.cu.cc",
+        ],
+    ),
+    hdrs = if_cuda_is_configured(["topk_kernel_common.h"]),
+    compatible_with = [],
+    deps = [
+        "//third_party/eigen3",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "topk_kernel_test",
+    srcs = if_cuda_is_configured(["topk_kernel_test.cc"]),
+    linkstatic = 1,
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":topk_kernel",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "topk_test",
+    srcs = if_cuda_is_configured(["topk_test.cc"]),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":topk",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service:topk_rewriter",
+        "//tensorflow/compiler/xla/service/gpu:topk_specializer",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "topk",
+    srcs = if_cuda_is_configured(
+        ["topk.cc"],
+        ["topk_no_cuda.cc"],
+    ),
+    hdrs = ["topk.h"],
+    deps = if_cuda_is_configured([":topk_kernel"]) + [
+        ":support",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:state",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:tuple_util",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "gemm",
     srcs = ["gemm.cc"],
     hdrs = ["gemm.h"],
     deps = [
         ":support",
-        "@com_google_absl//absl/container:node_hash_map",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/runtime:custom_call",
@@ -184,6 +315,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "@com_google_absl//absl/container:node_hash_map",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
@@ -199,8 +331,6 @@ cc_library(
         ":gemm",
         ":kernel_launch",
         ":support",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
@@ -209,9 +339,27 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/synchronization",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",
     ]),
+)
+
+cc_library(
+    name = "concurrent_region",
+    srcs = ["concurrent_region.cc"],
+    hdrs = ["concurrent_region.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:stream_pool",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/platform:statusor",
+    ],
 )
 
 cc_library(
@@ -245,7 +393,9 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/synchronization",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",
+    ]),
 )
 
 cc_library(

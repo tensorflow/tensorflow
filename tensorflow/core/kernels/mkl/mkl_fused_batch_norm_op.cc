@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
@@ -838,6 +838,7 @@ class MklFusedBatchNormOp : public OpKernel {
                                       tensor_format_, src_md, activation_mode_);
 
       // Get forward batch-normalization op from the primitive caching pool.
+      MklDnnThreadPool eigen_tp(context);
       MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
           MklFusedBatchNormFwdPrimitiveFactory<T, U>::Get(fwdParams);
 
@@ -927,7 +928,7 @@ class MklFusedBatchNormOp : public OpKernel {
 
       // Execute
       std::shared_ptr<stream> fwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       fwd_cpu_stream.reset(CreateStream(&eigen_tp, bn_fwd->GetEngine()));
       bn_fwd->Execute(src_data, weights_op_data, dst_data, mean_op_data,
                       variance_op_data, fwd_cpu_stream, ws_data);
@@ -1311,6 +1312,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
                                       is_training_, tensor_format_, src_md,
                                       diff_dst_md);
+      MklDnnThreadPool eigen_tp(context);
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 
@@ -1364,7 +1366,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       // Execute
       std::shared_ptr<stream> bwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       bwd_cpu_stream.reset(CreateStream(&eigen_tp, bn_bwd->GetEngine()));
       bn_bwd->Execute(src_data, mean_data, variance_data, diff_dst_data,
                       weights_data, diff_src_data, diff_weights_data,
@@ -1627,4 +1629,4 @@ REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(bfloat16, float);
 #undef GET_FLAG
 #undef IS_SET
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

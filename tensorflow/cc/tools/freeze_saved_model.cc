@@ -18,6 +18,8 @@ limitations under the License.
 #include <iostream>
 #include <queue>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -193,7 +195,7 @@ StatusOr<string> GetVarHandleName(
   if (node->op() == "VarHandleOp") {
     return node->name();
   }
-  return errors::NotFound("No VarHandleOp ancestor found");
+  return absl::NotFoundError("No VarHandleOp ancestor found");
 }
 
 // Looks up the variable handle that provides input to node with node_name,
@@ -209,7 +211,7 @@ StatusOr<string> GetHandleNameIfNeedsToFreeze(
   if (var_handle_name.ok() && variable_node_names.count(*var_handle_name)) {
     return var_handle_name;
   }
-  return errors::NotFound("No VarHandleOp ancestor found");
+  return absl::NotFoundError("No VarHandleOp ancestor found");
 }
 
 // Freezes the subgraph of all nodes needed by `outputs`.

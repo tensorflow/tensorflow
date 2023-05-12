@@ -338,7 +338,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
           CodeKey(index), static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
-                                               status.error_message()));
+                                               std::string(status.message())));
       }
       return OkStatus();
     }

@@ -1,4 +1,5 @@
 // RUN: mlir-hlo-opt %s --lower-vectors --split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s --lower-vectors="flatten=true" --split-input-file | FileCheck %s --check-prefix=FLATTEN
 
 // CHECK-LABEL: func @vector_row
 func.func @vector_row(%arg0: vector<2x4xf32>, %acc: vector<2xf32>) -> vector<2xf32> {
@@ -151,17 +152,17 @@ func.func @optimize_pack_with_transpose(%arg0: memref<1024x1024xf32>) ->
   return %alloc_0 : memref<128x1024x8x1xf32>
 }
 
-// CHECK-LABEL: func @optimize_pack_with_transpose(
-// CHECK-SAME:      %[[INPUT:.*]]: memref<1024x1024xf32>)
+// FLATTEN-LABEL: func @optimize_pack_with_transpose(
+// FLATTEN-SAME:      %[[INPUT:.*]]: memref<1024x1024xf32>)
 
-// CHECK:         %[[ALLOC:.*]] = memref.alloc
-// CHECK:         %[[READ:.*]] = vector.transfer_read %[[INPUT]]
-// CHECK-NOT:     vector.broadcast
-// CHECK-NOT:     vector.transpose
-// CHECK:         %[[COLLAPSE:.*]] = memref.collapse_shape %[[ALLOC]]
-// CHECK-SAME:    memref<128x1024x8x1xf32> into memref<128x1024x8xf32>
-// CHECK:         %[[SHAPE_CAST:.*]] = vector.shape_cast %{{.*}}
-// CHECK:         vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE]]
+// FLATTEN:         %[[ALLOC:.*]] = memref.alloc
+// FLATTEN:         %[[READ:.*]] = vector.transfer_read %[[INPUT]]
+// FLATTEN-NOT:     vector.broadcast
+// FLATTEN-NOT:     vector.transpose
+// FLATTEN:         %[[COLLAPSE:.*]] = memref.collapse_shape %[[ALLOC]]
+// FLATTEN-SAME:    memref<128x1024x8x1xf32> into memref<128x1024x8xf32>
+// FLATTEN:         %[[SHAPE_CAST:.*]] = vector.shape_cast %{{.*}}
+// FLATTEN:         vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE]]
 
 // -----
 
@@ -188,13 +189,32 @@ func.func @optimize_pack(%arg0: memref<1024x1024xf32>) ->
   return %alloc_0 : memref<128x1024x8x1xf32>
 }
 
-// CHECK-LABEL: func @optimize_pack(
-// CHECK-SAME:      %[[INPUT:.*]]: memref<1024x1024xf32>)
+// FLATTEN-LABEL: func @optimize_pack(
+// FLATTEN-SAME:      %[[INPUT:.*]]: memref<1024x1024xf32>)
 
-// CHECK:         %[[ALLOC:.*]] = memref.alloc
-// CHECK:         %[[READ:.*]] = vector.transfer_read %[[INPUT]]
-// CHECK:         %[[COLLAPSE:.*]] = memref.collapse_shape %[[ALLOC]]
-// CHECK-SAME:    memref<128x1024x8x1xf32> into memref<128x1024x8xf32>
-// CHECK:         %[[SHAPE_CAST:.*]] = vector.shape_cast
-// CHECK-SAME:    vector<8x1xf32> to vector<8xf32>
-// CHECK:         vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE]]
+// FLATTEN:         %[[ALLOC:.*]] = memref.alloc
+// FLATTEN:         %[[READ:.*]] = vector.transfer_read %[[INPUT]]
+// FLATTEN:         %[[COLLAPSE:.*]] = memref.collapse_shape %[[ALLOC]]
+// FLATTEN-SAME:    memref<128x1024x8x1xf32> into memref<128x1024x8xf32>
+// FLATTEN:         %[[SHAPE_CAST:.*]] = vector.shape_cast
+// FLATTEN-SAME:    vector<8x1xf32> to vector<8xf32>
+// FLATTEN:         vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE]]
+
+// -----
+
+func.func @no_flatten(%arg0: memref<2x9x10x2xf64>) ->
+                         memref<2x9x10x2xf64> {
+  %cst = arith.constant 0.000000e+00 : f64
+  %c0 = arith.constant 0 : index
+  %alloca = memref.alloca() : memref<2x9x10x2xf64>
+  %1 = vector.transfer_read %arg0[%c0, %c0, %c0, %c0], %cst {in_bounds = [true, true, true, true]} : memref<2x9x10x2xf64>, vector<2x9x10x2xf64>
+  vector.transfer_write %1, %alloca[%c0, %c0, %c0, %c0] {in_bounds = [true, true, true, true]} : vector<2x9x10x2xf64>, memref<2x9x10x2xf64>
+  return %alloca : memref<2x9x10x2xf64>
+}
+
+
+// CHECK-LABEL:     func @no_flatten(
+
+// CHECK-NOT:         memref.collapse_shape
+// CHECK-COUNT-180:   vector.transfer_read {{.*}} memref<2x9x10x2xf64>, vector<2xf64>
+// CHECK-COUNT-180:   vector.transfer_write {{.*}} vector<2xf64>, memref<2x9x10x2xf64>

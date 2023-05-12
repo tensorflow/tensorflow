@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <algorithm>
+#include <climits>
 #include <functional>
 #include <numeric>
 #include <optional>
@@ -71,6 +72,7 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(float) / 4,   // F8E4M3FN = 20
     sizeof(int8_t),      // S4 = 21
     sizeof(int8_t),      // U4 = 22
+    sizeof(float) / 4,   // F8E4M3B11FNUZ = 23
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 
@@ -528,6 +530,24 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*to));
 }
 
+/* static */ bool ShapeUtil::IsEffectivelyMostMajorDimension(
+    const Shape& shape, int64_t dimension) {
+  // Check if the dimension is most major as returned by LayoutUtil::Major(0).
+  // If not, and the most major dimension's size is 1, then we can repeat the
+  // same check for next most major dimension as returned by
+  // LayoutUtil::Major(1) and so on.
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+    int64_t major_dimension = LayoutUtil::Major(shape.layout(), i);
+    if (major_dimension == dimension) {
+      return true;
+    }
+    if (shape.dimensions(major_dimension) != 1) {
+      return false;
+    }
+  }
+  return false;
+}
+
 /* static */ bool ShapeUtil::ElementIsIntegral(const Shape& shape) {
   return primitive_util::IsIntegralType(shape.element_type());
 }
@@ -553,6 +573,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case S64:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
     case F16:
     case BF16:
     case F32:
@@ -1979,6 +2000,11 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     int64_t dim_size = shape_dimensions[minor_to_major[dim]];
     num_of_elements *= dim_size;
   }
+
+  if (ShapeUtil::ElementHasBitWidth(shape, 4)) {
+    return num_of_elements / 2;
+  }
+
   return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
 }
 
@@ -1989,7 +2015,9 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     indices.push_back(dim - 1);
   }
   int64_t size = LayoutUtil::LinearIndex(shape, indices) + 1;
-  return (size * ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()));
+  int64_t num_bits = size * primitive_util::BitWidth(shape.element_type());
+
+  return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
 }
 
 int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {

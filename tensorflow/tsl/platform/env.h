@@ -21,8 +21,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/tsl/platform/env_time.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/file_system.h"
@@ -428,9 +430,9 @@ class Env {
   ///
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
-  virtual Thread* StartThread(const ThreadOptions& thread_options,
-                              const std::string& name,
-                              std::function<void()> fn) TF_MUST_USE_RESULT = 0;
+  virtual Thread* StartThread(
+      const ThreadOptions& thread_options, const std::string& name,
+      absl::AnyInvocable<void()> fn) TF_MUST_USE_RESULT = 0;
 
   // Returns the thread id of calling thread.
   // Posix: Returns pthread id which is only guaranteed to be unique within a
@@ -444,14 +446,14 @@ class Env {
   // \brief Schedules the given closure on a thread-pool.
   //
   // NOTE(mrry): This closure may block.
-  virtual void SchedClosure(std::function<void()> closure) = 0;
+  virtual void SchedClosure(absl::AnyInvocable<void()> closure) = 0;
 
   // \brief Schedules the given closure on a thread-pool after the given number
   // of microseconds.
   //
   // NOTE(mrry): This closure must not block.
   virtual void SchedClosureAfter(int64_t micros,
-                                 std::function<void()> closure) = 0;
+                                 absl::AnyInvocable<void()> closure) = 0;
 
   // \brief Load a dynamic library.
   //
@@ -528,19 +530,19 @@ class EnvWrapper : public Env {
   }
   Thread* StartThread(const ThreadOptions& thread_options,
                       const std::string& name,
-                      std::function<void()> fn) override {
-    return target_->StartThread(thread_options, name, fn);
+                      absl::AnyInvocable<void()> fn) override {
+    return target_->StartThread(thread_options, name, std::move(fn));
   }
   int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
   bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
   }
-  void SchedClosure(std::function<void()> closure) override {
-    target_->SchedClosure(closure);
+  void SchedClosure(absl::AnyInvocable<void()> closure) override {
+    target_->SchedClosure(std::move(closure));
   }
   void SchedClosureAfter(int64_t micros,
-                         std::function<void()> closure) override {
-    target_->SchedClosureAfter(micros, closure);
+                         absl::AnyInvocable<void()> closure) override {
+    target_->SchedClosureAfter(micros, std::move(closure));
   }
   Status LoadDynamicLibrary(const char* library_filename,
                             void** handle) override {

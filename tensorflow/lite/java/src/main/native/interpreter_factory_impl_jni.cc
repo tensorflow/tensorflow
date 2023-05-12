@@ -16,7 +16,7 @@ limitations under the License.
 #include <jni.h>
 #include <stdio.h>
 
-#include "tensorflow/lite/core/shims/c/c_api.h"
+#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 
 #ifdef __cplusplus
