@@ -381,6 +381,7 @@ cc_library(
     srcs = ["kernel_launch.cc"],
     hdrs = ["kernel_launch.h"],
     deps = [
+        ":concurrent_region",
         ":support",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
