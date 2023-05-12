@@ -2832,6 +2832,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   Args:
     shape: A `list` of integers, a `tuple` of integers, or
       a 1-D `Tensor` of type `int32`.
+      Note: Boolean datatypes True,False also acceptable and converted
+      into numerics 1,0 respectively.
     dtype: The DType of an element in the resulting `Tensor`.
     name: Optional string. A name for the operation.
 
@@ -3090,6 +3092,8 @@ def ones(shape, dtype=dtypes.float32, name=None):
   Args:
     shape: A `list` of integers, a `tuple` of integers, or
       a 1-D `Tensor` of type `int32`.
+      Note: Boolean datatypes True,False also acceptable and converted
+      into numerics 1,0 respectively.
     dtype: Optional DType of an element in the resulting `Tensor`. Default is
       `tf.float32`.
     name: Optional string. A name for the operation.
