@@ -89,16 +89,10 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
   }
 
   void SetDebugString(std::string debug_string) {
-    if (debug_string_.empty()) {
-      debug_string_ = std::move(debug_string);
-    }
+    debug_string_ = std::move(debug_string);
   }
 
-  void SetToString(std::string to_string) {
-    if (to_string_.empty()) {
-      to_string_ = std::move(to_string);
-    }
-  }
+  void SetToString(std::string to_string) { to_string_ = std::move(to_string); }
 
  private:
   const int id_;
