@@ -132,5 +132,29 @@ class TFStackTest(test.TestCase):
     with self.assertRaises(IndexError):
       del trace[len(trace)]
 
+  def testSourceMap(self):
+    source_map = tf_stack._tf_stack.PyBindSourceMap()
+
+    def func(n):
+      if n == 0:
+        return tf_stack._tf_stack.extract_stack(
+            source_map, tf_stack._tf_stack.PyBindFileSet()
+        )
+      else:
+        return func(n - 1)
+
+    trace = func(5)
+    source_map.update_to((
+        (
+            (trace[0].filename, trace[0].lineno),
+            ("filename", 42, "function_name"),
+        ),
+    ))
+    trace = list(func(5).uncached())
+    self.assertEqual(
+        str(trace[0]), 'File "filename", line 42, in function_name'
+    )
+
+
 if __name__ == "__main__":
   test.main()
