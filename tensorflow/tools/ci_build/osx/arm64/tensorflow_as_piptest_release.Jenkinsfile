@@ -16,6 +16,9 @@ limitations under the License.
 
 pipeline {
     agent none
+    environment {
+        RELEASE_BRANCH = 'r2.13'
+    }
     stages {
         stage("Build Tensorflow") {
             parallel {
@@ -26,7 +29,6 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-
                     }
                     steps {
 
@@ -37,7 +39,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "r2.13",
+                        git branch: ${RELEASE_BRANCH},
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -89,7 +91,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "r2.13",
+                        git branch: ${RELEASE_BRANCH},
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -139,7 +141,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "r2.13",
+                        git branch: ${RELEASE_BRANCH},
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -190,7 +192,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "r2.13",
+                        git branch: ${RELEASE_BRANCH},
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
