@@ -18,7 +18,7 @@ build --define=tensorflow_mkldnn_contraction_kernel=0
 # Settings for MacOS on ARM CPUs.
 build --cpu=darwin_arm64
 build --macos_minimum_os=11.0
-build --MACOSX_DEPLOYMENT_TARGET=11.0
+build --action_env MACOSX_DEPLOYMENT_TARGET=11.0
 
 # Test-related settings below this point.
 test --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
