@@ -44,12 +44,15 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 
 static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {
+  tensorflow::GraphdefToMlirOptions options{
+      debug_info_file,        xla_compile_device_type,
+      prune_unused_nodes,     convert_legacy_fed_inputs,
+      graph_as_function,      upgrade_legacy,
+      enable_shape_inference, unconditionally_use_set_output_shapes};
+
   auto module_or = tensorflow::GraphdefToMlirTranslateFunction(
-      input, debug_info_file, xla_compile_device_type, input_arrays,
-      input_dtypes, input_shapes, output_arrays, control_output_arrays,
-      prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      upgrade_legacy, enable_shape_inference,
-      unconditionally_use_set_output_shapes, context);
+      input, input_arrays, input_dtypes, input_shapes, output_arrays,
+      control_output_arrays, options, context);
   if (!module_or.status().ok()) return nullptr;
   return std::move(module_or).value();
 }
@@ -59,12 +62,14 @@ static TranslateToMLIRRegistration GraphdefToMlirTranslate(
 
 static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {
+  tensorflow::GraphdefToMlirOptions options{
+      debug_info_file,        xla_compile_device_type,
+      prune_unused_nodes,     convert_legacy_fed_inputs,
+      graph_as_function,      upgrade_legacy,
+      enable_shape_inference, unconditionally_use_set_output_shapes};
   auto module_or = tensorflow::GraphdefToSplattedMlirTranslateFunction(
-      input, debug_info_file, xla_compile_device_type, input_arrays,
-      input_dtypes, input_shapes, output_arrays, control_output_arrays,
-      prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      upgrade_legacy, enable_shape_inference,
-      unconditionally_use_set_output_shapes, context);
+      input, input_arrays, input_dtypes, input_shapes, output_arrays,
+      control_output_arrays, options, context);
   if (!module_or.status().ok()) return nullptr;
   return std::move(module_or).value();
 }

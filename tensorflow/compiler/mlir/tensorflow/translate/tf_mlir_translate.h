@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
@@ -34,24 +35,29 @@ namespace tensorflow {
 using tsl::Status;
 using tsl::StatusOr;
 
+struct GraphdefToMlirOptions {
+  std::string debug_info_file;
+  std::string xla_compile_device_type;
+  bool prune_unused_nodes;
+  bool convert_legacy_fed_inputs;
+  bool graph_as_function;
+  bool upgrade_legacy;
+  bool enable_shape_inference;
+  bool unconditionally_use_set_output_shapes;
+};
+
 // TODO(antiagainst): Directly manipulating files in library functions is not
 // a good idea. We should pass in a string/stream here.
 
 // Converts a TensorFlow GraphDef contained in `input` param into a MLIR module.
 // Creates MLIR entities into the given MLIR `context`.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view xla_compile_device_type,
-    const std::vector<std::string>& input_arrays,
+    llvm::StringRef input, const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
     const std::vector<std::optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 ABSL_DEPRECATED(
     "Please use the other overload of this function which accepts structured "
@@ -59,32 +65,21 @@ ABSL_DEPRECATED(
 // Converts a TensorFlow GraphDef contained in `input` param into a MLIR module.
 // Creates MLIR entities into the given MLIR `context`.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view xla_compile_device_type, absl::string_view input_arrays,
+    llvm::StringRef input, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, absl::string_view control_output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view xla_compile_device_type,
-    const std::vector<std::string>& input_arrays,
+    llvm::StringRef input, const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
     const std::vector<std::vector<int>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 ABSL_DEPRECATED(
     "Please use the other overload of this function which accepts structured "
@@ -93,15 +88,10 @@ ABSL_DEPRECATED(
 // with randomly generated splat values.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view xla_compile_device_type, absl::string_view input_arrays,
+    llvm::StringRef input, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, absl::string_view control_output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 // Converts a TensorFlow SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
