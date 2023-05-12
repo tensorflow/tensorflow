@@ -26,7 +26,6 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-
                     }
                     steps {
                         dir('tensorflow') {
@@ -44,7 +43,6 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                             '''
 
                             sh '''
@@ -67,9 +65,6 @@ pipeline {
                         '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
-
-                        // sh 'python /Users/admin/metal_plugin_test.py'
-
                     }
                 }
                 stage("Python 3.9") {
@@ -96,7 +91,6 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                             '''
 
                             sh '''
@@ -119,9 +113,6 @@ pipeline {
                         '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
-
-                        // sh 'python /Users/admin/metal_plugin_test.py'
-
                     }
                 }
                 stage("Python 3.10") {
@@ -148,7 +139,6 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                             '''
 
                             sh '''
@@ -171,8 +161,6 @@ pipeline {
                         '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
-
-                        // sh 'python /Users/admin/metal_plugin_test.py'
                     }
                 }
                 stage("Python 3.11") {
@@ -184,7 +172,6 @@ pipeline {
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
                     }
                     steps {
-
                         dir('tensorflow') {
 
                             sh '''
@@ -200,7 +187,6 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                             '''
 
                             sh '''
@@ -223,8 +209,6 @@ pipeline {
                         '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
-
-                        // sh 'python /Users/admin/metal_plugin_test.py'
                     }
                 }
             }
