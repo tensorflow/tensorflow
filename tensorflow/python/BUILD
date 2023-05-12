@@ -1601,7 +1601,7 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:concrete_function",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
         "//tensorflow/python/eager/polymorphic_function:transform",
         "//tensorflow/python/framework:func_graph",

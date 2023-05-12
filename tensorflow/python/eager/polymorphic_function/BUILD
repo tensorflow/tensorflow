@@ -77,8 +77,8 @@ cuda_py_strict_test(
 )
 
 py_strict_library(
-    name = "monomorphic_function",
-    srcs = ["monomorphic_function.py"],
+    name = "concrete_function",
+    srcs = ["concrete_function.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
@@ -126,9 +126,9 @@ py_strict_library(
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":attributes",
+        ":concrete_function",
         ":function_context",
         ":function_spec",
-        ":monomorphic_function",
         ":tf_method_target",
         ":transform",
         "//tensorflow/core/function/capture:capture_container",
