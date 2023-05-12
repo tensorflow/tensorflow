@@ -13331,6 +13331,23 @@ ENTRY main.4 {
   EXPECT_EQ(alltoall, nullptr);
 }
 
+TEST_F(SpmdPartitioningTest, ReshardCrash) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.6 {
+  Arg_0.1 = f32[8,32,4]{2,1,0} parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

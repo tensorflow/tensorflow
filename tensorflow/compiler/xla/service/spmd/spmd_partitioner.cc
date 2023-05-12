@@ -1862,7 +1862,9 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
           VLOG(10) << "Skipped for target dim being 1" << target_dim;
           return std::nullopt;
         }
-        if (target.tile_assignment().dim(target_dim) != dimension_size) {
+        if (source.tile_assignment().dim(target_dim) *
+                target.tile_assignment().dim(target_dim) !=
+            dimension_size) {
           VLOG(10) << "Skipped for target dim different from dimension_size "
                    << target_dim
                    << " src size: " << source.tile_assignment().dim(i)
