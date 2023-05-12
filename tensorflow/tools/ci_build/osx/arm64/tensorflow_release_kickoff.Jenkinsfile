@@ -36,10 +36,5 @@ pipeline {
                 }
             }
         }
-        stage("Upload to PyPi") {
-            steps {
-                build 'upload-release'
-            }
-        }
     }
 }
