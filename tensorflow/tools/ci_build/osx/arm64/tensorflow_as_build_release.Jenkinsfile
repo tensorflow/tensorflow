@@ -16,9 +16,6 @@ limitations under the License.
 
 pipeline {
     agent none
-    environment {
-        RELEASE_COMMIT_ID='525da8a93eca846e32e5c41eddc0496b25a2ef5b'
-    }
     stages {
         stage("Build Tensorflow") {
             parallel {
@@ -41,7 +38,8 @@ pipeline {
 
                             sh 'python --version'
 
-                            checkout scmGit(branches: [[name: "$RELEASE_COMMIT_ID"]], extensions: [], userRemoteConfigs: [[url: 'https://github.com/tensorflow/tensorflow']])
+                            git branch: "r2.13",
+                                url: "https://github.com/tensorflow/tensorflow.git"
 
                             sh '''
                                 pip install --upgrade pip
@@ -92,7 +90,8 @@ pipeline {
 
                             sh 'python --version'
 
-                            checkout scmGit(branches: [[name: "$RELEASE_COMMIT_ID"]], extensions: [], userRemoteConfigs: [[url: 'https://github.com/tensorflow/tensorflow']])                                
+                            git branch: "r2.13",
+                                url: "https://github.com/tensorflow/tensorflow.git"
 
                             sh '''
                                 pip install --upgrade pip
@@ -143,7 +142,8 @@ pipeline {
                             
                             sh 'python --version'
 
-                            checkout scmGit(branches: [[name: "$RELEASE_COMMIT_ID"]], extensions: [], userRemoteConfigs: [[url: 'https://github.com/tensorflow/tensorflow']])
+                            git branch: "r2.13",
+                                url: "https://github.com/tensorflow/tensorflow.git"
 
                             sh '''
                                 pip install --upgrade pip
@@ -194,7 +194,8 @@ pipeline {
                             
                             sh 'python --version'
 
-                            checkout scmGit(branches: [[name: "$RELEASE_COMMIT_ID"]], extensions: [], userRemoteConfigs: [[url: 'https://github.com/tensorflow/tensorflow']])
+                            git branch: "r2.13",
+                                url: "https://github.com/tensorflow/tensorflow.git"
 
                             sh '''
                                 pip install --upgrade pip
