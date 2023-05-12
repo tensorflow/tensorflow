@@ -651,7 +651,7 @@ def shape_v2(input, out_type=DEFAULT_OUT_TYPE, name=None):
 
 @tf_export(v1=["shape"])
 @dispatch.add_dispatch_support
-def shape(input, name=None, out_type=dtypes.int32):
+def shape(input, name=None, out_type=DEFAULT_OUT_TYPE):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
