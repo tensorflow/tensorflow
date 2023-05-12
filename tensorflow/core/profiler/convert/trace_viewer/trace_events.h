@@ -185,7 +185,7 @@ class TraceEventsContainerBase {
   void AddCounterEvent(absl::string_view name, uint32_t device_id,
                        uint64_t timestamp_ps, const RawData& raw_data) {
     TraceEvent* event = CreateArenaEvent();
-    event->set_name(name);
+    event->set_name(name.data(), name.size());
     event->set_device_id(device_id);
     // Do not set resource_id for counter events, they are per device.
     event->set_timestamp_ps(timestamp_ps);
@@ -418,7 +418,7 @@ class TraceEventsContainerBase {
     if (name.size() > kNameInternThreshold) {
       event->set_name_ref(MaybeInternString(name));
     } else {
-      event->set_name(name);
+      event->set_name(name.data(), name.size());
     }
   }
 

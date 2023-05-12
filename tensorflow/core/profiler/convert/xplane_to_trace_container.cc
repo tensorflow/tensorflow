@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_event_arguments_builder.h"
@@ -123,7 +124,7 @@ void ConvertXLineToTraceEventsContainer(uint32_t device_id,
     resource_id = line.DisplayId();
     Resource* resource = container->MutableResource(*resource_id, device_id);
     resource->set_resource_id(*resource_id);
-    resource->set_name(line.DisplayName());
+    resource->set_name(std::string(line.DisplayName()));
     resource->set_num_events(line.NumEvents());
   }
 
