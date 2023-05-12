@@ -37,7 +37,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "master",
+                        git branch: "nightly",
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -89,7 +89,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "master",
+                        git branch: "nightly",
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -139,7 +139,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "master",
+                        git branch: "nightly",
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -190,7 +190,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: "master",
+                        git branch: "nightly",
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
