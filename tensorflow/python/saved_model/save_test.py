@@ -233,6 +233,132 @@ class SaveTest(test.TestCase, parameterized.TestCase):
         ),
     )
 
+  def test_save_defaults_dict(self):
+    root = autotrackable.AutoTrackable()
+
+    @def_function.function(
+        input_signature=[{
+            "temperature": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.float32, name="d"
+            ),
+            "per_example_max_decode_steps": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="c"
+            ),
+            "per_example_top_k": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="b"
+            ),
+            "gumbel_prng_key": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="a"
+            ),
+        }]
+    )
+    def f(
+        x={
+            "temperature": constant_op.constant(0.5),
+            "per_example_max_decode_steps": constant_op.constant(1024),
+            "per_example_top_k": constant_op.constant(40),
+            "gumbel_prng_key": constant_op.constant(0),
+        }
+    ):  # pylint: disable=dangerous-default-value
+      return x
+
+    root.f = f
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, root.f)
+
+    self.assertEqual(
+        {
+            "gumbel_prng_key": 0,
+            "per_example_max_decode_steps": 1024,
+            "temperature": 0.5,
+            "per_example_top_k": 40,
+        },
+        _import_and_infer(
+            save_dir, {}, disable_check_for_input_signature_size_match=True
+        ),
+    )
+
+  def test_save_defaults_nested_structure(self):
+    root = autotrackable.AutoTrackable()
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name="m"),
+            [
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                {
+                    "temperature": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.float32
+                    ),
+                    "per_example_max_decode_steps": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.int32
+                    ),
+                    "per_example_top_k": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.int32
+                    ),
+                    "gumbel_prng_key": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.int32
+                    ),
+                    "dict_entry": {
+                        "a": tensor_spec.TensorSpec(
+                            shape=(), dtype=dtypes.float32
+                        ),
+                        "b": tensor_spec.TensorSpec(
+                            shape=(), dtype=dtypes.float32
+                        ),
+                    },
+                },
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+            ],
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name="y"),
+        ]
+    )
+    def f(
+        m,
+        x=[
+            constant_op.constant(5.0),
+            constant_op.constant(1.0),
+            {
+                "tempurature": constant_op.constant(0.5),
+                "per_example_max_decode_steps": constant_op.constant(1024),
+                "per_example_top_k": constant_op.constant(40),
+                "gumbel_prng_key": constant_op.constant(0),
+                "dict_entry": {
+                    "a": constant_op.constant(1.0),
+                    "b": constant_op.constant(2.0),
+                },
+            },
+            constant_op.constant(3.0),
+        ],
+        y=constant_op.constant(2.0),
+    ):  # pylint: disable=dangerous-default-value
+      return m + x[2]["dict_entry"]["a"] + x[3] + y
+
+    root.f = f
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, {"f": root.f})
+
+    self.assertEqual(
+        {"output_0": 8.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"m": 2.0},
+            signature_key="f",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+
+    self.assertEqual(
+        {"output_0": 10.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"m": 2.0, "y": 4.0},
+            signature_key="f",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+
   def test_unsaveable_func_graph(self):
     root = module.Module()
 
@@ -1192,7 +1318,7 @@ class AssetTests(test.TestCase):
         input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
     root.table_user(constant_op.constant("gamma"))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(AssertionError, "HashTable"):
+    with self.assertRaisesRegex(AssertionError, "HashTable"):
       save.save(root, save_dir)
 
   def test_unused_asset(self):
