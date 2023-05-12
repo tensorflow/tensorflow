@@ -727,6 +727,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests/image_ops:__pkg__",
+        "//tensorflow/python/ops/parallel_for:__pkg__",
     ],
 )
 
@@ -873,6 +874,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/autograph/operators:__pkg__",
         "//tensorflow/python/data/ops:__pkg__",
+        "//tensorflow/python/ops/parallel_for:__pkg__",
     ],
 )
 
@@ -882,6 +884,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
+        "//tensorflow/python/ops/parallel_for:__pkg__",
     ],
 )
 
