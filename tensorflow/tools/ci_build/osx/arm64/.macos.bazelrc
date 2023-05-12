@@ -6,14 +6,6 @@ build --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 # Build TensorFlow v2
 build --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 
-# Prevent double-compilation of some TF code
-# > TF's gen_api_init_files has a genrule to run the core TensorFlow code
-# > on the host machine. If we don't have --distinct_host_configuration=false,
-# > the core TensorFlow code will be built once for the host and once for the
-# > target platform.
-# See also https://docs.bazel.build/versions/master/guide.html#build-configurations-and-cross-compilation
-build --distinct_host_configuration=false
-
 # Disable nccl support for macOS.
 build --define=no_nccl_support=true
 
