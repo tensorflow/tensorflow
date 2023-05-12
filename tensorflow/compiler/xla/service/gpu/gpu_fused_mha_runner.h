@@ -100,6 +100,16 @@ struct GpufMHAParams {
 
 class FusedMultiHeadedAttentionRunner {
  public:
+  using Repr = std::variant<
+      std::monostate,  // To allow XXX default ctor
+      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>,
+      std::unique_ptr<
+          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>,
+      std::unique_ptr<
+          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>,
+      std::unique_ptr<
+          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>>;
+
   FusedMultiHeadedAttentionRunner() = default;
 
   explicit FusedMultiHeadedAttentionRunner(
@@ -124,32 +134,16 @@ class FusedMultiHeadedAttentionRunner {
           runner)
       : repr_(std::move(runner)) {}
 
+  explicit FusedMultiHeadedAttentionRunner(Repr runner)
+      : repr_(std::move(runner)) {}
+
   explicit FusedMultiHeadedAttentionRunner(const GpufMHAConfig& config)
-      : FusedMultiHeadedAttentionRunner(
-            config.kind == CudnnfMHAKind::kBmmBmm ||
-                    config.kind == CudnnfMHAKind::kSoftmaxDropout ||
-                    config.kind == CudnnfMHAKind::kSoftmax
-                ? FusedMultiHeadedAttentionRunner(
-                      std::make_unique<
-                          se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>(
-                          config.algorithm))
-                : config.kind == CudnnfMHAKind::kScaleBiasSoftmax ||
-                          config.kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout
-                      ? FusedMultiHeadedAttentionRunner(
-                            std::make_unique<se::dnn::LazyOpRunner<
-                                se::dnn::FusedMHAScaleBiasSoftmaxOp>>(
-                                config.algorithm))
-                      : config.kind == CudnnfMHAKind::kScaleMaskSoftmax ||
-                                config.kind ==
-                                    CudnnfMHAKind::kScaleMaskSoftmaxDropout
-                            ? FusedMultiHeadedAttentionRunner(
-                                  std::make_unique<se::dnn::LazyOpRunner<
-                                      se::dnn::FusedMHAScaleMaskSoftmaxOp>>(
-                                      config.algorithm))
-                            : FusedMultiHeadedAttentionRunner(
-                                  std::make_unique<se::dnn::LazyOpRunner<
-                                      se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>(
-                                      config.algorithm))) {}
+      : FusedMultiHeadedAttentionRunner(CreateRunner(config)) {
+    if (std::holds_alternative<std::monostate>(repr_)) {
+      CHECK(false) << "Cannot construct FusedMultiHeadedAttentionRunner with "
+                      "std::monostate";
+    }
+  }
 
   se::dnn::AlgorithmDesc ToAlgorithmDesc() const {
     return std::visit(ToAlgorithmDescVisitor{}, repr_);
@@ -196,6 +190,37 @@ class FusedMultiHeadedAttentionRunner {
   }
 
  private:
+  //  The CreateRunner function is defined as static because it
+  //  doesn't need access to any non-static member variables of the
+  //  FusedMultiHeadedAttentionRunner class. Defining it static makes it easy to
+  //  use and makes it clear that it is a utility function that doesn't rely on
+  //  the state of any specific instance of the class.
+  static Repr CreateRunner(const GpufMHAConfig& config) {
+    switch (config.kind) {
+      case CudnnfMHAKind::kBmmBmm:
+      case CudnnfMHAKind::kSoftmaxDropout:
+      case CudnnfMHAKind::kSoftmax:
+        return std::make_unique<
+            se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>(
+            config.algorithm);
+      case CudnnfMHAKind::kScaleBiasSoftmax:
+      case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
+        return std::make_unique<
+            se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>(
+            config.algorithm);
+      case CudnnfMHAKind::kScaleMaskSoftmax:
+      case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+        return std::make_unique<
+            se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>(
+            config.algorithm);
+      case CudnnfMHAKind::kScaleBiasMaskSoftmax:
+      case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+        return std::make_unique<
+            se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>(
+            config.algorithm);
+    }
+  }
+
   struct ToAlgorithmDescVisitor {
     template <typename RunnerPtr>
     se::dnn::AlgorithmDesc operator()(const RunnerPtr& runner) {
@@ -206,15 +231,7 @@ class FusedMultiHeadedAttentionRunner {
       CHECK(false) << "Internal error: uninitialized runner in ToAlgorithmDesc";
     }
   };
-  using Repr = std::variant<
-      std::monostate,  // To allow XXX default ctor
-      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>>,
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>,
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>,
-      std::unique_ptr<
-          se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>>;
+
   Repr repr_;
 };
 
