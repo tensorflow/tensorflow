@@ -480,7 +480,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
-        "//tensorflow/lite/testing:util",  # build_cleaner: keep
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

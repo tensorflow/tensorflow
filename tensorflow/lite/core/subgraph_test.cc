@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -145,7 +146,7 @@ TEST(MarkSubgraphAsDelegationSkippable, MarkSubgraphAsDelegationSkippable) {
 size_t BytesFor(const TfLiteType type, const int* const data,
                 const size_t size) {
   size_t type_size;
-  CHECK(GetSizeOfType(nullptr, type, &type_size) == kTfLiteOk)
+  CHECK_EQ(GetSizeOfType(nullptr, type, &type_size), kTfLiteOk)
       << "Type is not supported by GetSizeOfType";
   return std::accumulate(data, data + size, type_size, std::multiplies<int>());
 }
