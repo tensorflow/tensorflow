@@ -31,11 +31,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// If the most minor dimension in the transpose operand is smaller than this,
-// untiled transposition may be more efficient.
+// If a dimensions is smaller than this, untiled transposition may be more
+// efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
-// But if the product of the dimensions to be swapped is larger than this, tiled
-// transposition may be more efficient.
+// But if both swap dimensions are larger than 'kMinDimensionToTransposeTiled2',
+// and the product of the dimensions to be swapped is larger than
+// 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 
 // Matrix multiplication before the rewrite.
