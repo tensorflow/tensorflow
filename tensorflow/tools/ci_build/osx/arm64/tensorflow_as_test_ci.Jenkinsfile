@@ -46,18 +46,10 @@ pipeline {
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
 
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                        
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.8.13/lib/python3.8/site-packages" \
                             --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.8.13/bin/python3.8" \
-                            --config=macos_arm64 \
                             --config=nonpip
                             '''
                     }
@@ -88,17 +80,10 @@ pipeline {
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
 
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.9.13/lib/python3.9/site-packages" \
                             --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.9.13/bin/python3.9" \
-                            --config=macos_arm64 \
                             --config=nonpip
                             '''
                     }
@@ -131,15 +116,10 @@ pipeline {
 
                         configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
 
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \
                             --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.10.4/bin/python3.10" \
-                            --config=macos_arm64 \
                             --config=nonpip
                             '''
 
@@ -171,17 +151,10 @@ pipeline {
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
 
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.11.2/lib/python3.11/site-packages" \
                             --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.11.2/bin/python3.11" \
-                            --config=macos_arm64 \
                             --config=nonpip
                             '''
 

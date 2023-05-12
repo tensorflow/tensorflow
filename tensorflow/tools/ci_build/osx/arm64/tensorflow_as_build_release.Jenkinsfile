@@ -49,14 +49,8 @@ pipeline {
                                 pip install Pillow
                             '''
 
-                            configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                            sh "cat .macos.bazelrc"
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                             sh '''
-                                /opt/homebrew/bin/bazel build \
+                                /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                                 --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.8.13/lib/python3.8/site-packages" \
                                 --action_env MACOSX_DEPLOYMENT_TARGET=11.3 \
                                 //tensorflow/tools/pip_package:build_pip_package
@@ -107,14 +101,8 @@ pipeline {
                                 pip install Pillow
                             '''
 
-                            configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-                            
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                            sh "cat .macos.bazelrc"
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                             sh '''
-                                /opt/homebrew/bin/bazel build \
+                                /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                                 --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.9.13/lib/python3.9/site-packages" \
                                 --action_env MACOSX_DEPLOYMENT_TARGET=11.3 \
                                 //tensorflow/tools/pip_package:build_pip_package
@@ -164,15 +152,9 @@ pipeline {
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                                 pip install Pillow
                             '''
-                            
-                            configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                            sh "cat .macos.bazelrc"
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
                             sh '''
-                                /opt/homebrew/bin/bazel build \
+                                /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                                 --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \
                                 --action_env MACOSX_DEPLOYMENT_TARGET=11.3 \
                                 //tensorflow/tools/pip_package:build_pip_package
@@ -222,15 +204,9 @@ pipeline {
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                                 pip install Pillow
                             '''
-                            
-                            configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                            sh "cat .macos.bazelrc"
-                            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
                             sh '''
-                                /opt/homebrew/bin/bazel build \
+                                /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                                 --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.11.2/lib/python3.11/site-packages" \
                                 --action_env MACOSX_DEPLOYMENT_TARGET=11.3 \
                                 //tensorflow/tools/pip_package:build_pip_package

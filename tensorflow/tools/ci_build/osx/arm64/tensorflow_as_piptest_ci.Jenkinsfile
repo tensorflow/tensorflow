@@ -45,14 +45,8 @@ pipeline {
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
 
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                            /opt/homebrew/bin/bazel build \
+                            /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.8.13/lib/python3.8/site-packages" \
                             --config=macos_arm64 \
                             //tensorflow/tools/pip_package:build_pip_package
@@ -64,7 +58,7 @@ pipeline {
                             ln -s "$(pwd)"/tensorflow "$(pwd)/bazel_pip"/tensorflow
                             pip install $(pwd)/tensorflow/pkg/*.whl
                             
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.8.13/lib/python3.8/site-packages" \
                             --config=macos_arm64 \
                             --config=pip
@@ -97,14 +91,8 @@ pipeline {
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
 
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                            /opt/homebrew/bin/bazel build \
+                            /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.9.13/lib/python3.9/site-packages" \
                             --config=macos_arm64 \
                             //tensorflow/tools/pip_package:build_pip_package
@@ -116,7 +104,7 @@ pipeline {
                             ln -s "$(pwd)"/tensorflow "$(pwd)/bazel_pip"/tensorflow
                             pip install $(pwd)/tensorflow/pkg/*.whl
                             
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.9.13/lib/python3.9/site-packages" \
                             --config=macos_arm64 \
                             --config=pip
@@ -147,14 +135,8 @@ pipeline {
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
 
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                            /opt/homebrew/bin/bazel build \
+                            /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \
                             --config=macos_arm64 \
                             //tensorflow/tools/pip_package:build_pip_package
@@ -166,7 +148,7 @@ pipeline {
                             ln -s "$(pwd)"/tensorflow "$(pwd)/bazel_pip"/tensorflow
                             pip install $(pwd)/tensorflow/pkg/*.whl
                             
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \
                             --config=macos_arm64 \
                             --config=pip
@@ -198,16 +180,9 @@ pipeline {
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
 
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-                        sh "cat .macos.bazelrc"
-                        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
                         sh '''
-                            /opt/homebrew/bin/bazel build \
+                            /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.11.2/lib/python3.11/site-packages" \
-                            --config=macos_arm64 \
                             //tensorflow/tools/pip_package:build_pip_package
                                 
                             ./bazel-bin/tensorflow/tools/pip_package/build_pip_package "./tensorflow/pkg" --nightly_flag
@@ -217,7 +192,7 @@ pipeline {
                             ln -s "$(pwd)"/tensorflow "$(pwd)/bazel_pip"/tensorflow
                             pip install $(pwd)/tensorflow/pkg/*.whl
                             
-                            bazel --bazelrc=".macos.bazelrc" test \
+                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.11.2/lib/python3.11/site-packages" \
                             --config=macos_arm64 \
                             --config=pip
