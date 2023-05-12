@@ -63,7 +63,7 @@ ENTRY %elementwise {
 TEST(MIPSolverTest, TwoVariableToyExample) {
   // SAT or SCIP
   std::unique_ptr<MPSolver> solver(
-      std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
+      MPSolver::CreateSolver("SCIP_MIXED_INTEGER_PROGRAMMING"));
   solver->MutableObjective()->SetMaximization();
   ASSERT_TRUE(solver);
   // Test with the following integer programming problem:

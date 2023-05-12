@@ -2164,7 +2164,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   int32_t num_workers = 32;
   // SAT or SCIP
-  std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
+  std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::SAT_INTEGER_PROGRAMMING));
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
   std::string solver_parameter_str;
