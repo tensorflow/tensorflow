@@ -219,6 +219,8 @@ def eye(num_rows,
   Args:
     num_rows: Non-negative `int32` scalar `Tensor` giving the number of rows
       in each batch matrix.
+      Note: Boolean data types True,False also acceptable and converts into
+          1, 0 respectively.
     num_columns: Optional non-negative `int32` scalar `Tensor` giving the number
       of columns in each batch matrix.  Defaults to `num_rows`.
     batch_shape:  A list or tuple of Python integers or a 1-D `int32` `Tensor`.
