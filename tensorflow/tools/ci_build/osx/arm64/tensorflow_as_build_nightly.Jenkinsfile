@@ -16,7 +16,6 @@ limitations under the License.
 
 pipeline {
     agent none
-
     stages {
         stage("Build Tensorflow") {
             parallel {
@@ -45,9 +44,11 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                                 python tensorflow/tools/ci_build/update_version.py --nightly
                             '''
+
+                            // Install Pillow for metal plugin tests
+                            sh 'pip install Pillow'
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
@@ -101,10 +102,11 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                                 python tensorflow/tools/ci_build/update_version.py --nightly
-
                             '''
+
+                            // Install Pillow for metal plugin tests
+                            sh 'pip install Pillow'
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
@@ -157,9 +159,11 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                                 python tensorflow/tools/ci_build/update_version.py --nightly
                             '''
+
+                            // Install Pillow for metal plugin tests
+                            sh 'pip install Pillow'
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
@@ -212,9 +216,11 @@ pipeline {
                             sh '''
                                 pip install --upgrade pip
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                                pip install Pillow
                                 python tensorflow/tools/ci_build/update_version.py --nightly
                             '''
+
+                            // Install Pillow for metal plugin tests
+                            sh 'pip install Pillow'
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
