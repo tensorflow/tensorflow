@@ -851,7 +851,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             gpu_target_config.gpu_version)) {
       auto cuda_compute_capability =
           std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA) &&
+          !cuda_compute_capability.IsAtLeast(
+              se::CudaComputeCapability::HOPPER)) {
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }
