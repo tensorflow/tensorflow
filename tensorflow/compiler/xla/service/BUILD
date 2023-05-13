@@ -4604,11 +4604,15 @@ xla_cc_test(
     deps = [
         ":instruction_hoister",
         ":memory_space_assignment",
+        ":memory_space_assignment_utils",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 

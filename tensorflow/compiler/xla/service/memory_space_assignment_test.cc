@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
@@ -30,6 +31,8 @@ using memory_space_assignment::AsynchronousCopyOrdering;
 using memory_space_assignment::AsynchronousCopyResource;
 using memory_space_assignment::CostAnalysisPrefetchIntervalPicker;
 using memory_space_assignment::InstructionCountPrefetchIntervalPicker;
+using memory_space_assignment::MemoryBoundLoopOptimizer;
+using memory_space_assignment::MemoryBoundLoopOptimizerOptions;
 using memory_space_assignment::MemorySpaceAssignment;
 using memory_space_assignment::MemorySpaceAssignmentCostAnalysis;
 using memory_space_assignment::Options;
@@ -45,6 +48,10 @@ constexpr float kTranscendentalsPerSecond = 10;
 
 int64_t ShapeSize(const Shape& shape) {
   return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+}
+
+int64_t SizeFunction(const BufferValue& value) {
+  return ShapeSize(value.shape());
 }
 
 class MemorySpaceAssignmentTest : public HloTestBase,
@@ -8485,6 +8492,640 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, PipelineOverhead) {
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
                 *add, {{0, {}}, {1, {}}}, {{}}),
             expected_compute_elapsed);
+}
+
+class MemoryBoundLoopOptimizerTest : public HloTestBase {
+ public:
+  MemoryBoundLoopOptimizerTest() = default;
+
+ protected:
+  const int64_t kAlternateMemorySpace = 1;
+  const int64_t kDefaultMemorySpace = 0;
+
+  Status Initialize(const HloModule* module,
+                    uint64_t alternate_memory_size = 256) {
+    HloCostAnalysis::Options options;
+    MemoryBoundLoopOptimizerOptions optimizer_options;
+    optimizer_options.set_enabled(true);
+    optimizer_options.set_desired_copy_ratio(0.7);
+    optimizer_options.set_allow_unsatisfied_fully_pipelined_prefetch(false);
+    options_.alternate_mem_bandwidth_bytes_per_second = 128;
+    options_.async_copy_bandwidth_bytes_per_second = 32;
+    options_.pipeline_overhead_window_size_mib = 1;
+    options.shape_size = ShapeSize;
+    options.set_flops_per_second(16);
+    options.set_bytes_per_second(32);
+    options.set_transcendentals_per_second(16);
+    hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(options);
+    TF_RETURN_IF_ERROR(
+        module->entry_computation()->Accept(hlo_cost_analysis_.get()));
+    TF_ASSIGN_OR_RETURN(cost_analysis_,
+                        MemorySpaceAssignmentCostAnalysis::Create(
+                            *hlo_cost_analysis_, options_, *module));
+    TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
+    TF_ASSIGN_OR_RETURN(live_range_,
+                        HloLiveRange::Run(module->schedule(), *alias_analysis_,
+                                          module->entry_computation()));
+    return OkStatus();
+  }
+
+  StatusOr<MemoryBoundLoopOptimizer*> CreateOptimizer(
+      int loop_start, int loop_end, const HloModule* module,
+      uint64_t alternate_memory_size = 256) {
+    TF_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
+    MemoryBoundLoopOptimizerOptions optimizer_options;
+    optimizer_options.set_enabled(true);
+    optimizer_options.set_desired_copy_ratio(0.7);
+    optimizer_options.set_allow_unsatisfied_fully_pipelined_prefetch(false);
+    TF_ASSIGN_OR_RETURN(
+        optimizer_,
+        MemoryBoundLoopOptimizer::Create(
+            loop_start, loop_end, alternate_memory_size, optimizer_options,
+            *live_range_, *alias_analysis_, *cost_analysis_, SizeFunction));
+    return optimizer_.get();
+  }
+
+  StatusOr<std::unique_ptr<HloModule>> ParseAndCreateOptimizer(
+      absl::string_view hlo_loop_str, uint64_t alternate_memory_size,
+      int& loop_start_idx, MemoryBoundLoopOptimizer** optimizer) {
+    int loop_end_idx;
+    TF_ASSIGN_OR_RETURN(
+        std::string module_str,
+        ParseAndCreateModuleString(hlo_loop_str, loop_start_idx, loop_end_idx));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                        ParseAndReturnVerifiedModule(module_str));
+    TF_ASSIGN_OR_RETURN(
+        *optimizer, CreateOptimizer(loop_start_idx, loop_end_idx, module.get(),
+                                    alternate_memory_size));
+    return std::move(module);
+  }
+
+  // Parse a loop string description like the following:
+  //  $op0 = f32[1,4] add(f32[1,4] $param0, f32[1,4] $prev_op4)
+  //  $op1 = f32[8,4] add(f32[8,4] $param1, f32[8,4] $prev_op3)
+  //  $op2 = f32[1,4] add(f32[1,4] $param2, f32[1,4] $op0)
+  //  $op3 = f32[8,4] add(f32[8,4] $param3, f32[8,4] $op1)
+  //  $op4 = f32[1,4] add(f32[1,4] $param4, f32[1,4] $op2)
+  StatusOr<std::string> ParseAndCreateModuleString(
+      absl::string_view hlo_loop_str, int& loop_start_idx, int& loop_end_idx) {
+    // Parse op name and types first.
+    RE2 op_re("\\$op([0-9]+) += +(\\S+).*");
+    std::vector<absl::string_view> ops;
+    std::vector<absl::string_view> op_types;
+    int begin_pos = 0;
+    absl::string_view submatch[3];
+    while (op_re.Match(hlo_loop_str, begin_pos, hlo_loop_str.size(),
+                       RE2::UNANCHORED, submatch, /*nsubmatch=*/3)) {
+      for (int i = 0; i < 3; ++i) {
+        if (submatch[i].data() == nullptr) {
+          VLOG(4) << "Submatch[" << i << "] = nullptr";
+        } else {
+          VLOG(4) << "Submatch[" << i << "] = " << submatch[i]
+                  << " (idx: " << (submatch[i].data() - hlo_loop_str.data())
+                  << ")";
+        }
+      }
+      int op_num;
+      if (!absl::SimpleAtoi(submatch[1], &op_num)) {
+        return InvalidArgument("Op name expects to contain a number, found %s.",
+                               submatch[1]);
+      }
+      if (op_num != ops.size()) {
+        return InvalidArgument("Op number expected to be %d found %d.",
+                               op_types.size(), op_num);
+      }
+      ops.push_back(submatch[0]);
+      op_types.push_back(submatch[2]);
+      begin_pos = submatch[0].data() - hlo_loop_str.data() + submatch[0].size();
+    }
+
+    RE2 param_re("([[:alnum:]]+\\[\\S*\\]) +\\$param([0-9]+)");
+    std::vector<absl::string_view> param_types;
+    begin_pos = 0;
+    while (param_re.Match(hlo_loop_str, begin_pos, hlo_loop_str.size(),
+                          RE2::UNANCHORED, submatch, /*nsubmatch=*/3)) {
+      for (int i = 0; i < 3; ++i) {
+        if (submatch[i].data() == nullptr) {
+          VLOG(4) << "Submatch[" << i << "] = nullptr";
+        } else {
+          VLOG(4) << "Submatch[" << i << "] = " << submatch[i]
+                  << " (idx: " << (submatch[i].data() - hlo_loop_str.data())
+                  << ")";
+        }
+      }
+      int param_num;
+      if (!absl::SimpleAtoi(submatch[2], &param_num)) {
+        return InvalidArgument(
+            "Param name expects to contain a number, found %s.", submatch[2]);
+      }
+      while (param_num >= param_types.size()) {
+        param_types.push_back({});
+      }
+      param_types[param_num] = submatch[1];
+
+      begin_pos = submatch[0].data() - hlo_loop_str.data() + submatch[0].size();
+    }
+
+    RE2 root_re("ROOT \\$root += +tuple\\((.*)\\)");
+    absl::string_view root_values;
+    if (root_re.Match(hlo_loop_str, 0, hlo_loop_str.size(), RE2::UNANCHORED,
+                      submatch, /*nsubmatch=*/2)) {
+      for (int i = 0; i < 2; ++i) {
+        if (submatch[i].data() == nullptr) {
+          VLOG(4) << "Submatch[" << i << "] = nullptr";
+        } else {
+          VLOG(4) << "Submatch[" << i << "] = " << submatch[i]
+                  << " (idx: " << (submatch[i].data() - hlo_loop_str.data())
+                  << ")";
+        }
+      }
+      root_values = submatch[1];
+    }
+
+    for (absl::string_view op_type : op_types) {
+      VLOG(4) << "op_type: " << op_type;
+    }
+    for (absl::string_view param_type : param_types) {
+      VLOG(4) << "param_type: " << param_type;
+    }
+
+    std::string hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY Entry {
+)";
+    int total_instructions = 0;
+    for (absl::string_view param_prefix : {"prev_", "", "next_"}) {
+      for (int i = 0; i < param_types.size(); ++i) {
+        int parameter_number = total_instructions;
+        absl::StrAppend(&hlo_string, "  ", param_prefix, "param", i, " = ",
+                        param_types[i], " parameter(", parameter_number,
+                        ")  // ", total_instructions++, "\n");
+      }
+    }
+
+    for (int i = 0; i < op_types.size(); ++i) {
+      int parameter_number = total_instructions;
+      absl::StrAppend(&hlo_string, "  ", "prev_prev_op", i, " = ", op_types[i],
+                      " parameter(", parameter_number, ")  // ",
+                      total_instructions++, "\n");
+    }
+
+    std::string new_root_values;
+    auto print_ops =
+        [&](const std::vector<std::pair<const absl::string_view, std::string>>&
+                replacements) {
+          for (int i = 0; i < ops.size(); ++i) {
+            absl::StrAppend(&hlo_string, "  ",
+                            absl::StrReplaceAll(ops[i], replacements), "  // ",
+                            total_instructions++, "\n");
+          }
+          if (!root_values.empty()) {
+            absl::StrAppend(&new_root_values,
+                            new_root_values.empty() ? "" : ", ",
+                            absl::StrReplaceAll(root_values, replacements));
+          }
+        };
+
+    std::vector<std::pair<const absl::string_view, std::string>>
+        prev_replacements;
+    prev_replacements.push_back({"$prev_op", "prev_prev_op"});
+    prev_replacements.push_back({"$op", "prev_op"});
+    prev_replacements.push_back({"$param", "prev_param"});
+    absl::StrAppend(&hlo_string, "  // Prev iteration body:\n");
+    print_ops(prev_replacements);
+
+    loop_start_idx = total_instructions;
+    std::vector<std::pair<const absl::string_view, std::string>> replacements;
+    replacements.push_back({"$", ""});
+    absl::StrAppend(&hlo_string, "  // Loop body:\n");
+    print_ops(replacements);
+    loop_end_idx = total_instructions;
+
+    std::vector<std::pair<const absl::string_view, std::string>>
+        next_replacements;
+    next_replacements.push_back({"$prev_op", "op"});
+    next_replacements.push_back({"$op", "next_op"});
+    next_replacements.push_back({"$param", "next_param"});
+    absl::StrAppend(&hlo_string, "  // Next iteration body:\n");
+    print_ops(next_replacements);
+
+    absl::StrAppend(&hlo_string, "  ROOT root = tuple(", new_root_values,
+                    ")\n");
+    absl::StrAppend(&hlo_string, "}");
+
+    VLOG(1) << hlo_string;
+    return hlo_string;
+  }
+
+ private:
+  Options options_;
+  std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
+  std::unique_ptr<MemorySpaceAssignmentCostAnalysis> cost_analysis_;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+  std::unique_ptr<HloLiveRange> live_range_;
+  std::unique_ptr<MemoryBoundLoopOptimizer> optimizer_;
+};
+
+TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op3, f32[1,4] $prev_op4)
+    $op1 = f32[1,4] add(f32[1,4] $prev_op4, f32[1,4] $op0)
+    $op2 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op1)
+    $op3 = f32[1,4] add(f32[1,4] $op1, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $param0, f32[1,4] $op3)
+    ROOT $root = tuple($op4, $param0)
+  )";
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndCreateOptimizer(hlo_loop_str,
+                                                  /*alternate_memory_size=*/128,
+                                                  loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  absl::flat_hash_set<HloUse> seen_uses;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    LOG(INFO) << loop_value.ToString();
+    if (loop_value.hlo_values.front()
+            ->defining_position()
+            .instruction->name() == "param0") {
+      EXPECT_TRUE(loop_value.allocations.back()->is_copy_allocation());
+    }
+    for (const auto& allocation : loop_value.allocations) {
+      for (const HloUse& use : allocation->uses()) {
+        EXPECT_FALSE(seen_uses.contains(use)) << use.ToString();
+        seen_uses.insert(use);
+      }
+    }
+  }
+
+  // Ensure all of the uses in the loop have an associated use.
+  for (absl::string_view inst_name : {"op0", "op1", "op2", "op3", "op4"}) {
+    HloInstruction* inst =
+        module->entry_computation()->GetInstructionWithName(inst_name);
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 0})) << inst_name;
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
+  }
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, NoAlternateMem) {
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op3, f32[1,4] $prev_op4)
+    $op1 = f32[1,4] add(f32[1,4] $prev_op4, f32[1,4] $op0)
+    $op2 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op1)
+    $op3 = f32[1,4] add(f32[1,4] $op1, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $param0, f32[1,4] $op3)
+    ROOT $root = tuple($op4, $param0)
+  )";
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  // Set alternate memory size to zero so nothing should be in the alternate
+  // memory. We still expect to find an allocation for all uses.
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndCreateOptimizer(hlo_loop_str,
+                                                  /*alternate_memory_size=*/0,
+                                                  loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  absl::flat_hash_set<HloUse> seen_uses;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    LOG(INFO) << loop_value.ToString();
+    for (const auto& allocation : loop_value.allocations) {
+      EXPECT_EQ(allocation->memory_space(),
+                MemorySpaceAssignment::MemorySpace::kDefault);
+      for (const HloUse& use : allocation->uses()) {
+        EXPECT_FALSE(seen_uses.contains(use)) << use.ToString();
+        seen_uses.insert(use);
+      }
+    }
+  }
+
+  // Ensure all of the uses in the loop have an associated use.
+  for (absl::string_view inst_name : {"op0", "op1", "op2", "op3", "op4"}) {
+    HloInstruction* inst =
+        module->entry_computation()->GetInstructionWithName(inst_name);
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 0})) << inst_name;
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
+  }
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
+  // Test for enforcing FIFO order of prefetches. There are three parameters
+  // that will be prefetched (param0, param1, and param2). param2 is one eighth
+  // the size of the other parameters and is scheduled later in the loop. So, we
+  // expect the allocation algorithm to initially allocate param2's prefetch
+  // with a short live range (since copying it doesn't take very long), but then
+  // as we try to prefetch param0 and param1, we will wrap around into the
+  // previous iterations and would need to "early force" param2's prefetch to be
+  // scheduled earlier to enforce the FIFO order.
+  //
+  // alternate_mem_bytes_per_second = 128
+  // default_mem_bytes_per_second = 32
+  // flops_per_second = 16
+  // f32[1,4] add: flops: 4, bytes: 48, compute elapsed: 0.25
+  //    - All default memory elapsed: 1.5
+  //    - All alternate memory elapsed: 0.375
+  // f32[8,4] add: flops: 32, bytes: 384, compute elapsed: 2
+  //    - All default memory elapsed: 12
+  //    - All alternate memory elapsed: 3
+  // f32[1,4] copy: bytes: 16, memory elapsed: 0.5
+  // f32[8,4] copy: bytes: 128, memory elapsed: 4
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op13, f32[1,4] $prev_op14)
+    $op1 = f32[8,4] add(f32[8,4] $param0, f32[8,4] $param1)
+    $op2 = f32[1,4] add(f32[1,4] $prev_op14, f32[1,4] $op0)
+    $op3 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $op2, f32[1,4] $op3)
+    $op5 = f32[1,4] add(f32[1,4] $op3, f32[1,4] $op4)
+    $op6 = f32[1,4] add(f32[1,4] $op4, f32[1,4] $op5)
+    $op7 = f32[1,4] add(f32[1,4] $op5, f32[1,4] $op6)
+    $op8 = f32[1,4] add(f32[1,4] $op6, f32[1,4] $op7)
+    $op9 = f32[1,4] add(f32[1,4] $op7, f32[1,4] $op8)
+    $op10 = f32[1,4] add(f32[1,4] $op8, f32[1,4] $op9)
+    $op11 = f32[1,4] add(f32[1,4] $op9, f32[1,4] $op10)
+    $op12 = f32[1,4] add(f32[1,4] $op10, f32[1,4] $op11)
+    $op13 = f32[1,4] add(f32[1,4] $op11, f32[1,4] $op12)
+    $op14 = f32[1,4] add(f32[1,4] $param2, f32[1,4] $op13)
+  )";
+
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndCreateOptimizer(hlo_loop_str,
+                                                  /*alternate_memory_size=*/512,
+                                                  loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  // We expect the prefetches to be scheduled this way:
+  //
+  //
+  // param0 or param1:
+  // ===========>       =====================================>
+  // param1 or param0:
+  // ===========>                                           ===
+  //           ==============================================>
+  // param2:
+  // =====>    ========================================>    ===
+  //  13 14| 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14| 0  1
+  //  prev |                  loop                      | next
+  //
+  // Temporaries:
+  //  +======+
+  //     +=========+
+  //        +=========+
+  //              +======+
+  //                 +======+
+  //                    +======+
+  //                       +======+
+  //                          +======+
+  //                             +======+
+  //                                +======+
+  //                                   +======+
+  //                                      +======+
+  //                                         +======+
+  //                                            +===+
+  //                                               +======+
+  //                                                  +=========+
+  //  13 14| 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14| 0  1
+  //  prev |                  loop                      | next
+  std::vector<const MemorySpaceAssignment::CopyAllocation*> prefetches;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    if (!loop_value.allocations.empty() &&
+        loop_value.allocations.back()->is_copy_allocation()) {
+      prefetches.push_back(
+          static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+              loop_value.allocations.back().get()));
+    }
+  }
+  EXPECT_EQ(prefetches.size(), 3);
+  bool seen_overlap = false;
+  bool seen_nonoverlap = false;
+  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+    const HloUse& use = *prefetch->uses().begin();
+    if (use.instruction->name() == "op14") {
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 14);
+      EXPECT_EQ(prefetch->copy_start_schedule_after(), 0);
+    } else {
+      ASSERT_EQ(use.instruction->name(), "op1");
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 1);
+      if (prefetch->copy_start_schedule_after() == 0) {
+        EXPECT_FALSE(seen_overlap);
+        seen_overlap = true;
+      } else {
+        EXPECT_GT(prefetch->copy_start_schedule_after(), 1);
+        EXPECT_FALSE(seen_nonoverlap);
+        seen_nonoverlap = true;
+      }
+    }
+  }
+  // We expect to fully saturate the default memory bandwidth. Total default
+  // memory accesses:
+  //   param0 (128 B) + param1 (128 B) + op1 (128 B) + param2 (16 B) = 400 B
+  // execution time:
+  //  400 B / 32 B/s = 12.5 s.
+  EXPECT_EQ(optimizer->CalculateExecutionTime(), 12.5);
+
+  // Check the memory used at each point of the loop.
+  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  // Time 0: 3 temporaries (16 B) + param0 (128 B) + param1 (128 B)
+  EXPECT_EQ(remaining_memory.at(0), 512 - (3 * 16 + 128 + 128));
+  // Time 1: 2 temporaries (16 B) + 2*param0 (128 B) + param1 (128 B)
+  //         + param2 (16 B)
+  EXPECT_EQ(remaining_memory.at(1), 512 - (2 * 16 + 2 * 128 + 128 + 16));
+  // Times 2 and 3: 3 temporaries (16 B) + param0 (128 B) + param2 (16 B)
+  EXPECT_EQ(remaining_memory.at(2), 512 - (3 * 16 + 128 + 16));
+  EXPECT_EQ(remaining_memory.at(3), 512 - (3 * 16 + 128 + 16));
+  // Times 4 to 13: 3 temporaries (16 B) + param0 (128 B) + param1 (128 B)
+  //                + param2 (16 B)
+  for (int i = 4; i <= 13; ++i) {
+    EXPECT_EQ(remaining_memory.at(i), 512 - (3 * 16 + 128 + 128 + 16));
+  }
+  // Time 14: 2 temporaries (16 B) + param0 (128 B) + param1 (128 B)
+  //          + param2 (16 B)
+  EXPECT_EQ(remaining_memory.at(14), 512 - (2 * 16 + 128 + 128 + 16));
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
+  // Same as the test above, except the size of alternate memory is less than
+  // 384, which is the minimum amount needed to keep the three 128-byte sized
+  // parameters alive (one of the parameters would need to be overlapped with
+  // the previous iteration, so counts 2X). In that case, we won't be able to
+  // fully saturate the bandwidth.
+  //
+  // alternate_mem_bytes_per_second = 128
+  // default_mem_bytes_per_second = 32
+  // flops_per_second = 16
+  // f32[1,4] add: flops: 4, bytes: 48, compute elapsed: 0.25
+  //    - All default memory elapsed: 1.5
+  //    - All alternate memory elapsed: 0.375
+  // f32[8,4] add: flops: 32, bytes: 384, compute elapsed: 2
+  //    - All default memory elapsed: 12
+  //    - All alternate memory elapsed: 3
+  // f32[1,4] copy: bytes: 16, memory elapsed: 0.5
+  // f32[8,4] copy: bytes: 128, memory elapsed: 4
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op13, f32[1,4] $prev_op14)
+    $op1 = f32[8,4] add(f32[8,4] $param0, f32[8,4] $param1)
+    $op2 = f32[1,4] add(f32[1,4] $prev_op14, f32[1,4] $op0)
+    $op3 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $op2, f32[1,4] $op3)
+    $op5 = f32[1,4] add(f32[1,4] $op3, f32[1,4] $op4)
+    $op6 = f32[1,4] add(f32[1,4] $op4, f32[1,4] $op5)
+    $op7 = f32[1,4] add(f32[1,4] $op5, f32[1,4] $op6)
+    $op8 = f32[1,4] add(f32[1,4] $op6, f32[1,4] $op7)
+    $op9 = f32[1,4] add(f32[1,4] $op7, f32[1,4] $op8)
+    $op10 = f32[1,4] add(f32[1,4] $op8, f32[1,4] $op9)
+    $op11 = f32[1,4] add(f32[1,4] $op9, f32[1,4] $op10)
+    $op12 = f32[1,4] add(f32[1,4] $op10, f32[1,4] $op11)
+    $op13 = f32[1,4] add(f32[1,4] $op11, f32[1,4] $op12)
+    $op14 = f32[1,4] add(f32[1,4] $param2, f32[1,4] $op13)
+  )";
+
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndCreateOptimizer(hlo_loop_str,
+                                                  /*alternate_memory_size=*/350,
+                                                  loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  // We expect the prefetches to be scheduled this way:
+  //
+  //
+  // param0 or param1:
+  // ===========>       =====================================>
+  // param2:
+  // =====>             ===============================>
+  //  13 14| 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14| 0  1
+  //  prev |                  loop                      | next
+  std::vector<const MemorySpaceAssignment::CopyAllocation*> prefetches;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    if (!loop_value.allocations.empty() &&
+        loop_value.allocations.back()->is_copy_allocation()) {
+      prefetches.push_back(
+          static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+              loop_value.allocations.back().get()));
+    }
+  }
+  EXPECT_EQ(prefetches.size(), 2);
+  std::optional<int> expected_op14_copy_start_time;
+  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+    const HloUse& use = *prefetch->uses().begin();
+    if (use.instruction->name() == "op1") {
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 1);
+      EXPECT_GT(prefetch->copy_start_schedule_after(), 1);
+      expected_op14_copy_start_time = prefetch->copy_start_schedule_after();
+    }
+  }
+  EXPECT_TRUE(expected_op14_copy_start_time.has_value());
+  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+    const HloUse& use = *prefetch->uses().begin();
+    if (use.instruction->name() == "op14") {
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 14);
+      EXPECT_EQ(prefetch->copy_start_schedule_after(),
+                *expected_op14_copy_start_time);
+    }
+  }
+  // We expect not to fully saturate the default memory bandwidth.
+  EXPECT_GT(optimizer->CalculateExecutionTime(), 12.5);
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
+  // Same as PrefetchFifoOrderWithOverlap, except the instructions are shifted
+  // earlier by one such that param0 and param1 are used by op0. This tests that
+  // we are accounting for overlaps for prefetches that span three iterations.
+  //
+  // alternate_mem_bytes_per_second = 128
+  // default_mem_bytes_per_second = 32
+  // flops_per_second = 16
+  // f32[1,4] add: flops: 4, bytes: 48, compute elapsed: 0.25
+  //    - All default memory elapsed: 1.5
+  //    - All alternate memory elapsed: 0.375
+  // f32[8,4] add: flops: 32, bytes: 384, compute elapsed: 2
+  //    - All default memory elapsed: 12
+  //    - All alternate memory elapsed: 3
+  // f32[1,4] copy: bytes: 16, memory elapsed: 0.5
+  // f32[8,4] copy: bytes: 128, memory elapsed: 4
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[8,4] add(f32[8,4] $param0, f32[8,4] $param1)
+    $op1 = f32[1,4] add(f32[1,4] $prev_op13, f32[1,4] $prev_op14)
+    $op2 = f32[1,4] add(f32[1,4] $prev_op14, f32[1,4] $op1)
+    $op3 = f32[1,4] add(f32[1,4] $op1, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $op2, f32[1,4] $op3)
+    $op5 = f32[1,4] add(f32[1,4] $op3, f32[1,4] $op4)
+    $op6 = f32[1,4] add(f32[1,4] $op4, f32[1,4] $op5)
+    $op7 = f32[1,4] add(f32[1,4] $op5, f32[1,4] $op6)
+    $op8 = f32[1,4] add(f32[1,4] $op6, f32[1,4] $op7)
+    $op9 = f32[1,4] add(f32[1,4] $op7, f32[1,4] $op8)
+    $op10 = f32[1,4] add(f32[1,4] $op8, f32[1,4] $op9)
+    $op11 = f32[1,4] add(f32[1,4] $op9, f32[1,4] $op10)
+    $op12 = f32[1,4] add(f32[1,4] $op10, f32[1,4] $op11)
+    $op13 = f32[1,4] add(f32[1,4] $param2, f32[1,4] $op12)
+    $op14 = f32[1,4] add(f32[1,4] $op12, f32[1,4] $op13)
+  )";
+
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndCreateOptimizer(hlo_loop_str,
+                                                  /*alternate_memory_size=*/512,
+                                                  loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  // We expect the prefetches to be scheduled this way:
+  //
+  //
+  // param0 or param1:
+  // ========>       =====================================> ===
+  // param1 or param0:
+  // ========>                                           ======
+  //        ==============================================>
+  // param2:
+  // ==>    ========================================>    ======
+  //  13 14| 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14| 0  1
+  //  prev |                  loop                      | next
+  std::vector<const MemorySpaceAssignment::CopyAllocation*> prefetches;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    if (!loop_value.allocations.empty() &&
+        loop_value.allocations.back()->is_copy_allocation()) {
+      prefetches.push_back(
+          static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+              loop_value.allocations.back().get()));
+    }
+  }
+  EXPECT_EQ(prefetches.size(), 3);
+  bool seen_overlap = false;
+  bool seen_nonoverlap = false;
+  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+    const HloUse& use = *prefetch->uses().begin();
+    if (use.instruction->name() == "op13") {
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 13);
+      EXPECT_EQ(prefetch->copy_start_schedule_after(), 14);
+    } else {
+      ASSERT_EQ(use.instruction->name(), "op0");
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 0);
+      if (prefetch->copy_start_schedule_after() == 14) {
+        EXPECT_FALSE(seen_overlap);
+        seen_overlap = true;
+      } else {
+        EXPECT_LT(prefetch->copy_start_schedule_after(), 14);
+        EXPECT_FALSE(seen_nonoverlap);
+        seen_nonoverlap = true;
+      }
+    }
+  }
+  // We expect to fully saturate the default memory bandwidth. Total default
+  // memory accesses:
+  //   param0 (128 B) + param1 (128 B) + op1 (128 B) + param2 (16 B) = 400 B
+  // execution time:
+  //  400 B / 32 B/s = 12.5 s.
+  EXPECT_EQ(optimizer->CalculateExecutionTime(), 12.5);
 }
 
 }  // namespace
