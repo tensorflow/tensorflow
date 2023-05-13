@@ -529,6 +529,42 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
         if (reshard.has_value()) {
           return reshard.value();
         }
+        // Try to simplify the resharding by grouping those equal-sized sharding
+        // dims first.
+        std::vector<int64_t> equal_dims;
+        for (int64_t dim = 0; dim < hlo_->shape().rank(); ++dim) {
+          if (sharding().tile_assignment().dim(dim) == 1 ||
+              target.tile_assignment().dim(dim) !=
+                  sharding().tile_assignment().dim(dim)) {
+            continue;
+          }
+          equal_dims.push_back(dim);
+        }
+        if (!equal_dims.empty()) {
+          auto grouped =
+              hlo_sharding_util::GroupShardingOnDims(sharding(), equal_dims);
+          auto grouped_target = AlignGroupsWith(
+              hlo_sharding_util::GroupShardingOnDims(target, equal_dims),
+              grouped);
+          Shape inner_base_shape = base_shape_;
+          for (int64_t dim : equal_dims) {
+            inner_base_shape.set_dimensions(dim, hlo_->shape().dimensions(dim));
+          }
+          auto state = CreatePerGroupPartitioningState(
+              state_, grouped.device_groups, state_.b);
+          HloInstruction* copy =
+              state_.b->AddInstruction(HloInstruction::CreateUnary(
+                  hlo_->shape(), HloOpcode::kCopy, hlo_));
+          copy->set_sharding(grouped.sharding);
+          HloInstruction* resharded =
+              PartitionedHlo(copy, inner_base_shape, state)
+                  .ReshardNoCache(grouped_target.sharding)
+                  .hlo();
+          resharded->set_sharding(
+              hlo_sharding_util::UngroupSharding(grouped_target));
+          return PartitionedHlo(resharded, base_shape_, state_)
+              .ReshardNoCache(target);
+        }
       }
       if (!allow_full_replication) {
         return *this;
