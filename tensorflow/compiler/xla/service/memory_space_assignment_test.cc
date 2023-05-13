@@ -8509,6 +8509,7 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     optimizer_options.set_enabled(true);
     optimizer_options.set_desired_copy_ratio(0.7);
     optimizer_options.set_allow_unsatisfied_fully_pipelined_prefetch(false);
+    options_.memory_bound_loop_optimizer_options = optimizer_options;
     options_.alternate_mem_bandwidth_bytes_per_second = 128;
     options_.async_copy_bandwidth_bytes_per_second = 32;
     options_.pipeline_overhead_window_size_mib = 1;
@@ -8716,6 +8717,183 @@ ENTRY Entry {
 
     VLOG(1) << hlo_string;
     return hlo_string;
+  }
+
+  StatusOr<std::unique_ptr<PresetAssignments>> RunMsa(
+      HloModule* module, uint64_t alternate_memory_size = 256) {
+    options_.max_size_in_bytes = alternate_memory_size;
+    options_.alignment_in_bytes = 8;
+    options_.verify = true;
+
+    options_.alternate_memory_space = kAlternateMemorySpace;
+
+    if (!cost_analysis_) {
+      TF_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
+    }
+    MemorySpaceAssignmentCostAnalysis::Cache cache;
+    options_.buffer_interval_compare =
+        MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
+            *cost_analysis_, &cache);
+    CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
+        CostAnalysisPrefetchIntervalPicker(
+            *cost_analysis_, /*min_overlap_to_async_copy_ratio=*/0.8,
+            /*preferred_overlap_to_async_copy_ratio=*/1.5,
+            /*max_overlap_to_mem_size_async_copy_ratio=*/10.0,
+            /*mem_size_bytes=*/alternate_memory_size));
+    options_.prefetch_interval_picker = &prefetch_interval_picker;
+
+    auto size_fn = [](const BufferValue& buffer) {
+      return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+    };
+    options_.size_fn = size_fn;
+
+    auto is_allowed_in_alternate_mem = [](const HloValue& value) {
+      // Check if the value belongs to the entry computation.
+      HloInstruction* instruction = value.instruction();
+      HloComputation* computation = instruction->parent();
+      bool in_entry_computation =
+          (computation == computation->parent()->entry_computation());
+      if (in_entry_computation &&
+          instruction->opcode() == HloOpcode::kParameter) {
+        return false;
+      }
+      return true;
+    };
+    options_.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
+    options_.max_outstanding_prefetches = -1;
+    options_.max_outstanding_evictions = -1;
+    options_.allocate_across_sequential_calls = true;
+    options_.cost_analysis = cost_analysis_.get();
+
+    std::unique_ptr<PresetAssignments> preset_assignments =
+        MemorySpaceAssignment::Run(module, *live_range_, *alias_analysis_,
+                                   options_)
+            .value();
+    return preset_assignments;
+  }
+
+  Status VerifyMsaEquivalence(HloModule* module) {
+    // Create a map indexed by instruction number and operand number.
+    absl::flat_hash_map<std::pair<int, int>,
+                        const MemorySpaceAssignment::Allocation*>
+        allocation_map;
+    for (const MemoryBoundLoopOptimizer::LoopValue& value :
+         optimizer_->loop_values()) {
+      for (const auto& allocation : value.allocations) {
+        for (const HloUse& use : allocation->uses()) {
+          absl::string_view inst_name = use.instruction->name();
+          TF_RET_CHECK(absl::StartsWith(inst_name, "op"));
+          int inst_number;
+          TF_RET_CHECK(absl::SimpleAtoi(inst_name.substr(2), &inst_number));
+          allocation_map[{inst_number, use.operand_number}] = allocation.get();
+        }
+      }
+    }
+
+    auto get_inst_prefix_in_iter = [](int iteration) {
+      switch (iteration) {
+        case 0:
+          return "prev_";
+        case 1:
+          return "";
+        case 2:
+          return "next_";
+        default:
+          LOG(FATAL) << "Invalid iteration " << iteration;
+          return "INVALID";
+      }
+    };
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                        HloAliasAnalysis::Run(module));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> live_range,
+                        HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                          module->entry_computation()));
+    const auto& flattened_instructions =
+        live_range->flattened_instruction_sequence().instructions();
+    for (int iteration = 1; iteration < 3; ++iteration) {
+      for (int inst_number = 0; inst_number < optimizer_->loop_size();
+           ++inst_number) {
+        HloInstruction* inst = FindInstruction(
+            module, absl::StrCat(get_inst_prefix_in_iter(iteration), "op",
+                                 inst_number));
+        for (int operand_number = 0; operand_number < 2; ++operand_number) {
+          const HloInstruction* operand = inst->operand(operand_number);
+          LOG(INFO) << inst->name() << ", operand " << operand_number;
+          TF_RET_CHECK(allocation_map.contains({inst_number, operand_number}));
+          const MemorySpaceAssignment::Allocation* allocation =
+              allocation_map.at({inst_number, operand_number});
+          if (!allocation->is_copy_allocation()) {
+            // We don't expect a prefetch here.
+            EXPECT_NE(operand->opcode(), HloOpcode::kCopyDone);
+            int expected_memory_space =
+                allocation->memory_space() ==
+                        MemorySpaceAssignment::MemorySpace::kDefault
+                    ? kDefaultMemorySpace
+                    : kAlternateMemorySpace;
+            EXPECT_EQ(operand->shape().layout().memory_space(),
+                      expected_memory_space);
+          } else {
+            EXPECT_EQ(allocation->memory_space(),
+                      MemorySpaceAssignment::MemorySpace::kAlternate);
+            TF_RET_CHECK(operand->opcode() == HloOpcode::kCopyDone);
+            const MemorySpaceAssignment::CopyAllocation* copy_allocation =
+                static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+                    allocation);
+            if (copy_allocation->copy_done_schedule_before() != inst_number) {
+              // The only case where the copy done schedule before is not the
+              // same as this use would be that this use is not the first use of
+              // the copy allocation.
+              EXPECT_NE(allocation->uses().front(),
+                        (HloUse{inst, operand_number}));
+              continue;
+            }
+            int expected_copy_start_iteration = iteration;
+            if (copy_allocation->copy_start_schedule_after() ==
+                    optimizer_->loop_size() &&
+                copy_allocation->copy_done_schedule_before() == 0) {
+              expected_copy_start_iteration -= 2;
+            } else if (copy_allocation->copy_start_schedule_after() + 1 >=
+                       copy_allocation->copy_done_schedule_before()) {
+              expected_copy_start_iteration -= 1;
+            }
+
+            if (expected_copy_start_iteration >= 0) {
+              const HloInstruction* expected_copy_start_schedule_after =
+                  FindInstruction(
+                      module,
+                      absl::StrCat(
+                          get_inst_prefix_in_iter(
+                              expected_copy_start_iteration),
+                          "op", copy_allocation->copy_start_schedule_after()));
+              LOG(INFO) << "Expected copy start schedule after: "
+                        << expected_copy_start_schedule_after->name();
+              const HloInstruction* copy_start = operand->operand(0);
+              TF_RET_CHECK(copy_start->opcode() == HloOpcode::kCopyStart);
+              // Find the instruction before this copy start that is not an
+              // async copy or gte or parameter.
+              int copy_start_idx =
+                  live_range->instruction_schedule().at(copy_start);
+              const HloInstruction* copy_start_schedule_after = nullptr;
+              for (int i = copy_start_idx - 1; i >= 0; --i) {
+                HloOpcode opcode = flattened_instructions.at(i)->opcode();
+                if (opcode != HloOpcode::kCopyStart &&
+                    opcode != HloOpcode::kCopyDone &&
+                    opcode != HloOpcode::kGetTupleElement &&
+                    opcode != HloOpcode::kParameter) {
+                  copy_start_schedule_after = flattened_instructions.at(i);
+                  break;
+                }
+              }
+              TF_RET_CHECK(copy_start_schedule_after != nullptr);
+              EXPECT_EQ(copy_start_schedule_after,
+                        expected_copy_start_schedule_after);
+            }
+          }
+        }
+      }
+    }
+    return OkStatus();
   }
 
  private:
@@ -9126,6 +9304,127 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
   // execution time:
   //  400 B / 32 B/s = 12.5 s.
   EXPECT_EQ(optimizer->CalculateExecutionTime(), 12.5);
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEnd) {
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op13, f32[1,4] $prev_op14)
+    $op1 = f32[8,4] add(f32[8,4] $param0, f32[8,4] $param1)
+    $op2 = f32[1,4] add(f32[1,4] $prev_op14, f32[1,4] $op0)
+    $op3 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $op2, f32[1,4] $op3)
+    $op5 = f32[1,4] add(f32[1,4] $op3, f32[1,4] $op4)
+    $op6 = f32[1,4] add(f32[1,4] $op4, f32[1,4] $op5)
+    $op7 = f32[1,4] add(f32[1,4] $op5, f32[1,4] $op6)
+    $op8 = f32[1,4] add(f32[1,4] $op6, f32[1,4] $op7)
+    $op9 = f32[1,4] add(f32[1,4] $op7, f32[1,4] $op8)
+    $op10 = f32[1,4] add(f32[1,4] $op8, f32[1,4] $op9)
+    $op11 = f32[1,4] add(f32[1,4] $op9, f32[1,4] $op10)
+    $op12 = f32[1,4] add(f32[1,4] $op10, f32[1,4] $op11)
+    $op13 = f32[1,4] add(f32[1,4] $op11, f32[1,4] $op12)
+    $op14 = f32[1,4] add(f32[1,4] $param2, f32[1,4] $op13)
+    ROOT $root = tuple($op1, $op14)
+  )";
+
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str,
+                                           /*alternate_memory_size=*/1024,
+                                           loop_start_idx, &optimizer));
+
+  LOG(INFO) << "Running Optimize";
+  optimizer->Optimize();
+
+  LOG(INFO) << "Running MSA";
+  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                          RunMsa(module.get(), /*alternate_memory_size=*/1024));
+
+  TF_ASSERT_OK(VerifyMsaEquivalence(module.get()));
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndWhileLoop) {
+  absl::string_view hlo_str = R"(
+HloModule module, is_scheduled=true
+
+while_cond {
+  while_cond_param = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+  ROOT p = pred[] get-tuple-element(while_cond_param), index=6
+}
+
+while_body {
+  while_body_param = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+  prev_param0 = f32[1,4] get-tuple-element(while_body_param), index=0
+  param0 = f32[1,4] get-tuple-element(while_body_param), index=1
+  next_param0 = f32[1,4] get-tuple-element(while_body_param), index=2
+  prev_prev_op3 = f32[1,4] get-tuple-element(while_body_param), index=3
+  prev_prev_op4 = f32[1,4] get-tuple-element(while_body_param), index=4
+  prev_op0 = f32[1,4] add(f32[1,4] prev_prev_op3, f32[1,4] prev_prev_op4)
+  prev_op1 = f32[1,4] add(f32[1,4] prev_prev_op4, f32[1,4] prev_op0)
+  prev_op2 = f32[1,4] add(f32[1,4] prev_op0, f32[1,4] prev_op1)
+  prev_op3 = f32[1,4] add(f32[1,4] prev_op1, f32[1,4] prev_op2)
+  prev_op4 = f32[1,4] multiply(f32[1,4] prev_param0, f32[1,4] prev_op3)
+  op0 = f32[1,4] add(f32[1,4] prev_op3, f32[1,4] prev_op4)
+  op1 = f32[1,4] add(f32[1,4] prev_op4, f32[1,4] op0)
+  op2 = f32[1,4] add(f32[1,4] op0, f32[1,4] op1)
+  op3 = f32[1,4] add(f32[1,4] op1, f32[1,4] op2)
+  op4 = f32[1,4] multiply(f32[1,4] param0, f32[1,4] op3)
+  next_op0 = f32[1,4] add(f32[1,4] op3, f32[1,4] op4)
+  next_op1 = f32[1,4] add(f32[1,4] op4, f32[1,4] next_op0)
+  next_op2 = f32[1,4] add(f32[1,4] next_op0, f32[1,4] next_op1)
+  next_op3 = f32[1,4] add(f32[1,4] next_op1, f32[1,4] next_op2)
+  next_op4 = f32[1,4] multiply(f32[1,4] next_param0, f32[1,4] next_op3)
+  p = pred[] get-tuple-element(while_body_param), index=6
+  ROOT root = tuple(prev_param0, param0, next_param0, prev_prev_op3, prev_prev_op4, next_op4, p)
+}
+
+ENTRY entry {
+  p0 = f32[1,4] parameter(0)
+  p1 = f32[1,4] parameter(1)
+  p2 = f32[1,4] parameter(2)
+  p3 = f32[1,4] parameter(3)
+  p4 = f32[1,4] parameter(4)
+  p5 = pred[] parameter(5)
+  copy = f32[1,4] copy(p4)
+  tuple = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) tuple(p0, p1, p2, p3, p4, copy, p5)
+  while = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) while(tuple), condition=while_cond, body=while_body
+  ROOT root = f32[1,4] get-tuple-element(while), index=5
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+
+  LOG(INFO) << "Running MSA";
+  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                          RunMsa(module.get(), /*alternate_memory_size=*/512));
+
+  // We expect operand 0 of prev_op4, op4, and next_op4 to all be prefetches of
+  // same distance from the user.
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+  const HloInstruction* prev_copy_done =
+      FindInstruction(module.get(), "prev_op4")->operand(0);
+  const HloInstruction* copy_done =
+      FindInstruction(module.get(), "op4")->operand(0);
+  const HloInstruction* next_copy_done =
+      FindInstruction(module.get(), "next_op4")->operand(0);
+  ASSERT_EQ(prev_copy_done->opcode(), HloOpcode::kCopyDone);
+  ASSERT_EQ(copy_done->opcode(), HloOpcode::kCopyDone);
+  ASSERT_EQ(next_copy_done->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(prev_copy_done->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(copy_done->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(next_copy_done->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  auto prefetch_distance = [&](const HloInstruction* copy_done) {
+    return hlo_live_range->instruction_schedule().at(copy_done) -
+           hlo_live_range->instruction_schedule().at(copy_done->operand(0));
+  };
+  EXPECT_EQ(prefetch_distance(prev_copy_done), prefetch_distance(copy_done));
+  EXPECT_EQ(prefetch_distance(next_copy_done), prefetch_distance(copy_done));
 }
 
 }  // namespace

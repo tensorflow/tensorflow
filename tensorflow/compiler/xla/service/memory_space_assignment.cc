@@ -1378,6 +1378,8 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
     buffer_interval_compare_ = *options.buffer_interval_compare;
   }
 
+  call_graph_ = CallGraph::Build(&alias_analysis_.dataflow_analysis().module());
+
   std::vector<float> initial_resources(hlo_live_range.schedule_end_time(), 1.0);
   if (options.cost_analysis) {
     const std::vector<HloInstruction*>& flattened_instructions =
@@ -1390,9 +1392,20 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
       } else {
         initial_resources[i] =
             options.cost_analysis->GetInstructionElapsed(*inst);
-        if (options_.use_repeated_instance_for_preferred_prefetch_time) {
-          const std::string fingerprint =
-              inst->ToString(HloPrintOptions::Fingerprint());
+        if (options_.use_repeated_instance_for_preferred_prefetch_time ||
+            options_.memory_bound_loop_optimizer_options.enabled()) {
+          std::string fingerprint;
+          absl::StrAppend(&fingerprint, inst->shape().ToString(), " ",
+                          HloOpcodeString(inst->opcode()), "(");
+          for (int operand_idx = 0; operand_idx < inst->operands().size();
+               ++operand_idx) {
+            if (operand_idx > 0) {
+              absl::StrAppend(&fingerprint, ", ");
+            }
+            absl::StrAppend(&fingerprint,
+                            inst->operand(operand_idx)->shape().ToString());
+          }
+          absl::StrAppend(&fingerprint, ")");
           fingerprint_map_[inst] = fingerprint;
           repeated_inst_map_[fingerprint].push_back(inst);
         }
@@ -2975,6 +2988,306 @@ float MemoryBoundLoopOptimizer::GetInstructionElapsed(int idx) const {
       *inst, *operands_in_alternate_mem, *outputs_in_alternate_mem);
 }
 
+Status AlternateMemoryBestFitHeap::OptimizeMemoryBoundLoop(int loop_start_idx,
+                                                           int loop_end_idx,
+                                                           int loop_size) {
+  // The MemoryBoundLoopOptimizer works with a minimum of three unrolled loop
+  // iterations: previous, current, and next. So, we pick the second iteration
+  // out of the loop as the current iteration.
+  const int iteration_start_idx = loop_start_idx + loop_size;
+  const int iteration_end_idx = iteration_start_idx + loop_size;
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
+      MemoryBoundLoopOptimizer::Create(
+          iteration_start_idx, iteration_end_idx, options_.max_size_in_bytes,
+          options_.memory_bound_loop_optimizer_options, hlo_live_range_,
+          alias_analysis_, *options_.cost_analysis, options_.size_fn));
+  optimizer->Optimize();
+
+  const int loop_optimized_allocations_original_size =
+      loop_optimized_allocations_.size();
+  for (MemoryBoundLoopOptimizer::LoopValue& value : optimizer->loop_values()) {
+    if (!value.allocations.empty()) {
+      loop_optimized_allocations_.push_back(std::move(value.allocations));
+    }
+  }
+
+  // Check if this unrolled loop is in a while loop.
+  const auto& instruction_sequence =
+      hlo_live_range_.flattened_instruction_sequence().instructions();
+  std::vector<HloInstruction*> callers = call_graph_->GetComputationCallers(
+      instruction_sequence[loop_start_idx]->parent());
+  const bool is_in_while_loop =
+      callers.size() == 1 && callers.front()->opcode() == HloOpcode::kWhile;
+
+  // Update the loop_optimized_allocations_map_ with the output of the
+  // optimizer.
+  for (int i = loop_optimized_allocations_original_size;
+       i < loop_optimized_allocations_.size(); ++i) {
+    const MemorySpaceAssignment::AllocationSequence& sequence =
+        loop_optimized_allocations_.at(i);
+    CHECK(!sequence.empty());
+    VLOG(3) << "  alloc: " << sequence.back()->ToString();
+    for (const auto& allocation : sequence) {
+      // Check if the loop is in a while loop and the position needs to be
+      // allocated in the default memory.
+      const bool require_pos_in_default_space =
+          is_in_while_loop &&
+          (allocation->memory_space() == MemorySpace::kDefault ||
+           allocation->is_copy_allocation());
+      for (const HloUse& use : allocation->uses()) {
+        const int64_t use_idx =
+            hlo_live_range_.instruction_schedule().at(use.instruction) -
+            iteration_start_idx;
+        CHECK_GE(use_idx, 0);
+        CHECK_LT(use_idx, loop_size);
+        for (int64_t i = loop_start_idx + use_idx; i <= loop_end_idx;
+             i += loop_size) {
+          HloInstruction* repeated_inst = instruction_sequence[i];
+          HloUse repeated_use{repeated_inst, use.operand_number,
+                              use.operand_index};
+          loop_optimized_allocations_map_[repeated_use] = {use_idx, loop_size,
+                                                           allocation.get()};
+          VLOG(3) << " Setting optimized allocations map. Use: "
+                  << repeated_use.ToString() << " idx: " << use_idx
+                  << " allocation: " << allocation->ToString();
+          if (require_pos_in_default_space) {
+            const HloValue& value =
+                alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+                    repeated_inst->operand(use.operand_number),
+                    use.operand_index);
+            // If any of the positions is a parameter in a while loop, we add a
+            // required assignment in the default memory space.
+            for (const HloPosition& value_position : value.positions()) {
+              if (value_position.instruction->parent() ==
+                      repeated_inst->parent() &&
+                  value_position.instruction->opcode() ==
+                      HloOpcode::kParameter) {
+                AddRequiredAssignment(value_position.instruction,
+                                      value_position.index,
+                                      MemorySpace::kDefault);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return OkStatus();
+}
+
+namespace {
+// A helper function to get the distance between a use and its producer (or -1
+// if producer is a gte, parameter or tuple).
+std::function<int(const HloInstruction*)> GetOperandDistanceFunction(
+    const HloLiveRange& hlo_live_range, const HloInstruction* use_inst) {
+  const int use_idx = hlo_live_range.instruction_schedule().at(use_inst);
+  return [&, use_idx](const HloInstruction* operand) -> int {
+    // We just use -1 for parameter, tuple, and gte instructions. We could make
+    // this "see through" the gtes if we get too many false positives.
+    if (operand->opcode() == HloOpcode::kParameter ||
+        operand->opcode() == HloOpcode::kTuple ||
+        operand->opcode() == HloOpcode::kGetTupleElement) {
+      return -1;
+    }
+    return use_idx - hlo_live_range.instruction_schedule().at(operand);
+  };
+}
+
+// A helper function to check if the operand distances of two instructions
+// are compatible. This assumes `a` is scheduled loop size candidate
+// instructions before `b`. The operand distances are compatible if either
+// distance is -1, or if they are the same, or if they are separated by loop
+// size candidate.
+bool AreOperandCandidatesCompatible(int loop_size_candidate,
+                                    absl::Span<const int> a_distances,
+                                    absl::Span<const int> b_distances) {
+  if (a_distances.size() != b_distances.size()) {
+    return false;
+  }
+  for (int i = 0; i < a_distances.size(); ++i) {
+    const int a_value = a_distances.at(i);
+    const int b_value = b_distances.at(i);
+    if (a_value != -1 && b_value != -1 &&
+        a_value + loop_size_candidate != b_value && a_value != b_value) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
+void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
+  absl::flat_hash_map<absl::string_view, int> fingerprint_schedule_map;
+  const auto& instruction_sequence =
+      hlo_live_range_.flattened_instruction_sequence().instructions();
+  // The minimum and maximum loop sizes that we consider.
+  const int kMinLoopSize = 4;
+  const int kMaxLoopSize = 400;
+  const float kMinNumIterations = 3.0;
+  int optimized_loop_idx = 0;
+  while (optimized_loop_idx < instruction_sequence.size()) {
+    // Iterate over the flattened instruction sequence. We first try to find a
+    // loop candidate where the fingerprint between two instructions matches by
+    // the loop size candidate.
+    int loop_size_candidate = -1;
+    int loop_start_idx = -1;
+    int loop_end_idx = -1;
+    for (; optimized_loop_idx < instruction_sequence.size();
+         ++optimized_loop_idx) {
+      const HloInstruction* inst = instruction_sequence[optimized_loop_idx];
+      auto fingerprint_it = fingerprint_map_.find(inst);
+      if (inst->opcode() != HloOpcode::kParameter &&
+          inst->opcode() != HloOpcode::kTuple &&
+          inst->opcode() != HloOpcode::kGetTupleElement &&
+          fingerprint_it != fingerprint_map_.end()) {
+        // Find and the latest instruction with the same fingerprint as this.
+        auto fingerprint_schedule_it =
+            fingerprint_schedule_map.find(fingerprint_it->second);
+        if (fingerprint_schedule_it != fingerprint_schedule_map.end()) {
+          int distance = optimized_loop_idx - fingerprint_schedule_it->second;
+          if (distance >= kMinLoopSize && distance <= kMaxLoopSize) {
+            // We found two instructions with the same fingerprint. The distance
+            // between the two is the loop size candidate.
+            loop_size_candidate = distance;
+            break;
+          }
+        }
+        fingerprint_schedule_map[fingerprint_it->second] = optimized_loop_idx;
+      }
+
+      VLOG(3) << " " << optimized_loop_idx << ": "
+              << instruction_sequence[optimized_loop_idx]->parent()->name()
+              << " " << instruction_sequence[optimized_loop_idx]->name()
+              << " fingerprint: "
+              << (fingerprint_it == fingerprint_map_.end()
+                      ? "none"
+                      : fingerprint_it->second);
+    }
+    VLOG(3) << "Loop size candidate: " << loop_size_candidate;
+    if (loop_size_candidate == -1) {
+      break;
+    }
+
+    std::vector<std::vector<int>> operand_distances;
+
+    // Scan the instructions with the candidate loop size. We try to calculate
+    // the size of the loop by finding the instructions that are loop size
+    // candidate apart, have the same fingerprint and compatible operand
+    // distances. We start scanning the candidate loop a few instructions
+    // earlier than the fingerprint identified in case the loop starts a bit
+    // earlier than the fingerprint logic.
+    const int kLoopScanHeadStart = 10;
+    for (int i = std::max(
+             0, optimized_loop_idx - loop_size_candidate - kLoopScanHeadStart);
+         i < instruction_sequence.size(); ++i) {
+      const HloInstruction* inst = instruction_sequence[i];
+      auto fingerprint_it = fingerprint_map_.find(inst);
+      auto ignore_op = [](const HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kParameter ||
+               instruction->opcode() == HloOpcode::kTuple ||
+               instruction->opcode() == HloOpcode::kGetTupleElement;
+      };
+      if (loop_start_idx == -1) {
+        if (i > optimized_loop_idx - loop_size_candidate) {
+          break;
+        }
+        if (ignore_op(inst) || fingerprint_it == fingerprint_map_.end()) {
+          continue;
+        }
+        if (i + loop_size_candidate >= instruction_sequence.size()) {
+          break;
+        }
+        const HloInstruction* candidate_inst =
+            instruction_sequence[i + loop_size_candidate];
+        auto candidate_fingerprint_it = fingerprint_map_.find(candidate_inst);
+        if (ignore_op(candidate_inst) ||
+            candidate_fingerprint_it == fingerprint_map_.end() ||
+            fingerprint_it->second != candidate_fingerprint_it->second) {
+          // Fingerprint mismatch.
+          continue;
+        }
+        std::vector<int> inst_operand_distances;
+        absl::c_transform(inst->operands(),
+                          std::back_inserter(inst_operand_distances),
+                          GetOperandDistanceFunction(hlo_live_range_, inst));
+        std::vector<int> candidate_inst_operand_distances;
+        absl::c_transform(
+            candidate_inst->operands(),
+            std::back_inserter(candidate_inst_operand_distances),
+            GetOperandDistanceFunction(hlo_live_range_, candidate_inst));
+        VLOG(3) << "i : " << i << " "
+                << absl::StrJoin(inst_operand_distances, ", ") << " | "
+                << absl::StrJoin(candidate_inst_operand_distances, ", ");
+        if (!AreOperandCandidatesCompatible(loop_size_candidate,
+                                            inst_operand_distances,
+                                            candidate_inst_operand_distances)) {
+          // Operand distance mistatch.
+          continue;
+        }
+        // Found the start of the loop.
+        loop_start_idx = i;
+      }
+      operand_distances.push_back({});
+      if (ignore_op(inst) || fingerprint_it == fingerprint_map_.end()) {
+        continue;
+      }
+      absl::c_transform(inst->operands(),
+                        std::back_inserter(operand_distances.back()),
+                        GetOperandDistanceFunction(hlo_live_range_, inst));
+      if (i >= loop_start_idx + loop_size_candidate) {
+        // Verify that this still obeys the fingerprint and operand distance
+        // invariants.
+        const HloInstruction* prev_inst =
+            instruction_sequence[i - loop_size_candidate];
+        auto prev_fingerprint_it = fingerprint_map_.find(prev_inst);
+        if (prev_fingerprint_it == fingerprint_map_.end()) {
+          break;
+        }
+        if (fingerprint_it->second != prev_fingerprint_it->second) {
+          VLOG(3) << "Mismatch (fp) at " << i << ", "
+                  << (i - loop_size_candidate) << ": " << fingerprint_it->second
+                  << " vs " << prev_fingerprint_it->second;
+          break;
+        }
+        if (!AreOperandCandidatesCompatible(
+                loop_size_candidate,
+                *(operand_distances.rbegin() + loop_size_candidate),
+                operand_distances.back())) {
+          VLOG(3) << "Mismatch (op) at " << i << ", "
+                  << (i - loop_size_candidate) << ": "
+                  << absl::StrJoin(operand_distances.back(), ", ") << " vs "
+                  << absl::StrJoin(
+                         *(operand_distances.rbegin() + loop_size_candidate),
+                         ", ");
+          break;
+        }
+      }
+      loop_end_idx = i;
+    }
+    float num_iterations = 0;
+    if (loop_start_idx != -1) {
+      num_iterations = static_cast<float>(loop_end_idx + 1 - loop_start_idx) /
+                       loop_size_candidate;
+    }
+    VLOG(3) << "Loop start: " << loop_start_idx << " loop end: " << loop_end_idx
+            << " num iterations: " << num_iterations;
+
+    optimized_loop_idx = std::max(optimized_loop_idx, loop_end_idx) + 1;
+
+    if (num_iterations >= kMinNumIterations) {
+      VLOG(2) << "Found valid loop. Loop start: " << loop_start_idx
+              << " loop end: " << loop_end_idx
+              << " num iterations: " << num_iterations;
+
+      TF_CHECK_OK(OptimizeMemoryBoundLoop(loop_start_idx, loop_end_idx,
+                                          loop_size_candidate));
+    }
+  }
+}
+
 HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   if (options_.autotuning_config.has_value()) {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
@@ -3031,6 +3344,10 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
       VLOG(3) << " " << i << ": " << instruction_sequence[i]->parent()->name()
               << " " << instruction_sequence[i]->name();
     }
+  }
+
+  if (options_.memory_bound_loop_optimizer_options.enabled()) {
+    IdentifyAndOptimizeMemoryBoundLoops();
   }
 
   for (const auto& interval : sorted_buffer_intervals) {
@@ -3292,6 +3609,8 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
       int64_t use_time = instruction_schedule.at(hlo_use.instruction);
       int64_t latest_prefetch_time = use_time;
       bool allow_no_copy_alternate_mem_allocation = true;
+      bool allow_prefetch = true;
+      bool prefer_no_copy_alternate_mem_allocation = false;
       std::optional<int64_t> earliest_prefetch_time = std::nullopt;
 
       // Control flow  calls include kWhile, kCall, and kConditional opcodes.
@@ -3385,6 +3704,51 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           hlo_use.instruction ==
               hlo_use.instruction->parent()->root_instruction()) {
         std::optional<int64_t> preferred_prefetch_time = std::nullopt;
+        auto loop_optimized_allocation_it =
+            loop_optimized_allocations_map_.find(use.hlo_use);
+        if (loop_optimized_allocation_it !=
+            loop_optimized_allocations_map_.end()) {
+          const LoopOptimizedAllocationInfo& loop_optimized_allocation_info =
+              loop_optimized_allocation_it->second;
+          const MemorySpaceAssignment::Allocation* allocation =
+              loop_optimized_allocation_info.loop_optimized_allocation;
+          VLOG(3) << "Found optimized allocation for " << use.hlo_use.ToString()
+                  << " (loop idx: " << loop_optimized_allocation_info.use_index
+                  << "): " << allocation->ToString();
+          if (allocation->is_copy_allocation()) {
+            allow_no_copy_alternate_mem_allocation = true;
+            const MemorySpaceAssignment::CopyAllocation* copy_allocation =
+                static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+                    allocation);
+            int64_t effective_copy_start_time =
+                copy_allocation->copy_start_schedule_after();
+            if (copy_allocation->copy_start_schedule_after() ==
+                    loop_optimized_allocation_info.loop_size - 1 &&
+                copy_allocation->copy_done_schedule_before() == 0) {
+              effective_copy_start_time =
+                  -loop_optimized_allocation_info.loop_size;
+            } else if (copy_allocation->copy_start_schedule_after() + 1 >=
+                       copy_allocation->copy_done_schedule_before()) {
+              effective_copy_start_time -=
+                  loop_optimized_allocation_info.loop_size;
+            }
+            preferred_prefetch_time =
+                hlo_live_range_.instruction_schedule().at(hlo_use.instruction) -
+                loop_optimized_allocation_info.use_index +
+                effective_copy_start_time;
+            VLOG(3) << "Prefer prefetch at " << *preferred_prefetch_time
+                    << " (effective: " << effective_copy_start_time << ")";
+          } else if (allocation->memory_space() == MemorySpace::kDefault) {
+            allow_prefetch = false;
+            allow_no_copy_alternate_mem_allocation = false;
+            VLOG(3) << "Disallowing alternate memory allocation.";
+          } else {
+            CHECK(allocation->memory_space() == MemorySpace::kAlternate);
+            prefer_no_copy_alternate_mem_allocation = true;
+            VLOG(3) << "Prefer no-copy alternate memory allocation.";
+          }
+        }
+
         if (options_.use_repeated_instance_for_preferred_prefetch_time) {
           const std::vector<const HloInstruction*>* repeated_insts =
               GetRepeatedInstructionList(hlo_use.instruction);
@@ -3445,8 +3809,11 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         request.end_time = use_time;
         request.latest_prefetch_time = latest_prefetch_time;
         request.size = allocation_value.size();
+        request.prefer_no_copy_alternate_mem_allocation =
+            prefer_no_copy_alternate_mem_allocation;
         request.allow_no_copy_alternate_mem_allocation =
             allow_no_copy_alternate_mem_allocation;
+        request.allow_prefetch = allow_prefetch;
         request.earliest_prefetch_time = earliest_prefetch_time;
         request.preferred_prefetch_time = preferred_prefetch_time;
         request.preferred_offset = preferred_offset;
@@ -4604,11 +4971,39 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   }
 
   // Finally, try to prefetch the buffer into alternate memory.
-  if (!request.allocation_value->requires_contiguous_allocation()) {
+  if (request.allow_prefetch &&
+      !request.allocation_value->requires_contiguous_allocation()) {
     Result prefetch_result =
         Prefetch(request, **prev_allocation_in_default_mem_it);
     if (prefetch_result == Result::kSuccess) {
+      if (request.preferred_prefetch_time) {
+        // Warn if the prefetch time picked doesn't match the preferred prefetch
+        // time.
+        CHECK(!request.allocation_value->allocation_sequence()->empty());
+        const MemorySpaceAssignment::Allocation* allocation =
+            request.allocation_value->allocation_sequence()->back().get();
+        CHECK(allocation->is_copy_allocation());
+        const int64_t prefetch_time =
+            static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+                allocation)
+                ->copy_start_schedule_after();
+        if (prefetch_time != *request.preferred_prefetch_time) {
+          LOG(WARNING) << "Scheduled prefetch time (" << prefetch_time
+                       << ") doesn't match the preferred prefetch time ("
+                       << *request.preferred_prefetch_time
+                       << "): " << request.use->hlo_use.ToString();
+        }
+      }
+      request.allocation_value->allocation_sequence()->back();
       return Result::kSuccess;
+    }
+    // Warn if there was a preferred prefetch time but we couldn't actually
+    // prefetch.
+    if (request.preferred_prefetch_time) {
+      LOG(WARNING) << "The request has a preferred prefetch time ("
+                   << *request.preferred_prefetch_time
+                   << ") which could not be satisfied: "
+                   << request.use->hlo_use.ToString();
     }
     result_mark(prefetch_result, allocation_result);
   }
@@ -4726,7 +5121,10 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
 
   const HloPosition& defining_position =
       request.allocation_value->defining_position();
-  if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
+  // If prefer_no_copy_alternate_mem_allocation is true, bypass the live range
+  // duration checks.
+  if (!request.prefer_no_copy_alternate_mem_allocation &&
+      !options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
           defining_position.shape(), request.start_time + 1,
           request.end_time)) {
     return Result::kFailLiveRangeTooLong;
@@ -4812,6 +5210,10 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     request.allocation_value->allocation_sequence()->back()->AddUse(
         request.use->hlo_use);
     return Result::kSuccess;
+  }
+  if (request.prefer_no_copy_alternate_mem_allocation) {
+    LOG(WARNING) << "Preferred no-copy allocation, but this was not possible: "
+                 << request.use->hlo_use.ToString();
   }
   return Result::kFailOutOfMemory;
 }
@@ -5032,6 +5434,12 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
         options_.cost_analysis
             ? options_.cost_analysis->GetAsyncCopyElapsed(shape)
             : 0.1;
+    // If there is a preferred prefetch time due to a loop optimized allocation,
+    // we already keep track of the prefetch resources there, so skip tracking
+    // resources here.
+    if (request.preferred_prefetch_time) {
+      prefetch_resource = 0;
+    }
     if (!prefetch_async_copy_resource_.HasEnoughResource(
             alternate_mem_interval.start, prefetch_end_time,
             prefetch_resource)) {

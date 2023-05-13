@@ -1293,6 +1293,9 @@ struct Options {
 
   // Options for slicing prefetches into smaller asynchronously copied pieces.
   SlicedPrefetchOptions sliced_prefetch_options;
+
+  // Options for the memory-bound loop optimizer feature.
+  MemoryBoundLoopOptimizerOptions memory_bound_loop_optimizer_options;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1774,7 +1777,9 @@ class AlternateMemoryBestFitHeap
     int64_t end_time;
     int64_t latest_prefetch_time;
     int64_t size;
+    bool prefer_no_copy_alternate_mem_allocation;
     bool allow_no_copy_alternate_mem_allocation;
+    bool allow_prefetch;
     std::optional<int64_t> earliest_prefetch_time;
     std::optional<int64_t> preferred_prefetch_time;
     AliasedOffset* preferred_offset;
@@ -1807,6 +1812,19 @@ class AlternateMemoryBestFitHeap
     bool operator!=(const RequiredMemoryAssignment& other) const {
       return !(*this == other);
     }
+  };
+
+  // A struct that contains a pointer to loop-optimized allocation along with
+  // essential data about the loop itself.
+  struct LoopOptimizedAllocationInfo {
+    // The use_idx is the instruction index of the use within the loop.
+    int64_t use_index;
+    // The number of instructions in one iteration of the loop. We use use_index
+    // and loop_size to calculate when exactly to schedule a prefetch
+    // instruction.
+    int64_t loop_size;
+    // A pointer into an Allocation in loop_optimized_allocations_.
+    const MemorySpaceAssignment::Allocation* loop_optimized_allocation;
   };
 
   // Result of an allocation, prefetch, eviction etc. request.  The result is
@@ -1864,6 +1882,16 @@ class AlternateMemoryBestFitHeap
     return result_is(result, Result::kFailOutOfAsyncCopies) ||
            result_is(result, Result::kFailViolatesAsyncCopyResource);
   }
+
+  // For the given loop with the start and end index and loop size, run the
+  // MemoryBoundLoopOptimizer and record its outputs into
+  // optimized_allocations_map_.
+  Status OptimizeMemoryBoundLoop(int loop_start_idx, int loop_end_idx,
+                                 int loop_size);
+
+  // Identify memory-bound loops in the graph and call OptimizeMemoryBoundLoop
+  // for the found loops.
+  void IdentifyAndOptimizeMemoryBoundLoops();
 
   // Allocates buffers for instructions that need reserved scoped allocations in
   // the alternate memory space.
@@ -2084,6 +2112,7 @@ class AlternateMemoryBestFitHeap
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
+  std::unique_ptr<CallGraph> call_graph_;
   // We use a interval tree to keep track of the number of outstanding
   // prefetches and evictions.
   BufferIntervalTree prefetch_interval_tree_;
@@ -2127,6 +2156,16 @@ class AlternateMemoryBestFitHeap
   // fingerprint.
   absl::flat_hash_map<std::string, std::vector<const HloInstruction*>>
       repeated_inst_map_;
+
+  // Loop-optimized allocations found by MemoryBoundLoopOptimizer. These
+  // allocation objects describe the allocations for one iteration of the loop,
+  // so we translate them into the program-level Allocation objects in
+  // allocations_.
+  std::vector<MemorySpaceAssignment::AllocationSequence>
+      loop_optimized_allocations_;
+  // A map to look up the loop-optimized allocation info by use.
+  absl::flat_hash_map<HloUse, LoopOptimizedAllocationInfo>
+      loop_optimized_allocations_map_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
