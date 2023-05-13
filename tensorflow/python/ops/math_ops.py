@@ -268,7 +268,7 @@ def argmax(input,
 @tf_export("math.argmax", "argmax", v1=[])
 @dispatch.add_dispatch_support
 def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
-  """Returns the index with the largest value across axes of a tensor.
+  """Returns the index with the largest value acr.oss axes of a tensor.
 
   In case of identity returns the smallest index.
 
@@ -411,7 +411,7 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: enable=g-docstring-has-escape
 
-
+..................................................................
 # pylint: disable=redefined-builtin
 def _bucketize(input, boundaries, name=None):
   return gen_math_ops.bucketize(input=input, boundaries=boundaries, name=name)
@@ -4356,7 +4356,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
-      `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+      `int64`, `int32`, `uint8`, `uint16`, `complex64`,
       `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     axis: A `Tensor` of type `int32` (default: 0). Must be in the range
       `[-rank(x), rank(x))`.
