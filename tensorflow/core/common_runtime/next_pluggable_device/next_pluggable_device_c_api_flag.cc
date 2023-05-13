@@ -18,7 +18,7 @@ namespace tensorflow {
 namespace npd {
 
 // Define as a weak symbol so that it can be overridden when necessary.
-const bool kTfNextPluggableDeviceUseCApi __attribute__((weak)) = false;
+extern const bool kTfNextPluggableDeviceUseCApi __attribute__((weak)) = false;
 
 }  // namespace npd
 }  // namespace tensorflow
