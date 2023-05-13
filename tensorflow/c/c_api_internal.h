@@ -142,7 +142,7 @@ struct TF_ImportGraphDefOptions {
 
   // Backing memory for TensorId fields in opts.
   // TODO(skyewm): it'd be better if ImportGraphDefOptions owned this.
-  std::list<tensorflow::string> tensor_id_data;
+  std::vector<tensorflow::string> tensor_id_data;
 };
 
 struct TF_ImportGraphDefResults {
@@ -152,7 +152,7 @@ struct TF_ImportGraphDefResults {
   std::vector<int> missing_unused_key_indexes;
 
   // Backing memory for missing_unused_key_names values.
-  std::list<tensorflow::string> missing_unused_key_names_data;
+  std::vector<tensorflow::string> missing_unused_key_names_data;
 };
 
 struct TF_DeviceList {
