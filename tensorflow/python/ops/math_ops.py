@@ -825,7 +825,8 @@ def real(input, name=None):
     elif input.dtype.is_numeric:
       return input
     else:
-      raise TypeError("input must be a numeric tensor, but got tensor with dtype {}".format(input.dtype))
+      raise TypeError("input must be a numeric tensor, but got "
+                      "tensor with dtype {}".format(input.dtype))
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
