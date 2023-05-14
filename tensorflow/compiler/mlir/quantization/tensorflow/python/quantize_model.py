@@ -1034,17 +1034,6 @@ def _populate_quantization_options_default_values(
     )
 
   if (
-      quantization_options.enable_per_channel_quantization
-      and quantization_options.enable_legacy_weight_only
-      and quantization_options.quantization_method.experimental_method
-      == _ExperimentalMethod.WEIGHT_ONLY
-  ):
-    raise ValueError(
-        'Weight-only per-channel is only supported with'
-        'enable_legacy_weight_only disabled'
-    )
-
-  if (
       quantization_options.quantization_method.experimental_method
       == _ExperimentalMethod.WEIGHT_ONLY
       and (

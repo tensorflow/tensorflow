@@ -308,27 +308,6 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           self._input_saved_model_path, quantization_options=options
       )
 
-  def test_weight_only_per_channel_with_legacy_weight_only_raises_value_error(
-      self,
-  ):
-    model = self.SimpleModel()
-
-    saved_model_save.save(model, self._input_saved_model_path)
-
-    options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.WEIGHT_ONLY
-        ),
-        op_set=quant_opts_pb2.XLA,
-        enable_per_channel_quantization=True,
-        enable_legacy_weight_only=True,
-    )
-
-    with self.assertRaises(ValueError):
-      quantize_model.quantize(
-          self._input_saved_model_path, quantization_options=options
-      )
-
   @parameterized.named_parameters(
       ('weight_only_per_tensor', False),
       ('legacy_weight_only_per_tensor', True),
@@ -4779,14 +4758,16 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @parameterized.named_parameters(
       # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
       # quantized opset
-      ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
-      ('to_xla_per_channel', quant_opts_pb2.XLA, True),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False, False),
+      ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
+      ('to_xla_per_channel_legacy', quant_opts_pb2.XLA, True, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_model(
       self,
       target_opset: quant_opts_pb2.OpSet,
       enable_per_channel_quantization: bool,
+      enable_legacy_weight_only: bool,
   ):
     input_shape = (1, 3, 4, 512)
     filter_shape = (2, 3, 512, 2)
@@ -4807,6 +4788,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization,
+        enable_legacy_weight_only=enable_legacy_weight_only,
     )
 
     converted_model = quantize_model.quantize(
@@ -4827,8 +4809,10 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
+    if not enable_legacy_weight_only:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
         self._input_saved_model_path,
@@ -4870,14 +4854,16 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @parameterized.named_parameters(
       # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
       # quantized opset
-      ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
-      ('to_xla_per_channel', quant_opts_pb2.XLA, True),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False, False),
+      ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
+      ('to_xla_per_channel_legacy', quant_opts_pb2.XLA, True, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv2d_model(
       self,
       target_opset: quant_opts_pb2.OpSet,
       enable_per_channel_quantization: bool,
+      enable_legacy_weight_only: bool,
   ):
     input_shape = (1, 3, 4, 512)
     filter_shape = (2, 3, 512, 2)
@@ -4897,6 +4883,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization,
+        enable_legacy_weight_only=enable_legacy_weight_only,
     )
 
     converted_model = quantize_model.quantize(
@@ -4918,7 +4905,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+    if not enable_legacy_weight_only:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
 
     size_threshold = 0.5 if enable_per_channel_quantization else 0.3
     self.assertSizeRatioLessThan(
