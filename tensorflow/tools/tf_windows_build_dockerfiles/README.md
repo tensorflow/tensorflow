@@ -4,7 +4,7 @@ md C:\tf
 cd C:\tf
 git clone https://github.com/Bobarshad/tensorflow.git
 cd C:\tf\tensorflow\tensorflow\tools\tf_windows_build_dockerfiles\
-docker build . -f Dockerfile -t win-docker
+docker build . -f <Dockerfile 3.9 or 3.11> -t win-docker
 ```
 **Starting docker:**
 ```
@@ -21,5 +21,6 @@ docker run --name tf -itd --rm -v C:\tf\tensorflow:C:\workspace -v C:\tf\tmp:C:\
 ```
 **To create the TensorFlow package builder run:**
 ```
+docker exec tf python ./configure.py
 docker exec tf bazel build //tensorflow/tools/pip_package:build_pip_package
 ```
