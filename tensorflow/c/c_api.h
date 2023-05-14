@@ -1580,7 +1580,7 @@ TF_CAPI_EXPORT extern void TF_RegisterFilesystemPlugin(
 
 // Apis that are correponding to python c api. --------------------
 
-TF_CAPI_EXPORT extern void TF_AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input);
+TF_CAPI_EXPORT extern void TF_AddOperationControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input);
 
 TF_CAPI_EXPORT extern void TF_SetAttr(TF_Graph* graph, TF_Operation* op,
                                        const char* attr_name,

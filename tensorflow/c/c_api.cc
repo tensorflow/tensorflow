@@ -2576,7 +2576,7 @@ void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
 
 // Apis that are correponding to python c api. --------------------------
 
-void TF_AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
+void TF_AddOperationControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
   mutex_lock l(graph->mu);
   graph->graph.AddControlEdge(&input->node, &op->node);
   tensorflow::RecordMutation(graph, *op, "adding control input");
