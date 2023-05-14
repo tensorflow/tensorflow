@@ -3,8 +3,8 @@
 # - Has Visual Studio 2019 Build Tools installed.
 # - Has MSVC 14.29 and clang 14.0 installed
 # - Has msys2 + git, curl, zip, unzip installed.
-# - Has Python 3.9 installed.
-# - Has Bazelisk 0.11 installed.
+# - Has Python 3.11 installed.
+# - Has Bazelisk v1.16.0 installed.
 FROM mcr.microsoft.com/windows/servercore:ltsc2019
 SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $VerbosePreference = 'Continue';"]
 RUN netsh interface ipv4 set subinterface \"vEthernet (Ethernet)\" mtu=1460 store=persistent
