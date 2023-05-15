@@ -113,9 +113,7 @@ pipeline {
                             pip install --upgrade pip
                             pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                         '''
-
-                        configFileProvider([configFile(fileId: '561b70ba-de73-428b-919e-99346716e33c', targetLocation: '.macos.bazelrc')]) {}
-
+                        
                         sh '''
                             bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
                             --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \

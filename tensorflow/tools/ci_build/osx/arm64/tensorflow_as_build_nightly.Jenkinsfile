@@ -29,6 +29,7 @@ pipeline {
 
                     }
                     steps {
+                        
                         dir('tensorflow') {
 
                             sh '''
@@ -61,7 +62,8 @@ pipeline {
                                 dist
                             '''
                         }
-
+                        
+                        // Sanity check before archiving/uploading to PyPi
                         sh '''
                             python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
 
@@ -119,6 +121,7 @@ pipeline {
                             '''
                         }
 
+                        // Sanity check before archiving/uploading to PyPi
                         sh '''
                             python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
 
@@ -175,6 +178,7 @@ pipeline {
                             '''
                         }
 
+                        // Sanity check before archiving/uploading to PyPi
                         sh '''
                             python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
 
@@ -231,6 +235,7 @@ pipeline {
                             '''
                         }
 
+                        // Sanity check before archiving/uploading to PyPi
                         sh '''
                             python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
 
