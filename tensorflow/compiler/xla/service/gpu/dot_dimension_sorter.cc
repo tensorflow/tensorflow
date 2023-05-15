@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -36,12 +37,6 @@ namespace gpu {
 
 namespace {
 
-// Check that a sequence of distinct numbers is a continuous interval.
-bool ConsecutiveIfSorted(absl::Span<const int64_t> seq) {
-  return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
-         seq.size() - 1;
-}
-
 // Sort contracting dimensions of a dot() instruction preserving lhs-rhs pairs.
 Status SortDotDimensions(HloInstruction* dot) {
   const DotDimensionNumbers& dims = dot->dot_dimension_numbers();
@@ -49,7 +44,7 @@ Status SortDotDimensions(HloInstruction* dot) {
   new_dims.clear_lhs_contracting_dimensions();
   new_dims.clear_rhs_contracting_dimensions();
   const bool sort_by_lhs =
-      ConsecutiveIfSorted(dims.lhs_contracting_dimensions());
+      DistinctNumbersAreConsecutiveIfSorted(dims.lhs_contracting_dimensions());
   // Sort lhs and rhs by sort_key using the fact that
   // sort_key is guaranteed to have only distinct consecutive numbers.
   const absl::Span<const int64_t>& sort_key =
@@ -103,10 +98,10 @@ StatusOr<bool> DotDimensionSorter::Run(
       if (dims.lhs_contracting_dimensions_size() == 0) {
         continue;
       }
-      const bool cons_lhs =
-          ConsecutiveIfSorted(dims.lhs_contracting_dimensions());
-      const bool cons_rhs =
-          ConsecutiveIfSorted(dims.rhs_contracting_dimensions());
+      const bool cons_lhs = DistinctNumbersAreConsecutiveIfSorted(
+          dims.lhs_contracting_dimensions());
+      const bool cons_rhs = DistinctNumbersAreConsecutiveIfSorted(
+          dims.rhs_contracting_dimensions());
       const bool sorted_lhs =
           absl::c_is_sorted(dims.lhs_contracting_dimensions());
       const bool sorted_rhs =

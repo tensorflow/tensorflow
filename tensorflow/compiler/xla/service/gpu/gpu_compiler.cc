@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dot_dimension_merger.h"
 #include "tensorflow/compiler/xla/service/dot_merger.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
@@ -553,6 +554,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
       pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
+      // Dimension merger is most efficient after the dot decomposer. It also
+      // has to be after the transpose folding because otherwise it can insert
+      // reshapes which will prevent transpose folding.
+      pipeline.AddPass<DotDimensionMerger>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();

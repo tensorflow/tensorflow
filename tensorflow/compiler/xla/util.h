@@ -617,6 +617,9 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
 // Removes illegal characters from filenames.
 std::string SanitizeFileName(std::string file_name);
 
+// Check that a sequence of distinct numbers can form a continuous interval.
+bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t>);
+
 template <typename C, typename Value>
 int64_t FindIndex(const C& c, Value&& value) {
   auto it = absl::c_find(c, std::forward<Value>(value));
