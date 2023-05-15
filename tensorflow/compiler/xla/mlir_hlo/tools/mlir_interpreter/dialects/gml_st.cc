@@ -30,7 +30,11 @@ llvm::SmallVector<InterpreterValue> fusion(InterpreterState& state,
   llvm::SmallVector<InterpreterValue> args;
   llvm::append_range(args, inputs);
   llvm::append_range(args, inits);
-  return interpret(state, op.getRegion(), args);
+  auto result = interpret(state, op.getRegion(), args);
+  if (op.getNumResults() == 0) {
+    result.clear();
+  }
+  return result;
 }
 
 REGISTER_MLIR_INTERPRETER_OP(fusion);
