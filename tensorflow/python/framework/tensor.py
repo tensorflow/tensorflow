@@ -42,7 +42,9 @@ from tensorflow.python.util.tf_export import tf_export
 
 # TODO(b/249802365): Sanitize all TensorSpec names.
 def sanitize_spec_name(name: str) -> str:
-  """Sanitizes Spec names. Matches Graph Node and Python naming conventions.
+  """Sanitizes Spec names.
+
+  Matches Graph Node and Python naming conventions.
 
   Without sanitization, names that are not legal Python parameter names can be
   set which makes it challenging to represent callables supporting the named
@@ -74,6 +76,7 @@ def get_op_name(tensor_name):
 
   Args:
     tensor_name: the full name of a Tensor in the graph.
+
   Returns:
     The name of the Op of which the given Tensor is an output.
   Raises:
@@ -81,7 +84,8 @@ def get_op_name(tensor_name):
   """
   if not tensor_name:
     raise ValueError(
-        f"Tensor name cannot be empty or None. Received: {tensor_name}.")
+        f"Tensor name cannot be empty or None. Received: {tensor_name}."
+    )
 
   # Control dependency inputs start with ^.
   if tensor_name.startswith("^"):
@@ -131,21 +135,28 @@ class DenseSpec(type_spec.TypeSpec):
     return self._name
 
   def is_compatible_with(self, spec_or_value):
-    return (isinstance(spec_or_value, (DenseSpec, self.value_type)) and
-            self._dtype.is_compatible_with(spec_or_value.dtype) and
-            self._shape.is_compatible_with(spec_or_value.shape))
+    return (
+        isinstance(spec_or_value, (DenseSpec, self.value_type))
+        and self._dtype.is_compatible_with(spec_or_value.dtype)
+        and self._shape.is_compatible_with(spec_or_value.shape)
+    )
 
   def __repr__(self):
     return "{}(shape={}, dtype={}, name={})".format(
-        type(self).__name__, self.shape, repr(self.dtype), repr(self.name))
+        type(self).__name__, self.shape, repr(self.dtype), repr(self.name)
+    )
 
   def __hash__(self):
     return hash((self._shape, self.dtype))
 
   def __eq__(self, other):
     # pylint: disable=protected-access
-    return (type(self) is type(other) and self._shape == other._shape and
-            self._dtype == other._dtype and self._name == other._name)
+    return (
+        type(self) is type(other)
+        and self._shape == other._shape
+        and self._dtype == other._dtype
+        and self._name == other._name
+    )
 
   def __ne__(self, other):
     return not self == other
@@ -165,8 +176,12 @@ class DenseSpec(type_spec.TypeSpec):
 
 @tf_export("TensorSpec")
 @type_spec_registry.register("tf.TensorSpec")
-class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
-                 trace_type.Serializable, internal.TensorSpec):
+class TensorSpec(
+    DenseSpec,
+    type_spec.BatchableTypeSpec,
+    trace_type.Serializable,
+    internal.TensorSpec,
+):
   """Describes the type of a tf.Tensor.
 
   >>> t = tf.constant([[1,2,3],[4,5,6]])
@@ -204,10 +219,16 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   Traceback (most recent call last):
   ...
   TypeError: Binding inputs to tf.function `constrained_foo` failed ...
-
   """
 
   __slots__ = []
+
+  def __init_subclass__(cls):
+    if cls.__name__ != "BoundedTensorSpec":
+      raise TypeError(
+          "TensorSpec should not be subclassed because it is an atomic type in"
+          " tf.function type system."
+      )
 
   @classmethod
   def experimental_type_proto(cls) -> Type[struct_pb2.TensorSpecProto]:
@@ -216,19 +237,22 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
   @classmethod
   def experimental_from_proto(
-      cls, proto: struct_pb2.TensorSpecProto) -> "TensorSpec":
+      cls, proto: struct_pb2.TensorSpecProto
+  ) -> "TensorSpec":
     """Returns a TensorSpec instance based on the serialized proto."""
     return TensorSpec(
         shape=tensor_shape.TensorShape.experimental_from_proto(proto.shape),
         dtype=proto.dtype,
-        name=proto.name if proto.name else None)
+        name=proto.name if proto.name else None,
+    )
 
   def experimental_as_proto(self) -> struct_pb2.TensorSpecProto:
     """Returns a proto representation of the TensorSpec instance."""
     return struct_pb2.TensorSpecProto(
         shape=self.shape.experimental_as_proto(),
         dtype=self.dtype.experimental_as_proto().datatype,
-        name=self.name)
+        name=self.name,
+    )
 
   def is_compatible_with(self, spec_or_tensor):  # pylint:disable=useless-super-delegation,arguments-renamed
     """Returns True if spec_or_tensor is compatible with this TensorSpec.
@@ -274,7 +298,8 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       # the uniquified name, for validation when exporting signatures.
       placeholder.op._set_attr(  # pylint: disable=protected-access
           "_user_specified_name",
-          attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
+          attr_value_pb2.AttrValue(s=compat.as_bytes(name)),
+      )
 
     handle_data = self.dtype._handle_data  # pylint: disable=protected-access
     if (
@@ -290,8 +315,10 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     if placeholder_context.composite_device_name is not None:
       placeholder.op._set_attr(  # pylint: disable=protected-access
           "_composite_device",
-          attr_value_pb2.AttrValue(s=compat.as_bytes(
-              placeholder_context.composite_device_name)))
+          attr_value_pb2.AttrValue(
+              s=compat.as_bytes(placeholder_context.composite_device_name)
+          ),
+      )
 
     return placeholder
 
@@ -306,22 +333,28 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     attrs = {"dtype": dtype_value, "shape": shape}
     try:
       op = graph._create_op_internal(  # pylint: disable=protected-access
-          "Placeholder", [], [dtype], input_types=[],
-          attrs=attrs, name=name)
+          "Placeholder", [], [dtype], input_types=[], attrs=attrs, name=name
+      )
     except ValueError as e:
       # TODO(b/262413656) Sometimes parameter names are not valid op names, in
       # which case an unnamed placeholder is created instead. Update this logic
       # to sanitize the name instead of falling back on unnamed placeholders.
       logging.warning(e)
       op = graph._create_op_internal(  # pylint: disable=protected-access
-          "Placeholder", [], [dtype], input_types=[], attrs=attrs)
+          "Placeholder", [], [dtype], input_types=[], attrs=attrs
+      )
     (result,) = op.outputs
     if op_callbacks.should_invoke_op_callbacks():
       # TODO(b/147670703): Once the special-op creation code paths
       # are unified. Remove this `if` block.
       callback_outputs = op_callbacks.invoke_op_callbacks(
-          "Placeholder", tuple(), attrs, tuple(op.outputs),
-          op_name=name, graph=graph)
+          "Placeholder",
+          tuple(),
+          attrs,
+          tuple(op.outputs),
+          op_name=name,
+          graph=graph,
+      )
       if callback_outputs is not None:
         (result,) = callback_outputs
     return result
@@ -388,7 +421,8 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       return TensorSpec(tensor.shape, tensor.dtype, name or tensor.op.name)
     else:
       raise ValueError(
-          f"`tensor` should be a tf.Tensor, but got type {type(tensor)}.")
+          f"`tensor` should be a tf.Tensor, but got type {type(tensor)}."
+      )
 
   @property
   def value_type(self):
@@ -421,7 +455,8 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   def _batch(self, batch_size):
     return TensorSpec(
         tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
-        self._dtype)
+        self._dtype,
+    )
 
   def _unbatch(self):
     if self._shape.ndims == 0:
@@ -448,6 +483,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     else:
       return TensorSpec(self.shape, self.dtype)
 
+
 trace_type.register_serializable(TensorSpec)
 trace_type.register_tensor_type(TensorSpec)
 
@@ -457,8 +493,9 @@ class _TensorSpecCodec:
 
   def can_encode(self, pyobj):
     # BoundedTensorSpec has its own decoder.
-    return (isinstance(pyobj, TensorSpec) and
-            not isinstance(pyobj, BoundedTensorSpec))
+    return isinstance(pyobj, TensorSpec) and not isinstance(
+        pyobj, BoundedTensorSpec
+    )
 
   def do_encode(self, tensor_spec_value, encode_fn):
     encoded_tensor_spec = struct_pb2.StructuredValue()
@@ -466,7 +503,9 @@ class _TensorSpecCodec:
         struct_pb2.TensorSpecProto(
             shape=encode_fn(tensor_spec_value.shape).tensor_shape_value,
             dtype=encode_fn(tensor_spec_value.dtype).tensor_dtype_value,
-            name=tensor_spec_value.name))
+            name=tensor_spec_value.name,
+        )
+    )
     return encoded_tensor_spec
 
   def can_decode(self, value):
@@ -477,11 +516,16 @@ class _TensorSpecCodec:
     return TensorSpec(
         shape=decode_fn(
             struct_pb2.StructuredValue(
-                tensor_shape_value=value.tensor_spec_value.shape)),
+                tensor_shape_value=value.tensor_spec_value.shape
+            )
+        ),
         dtype=decode_fn(
             struct_pb2.StructuredValue(
-                tensor_dtype_value=value.tensor_spec_value.dtype)),
-        name=(name if name else None))
+                tensor_dtype_value=value.tensor_spec_value.dtype
+            )
+        ),
+        name=(name if name else None),
+    )
 
 
 nested_structure_coder.register_codec(_TensorSpecCodec())
@@ -538,7 +582,8 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
     try:
       minimum_shape = np.shape(minimum)
       common_shapes.broadcast_shape(
-          tensor_shape.TensorShape(minimum_shape), self.shape)
+          tensor_shape.TensorShape(minimum_shape), self.shape
+      )
     except ValueError as exception:
       raise ValueError(
           f"`minimum` {minimum} is not compatible with shape {self.shape}."
@@ -547,7 +592,8 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
     try:
       maximum_shape = np.shape(maximum)
       common_shapes.broadcast_shape(
-          tensor_shape.TensorShape(maximum_shape), self.shape)
+          tensor_shape.TensorShape(maximum_shape), self.shape
+      )
     except ValueError as exception:
       raise ValueError(
           f"`maximum` {maximum} is not compatible with shape {self.shape}."
@@ -566,14 +612,16 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
 
   @classmethod
   def experimental_from_proto(
-      cls, proto: struct_pb2.BoundedTensorSpecProto) -> "BoundedTensorSpec":
+      cls, proto: struct_pb2.BoundedTensorSpecProto
+  ) -> "BoundedTensorSpec":
     """Returns a BoundedTensorSpec instance based on the serialized proto."""
     return BoundedTensorSpec(
         shape=tensor_shape.TensorShape.experimental_from_proto(proto.shape),
         dtype=proto.dtype,
         minimum=tensor_util.MakeNdarray(proto.minimum),
         maximum=tensor_util.MakeNdarray(proto.maximum),
-        name=proto.name if proto.name else None)
+        name=proto.name if proto.name else None,
+    )
 
   def experimental_as_proto(self) -> struct_pb2.BoundedTensorSpecProto:
     """Returns a proto representation of the BoundedTensorSpec instance."""
@@ -582,7 +630,8 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
         dtype=self.dtype.experimental_as_proto().datatype,
         minimum=tensor_util.make_tensor_proto(self._minimum),
         maximum=tensor_util.make_tensor_proto(self._maximum),
-        name=self.name)
+        name=self.name,
+    )
 
   @classmethod
   def from_spec(cls, spec):
@@ -626,20 +675,33 @@ class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
 
   def __repr__(self):
     s = "BoundedTensorSpec(shape={}, dtype={}, name={}, minimum={}, maximum={})"
-    return s.format(self.shape, repr(self.dtype), repr(self.name),
-                    repr(self.minimum), repr(self.maximum))
+    return s.format(
+        self.shape,
+        repr(self.dtype),
+        repr(self.name),
+        repr(self.minimum),
+        repr(self.maximum),
+    )
 
   def __eq__(self, other):
     tensor_spec_eq = super(BoundedTensorSpec, self).__eq__(other)
-    return (tensor_spec_eq and np.allclose(self.minimum, other.minimum) and
-            np.allclose(self.maximum, other.maximum))
+    return (
+        tensor_spec_eq
+        and np.allclose(self.minimum, other.minimum)
+        and np.allclose(self.maximum, other.maximum)
+    )
 
   def __hash__(self):
     return hash((self._shape, self.dtype))
 
   def __reduce__(self):
-    return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,
-                               self._maximum, self._name)
+    return BoundedTensorSpec, (
+        self._shape,
+        self._dtype,
+        self._minimum,
+        self._maximum,
+        self._name,
+    )
 
   def _serialize(self):
     return (self._shape, self._dtype, self._minimum, self._maximum, self._name)
@@ -660,9 +722,13 @@ class _BoundedTensorSpecCodec:
             dtype=encode_fn(bounded_tensor_spec_value.dtype).tensor_dtype_value,
             name=bounded_tensor_spec_value.name,
             minimum=tensor_util.make_tensor_proto(
-                bounded_tensor_spec_value.minimum),
+                bounded_tensor_spec_value.minimum
+            ),
             maximum=tensor_util.make_tensor_proto(
-                bounded_tensor_spec_value.maximum)))
+                bounded_tensor_spec_value.maximum
+            ),
+        )
+    )
     return encoded_bounded_tensor_spec
 
   def can_decode(self, value):
@@ -673,12 +739,15 @@ class _BoundedTensorSpecCodec:
     name = btsv.name
     return BoundedTensorSpec(
         shape=decode_fn(
-            struct_pb2.StructuredValue(tensor_shape_value=btsv.shape)),
+            struct_pb2.StructuredValue(tensor_shape_value=btsv.shape)
+        ),
         dtype=decode_fn(
-            struct_pb2.StructuredValue(tensor_dtype_value=btsv.dtype)),
+            struct_pb2.StructuredValue(tensor_dtype_value=btsv.dtype)
+        ),
         minimum=tensor_util.MakeNdarray(btsv.minimum),
         maximum=tensor_util.MakeNdarray(btsv.maximum),
-        name=(name if name else None))
+        name=(name if name else None),
+    )
 
 
 nested_structure_coder.register_codec(_BoundedTensorSpecCodec())
@@ -688,7 +757,9 @@ _pywrap_utils.RegisterType("TensorSpec", TensorSpec)
 
 # Note: we do not include Tensor names when constructing TypeSpecs.
 type_spec.register_type_spec_from_value_converter(
-    ops.Tensor, lambda tensor: TensorSpec(tensor.shape, tensor.dtype))
+    ops.Tensor, lambda tensor: TensorSpec(tensor.shape, tensor.dtype)
+)
 
 type_spec.register_type_spec_from_value_converter(
-    np.ndarray, lambda array: TensorSpec(array.shape, array.dtype))
+    np.ndarray, lambda array: TensorSpec(array.shape, array.dtype)
+)

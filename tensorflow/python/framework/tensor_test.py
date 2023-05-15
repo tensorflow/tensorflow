@@ -53,6 +53,12 @@ class SpecNameSanizationTest(test_util.TensorFlowTestCase):
 
 class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  def testNoSubclass(self):
+
+    with self.assertRaises(TypeError):
+      class MySpec(tensor.TensorSpec):  # pylint:disable=unused-variable
+        pass
+
   def testDefaultDType(self):
     desc = tensor.TensorSpec([1])
     self.assertEqual(desc.dtype, dtypes.float32)
