@@ -116,7 +116,7 @@ dtensor_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "dtensor_strategy_extended",
     srcs = ["dtensor_strategy_extended.py"],
     deps = [
@@ -135,7 +135,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "multi_worker_mirrored_strategy",
     srcs = ["multi_worker_mirrored_strategy.py"],
     deps = [
