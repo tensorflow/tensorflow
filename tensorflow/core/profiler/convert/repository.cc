@@ -80,6 +80,17 @@ StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
   return xspace_from_file;
 }
 
+StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpaceByName(
+    absl::string_view name) const {
+  if (auto it = hostname_map_.find(name); it != hostname_map_.end()) {
+    return GetXSpace(it->second);
+  }
+
+  return errors::InvalidArgument("Can not find the XSpace by name: ", name,
+                                 ". The total number of XSpace is ",
+                                 xspace_paths_.size());
+}
+
 std::string SessionSnapshot::GetHostname(size_t index) const {
   return GetHostnameByPath(xspace_paths_.at(index));
 }
