@@ -742,7 +742,6 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests/io_ops:__pkg__",
         "//tensorflow/python/trackable:__pkg__",
         "//tensorflow/python/training:__pkg__",
-        "//tensorflow/python/training/tracking:__pkg__",
     ],
 )
 
