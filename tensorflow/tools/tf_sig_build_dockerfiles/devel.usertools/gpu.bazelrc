@@ -77,29 +77,6 @@ test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_ex
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
-# "pip tests" run a similar suite of tests the "nonpip" tests, but do something
-# odd to attempt to validate the quality of the pip package. The wheel is
-# installed into a virtual environment, and then that venv is used to run all
-# bazel tests with a special flag "--define=no_tensorflow_py_deps=true", which
-# drops all the bazel dependencies for each py_test; this makes all the tests
-# use the wheel's TensorFlow installation instead of the one made available
-# through bazel. This must be done in a different root directory, //bazel_pip/...,
-# because "import tensorflow" run from the root directory would instead import
-# the folder instead of the venv package.
-# 
-# Pass --config=pip to run the same suite of tests. If you want to run just one
-# test for investigation, you'll need --config=pip_venv instead, and then you
-# can specify whichever target you want.
-test:pip_venv --action_env PYTHON_BIN_PATH="/bazel_pip/bin/python3"
-test:pip_venv --action_env PYTHON_LIB_PATH="/bazel_pip/lib/python3/site-packages"
-test:pip_venv --python_path="/bazel_pip/bin/python3"
-test:pip_venv --define=no_tensorflow_py_deps=true
-# Yes, we don't exclude the gpu tests on pip for some reason.
-test:pip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:pip_filters --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium
-test:pip --config=pip_venv --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
-
 # For building libtensorflow archives
 test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
 build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
