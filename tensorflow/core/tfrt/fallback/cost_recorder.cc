@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -34,7 +37,7 @@ void CostRecorder::RecordCostNanosecond(int64_t op_key,
   op_cost_map_[op_key].second += 1;
 }
 
-uint64_t CostRecorder::GetCostNanosecond(int64_t op_key) const {
+uint64_t CostRecorder::GetCost(int64_t op_key) const {
   tf_shared_lock l(op_cost_map_mutex_);
 
   const auto iter = op_cost_map_.find(op_key);
@@ -43,7 +46,9 @@ uint64_t CostRecorder::GetCostNanosecond(int64_t op_key) const {
   const auto total_cost = iter->second.first;
   const auto num_ops = iter->second.second;
 
-  return total_cost / num_ops;
+  return std::max(
+      static_cast<uint64_t>(1),
+      static_cast<uint64_t>(total_cost / num_ops / normalize_ratio_));
 }
 
 Status CostRecorder::WriteToFile() const {

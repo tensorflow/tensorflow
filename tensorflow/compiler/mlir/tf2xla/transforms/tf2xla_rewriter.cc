@@ -156,6 +156,13 @@ tsl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
     return tsl::errors::InvalidArgument("Imported XLA Root is not a tuple op");
   }
 
+  if (op_->getNumOperands() !=
+      hlo_module->entry_computation()->num_parameters()) {
+    return tsl::errors::InvalidArgument(
+        "Entry computation does not have equal number of parameters to op "
+        "operands");
+  }
+
   ModuleOp mlir_module = op_->getParentOfType<ModuleOp>();
   mlir::OpBuilder builder(op_);
   mlir::SymbolTable symbol_table(mlir_module);

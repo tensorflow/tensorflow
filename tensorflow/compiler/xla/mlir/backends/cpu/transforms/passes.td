@@ -22,15 +22,15 @@ include "mlir/Pass/PassBase.td"
 // Auxiliary passes for lowering to XLA Cpu runtime.
 //===----------------------------------------------------------------------===//
 
-def ConvertLmhloToCpuRuntimePass :
-    Pass<"xla-lmhlo-to-cpu-runtime", "mlir::ModuleOp"> {
-  let summary = "Converts lmhlo operations to XLA Cpu runtime custom calls";
+def ConvertXlaCpuToCpuRuntimePass :
+    Pass<"xla-cpu-to-cpu-runtime", "mlir::ModuleOp"> {
+  let summary = "Converts xla_cpu operations to XLA Cpu runtime custom calls";
 
   let description = [{
-      Converts lmhlo dialect operations to XLA Cpu runtime custom calls.
+      Converts xla_cpu dialect operations to XLA Cpu runtime custom calls.
   }];
 
-  let constructor = "createConvertLmhloToCpuRuntimePass()";
+  let constructor = "createConvertXlaCpuToCpuRuntimePass()";
 }
 
 def LegalizeXlaAbiPass :

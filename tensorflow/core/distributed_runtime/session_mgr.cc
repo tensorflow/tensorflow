@@ -108,7 +108,8 @@ SessionMgr::SessionMgr(
 /* static */
 std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
   return strings::StrCat("/job:", server_def.job_name(),
-                         "/replica:0/task:", server_def.task_index());
+                         "/replica:", server_def.replica(),
+                         "/task:", server_def.task_index());
 }
 
 Status SessionMgr::CreateSession(const std::string& session,

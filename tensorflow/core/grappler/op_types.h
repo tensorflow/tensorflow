@@ -121,6 +121,7 @@ bool IsMin(const NodeDef& node);
 bool IsMinimum(const NodeDef& node);
 bool IsMirrorPad(const NodeDef& node);
 bool IsMirrorPadGrad(const NodeDef& node);
+bool IsMklFusedMish(const NodeDef& node);
 bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMulNoNan(const NodeDef& node);

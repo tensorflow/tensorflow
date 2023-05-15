@@ -1041,6 +1041,15 @@ def load_partial(export_dir, filters, tags=None, options=None):
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
     metrics.IncrementRead(write_version="2")
+
+    if options.experimental_load_function_aliases:
+      if hasattr(root, "function_aliases"):
+        raise ValueError(
+            "Could not load with experimental_load_function_aliases option"
+            " because the top-level object already has an attributed with name"
+            " 'function_aliases'"
+        )
+      root.function_aliases = loader.function_aliases
   else:
     if filters:
       raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
@@ -1069,15 +1078,6 @@ def load_partial(export_dir, filters, tags=None, options=None):
             fingerprint).SerializeToString())
     singleprint = fingerprint.singleprint()
   metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
-
-  if options.experimental_load_function_aliases:
-    if hasattr(root, "function_aliases"):
-      raise ValueError(
-          "Could not load with experimental_load_function_aliases option"
-          " because the top-level object already has an attributed with name"
-          " 'function_aliases'"
-      )
-    root.function_aliases = loader.function_aliases
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

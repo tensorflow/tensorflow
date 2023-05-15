@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 
+#include <optional>
+
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -50,7 +52,15 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
     return success();
   }
   SmallVector<Value> new_operands;
+  std::optional<Value> token = std::nullopt;
   for (auto operand : op.getOperands()) {
+    if (operand.getType().template isa<TokenType>()) {
+      assert(operand == op.getOperands().back() &&
+             "Expect token type only for last operand");
+      assert(!token && "Expect at most only one token-typed operand");
+      token = operand;
+      continue;
+    }
     FailureOr<Value> maybe_buffer = getBuffer(rewriter, operand, options);
     if (failed(maybe_buffer)) {
       return failure();
@@ -59,6 +69,10 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
   }
   rewriter.create<Op>(op.getLoc(), TypeRange{}, new_operands,
                       op.getOperation()->getAttrs());
+
+  if (token) {
+    new_operands.push_back(*token);
+  }
   bufferization::replaceOpWithBufferizedValues(
       rewriter, op.getOperation(),
       llvm::ArrayRef(new_operands).drop_front(num_inputs));
@@ -107,6 +121,12 @@ LogicalResult FftOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
   return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+LogicalResult InfeedOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, 0);
 }
 
 LogicalResult OutfeedOp::bufferize(

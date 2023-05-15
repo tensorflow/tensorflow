@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
@@ -380,7 +381,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
 
     const ClusterDef& cluster_def = req->config().cluster_def();
     if (!cluster_def.job().empty()) {
-      worker_cache_factory_options.cluster_def = &cluster_def;
+      worker_cache_factory_options.cluster_def = cluster_def;
       // If the target starts with gRPC protocol prefix, remove the prefix
       string normalized_string(req->target());
       RE2::Replace(&normalized_string, kGrpcPrefixRegex, "");
@@ -389,7 +390,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
       for (auto&& job : cluster_def.job()) {
         for (auto&& task : job.tasks()) {
           if (task.second == normalized_string) {
-            if (worker_cache_factory_options.job_name != nullptr) {
+            if (!worker_cache_factory_options.job_name.empty()) {
               status = errors::InvalidArgument(
                   "Found multiple matching tasks that correspond to "
                   "to the master. Master target: '",
@@ -408,12 +409,12 @@ void Master::CreateSession(const CreateSessionRequest* req,
                   job.name(), ", task index: ", task.first);
               return;
             }
-            worker_cache_factory_options.job_name = &job.name();
+            worker_cache_factory_options.job_name = job.name();
             worker_cache_factory_options.task_index = task.first;
           }
         }
       }
-      worker_cache_factory_options.rpc_options = &req->config().rpc_options();
+      worker_cache_factory_options.rpc_options = req->config().rpc_options();
       // Create the worker cache from the computed server_def.
       status = env_->worker_cache_factory(worker_cache_factory_options,
                                           &worker_cache);
@@ -429,7 +430,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
       for (auto&& d : *remote_devices) {
         device_set->AddDevice(d.get());
         DeviceNameUtils::ParsedName name = d->parsed_name();
-        if (name.job == *worker_cache_factory_options.job_name &&
+        if (name.job == worker_cache_factory_options.job_name &&
             name.task == worker_cache_factory_options.task_index &&
             name.type == "CPU" && name.id == 0) {
           device_set->set_client_device(d.get());
@@ -443,7 +444,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
           DeviceFinder::GetRemoteDevices(req->config().device_filters(), env_,
                                          worker_cache, remote_devices.get());
       if (!status.ok()) return;
-      device_set.reset(new DeviceSet);
+      device_set = std::make_unique<DeviceSet>();
       for (auto&& d : *remote_devices) {
         device_set->AddDevice(d.get());
       }

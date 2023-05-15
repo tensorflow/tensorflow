@@ -145,14 +145,6 @@ StatusOr<LocalDeviceState*> PjRtStreamExecutorDevice::GetLocalDeviceState()
   return InvalidArgument("Device %s is not a local device.", DebugString());
 }
 
-absl::string_view PjRtStreamExecutorDevice::DebugString() const {
-  return debug_string_;
-}
-
-absl::string_view PjRtStreamExecutorDevice::ToString() const {
-  return to_string_;
-}
-
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
   if (devices.empty()) {
@@ -2185,6 +2177,8 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
+// When `options` has non-zero `launch_id`, use `launch_id` instead of `run_id`
+// to initialize `run_options`.
 StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
@@ -2310,7 +2304,11 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   run_options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   run_options.set_device_assignment(device_assignment.get());
-  run_options.set_run_id(run_id);
+  if (options.launch_id != 0) {
+    run_options.set_run_id(RunId(options.launch_id));
+  } else {
+    run_options.set_run_id(run_id);
+  }
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
   run_options.set_launch_id(options.launch_id);

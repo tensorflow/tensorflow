@@ -178,6 +178,7 @@ dtensor_test(
 
 py_strict_test(
     name = "input_util_test",
+    size = "medium",
     srcs = ["input_util_test.py"],
     shard_count = 8,
     deps = [
@@ -214,6 +215,7 @@ dtensor_test(
         ":test_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/eager:backprop",

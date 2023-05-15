@@ -1084,7 +1084,7 @@ static void RuntimeFallbackExecuteOp(
     const tensorflow::Tensor* tf_tensor = nullptr;
     tensorflow::Status s =
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
-    DCHECK(s.ok()) << s.ToString();
+    DCHECK(s.ok()) << s;
     results[i] =
         tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(*tf_tensor);
   }

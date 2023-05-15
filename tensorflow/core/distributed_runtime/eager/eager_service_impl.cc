@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/fixed_array.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
@@ -59,7 +60,7 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
                      int* num_retvals) {
   const tensorflow::OpRegistrationData* op_reg_data = nullptr;
   auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     status = context->FindFunctionOpData(op_name, &op_reg_data);
   }
   TF_RETURN_IF_ERROR(status);

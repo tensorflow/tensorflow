@@ -165,24 +165,26 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
   auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
   if (!extra_opdefs_status.ok()) return extra_opdefs_status;
 
+  ::tensorflow::GraphdefToMlirOptions graphdef_conversion_options{
+      std::string(debug_info_file),
+      /*xla_compile_device_type=*/"",
+      /*prune_unused_nodes=*/specs.prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true,
+      /*graph_as_function=*/false,
+      specs.upgrade_legacy,
+      /*enable_shape_inference=*/false,
+      /*unconditionally_use_set_output_shapes=*/true};
+
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
-        input_arrays, input_dtypes, input_shapes, output_arrays,
-        control_output_arrays, specs.prune_unused_nodes,
-        /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, specs.upgrade_legacy,
-        /*enable_shape_inference=*/false,
-        /*unconditionally_use_set_output_shapes=*/true, context);
+        file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+        output_arrays, control_output_arrays, graphdef_conversion_options,
+        context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
-      input_arrays, input_dtypes, input_shapes, output_arrays,
-      control_output_arrays, specs.prune_unused_nodes,
-      /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, specs.upgrade_legacy,
-      /*enable_shape_inference=*/false,
-      /*unconditionally_use_set_output_shapes=*/true, context);
+      file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+      output_arrays, control_output_arrays, graphdef_conversion_options,
+      context);
 }
 
 // Applying post-training dynamic range quantization from the old TOCO quantizer

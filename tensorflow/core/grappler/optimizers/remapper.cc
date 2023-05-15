@@ -73,6 +73,10 @@ namespace grappler {
 //
 // Both Conv2D and MatMul implemented as Tensor contraction (on CPU), so all the
 // patterns are "ContractionWith...".
+//
+// _FusedConv2D/_FusedConv3D + <Activation> -> _FusedConv2D/_FusedConv3D
+// Supported Activations: LeakyRelu, Mish
+
 namespace {
 
 constexpr char kFusedConv2D[] = "_FusedConv2D";
@@ -82,6 +86,11 @@ constexpr char kFusedDepthwiseConv2dNative[] = "_FusedDepthwiseConv2dNative";
 constexpr char kFusedBatchNormEx[] = "_FusedBatchNormEx";
 constexpr char kFusedBatchNormGradEx[] = "_FusedBatchNormGradEx";
 constexpr char kTensorToHashBucket[] = "_TensorToHashBucketFast";
+constexpr char kLeakyRelu[] = "LeakyRelu";
+constexpr char kMklFusedMish[] = "_MklFusedMish";
+constexpr char kRelu[] = "Relu";
+constexpr char kRelu6[] = "Relu6";
+constexpr char kElu[] = "Elu";
 
 constexpr char kDataFormat[] = "data_format";
 constexpr char kIsTraining[] = "is_training";
@@ -174,6 +183,16 @@ struct ContractionWithBiasAdd {
   int contraction = kMissingIndex;
   int bias_add = kMissingIndex;
   int bias_port = 1;
+};
+
+// Contraction node followed by Activation
+struct ContractionWithActivation {
+  ContractionWithActivation() = default;
+  ContractionWithActivation(int contraction, int activation)
+      : contraction(contraction), activation(activation) {}
+
+  int contraction = kMissingIndex;
+  int activation = kMissingIndex;
 };
 
 // Contraction node followed by a BiasAdd and Activation.
@@ -596,6 +615,15 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched,
          IsGpuCompatible(ctx, matched, cluster);
 }
 
+// Returns the generic op name for an _Mkl activation op
+std::string GetActivationName(std::string s) {
+  if (s == kMklFusedMish) {
+    return "Mish";
+  } else {
+    return s;
+  }
+}
+
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
   return node_view.NumControllingFanins() > 0 ||
          node_view.NumControlledFanouts() > 0;
@@ -743,6 +771,53 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
     return false;
 
   // We successfully found a {Conv2D, MatMul}+BiasAdd pattern.
+  *matched = pattern;
+
+  return true;
+}
+
+// Fuse _FusedConv{2,3}D with elementwise ops that
+// gets fused in the first iteration of remapper
+// Currently supports: LeakyRelu, _MklFusedMish
+bool FindFusedConvWithFusedActivation(const RemapperContext& ctx,
+                                      int node_index,
+                                      ContractionWithActivation* matched) {
+  const auto* node_view = ctx.graph_view.GetNode(node_index);
+  if (HasControlFaninOrFanout(*node_view)) return false;
+
+  const auto* node_def = node_view->node();
+
+  // Root of the pattern must be on CPU with MKL enabled
+  if (!NodeIsOnCpu(node_def) && !IsMKLEnabled()) return false;
+
+  // Root of the pattern must be a LeakyRelu or _MklFusedMish
+  if (!IsLeakyRelu(*node_def) && !IsMklFusedMish(*node_def)) return false;
+
+  if (node_view->NumRegularFanins() < 1) return false;
+  const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
+  const auto* contraction_node_view = regular_fanin_0.node_view();
+  const auto* contraction_node_def = contraction_node_view->node();
+
+  // Input to the activation must be a _FusedConv2D or _FusedConv3D
+  if (!(contraction_node_def->op() == kFusedConv2D ||
+        contraction_node_def->op() == kFusedConv3D))
+    return false;
+
+  // Check if any activation is already fused into _FusedConv2D or _FusedConv3D
+  auto contraction_fused_ops_list =
+      contraction_node_def->attr().at("fused_ops").list().s();
+  for (auto it = contraction_fused_ops_list.begin();
+       it != contraction_fused_ops_list.end(); it++) {
+    if (*it == kLeakyRelu || *it == kMklFusedMish || *it == kRelu ||
+        *it == kRelu6 || *it == kElu) {
+      return false;
+    }
+  }
+
+  // We found the pattern
+  const ContractionWithActivation pattern{contraction_node_view->node_index(),
+                                          node_view->node_index()};
+
   *matched = pattern;
 
   return true;
@@ -2317,14 +2392,16 @@ bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
 
 bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
                           std::map<string, int>* matched_nodes_map,
-                          std::set<int>* remove_node_indices) {
+                          std::set<int>* remove_node_indices,
+                          std::vector<string>* input_node_names) {
   if (!IsMKLEnabled()) return false;
 
   using utils::MatchingDirection;
   using utils::NodeStatus;
+  int pattern = 0;
   // clang-format off
   utils::OpTypePattern fusion_pattern1 =
-    {"AddV2", "output", NodeStatus::kReplace,
+    {"Add|AddV2", "output", NodeStatus::kReplace,
       {
         {"Mul", "mul", NodeStatus::kRemove,
           {
@@ -2337,15 +2414,20 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
     };
 
   utils::OpTypePattern fusion_pattern2 =
-    {"AddV2", "output", NodeStatus::kReplace,
+    {"Add|AddV2", "output", NodeStatus::kReplace,
       {
-        {"*", "addend", NodeStatus::kRemain},
-        {"Mul", "mul", NodeStatus::kRemove,
+        {"BatchMatMulV2", "batch_matmul", NodeStatus::kRemove,
           {
-            {"BatchMatMulV2", "batch_matmul", NodeStatus::kRemove},
-            {"*", "multiplicand", NodeStatus::kRemain}
+            {"Mul", "mul", NodeStatus::kRemove,
+              {
+                {"*", "mul_input0", NodeStatus::kRemain},
+                {"Const|Cast", "multiplicand", NodeStatus::kRemain}
+              }
+            },
+            {"*", "bmm_input1", NodeStatus::kRemain}
           }
-        }
+        },
+        {"*", "addend", NodeStatus::kRemain}
       }
     };
   // clang-format on
@@ -2359,6 +2441,7 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
       graph_matcher.GetMatchedNodes(fusion_pattern1, ctx->nodes_to_preserve,
                                     ctx->graph_view.GetNode(node_index),
                                     matched_nodes_map, remove_node_indices);
+  if (found_op_type_match) pattern = 1;
 
   if (!found_op_type_match) {
     matched_nodes_map->clear();
@@ -2367,6 +2450,7 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
         graph_matcher.GetMatchedNodes(fusion_pattern2, ctx->nodes_to_preserve,
                                       ctx->graph_view.GetNode(node_index),
                                       matched_nodes_map, remove_node_indices);
+    if (found_op_type_match) pattern = 2;
   }
 
   // OneDNN is not optimized for all shapes with regard to binary-post ops
@@ -2402,8 +2486,24 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
   auto addend_props =
       ctx->graph_properties.GetOutputProperties(addend_node_def->name());
   auto addend_shape = addend_props[0].shape();
-  if (!(Rank(addend_shape) == 4 && addend_shape.dim(1).size() == 1))
+  if (!(Rank(addend_shape) == 4 && addend_shape.dim(1).size() == 1)) {
     return false;
+  }
+  input_node_names->clear();
+  input_node_names->resize(4);
+  if (pattern == 1) {
+    input_node_names->at(0) = batch_matmul_node_def->input(0);
+    input_node_names->at(1) = batch_matmul_node_def->input(1);
+    input_node_names->at(2) = multiplicand_node_def->name();
+    input_node_names->at(3) = addend_node_def->name();
+  } else if (pattern == 2) {
+    auto* mul_input0_node_def =
+        ctx->graph_view.GetNode(matched_nodes_map->at("mul_input0"))->node();
+    input_node_names->at(0) = mul_input0_node_def->name();
+    input_node_names->at(1) = batch_matmul_node_def->input(1);
+    input_node_names->at(2) = multiplicand_node_def->name();
+    input_node_names->at(3) = addend_node_def->name();
+  }
   return found_op_type_match;
 }
 
@@ -2831,6 +2931,59 @@ Status AddFusedContractionNode(RemapperContext* ctx,
 
   (*invalidated_nodes)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.contraction] = true;
+
+  return OkStatus();
+}
+
+Status AddFusedContractionNode(RemapperContext* ctx,
+                               const ContractionWithActivation& matched,
+                               std::vector<bool>* invalidated_nodes,
+                               std::vector<bool>* nodes_to_delete) {
+  const GraphDef* graph = ctx->graph_view.graph();
+  const NodeDef& contraction = graph->node(matched.contraction);
+  const NodeDef& activation = graph->node(matched.activation);
+
+  VLOG(2) << "Fuse " << contraction.op() << " and " << activation.op() << ":"
+          << " activation=" << activation.name()
+          << " contraction=" << contraction.name();
+
+  NodeDef fused_op;
+
+  // In case of _FusedConv2{3}D, only updating the fused_ops
+  // attr and the value of alpha in case of LeakyRelu activation
+
+  // creating a copy of the contraction
+  fused_op.CopyFrom(contraction);
+
+  auto* attr = fused_op.mutable_attr();
+  auto contraction_fused_ops_list =
+      contraction.attr().at("fused_ops").list().s();
+
+  // updating the fused_ops attr
+  std::vector<std::string> fused_items;
+  for (auto it = contraction_fused_ops_list.begin();
+       it != contraction_fused_ops_list.end(); it++) {
+    fused_items.push_back(*it);
+  }
+  fused_items.push_back(GetActivationName(activation.op()));
+
+  SetAttrValue(fused_items, &(*attr)["fused_ops"]);
+
+  // LeakyRelu has a special attribute
+  if (IsLeakyRelu(activation)) {
+    auto& activation_attr = activation.attr();
+    (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
+  }
+  fused_op.set_name(activation.name());
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*nodes_to_delete)[matched.contraction] = true;
+  (*invalidated_nodes)[matched.activation] = true;
 
   return OkStatus();
 }
@@ -3753,25 +3906,19 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
 Status AddFusedBatchMatMul(RemapperContext* ctx,
                            const std::map<string, int>& matched_nodes_map,
                            const std::set<int>& remove_node_indices,
+                           const std::vector<string>& input_node_names,
                            std::vector<bool>* invalidated_nodes,
                            std::vector<bool>* nodes_to_delete) {
   auto* output_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
   auto* batch_matmul_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("batch_matmul"))->node();
-  auto* multiplicand_node =
-      ctx->graph_view.GetNode(matched_nodes_map.at("multiplicand"))->node();
-  auto* addend_node =
-      ctx->graph_view.GetNode(matched_nodes_map.at("addend"))->node();
 
   NodeDef fused_node;
   fused_node.set_name(output_node->name());
   fused_node.set_op("_MklFusedBatchMatMulV2");
   fused_node.set_device(batch_matmul_node->device());
-  fused_node.add_input(batch_matmul_node->input(0));
-  fused_node.add_input(batch_matmul_node->input(1));
-  fused_node.add_input(multiplicand_node->name());
-  fused_node.add_input(addend_node->name());
+  for (const auto& name : input_node_names) fused_node.add_input(name);
 
   CopyBatchMatMulAttributes(*batch_matmul_node, &fused_node);
   SetFusedOpAttributes(&fused_node, {"Mul", "Add"}, /*num_args=*/2);
@@ -4268,6 +4415,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     ContractionWithBiasAddAndAdd contract_with_bias_and_add;
+    ContractionWithActivation contract_with_activation;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
     if (IsMKLEnabled()) {
@@ -4277,6 +4425,15 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
               ctx, i, &contract_with_bias_and_add_activation)) {
         TF_RETURN_IF_ERROR(
             AddFusedContractionNode(&ctx, contract_with_bias_and_add_activation,
+                                    &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
+
+      // Remap {_FusedConv2D, _FusedConv3D} + {LeakyRelu, _MklFusedMish}
+      // into {_FusedConv2D, _FusedConv3D}
+      if (FindFusedConvWithFusedActivation(ctx, i, &contract_with_activation)) {
+        TF_RETURN_IF_ERROR(
+            AddFusedContractionNode(&ctx, contract_with_activation,
                                     &invalidated_nodes, &nodes_to_delete));
         continue;
       }
@@ -4300,6 +4457,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       std::map<string, int> matched_nodes_map;
       std::set<int> remove_node_indices;
+      std::vector<string> input_node_names;
 
       // Softplus + Tanh + Mul to Mish conversion
       matched_nodes_map.clear();
@@ -4315,11 +4473,12 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Remap BatchMatMul+Mul+AddV2 into the _FusedBatchMatMul.
       matched_nodes_map.clear();
       remove_node_indices.clear();
+      input_node_names.clear();
       if (FindFusedBatchMatMul(&ctx, i, &matched_nodes_map,
-                               &remove_node_indices)) {
-        TF_RETURN_IF_ERROR(
-            AddFusedBatchMatMul(&ctx, matched_nodes_map, remove_node_indices,
-                                &invalidated_nodes, &nodes_to_delete));
+                               &remove_node_indices, &input_node_names)) {
+        TF_RETURN_IF_ERROR(AddFusedBatchMatMul(
+            &ctx, matched_nodes_map, remove_node_indices, input_node_names,
+            &invalidated_nodes, &nodes_to_delete));
         continue;
       }
 

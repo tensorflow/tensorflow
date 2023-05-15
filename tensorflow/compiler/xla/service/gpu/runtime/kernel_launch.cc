@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/concurrent_region.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -54,6 +55,7 @@ StreamExecutorKernels* GpuExecutableKernels::operator()(
 static absl::Status LaunchImpl(
     const ServiceExecutableRunOptions* run_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
+    ConcurrentRegionStatus* region_status,
     State<std::unique_ptr<se::KernelBase>> device_kernel,
     int32_t shared_memory_bytes, int32_t grid_size_x, int32_t grid_size_y,
     int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
@@ -79,17 +81,23 @@ static absl::Status LaunchImpl(
   assert((**kernel)->name() == name && "unexpected loaded kernel");
 
 #if GOOGLE_CUDA
-  absl::StatusOr<bool> is_capturing = se::gpu::IsStreamCapturing(stream);
-  if (!is_capturing.ok()) return is_capturing.status();
-  if (is_capturing.value()) {
-    VLOG(3) << "Launching " << (**kernel)->name()
-            << "during CUDA graph capture";
+  TF_ASSIGN_OR_RETURN(bool is_capturing, se::gpu::IsStreamCapturing(stream));
+#else
+  bool is_capturing = false;
+#endif
+
+  if (is_capturing) {
+    if (region_status->IsInConcurrentRegion()) {
+      VLOG(3) << "Launching " << (**kernel)->name()
+              << "in a concurrent region during CUDA graph capture";
+    } else {
+      VLOG(3) << "Launching " << (**kernel)->name()
+              << "during CUDA graph capture";
+    }
   } else {
     VLOG(3) << "Launching " << (**kernel)->name();
   }
-#else
-  VLOG(3) << "Launching " << (**kernel)->name();
-#endif
+
   absl::InlinedVector<se::DeviceMemoryBase, 8> buffer_args(
       args_size_including_temp_buffer);
 
@@ -110,9 +118,16 @@ static absl::Status LaunchImpl(
   // Always add temporary buffer as the last kernel argument.
   buffer_args.back() = *temp_buffer;
 
-  // Execute device kernel on a main stream.
-  auto executed =
-      ExecuteKernelOnStream(***kernel, buffer_args, launch_dimensions, stream);
+  // If we are capturing a concurrent region in a CUDA graph, then use the
+  // stream provided by ConcurrentRegionStatus to execute the kernel.
+  se::Stream* execution_stream = stream;
+  if (region_status->IsInConcurrentRegion()) {
+    execution_stream = region_status->GetNextStream();
+  }
+
+  // Execute device kernel on the execution stream.
+  auto executed = ExecuteKernelOnStream(***kernel, buffer_args,
+                                        launch_dimensions, execution_stream);
   if (!executed.ok()) return ToAbslStatus(executed);
 
   return absl::OkStatus();
@@ -127,6 +142,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<const std::string*>()
         .UserData<const std::vector<uint8_t>*>()
         .UserData<se::DeviceMemoryBase*>()
+        .UserData<ConcurrentRegionStatus*>()
         .State<std::unique_ptr<se::KernelBase>>("uid")
         .Arg<int32_t>()   // shared_memory_bytes
         .Arg<int32_t>()   // grid_size_x

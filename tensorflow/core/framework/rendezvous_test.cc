@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/rendezvous.h"
 
+#include "absl/status/status.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -164,7 +165,7 @@ TEST_F(LocalRendezvousTest, CancelBeforeRecv) {
   cm->StartCancel();
   auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(errors::IsCancelled(s));
+  EXPECT_TRUE(absl::IsCancelled(s));
   EXPECT_EQ("RecvAsync is cancelled.", s.message());
   delete cm;
 }
@@ -183,7 +184,7 @@ TEST_F(LocalRendezvousTest, CancelAfterRecv) {
   args.cancellation_manager = cm;
   auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(errors::IsCancelled(s));
+  EXPECT_TRUE(absl::IsCancelled(s));
   EXPECT_EQ("RecvAsync is cancelled.", s.message());
   n.WaitForNotification();
   delete cm;
@@ -365,7 +366,7 @@ TEST_F(LocalRendezvousTest, RecvAbort) {
   bool val_dead = false;
   Rendezvous::Args args;
   Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(absl::IsAborted(status));
 }
 
 // Similar to RecvAbort. But this test case ensures the main thread
@@ -381,7 +382,7 @@ TEST_F(LocalRendezvousTest, RecvSleepAbort) {
   bool val_dead = false;
   Rendezvous::Args args;
   Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(absl::IsAborted(status));
 }
 
 TEST_F(LocalRendezvousTest, AbortThenRecvOrSend) {
@@ -389,9 +390,8 @@ TEST_F(LocalRendezvousTest, AbortThenRecvOrSend) {
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  EXPECT_TRUE(errors::IsAborted(rendez_->Send(KeyFoo(), args, val, val_dead)));
-  EXPECT_TRUE(
-      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
+  EXPECT_TRUE(absl::IsAborted(rendez_->Send(KeyFoo(), args, val, val_dead)));
+  EXPECT_TRUE(absl::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
 }
 
 class DummyDeviceContext : public DeviceContext {

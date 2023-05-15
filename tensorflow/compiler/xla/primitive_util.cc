@@ -113,35 +113,6 @@ int OverflowExponent(PrimitiveType type) {
   }
 }
 
-bool IsSignedIntegralType(PrimitiveType type) {
-  return type == S4 || type == S8 || type == S16 || type == S32 || type == S64;
-}
-
-bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U4 || type == U8 || type == U16 || type == U32 || type == U64;
-}
-
-bool IsIntegralType(PrimitiveType type) {
-  return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
-}
-
-xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
-  switch (src_bitwidth) {
-    case 4:
-      return xla::U4;
-    case 8:
-      return xla::U8;
-    case 16:
-      return xla::U16;
-    case 32:
-      return xla::U32;
-    case 64:
-      return xla::U64;
-    default:
-      return xla::PRIMITIVE_TYPE_INVALID;
-  }
-}
-
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 4:

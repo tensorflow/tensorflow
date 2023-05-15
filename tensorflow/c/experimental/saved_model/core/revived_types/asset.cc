@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
@@ -37,8 +39,8 @@ Status Asset::Create(ImmediateExecutionContext* ctx,
       io::JoinPath(saved_model_dir, kSavedModelAssetsDirectory, asset_filename);
   AbstractTensorPtr tensor(ctx->CreateStringScalar(abs_path));
   if (tensor.get() == nullptr) {
-    return errors::Internal(
-        "Failed to create scalar string tensor for Asset at path ", abs_path);
+    return absl::InternalError(absl::StrCat(
+        "Failed to create scalar string tensor for Asset at path ", abs_path));
   }
 
   ImmediateTensorHandlePtr handle(ctx->CreateLocalHandle(tensor.get()));

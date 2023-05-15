@@ -42,6 +42,7 @@ namespace {
 class FloatAddOpModel : public SingleOpModel {
  public:
   FloatAddOpModel() = default;
+  ~FloatAddOpModel() { stateful_delegate_.reset(); }
   void Init(const NnApi* nnapi, tflite::StatefulNnApiDelegate::Options options,
             const TensorData& input1, const TensorData& input2,
             const TensorData& output, ActivationFunctionType activation_type,

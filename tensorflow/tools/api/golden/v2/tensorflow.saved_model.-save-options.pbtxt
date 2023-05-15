@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'member_descriptor\'>"
   }
   member {
+    name: "experimental_image_format"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
     name: "experimental_io_device"
     mtype: "<type \'member_descriptor\'>"
   }
@@ -28,6 +32,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'namespace_whitelist\', \'save_debug_info\', \'function_aliases\', \'experimental_io_device\', \'experimental_variable_policy\', \'experimental_custom_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'namespace_whitelist\', \'save_debug_info\', \'function_aliases\', \'experimental_io_device\', \'experimental_variable_policy\', \'experimental_custom_gradients\', \'experimental_image_format\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\', \'None\', \'True\', \'False\'], "
   }
 }

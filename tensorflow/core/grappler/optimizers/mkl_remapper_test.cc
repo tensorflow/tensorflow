@@ -859,9 +859,103 @@ class MklFusedBatchMatMul : public MklRemapperTest {
 
     auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-    std::is_same<T, float>::value
-        ? test::ExpectClose(tensors_expected[0], tensors[0], 1e-6, 1e-6)
-        : test::ExpectClose(tensors_expected[0], tensors[0], 1e-2, 1e-2);
+    float atol = 1e-6, rtol = 1e-6;
+    if (std::is_same<T, bfloat16>::value) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    }
+    test::ExpectClose(tensors_expected[0], tensors[0], atol, rtol);
+  }
+
+  template <typename T>
+  void VerifyPreceedingScalarMul(bool adjx, bool adjy) {
+    using ::tensorflow::ops::Placeholder;
+    using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
+
+    int b0 = 2;
+    int b1 = 2;
+    int m = 32;
+    int k = 16;
+    int n = 64;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape =
+        adjx ? TensorShape({b0, b1, k, m}) : TensorShape({b0, b1, m, k});
+    auto weight_shape =
+        adjy ? TensorShape({b0, b1, n, k}) : TensorShape({b0, b1, k, n});
+    auto add_shape = TensorShape({b0, 1, m, n});
+
+    auto input_placeholder_shape = ops::Placeholder::Shape(input_shape);
+    auto weight_placeholder_shape = ops::Placeholder::Shape(weight_shape);
+    auto add_placeholder_shape = ops::Placeholder::Shape(add_shape);
+
+    const DataType dtype = DataTypeToEnum<T>::v();
+    auto input =
+        Placeholder(s.WithOpName("input"), dtype, input_placeholder_shape);
+    auto weight =
+        Placeholder(s.WithOpName("weight"), dtype, weight_placeholder_shape);
+    auto addend =
+        Placeholder(s.WithOpName("addend"), dtype, add_placeholder_shape);
+
+    auto scale_const = ops::Const(s.WithOpName("scale_const"), {0.1f});
+    auto scale = ops::Cast(s.WithOpName("scale"), scale_const, dtype);
+    auto mul = ops::Multiply(s.WithOpName("mul"), input, scale);
+    auto batchmatmul =
+        ops::BatchMatMulV2(s.WithOpName("batchmatmul"), mul, weight,
+                           ops::BatchMatMulV2::Attrs().AdjX(adjx).AdjY(adjy));
+    auto add = ops::Add(s.WithOpName("add"), batchmatmul, addend);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), add);
+
+    Tensor input_t = Tensor(dtype, input_shape);
+    Tensor weight_t = Tensor(dtype, weight_shape);
+    Tensor add_t = Tensor(dtype, add_shape);
+    input_t.flat<T>() =
+        input_t.flat<T>().template setRandom<normal_generator>();
+    weight_t.flat<T>() =
+        weight_t.flat<T>().template setRandom<normal_generator>();
+    add_t.flat<T>() = add_t.flat<T>().template setRandom<normal_generator>();
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"weight", weight_t}, {"addend", add_t}};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "add") {
+        EXPECT_EQ("_MklFusedBatchMatMulV2", node.op());
+        EXPECT_EQ("input", node.input(0));
+        EXPECT_EQ("weight", node.input(1));
+        EXPECT_EQ("scale", node.input(2));
+        EXPECT_EQ("addend", node.input(3));
+        const auto fused_ops = node.attr().at("fused_ops").list().s();
+        EXPECT_EQ(2, fused_ops.size());
+        EXPECT_EQ("Mul", fused_ops[0]);
+        found++;
+        EXPECT_EQ("Add", fused_ops[1]);
+        found++;
+      }
+    }
+    EXPECT_EQ(2, found);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    float atol = 1e-6, rtol = 1e-6;
+    if (std::is_same<T, bfloat16>::value) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    }
+    test::ExpectClose(tensors_expected[0], tensors[0], atol, rtol);
   }
 };
 
@@ -871,6 +965,14 @@ TEST_F(MklFusedBatchMatMul, MulAndAdd) {
     for (const auto adjy : {false, true}) {
       this->VerifyFused<float>(adjx, adjy);
       this->VerifyFused<bfloat16>(adjx, adjy);
+    }
+}
+
+TEST_F(MklFusedBatchMatMul, MulAndAdd2) {
+  for (const auto adjx : {false, true})
+    for (const auto adjy : {false, true}) {
+      this->VerifyPreceedingScalarMul<float>(adjx, adjy);
+      this->VerifyPreceedingScalarMul<bfloat16>(adjx, adjy);
     }
 }
 

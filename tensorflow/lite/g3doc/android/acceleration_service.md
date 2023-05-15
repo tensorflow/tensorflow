@@ -67,9 +67,9 @@ to perform test inferences.
 At the moment the acceleration service enables you to evaluate GPU
 configurations (converted to GPU delegate during the execution time)
 with the
-[GpuAccelerationConfig](https://developers.google.com/android/reference/com/google/android/reference/com/google/android/gms/ads/mediation/package-summary))
+[GpuAccelerationConfig](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/GpuAccelerationConfig)
 and CPU inference (with
-[CpuAccelerationConfig](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/CpuAccelerationConfig).
+[CpuAccelerationConfig](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/CpuAccelerationConfig)).
 We are working on supporting more delegates to access other hardware in the
 future.
 
@@ -170,7 +170,7 @@ Note that if the validation data is already embedded in your model, you can use
 Golden outputs are optional and as long as you provide golden inputs, the
 Acceleration Service can internally generate the golden outputs. You can also
 define the acceleration configuration used to generate these golden outputs by
-calling [`setGoldenConfig()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/CustomValidationConfigBuilder#public-customvalidationconfig.builder-setgoldenconfig-accelerationconfig-value):
+calling [`setGoldenConfig()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/CustomValidationConfig.Builder#setGoldenConfig(com.google.android.gms.tflite.acceleration.AccelerationConfig)):
 
 ```
 ValidationConfig validationConfig = new CustomValidationConfig.Builder()
@@ -200,10 +200,10 @@ TfLiteGpu.isGpuDelegateAvailable(context)
 ```
 
 Instantiate the [`AccelerationService`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/AccelerationService)
-by calling [`AccelerationService.create()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/accelerationAccelerationService#public-static-accelerationservice-create-context-context).
+by calling [`AccelerationService.create()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/AccelerationService#create(android.content.Context)).
 
 You can then validate your acceleration configuration for your model by calling
-[`validateConfig()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/AccelerationService#public-taskvalidatedaccelerationconfigresult-validateconfig-model-model,-accelerationconfig-accelerationconfig,-validationconfig-validationconfig):
+[`validateConfig()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/AccelerationService#validateConfig(com.google.android.gms.tflite.acceleration.Model,%20com.google.android.gms.tflite.acceleration.AccelerationConfig,%20com.google.android.gms.tflite.acceleration.ValidationConfig)):
 
 ```
 InterpreterApi interpreter;
@@ -218,7 +218,7 @@ AccelerationService.create(context)
 ```
 
 You can also validate multiple configurations by calling
-[`validateConfigs()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/AccelerationService#validateConfig\(com.google.android.gms.tflite.acceleration.Model,%20com.google.android.gms.tflite.acceleration.AccelerationConfig,%20com.google.android.gms.tflite.acceleration.ValidationConfig\))
+[`validateConfigs()`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/AccelerationService#validateConfigs(com.google.android.gms.tflite.acceleration.Model,%20java.lang.Iterable%3Ccom.google.android.gms.tflite.acceleration.AccelerationConfig%3E,%20com.google.android.gms.tflite.acceleration.ValidationConfig))
 and passing an `Iterable<AccelerationConfig>` object as a parameter.
 
 `validateConfig()`will return a

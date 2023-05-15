@@ -15,12 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/core/subgraph.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <functional>
 #include <memory>
+#include <numeric>
+#include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
@@ -32,6 +40,9 @@ TfLiteRegistration* Register_NEG();
 }  // namespace ops
 
 namespace {
+
+using testing::ElementsAreArray;
+using testing::Not;
 
 TEST(RemoveUnusedInputs, NothingToRemove) {
   Interpreter interpreter;
@@ -128,6 +139,140 @@ TEST(MarkSubgraphAsDelegationSkippable, MarkSubgraphAsDelegationSkippable) {
 
   ASSERT_EQ(subgraphs[0]->MarkSubgraphAsDelegationSkippable(1), kTfLiteOk);
   ASSERT_TRUE(subgraphs[1]->IsDelegationSkippable());
+}
+
+// Helper to get the minimal buffer size to allocate for a buffer of given
+// shape.
+size_t BytesFor(const TfLiteType type, const int* const data,
+                const size_t size) {
+  size_t type_size;
+  CHECK_EQ(GetSizeOfType(nullptr, type, &type_size), kTfLiteOk)
+      << "Type is not supported by GetSizeOfType";
+  return std::accumulate(data, data + size, type_size, std::multiplies<int>());
+}
+
+size_t BytesFor(const TfLiteType type, const TfLiteIntArray& dims) {
+  return BytesFor(type, dims.data, dims.size);
+}
+
+size_t BytesFor(const TfLiteType type, const std::vector<int>& dims) {
+  return BytesFor(type, dims.data(), dims.size());
+}
+
+// Sets up a TFLite context and default values to initialize/resize test
+// tensors.
+class SubgraphResizeTensorTest : public testing::Test {
+ public:
+  SubgraphResizeTensorTest() {
+    tensor_.type = type_;
+    tensor_.allocation_type = kTfLiteDynamic;
+  }
+
+  ~SubgraphResizeTensorTest() override { TfLiteTensorFree(&tensor_); }
+
+ protected:
+  const TfLiteType type_ = kTfLiteInt32;
+  Interpreter interpreter_;
+  TfLiteContext& context_ = *interpreter_.primary_subgraph().context();
+  const std::vector<int> reference_shape_ = {5, 4, 3};
+  const size_t reference_dims_bytes_ = BytesFor(type_, reference_shape_);
+  TfLiteTensor tensor_ = {};
+  TfLiteIntArray* dims_ = ConvertVectorToTfLiteIntArray(reference_shape_);
+};
+
+TEST_F(SubgraphResizeTensorTest, ResizeEmptyDynamicTensorAllocateData) {
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_), kTfLiteOk);
+  EXPECT_EQ(tensor_.dims, dims_);
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_GE(tensor_.bytes, reference_dims_bytes_);
+  // Touch memory to trigger ASAN in case of failure.
+  std::fill_n(tensor_.data.raw, reference_dims_bytes_, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest,
+       ResizeEmptyDynamicTensorWithStoredShapeAllocatesData) {
+  tensor_.dims = dims_;
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, tensor_.dims),
+            kTfLiteOk);
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_GE(tensor_.bytes, reference_dims_bytes_);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, reference_dims_bytes_, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest, ResizeDynamicTensorWithTheEqualShapeIsANoop) {
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_), kTfLiteOk);
+  const void* const initial_data = tensor_.data.data;
+
+  TfLiteIntArray* dims2 = ConvertVectorToTfLiteIntArray(reference_shape_);
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims2), kTfLiteOk);
+
+  EXPECT_EQ(tensor_.dims, dims2);
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_GE(tensor_.bytes, reference_dims_bytes_);
+  EXPECT_GE(tensor_.data.data, initial_data);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, reference_dims_bytes_, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest, ResizeDynamicTensorWithStoredShapeIsANoop) {
+  tensor_.dims = dims_;
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, tensor_.dims),
+            kTfLiteOk);
+  const void* const initial_data = tensor_.data.data;
+  // Reallocate the tensor with its current shape.
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, tensor_.dims),
+            kTfLiteOk);
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_GE(tensor_.bytes, reference_dims_bytes_);
+  EXPECT_GE(tensor_.data.data, initial_data);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, reference_dims_bytes_, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest,
+       ResizeDynamicTensorWithEquivalentBufferSizeIsANoop) {
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_), kTfLiteOk);
+  const void* const initial_data = tensor_.data.data;
+
+  const std::vector<int> new_shape = {3, 4, 5};
+  ASSERT_THAT(new_shape, Not(ElementsAreArray(reference_shape_)));
+  TfLiteIntArray* dims2 = ConvertVectorToTfLiteIntArray(new_shape);
+  ASSERT_EQ(BytesFor(type_, *dims2), reference_dims_bytes_);
+
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims2), kTfLiteOk);
+
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_GE(tensor_.bytes, reference_dims_bytes_);
+  EXPECT_EQ(tensor_.data.data, initial_data);
+  EXPECT_EQ(tensor_.dims, dims2);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, reference_dims_bytes_, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest,
+       ResizeDynamicTensorWithDifferentShapeReallocatesData) {
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_), kTfLiteOk);
+  const void* const initial_data = tensor_.data.data;
+
+  TfLiteIntArray* dims2 = ConvertVectorToTfLiteIntArray({5, 4, 6});
+  const int dims2_bytes = BytesFor(type_, *dims2);
+  ASSERT_NE(dims2_bytes, reference_dims_bytes_);
+
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims2), kTfLiteOk);
+
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_GE(tensor_.bytes, dims2_bytes);
+  EXPECT_NE(tensor_.data.data, initial_data);
+  EXPECT_EQ(tensor_.dims, dims2);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, dims2_bytes, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
 }
 
 }  // namespace

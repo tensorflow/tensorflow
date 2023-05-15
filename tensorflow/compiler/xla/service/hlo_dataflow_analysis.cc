@@ -1464,11 +1464,14 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           break;
         case HloOpcode::kCollectivePermuteStart:
           // CollectivePermuteStart produces a tuple of
-          // {aliased operand, destination buffer, U32 context, U32 context}.
+          // {aliased operand, destination buffer, contexts}, where the context
+          // data are optional.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
-          define_value_at(/*index=*/{2});
-          define_value_at(/*index=*/{3});
+          for (int i = 2; i < instruction->shape().tuple_shapes_size(); ++i) {
+            define_value_at(/*index=*/{i});
+          }
+
           if (instruction->operand_count() > 1) {
             CHECK_EQ(instruction->operand_count(), 4);
             if (instruction->operand(1)->shape().IsTuple()) {

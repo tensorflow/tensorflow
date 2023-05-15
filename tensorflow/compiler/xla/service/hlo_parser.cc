@@ -167,6 +167,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kTopK:
       return true;
     // Technically the following ops do not require an explicit result shape,
     // but we made it so that we always write the shapes explicitly.
@@ -1356,6 +1357,25 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       return builder->AddInstruction(
           HloInstruction::CreateIota(*shape, *iota_dimension));
+    }
+    case HloOpcode::kTopK: {
+      optional<int64_t> k;
+      attrs["k"] = {/*required=*/true, AttrTy::kInt64, &k};
+      std::optional<HloComputation*> to_apply;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &to_apply};
+      if ((!preset_operands && !ParseOperands(&operands, builder,
+                                              /*expected_size=*/1)) ||
+          !ParseAttributes(attrs, allow_attributes)) {
+        return nullptr;
+      }
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferTopKShape(operands[0]->shape(), *k);
+          })) {
+        return nullptr;
+      }
+      return builder->AddInstruction(
+          HloInstruction::CreateTopK(*shape, operands[0], *k, *to_apply));
     }
     // Unary ops.
     case HloOpcode::kAbs:
@@ -5321,10 +5341,14 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 //   ::= '{' int64_list
 //       (':' dim_level_types
 //            tiles
+//            element_size_in_bits
 //            memory_space
 //            physical_shape
 //            dynamic_shape_metadata_prefix_bytes)?
 //       '}'
+// element_size_in_bits
+//   ::= /*empty*/
+//   ::= 'E' '(' int64_t ')'
 // memory_space
 //   ::= /*empty*/
 //   ::= 'S' '(' int64_t ')'
@@ -5336,6 +5360,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   std::vector<Tile> tiles;
   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID;
   PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
+  int64_t element_size_in_bits = 0;
   int64_t memory_space = 0;
   std::optional<Shape> physical_shape;
   int64_t dynamic_shape_metadata_prefix_bytes = 0;
@@ -5401,6 +5426,11 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
                           TokKindToString(TokKind::kRparen)));
       }
 
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "E") {
+        lexer_.Lex();
+        ParseLayoutIntAttribute(&element_size_in_bits, "element size in bits");
+      }
+
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "S") {
         lexer_.Lex();
         ParseLayoutIntAttribute(&memory_space, "memory space");
@@ -5429,10 +5459,11 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, dim_unique, dim_ordered, vec_tiles,
-      index_primitive_type, pointer_primitive_type, memory_space,
-      std::move(physical_shape), dynamic_shape_metadata_prefix_bytes);
+  *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, dim_unique,
+                                   dim_ordered, vec_tiles, index_primitive_type,
+                                   pointer_primitive_type, element_size_in_bits,
+                                   memory_space, std::move(physical_shape),
+                                   dynamic_shape_metadata_prefix_bytes);
   return true;
 }
 

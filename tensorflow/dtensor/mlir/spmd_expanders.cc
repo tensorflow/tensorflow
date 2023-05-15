@@ -560,6 +560,9 @@ REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
 // Unique
 REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,
               /*relayout_when_sharded=*/true);
+// Image Ops
+
+REGISTER_SPMD(EncodePng, TF::EncodePngOp, ReduceSPMDExpander);
 
 }  // namespace dtensor
 }  // namespace tensorflow

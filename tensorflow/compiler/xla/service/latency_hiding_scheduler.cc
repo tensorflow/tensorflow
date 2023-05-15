@@ -1488,17 +1488,23 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     kAllGather,
     kAllReduce,
     kCollectivePermute,
+    kAllToAll,
+    kReduceScatter,
     kSend,
     kRecv,
   };
   auto opcode_to_async_kind = [](HloOpcode opcode) {
     switch (opcode) {
-      case HloOpcode::kAllGatherStart:
+      case HloOpcode::kAllGather:
         return AsyncKind::kAllGather;
-      case HloOpcode::kAllReduceStart:
+      case HloOpcode::kAllReduce:
         return AsyncKind::kAllReduce;
-      case HloOpcode::kCollectivePermuteStart:
+      case HloOpcode::kCollectivePermute:
         return AsyncKind::kCollectivePermute;
+      case HloOpcode::kAllToAll:
+        return AsyncKind::kAllToAll;
+      case HloOpcode::kReduceScatter:
+        return AsyncKind::kReduceScatter;
       case HloOpcode::kSend:
         return AsyncKind::kSend;
       case HloOpcode::kRecv:
@@ -1519,7 +1525,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
   };
   auto find_outstanding_async = [&outstanding_collectives](
                                     const HloInstruction* instr) {
-    const auto& collective_vec = outstanding_collectives[instr->opcode()];
+    const auto& collective_vec =
+        outstanding_collectives[GetCanonicalAsyncOp(*instr).inner];
     auto it = absl::c_find_if(
         collective_vec,
         [instr](const std::tuple<const HloInstruction*, int64_t, int64_t>& p) {
@@ -1545,7 +1552,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     const HloGraphNode& instr_node = schedule_graph.GetNode(instr);
     current_time += instr_node.GetCost();
     if (async_tracker->IsSupportedAsyncStart(*instr)) {
-      outstanding_collectives[instr->opcode()].push_back(
+      outstanding_collectives[GetCanonicalAsyncOp(*instr).inner].push_back(
           {instr, current_time, curr_pos});
     } else if (async_tracker->IsSupportedAsyncDone(*instr)) {
       const HloInstruction* start_instr = instr->operand(0);
@@ -1554,8 +1561,9 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       auto edge_it = find_node_successor_edge(start_node, instr_node);
       const double async_wasted_cycles =
           std::max(0.0, edge_it->Latency() - (current_time - std::get<1>(*it)));
-      wasted_time_per_collective[opcode_to_async_kind(start_instr->opcode())] +=
-          async_wasted_cycles;
+      AsyncKind kind =
+          opcode_to_async_kind(GetCanonicalAsyncOp(*start_instr).inner);
+      wasted_time_per_collective[kind] += async_wasted_cycles;
       current_time += async_wasted_cycles;
     }
     curr_pos++;
@@ -1582,6 +1590,10 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       wasted_time_per_collective[AsyncKind::kAllReduce],
       /*collective_permute_wasted_cycles=*/
       wasted_time_per_collective[AsyncKind::kCollectivePermute],
+      /*all_to_all_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kAllToAll],
+      /*reduce_scatter_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kReduceScatter],
       /*send_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kSend],
       /*recv_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kRecv],
       /*total_cycles=*/current_time,
@@ -1595,23 +1607,30 @@ LatencyHidingScheduler::LatencyHidingStatistics(
 std::string LatencyHidingScheduler::SchedulerStatisticsString(
     const SchedulerStatistics& sched_stats) {
   std::string result;
-  if (sched_stats.computation != nullptr) {
-    absl::StrAppend(&result,
-                    "For computation: ", sched_stats.computation->name(), "\n");
+  if (const HloComputation* comp = sched_stats.computation) {
+    absl::StrAppend(&result, "For computation: ", comp->name(), ", module ",
+                    comp->parent()->name(), "(", comp->parent()->unique_id(),
+                    ")\n");
   }
   absl::StrAppend(&result, "Total wasted cycles: ",
                   sched_stats.all_gather_wasted_cycles +
                       sched_stats.all_reduce_wasted_cycles +
                       sched_stats.collective_permute_wasted_cycles +
+                      sched_stats.all_to_all_wasted_cycles +
+                      sched_stats.reduce_scatter_wasted_cycles +
                       sched_stats.send_wasted_cycles +
                       sched_stats.recv_wasted_cycles,
                   "\n");
-  absl::StrAppend(&result, "Wasted cycles for collective-permute: ",
-                  sched_stats.collective_permute_wasted_cycles, "\n");
-  absl::StrAppend(&result, "Wasted cycles for all-gather: ",
-                  sched_stats.all_gather_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-reduce: ",
                   sched_stats.all_reduce_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for all-gather: ",
+                  sched_stats.all_gather_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for collective-permute: ",
+                  sched_stats.collective_permute_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for all-to-all: ",
+                  sched_stats.all_to_all_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for reduce-scatter: ",
+                  sched_stats.reduce_scatter_wasted_cycles, "\n");
   absl::StrAppend(&result,
                   "Wasted cycles for send: ", sched_stats.send_wasted_cycles,
                   "\n");

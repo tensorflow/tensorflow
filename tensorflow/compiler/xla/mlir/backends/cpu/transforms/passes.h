@@ -30,7 +30,7 @@ namespace cpu {
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createConvertLmhloToCpuRuntimePass();
+createConvertXlaCpuToCpuRuntimePass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createXlaAbiLegalizationPass();

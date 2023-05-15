@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/concurrent_region.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv_reorder.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
@@ -50,24 +51,6 @@ limitations under the License.
 #endif  // #if GOOGLE_CUDA
 
 namespace xla {
-
-#if GOOGLE_CUDA
-namespace runtime {
-namespace ffi {
-
-// Override weak symbol defined in the `xla/runtime/ffi.cc` with a strong one
-// that provides implementation for the XLA:GPU backend.
-XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
-                                const DiagnosticEngine* diagnostic) {
-  auto run_opts = user_data->getIfExists<const ServiceExecutableRunOptions>();
-  auto stream = se::gpu::AsGpuStreamValue(run_opts->stream());
-  return reinterpret_cast<XLA_FFI_Stream*>(stream);
-}
-
-}  // namespace ffi
-}  // namespace runtime
-#endif  // GOOGLE_CUDA
-
 namespace gpu {
 
 using ::xla::runtime::CustomCallAttrEncodingSet;
@@ -78,11 +61,28 @@ using ::xla::runtime::success;
 using ::xla::runtime::Tagged;
 using ::xla::runtime::TypeIDNameRegistry;
 
+using ::xla::runtime::CustomCall;
+using ::xla::runtime::DiagnosticEngine;
 using ::xla::runtime::ExportModules;
 using ::xla::runtime::ffi::ExportFfiModules;
 using ::xla::runtime::ffi::FfiStateVector;
+using ::xla::runtime::ffi::RegisterXlaFfiStreamProvider;
+
+#if GOOGLE_CUDA
+static XLA_FFI_Stream* GetXlaFfiGpuStream(const CustomCall::UserData* user_data,
+                                          const DiagnosticEngine* diagnostic) {
+  auto run_opts = user_data->getIfExists<const ServiceExecutableRunOptions>();
+  if (!run_opts) return nullptr;
+  auto stream = se::gpu::AsGpuStreamValue(run_opts->stream());
+  return reinterpret_cast<XLA_FFI_Stream*>(stream);
+}
+#endif  // GOOGLE_CUDA
 
 void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
+#if GOOGLE_CUDA
+  RegisterXlaFfiStreamProvider(GetXlaFfiGpuStream);
+#endif  // GOOGLE_CUDA
+
   RegisterKernelLaunchCustomCalls(registry);
   RegisterTracingCustomCalls(registry);
   RegisterFftCustomCalls(registry);
@@ -372,6 +372,12 @@ Status GpuRuntimeExecutable::Execute(
       captured_function_counts_(executor)->snapshot();
 #endif  // GOOGLE_CUDA
 
+  // Kernels in concurrent regions should be launched on borrowed stream, so
+  // that the cuda graph won't record dependencies between kernels.
+  // This state stores if the kernel being run is in a concurrent region and
+  // the borrowed streams for executing kernels in concurrent regions.
+  ConcurrentRegionStatus concurrent_region_status(run_options);
+
   // State cached globally for gpu executable.
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
@@ -393,6 +399,7 @@ Status GpuRuntimeExecutable::Execute(
       // Auxiliary data that is available only if compiled with CUDA support.
       &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA
+      &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);

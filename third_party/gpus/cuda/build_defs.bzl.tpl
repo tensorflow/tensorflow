@@ -69,7 +69,7 @@ def cuda_default_copts():
         if_nvcc = [
             "-Xcuda-fatbinary=--compress-all",
             # Ensure that NVCC matches clang's constexpr behavior.
-            "-nvcc_options=-expt-relaxed-constexpr"
+            "-nvcc_options=expt-relaxed-constexpr"
         ]
     )
 

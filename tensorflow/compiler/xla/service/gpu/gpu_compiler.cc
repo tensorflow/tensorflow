@@ -362,6 +362,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   pre_spmd_pipeline.AddPass<CallInliner>();
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+  pre_spmd_pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTopK;
+  });
+
   // The SPMD partitioner would mess up the sort+slice structure, so we need to
   // rewrite Topk before that happens.
   pre_spmd_pipeline.AddPass<TopkRewriter>(
@@ -846,7 +851,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             gpu_target_config.gpu_version)) {
       auto cuda_compute_capability =
           std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA) &&
+          !cuda_compute_capability.IsAtLeast(
+              se::CudaComputeCapability::HOPPER)) {
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }

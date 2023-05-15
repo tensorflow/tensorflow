@@ -18,7 +18,7 @@
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import atomic_function
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import concrete_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import function_def_to_graph
@@ -333,7 +333,7 @@ def get_func_graph(op, input_shapes, func_name):
     if operation.type in ["PartitionedCall", "StatefulPartitionedCall"]:
       f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
       try:
-        cf = monomorphic_function.ConcreteFunction(
+        cf = concrete_function.ConcreteFunction(
             f.graph, attrs=f.cached_definition.attr
         )
       except AttributeError:

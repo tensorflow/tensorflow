@@ -311,6 +311,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(
   // literal.
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
+  new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
   int64_t max = std::numeric_limits<int64_t>::max();

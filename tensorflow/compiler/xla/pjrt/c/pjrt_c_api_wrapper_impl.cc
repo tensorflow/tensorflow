@@ -1315,6 +1315,13 @@ PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
   return nullptr;
 }
 
+PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
+    PJRT_TopologyDescription_GetDeviceDescriptions_Args* args) {
+  args->descriptions = args->topology->description_pointers.data();
+  args->num_descriptions = args->topology->description_pointers.size();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Compile_Args", PJRT_Compile_Args_STRUCT_SIZE, args->struct_size));
@@ -1419,6 +1426,16 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
     std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
   PJRT_TopologyDescription* c_topology =
       new PJRT_TopologyDescription{std::move(cpp_topology)};
+  c_topology->cpp_descriptions = c_topology->topology->DeviceDescriptions();
+  c_topology->descriptions.reserve(c_topology->cpp_descriptions.size());
+  c_topology->description_pointers.reserve(c_topology->cpp_descriptions.size());
+  for (auto& description : c_topology->cpp_descriptions) {
+    c_topology->descriptions.emplace_back(
+        PJRT_DeviceDescription{description.get()});
+    c_topology->description_pointers.emplace_back(
+        &c_topology->descriptions.back());
+    PopulatePjrtDeviceDescriptionAttributes(&c_topology->descriptions.back());
+  }
   return c_topology;
 }
 

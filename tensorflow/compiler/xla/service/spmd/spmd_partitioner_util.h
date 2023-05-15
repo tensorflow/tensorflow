@@ -383,7 +383,7 @@ hlo_sharding_util::GroupedSharding AlignGroupsWith(
     const hlo_sharding_util::GroupedSharding& reference,
     bool ignore_group_order = false);
 
-// Align device groups between the two ahrdings. Equivalent in calling
+// Align device groups between the two shardings. Equivalent in calling
 // GroupShardingOnDims on the two sharding AlignGroupsWith and then
 // UngroupSharding
 HloSharding AlignShardingOnDims(const HloSharding& sharding,

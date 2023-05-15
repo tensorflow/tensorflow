@@ -67,9 +67,9 @@ func.func @ori() -> i32 {
 // CHECK-NEXT: i32: 11
 
 func.func @shrui() -> i32 {
-  %c3 = arith.constant 20 : i32
+  %c20 = arith.constant 20 : i32
   %c-1 = arith.constant -1 : i32
-  %ret = arith.shrui %c-1, %c3 : i32
+  %ret = arith.shrui %c-1, %c20 : i32
   return %ret : i32
 }
 
@@ -88,3 +88,24 @@ func.func @shli() -> i32 {
 // CHECK-NEXT: Results
 // CHECK-NEXT: 168
 
+func.func @shrsi() -> i32 {
+  %c3 = arith.constant 3 : i32
+  %c-1023 = arith.constant -1023 : i32
+  %ret = arith.shrsi %c-1023, %c3 : i32
+  return %ret : i32
+}
+
+// CHECK-LABEL: @shrsi
+// CHECK-NEXT: Results
+// CHECK-NEXT: -128
+
+func.func @remsi() -> i32 {
+  %c7 = arith.constant 7 : i32
+  %c-1023 = arith.constant -1023 : i32
+  %ret = arith.remsi %c-1023, %c7 : i32
+  return %ret : i32
+}
+
+// CHECK-LABEL: @remsi
+// CHECK-NEXT: Results
+// CHECK-NEXT: -1

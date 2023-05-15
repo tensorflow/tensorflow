@@ -22,7 +22,9 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1376,6 +1378,8 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
     buffer_interval_compare_ = *options.buffer_interval_compare;
   }
 
+  call_graph_ = CallGraph::Build(&alias_analysis_.dataflow_analysis().module());
+
   std::vector<float> initial_resources(hlo_live_range.schedule_end_time(), 1.0);
   if (options.cost_analysis) {
     const std::vector<HloInstruction*>& flattened_instructions =
@@ -1388,9 +1392,20 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
       } else {
         initial_resources[i] =
             options.cost_analysis->GetInstructionElapsed(*inst);
-        if (options_.use_repeated_instance_for_preferred_prefetch_time) {
-          const std::string fingerprint =
-              inst->ToString(HloPrintOptions::Fingerprint());
+        if (options_.use_repeated_instance_for_preferred_prefetch_time ||
+            options_.memory_bound_loop_optimizer_options.enabled()) {
+          std::string fingerprint;
+          absl::StrAppend(&fingerprint, inst->shape().ToString(), " ",
+                          HloOpcodeString(inst->opcode()), "(");
+          for (int operand_idx = 0; operand_idx < inst->operands().size();
+               ++operand_idx) {
+            if (operand_idx > 0) {
+              absl::StrAppend(&fingerprint, ", ");
+            }
+            absl::StrAppend(&fingerprint,
+                            inst->operand(operand_idx)->shape().ToString());
+          }
+          absl::StrAppend(&fingerprint, ")");
           fingerprint_map_[inst] = fingerprint;
           repeated_inst_map_[fingerprint].push_back(inst);
         }
@@ -1801,6 +1816,1478 @@ void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
   options_.dump_fn("allocinfo", allocation_info_str_);
 }
 
+/*static*/ StatusOr<std::unique_ptr<MemoryBoundLoopOptimizer>>
+MemoryBoundLoopOptimizer::Create(
+    int loop_start, int loop_end, uint64_t alternate_memory_size,
+    const MemoryBoundLoopOptimizerOptions& options,
+    const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    const BufferValue::SizeFunction& size_function) {
+  std::unique_ptr<MemoryBoundLoopOptimizer> optimizer =
+      absl::WrapUnique(new MemoryBoundLoopOptimizer(
+          loop_start, loop_end, alternate_memory_size, options, hlo_live_range,
+          alias_analysis, cost_analysis, size_function));
+  TF_RETURN_IF_ERROR(optimizer->Initialize());
+  return std::move(optimizer);
+}
+
+MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
+    int loop_start, int loop_end, uint64_t alternate_memory_size,
+    const MemoryBoundLoopOptimizerOptions& options,
+    const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    const BufferValue::SizeFunction& size_function)
+    : loop_start_(loop_start),
+      loop_end_(loop_end),
+      loop_size_(loop_end - loop_start),
+      alternate_memory_size_(alternate_memory_size),
+      options_(options),
+      hlo_live_range_(hlo_live_range),
+      alias_analysis_(alias_analysis),
+      cost_analysis_(cost_analysis),
+      size_function_(size_function) {}
+
+Status MemoryBoundLoopOptimizer::Initialize() {
+  const auto& instruction_sequence =
+      hlo_live_range_.flattened_instruction_sequence().instructions();
+  VLOG(3) << "MemoryBoundLoopOptimizer::Initialize, loop start: " << loop_start_
+          << ", loop end: " << loop_end_ << ", loop size: " << loop_size_;
+  const HloComputation* loop_computation = nullptr;
+  // Initialize the remaining memory array with the size of the alternate
+  // memory. Also populate instructions_in_loop_ and
+  // instructions_in_{prev,next}_iterations_ data structures to help find the
+  // loop values.
+  for (int i = loop_start_; i < loop_end_; ++i) {
+    const HloInstruction* inst = instruction_sequence[i];
+    instructions_in_loop_[inst] = i - loop_start_;
+    VLOG(3) << "  inst in loop [" << (i - loop_start_) << "]: " << inst->name();
+    if (!loop_computation) {
+      loop_computation = inst->parent();
+    } else {
+      TF_RET_CHECK(loop_computation == inst->parent());
+    }
+    remaining_memory_.push_back(alternate_memory_size_);
+  }
+
+  for (int i = loop_start_ - loop_size_; i < loop_start_; ++i) {
+    const HloInstruction* inst = instruction_sequence[i];
+    instructions_in_prev_iteration_[inst] = i - loop_start_ + loop_size_;
+  }
+  for (int i = loop_end_; i < loop_end_ + loop_size_; ++i) {
+    const HloInstruction* inst = instruction_sequence[i];
+    instructions_in_next_iteration_[inst] = i - loop_end_;
+  }
+
+  // Create a tree set to keep track of all the values that the loop
+  // instructions produce and consume. We use a tree set instead of a hash set
+  // to ensure the iteration order is the same as insertion order. Since we
+  // traverse the program in instruction order, the buffers would be inserted in
+  // a deterministic order, so we'll be able to iterate over these buffers in a
+  // deterministic order.
+  std::set<const HloBuffer*> buffers_to_process;
+  for (const auto& [instruction, idx] : instructions_in_loop_) {
+    auto maybe_add_buffer = [&](const HloInstruction* instruction) {
+      return [this, &buffers_to_process, instruction](const Shape& subshape,
+                                                      const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        const HloBuffer& buffer =
+            alias_analysis_.GetUniqueBufferAt(instruction, index);
+        if (buffers_to_process.find(&buffer) == buffers_to_process.end()) {
+          buffers_to_process.insert(&buffer);
+        }
+      };
+    };
+    ShapeUtil::ForEachSubshape(instruction->shape(),
+                               maybe_add_buffer(instruction));
+    for (const HloInstruction* operand : instruction->operands()) {
+      ShapeUtil::ForEachSubshape(operand->shape(), maybe_add_buffer(operand));
+    }
+  }
+
+  // Process the buffers and decide if they should be added as LoopValues.
+  for (const HloBuffer* buffer : buffers_to_process) {
+    MaybeCreateLoopValue(*buffer, loop_computation);
+  }
+  return OkStatus();
+}
+
+void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
+    const HloBuffer& buffer, const HloComputation* loop_computation) {
+  // Define helper lambdas to get the loop-relative index of the given
+  // instruction.
+  auto get_index_in_loop =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_map<const HloInstruction*, int64_t>&
+              instructions_in_loop,
+          int64_t relative_index = 0) {
+        std::optional<int64_t> loop_index;
+        if (instructions_in_loop.contains(instruction)) {
+          loop_index = hlo_live_range_.instruction_schedule().at(instruction) -
+                       loop_start_ + relative_index;
+          CHECK_GE(*loop_index, 0);
+          CHECK_LT(*loop_index, loop_size_);
+        }
+        return loop_index;
+      };
+  auto get_index_in_current_iteration = [&](const HloInstruction* instruction) {
+    return get_index_in_loop(instruction, instructions_in_loop_);
+  };
+  auto get_index_in_prev_iteration = [&](const HloInstruction* instruction) {
+    return get_index_in_loop(instruction, instructions_in_prev_iteration_,
+                             loop_size_);
+  };
+  auto get_index_in_next_iteration = [&](const HloInstruction* instruction) {
+    return get_index_in_loop(instruction, instructions_in_next_iteration_,
+                             -loop_size_);
+  };
+
+  loop_values_.push_back({});
+  LoopValue& loop_value = loop_values_.back();
+  float pos_bytes = 0;
+  float use_bytes = 0;
+  bool has_footer_consumer = false;
+  for (const HloValue* value : buffer.values()) {
+    // For each position and use of the value, populate the respecive position
+    // and use fields for the current, previous, and next iterations along with
+    // the loop indices.
+    for (const HloPosition& position : value->positions()) {
+      if (position.instruction->opcode() == HloOpcode::kGetTupleElement) {
+        continue;
+      }
+      std::optional<int64_t> loop_index =
+          get_index_in_current_iteration(position.instruction);
+      std::optional<int64_t> prev_iteration_index;
+      if (loop_index) {
+        loop_value.loop_positions.push_back({*loop_index, position});
+        VLOG(3) << "Pos match: " << position.instruction->name() << " at "
+                << *loop_index;
+      } else if ((prev_iteration_index =
+                      get_index_in_prev_iteration(position.instruction))) {
+        loop_value.prev_iteration_positions.push_back(
+            {*prev_iteration_index, position});
+        VLOG(3) << "Pos match (prev iteration): "
+                << position.instruction->name() << " at "
+                << *prev_iteration_index;
+      } else if (loop_value.prev_iteration_positions.empty() &&
+                 loop_value.loop_positions.empty() &&
+                 position.instruction->parent() == loop_computation &&
+                 !loop_value.header_position) {
+        loop_value.header_position = position;
+      }
+
+      // Keep track of bytes accessed by this value.
+      if (loop_index || prev_iteration_index) {
+        float bytes_accessed =
+            cost_analysis_.cost_analysis().output_bytes_accessed(
+                *position.instruction, position.index);
+        pos_bytes += bytes_accessed;
+        VLOG(3) << " accessed: " << bytes_accessed;
+      }
+    }
+
+    for (const HloUse& use : value->GetUses()) {
+      if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
+        continue;
+      }
+      std::optional<int64_t> loop_index =
+          get_index_in_current_iteration(use.instruction);
+      std::optional<int64_t> next_iteration_index;
+      if (loop_index) {
+        loop_value.loop_uses.push_back({*loop_index, use});
+        VLOG(3) << "Use match: " << use.instruction->name() << " at "
+                << *loop_index;
+      } else if ((next_iteration_index =
+                      get_index_in_next_iteration(use.instruction))) {
+        loop_value.next_iteration_uses.push_back({*next_iteration_index, use});
+        VLOG(3) << "Use match (next iteration): " << use.instruction->name()
+                << " at " << *next_iteration_index;
+      } else if (!loop_value.loop_positions.empty() ||
+                 !loop_value.loop_uses.empty()) {
+        has_footer_consumer = true;
+      }
+
+      // Keep track of bytes accessed by this value.
+      if (loop_index || next_iteration_index) {
+        float bytes_accessed =
+            cost_analysis_.cost_analysis().operand_bytes_accessed(
+                *use.instruction, use.operand_number, use.operand_index);
+        use_bytes += bytes_accessed;
+        VLOG(3) << " accessed: " << bytes_accessed;
+      }
+    }
+  }
+
+  // We only add the loop position if it has a position or use in the current
+  // iteration and its previous iteration positions are empty. The reason why we
+  // disallow values with previous iteration positions is because there will be
+  // a different value that corresponds to the same value but one iteration
+  // later, so we will add that one instead.
+  if ((!loop_value.loop_positions.empty() || !loop_value.loop_uses.empty()) &&
+      loop_value.prev_iteration_positions.empty()) {
+    loop_value.size = size_function_(**buffer.values().begin());
+    VLOG(3) << "Size: " << loop_value.size;
+    // Classify the type of allocation. See the comment in LoopValue definition.
+    loop_value.allocation_type = LoopValue::AllocationType::kUnsupported;
+    auto position_compare = [](const std::pair<int64_t, HloPosition>& a,
+                               const std::pair<int64_t, HloPosition>& b) {
+      return a.first < b.first;
+    };
+    auto use_compare = [](const std::pair<int64_t, HloUse>& a,
+                          const std::pair<int64_t, HloUse>& b) {
+      return a.first < b.first;
+    };
+    absl::c_sort(loop_value.loop_positions, position_compare);
+    absl::c_sort(loop_value.prev_iteration_positions, position_compare);
+    absl::c_sort(loop_value.loop_uses, use_compare);
+    absl::c_sort(loop_value.next_iteration_uses, use_compare);
+    if (!loop_value.loop_positions.empty()) {
+      if (loop_value.next_iteration_uses.empty() &&
+          !loop_value.loop_uses.empty()) {
+        loop_value.allocation_type = LoopValue::AllocationType::kTemporary;
+      } else if (!loop_value.next_iteration_uses.empty()) {
+        if (loop_value.next_iteration_uses.back().first >=
+            loop_value.loop_positions.front().first) {
+          loop_value.allocation_type =
+              LoopValue::AllocationType::kLoopCarriedDependence;
+        } else {
+          loop_value.allocation_type = LoopValue::AllocationType::kTemporary;
+        }
+      }
+    } else if (loop_value.header_position && !loop_value.loop_uses.empty()) {
+      if (loop_value.loop_uses.size() ==
+              loop_value.next_iteration_uses.size() &&
+          loop_value.loop_uses.front().first ==
+              loop_value.next_iteration_uses.front().first) {
+        loop_value.allocation_type = LoopValue::AllocationType::kPinned;
+      } else if (loop_value.next_iteration_uses.empty() ||
+                 loop_value.next_iteration_uses.back().first <
+                     loop_value.loop_uses.front().first) {
+        loop_value.allocation_type = LoopValue::AllocationType::kPrefetch;
+      }
+    }
+
+    VLOG(3) << "Allocation type "
+            << LoopValue::AllocationTypeToString(loop_value.allocation_type);
+    VLOG(3) << "Pos bytes: " << pos_bytes << " use bytes: " << use_bytes;
+
+    // We calculate the savings of allocating this buffer in the alternate
+    // memory.
+    float savings = pos_bytes + use_bytes;
+    if (loop_value.header_position) {
+      savings -= loop_value.size;
+    }
+    if (!loop_value.loop_positions.empty() && has_footer_consumer) {
+      savings -= loop_value.size;
+    }
+    loop_value.savings = savings;
+    loop_value.savings_per_byte = savings / loop_value.size;
+    VLOG(3) << "Savings: " << loop_value.savings;
+    VLOG(3) << "Savings per byte: " << loop_value.savings_per_byte;
+    for (const HloValue* value : buffer.values()) {
+      VLOG(3) << value->ToString();
+    }
+    auto sort_positions = [](const std::pair<int64_t, HloPosition>& a,
+                             const std::pair<int64_t, HloPosition>& b) {
+      return a.first < b.first;
+    };
+    auto sort_uses = [](const std::pair<int64_t, HloUse>& a,
+                        const std::pair<int64_t, HloUse>& b) {
+      return a.first < b.first;
+    };
+    absl::c_sort(loop_value.loop_positions, sort_positions);
+    absl::c_sort(loop_value.prev_iteration_positions, sort_positions);
+    absl::c_sort(loop_value.loop_uses, sort_uses);
+    absl::c_sort(loop_value.next_iteration_uses, sort_uses);
+    loop_value.hlo_values = buffer.values();
+  } else {
+    loop_values_.pop_back();
+  }
+}
+
+void MemoryBoundLoopOptimizer::Optimize() {
+  SortLoopValues();
+  AllocateLoopValues();
+  PostProcess();
+}
+
+float MemoryBoundLoopOptimizer::CalculateExecutionTime() const {
+  // First populate the list of prefetches.
+  std::vector<std::pair<const MemorySpaceAssignment::CopyAllocation*, float>>
+      prefetches;
+  for (const LoopValue& value : loop_values_) {
+    if (!value.allocations.empty() &&
+        value.allocations.back()->is_copy_allocation()) {
+      prefetches.push_back(
+          {static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+               value.allocations.back().get()),
+           cost_analysis_.GetAsyncCopyElapsed(
+               value.hlo_values.front()->shape())});
+    }
+  }
+
+  // Returns the effective prefetch completion time. The effective time is a
+  // value that will be larger than loop size for prefetches that start in this
+  // iteration but complete in the next iteration.
+  auto get_effective_done_time =
+      [&](int64_t copy_start_schedule_after,
+          int64_t copy_done_schedule_before) -> int64_t {
+    if (copy_start_schedule_after == loop_size_ - 1 &&
+        copy_done_schedule_before == 0) {
+      return 2 * loop_size_;
+    }
+    if (copy_start_schedule_after + 1 >= copy_done_schedule_before) {
+      return copy_done_schedule_before + loop_size_;
+    }
+    return copy_done_schedule_before;
+  };
+
+  // Sort the prefetches by first the start time, then the effective done time.
+  absl::c_sort(
+      prefetches,
+      [&](const std::pair<const MemorySpaceAssignment::CopyAllocation*, float>&
+              a,
+          const std::pair<const MemorySpaceAssignment::CopyAllocation*, float>&
+              b) {
+        return std::forward_as_tuple(
+                   a.first->copy_start_schedule_after(),
+                   get_effective_done_time(
+                       a.first->copy_start_schedule_after(),
+                       a.first->copy_done_schedule_before())) <
+               std::forward_as_tuple(b.first->copy_start_schedule_after(),
+                                     get_effective_done_time(
+                                         b.first->copy_start_schedule_after(),
+                                         b.first->copy_done_schedule_before()));
+      });
+  // Populate the required prefetch completions array. For each instruction in
+  // the loop, this vector holds the index of the latest-issued prefetch that
+  // needs to be completed before the instruction executes, or nullopt if there
+  // is no prefetch that needs to finish by this instruction. To represent
+  // prefetches that started in the previous iteration, we use negative numbers.
+  std::vector<std::optional<int>> required_prefetch_completions(loop_size_);
+  for (int i = 0; i < prefetches.size(); ++i) {
+    const auto& [prefetch, elapsed] = prefetches[i];
+    int required_prefetch_completion = i;
+    if (prefetch->copy_start_schedule_after() == loop_size_ - 1 &&
+        prefetch->copy_done_schedule_before() == 0) {
+      required_prefetch_completion -= 2 * prefetches.size();
+    } else if (prefetch->copy_start_schedule_after() + 1 >=
+               prefetch->copy_done_schedule_before()) {
+      required_prefetch_completion -= prefetches.size();
+    }
+    VLOG(3) << "Prefetch #" << i << " (elapsed " << elapsed
+            << "): " << prefetch->ToString();
+    if (required_prefetch_completions[prefetch->copy_done_schedule_before()]) {
+      required_prefetch_completions[prefetch->copy_done_schedule_before()] =
+          std::max(
+              *required_prefetch_completions[prefetch
+                                                 ->copy_done_schedule_before()],
+              required_prefetch_completion);
+    } else {
+      required_prefetch_completions[prefetch->copy_done_schedule_before()] =
+          required_prefetch_completion;
+    }
+    VLOG(4)
+        << "Required completion at " << prefetch->copy_done_schedule_before()
+        << " = "
+        << *required_prefetch_completions[prefetch
+                                              ->copy_done_schedule_before()];
+  }
+
+  // Populate the elapsed times of instructions and bandwidth idle times at each
+  // point.
+  float result;
+  std::vector<float> bandwidth_idle_times;
+  std::vector<float> instructions_elapsed;
+  bandwidth_idle_times.reserve(loop_size_);
+  instructions_elapsed.reserve(loop_size_);
+  for (int i = 0; i < loop_size_; ++i) {
+    bandwidth_idle_times.push_back(GetBandwidthIdleTime(i));
+    instructions_elapsed.push_back(GetInstructionElapsed(i));
+  }
+  // We simulate the loop for three iterations to measure the steady state.
+  const int kNumIterations = 3;
+  // This data structure keeps track of the elapsed time remaining of each
+  // prefetch. Note that there is a separate entry for each prefetch in each
+  // iteration simulated.
+  std::vector<float> prefetch_remaining_elapsed_times(prefetches.size() *
+                                                      kNumIterations);
+  int prefetch_start_index = 0;
+  int prefetch_done_index = 0;
+  int prefetch_completed_index = 0;
+
+  for (int iteration = 0; iteration < kNumIterations; ++iteration) {
+    float total_elapsed = 0;
+    float total_bandwidth_idle_time = 0;
+    float total_critical_prefetch = 0;
+    for (int i = 0; i < loop_size_; ++i) {
+      // If any prefetches are expected to be completed, check if they have any
+      // remaining elapsed time associated with them, and if so add this to
+      // critical prefetch time.
+      std::optional<int> required_prefetch_completion =
+          required_prefetch_completions[i];
+      if (required_prefetch_completion) {
+        int required_prefetch_done_index =
+            iteration * static_cast<int>(prefetches.size()) +
+            *required_prefetch_completion;
+        VLOG(4) << "Prefetch #"
+                << ((*required_prefetch_completion + prefetches.size()) %
+                    prefetches.size())
+                << " (" << required_prefetch_done_index
+                << ") is required to be completed at " << i;
+        for (; prefetch_done_index <= required_prefetch_done_index;
+             ++prefetch_done_index) {
+          CHECK_LE(prefetch_done_index, prefetch_start_index);
+          if (prefetch_done_index == prefetch_completed_index) {
+            float& prefetch_remaining =
+                prefetch_remaining_elapsed_times[prefetch_done_index];
+            VLOG(4) << "Prefetch #" << (prefetch_done_index % prefetches.size())
+                    << " (" << prefetch_done_index
+                    << ") did not complete, remaining elapsed = "
+                    << prefetch_remaining;
+            total_critical_prefetch += prefetch_remaining;
+            prefetch_remaining = 0;
+            ++prefetch_completed_index;
+          }
+        }
+      }
+
+      float elapsed = instructions_elapsed[i];
+      total_elapsed += elapsed;
+      float bandwidth_idle_time = bandwidth_idle_times[i];
+      // Find the outstanding prefetches during this instruction, and if any of
+      // them have remaining time, spend some or all of the bandwidth idle time
+      // to satisfy them.
+      for (; prefetch_completed_index < prefetch_start_index;
+           ++prefetch_completed_index) {
+        float& prefetch_remaining =
+            prefetch_remaining_elapsed_times[prefetch_completed_index];
+        if (bandwidth_idle_time < prefetch_remaining) {
+          prefetch_remaining -= bandwidth_idle_time;
+          bandwidth_idle_time = 0;
+          VLOG(4) << "Prefetch #"
+                  << (prefetch_completed_index % prefetches.size()) << " ("
+                  << prefetch_completed_index << ") still ongoing at " << i
+                  << ", remaining elapsed = " << prefetch_remaining;
+          break;
+        }
+        bandwidth_idle_time -= prefetch_remaining;
+        prefetch_remaining = 0;
+        VLOG(4) << "Prefetch #"
+                << (prefetch_completed_index % prefetches.size()) << " ("
+                << prefetch_completed_index << ") completed at " << i
+                << ", bandwidth idle time = " << bandwidth_idle_time;
+      }
+      if (bandwidth_idle_time > 0) {
+        VLOG(4) << "Bandwidth idle time at " << i << " = "
+                << bandwidth_idle_time;
+        total_bandwidth_idle_time += bandwidth_idle_time;
+      }
+
+      // Start new prefetches that are scheduled to start after this
+      // instruction.
+      for (; prefetch_start_index < (iteration + 1) * prefetches.size() &&
+             prefetches[prefetch_start_index % prefetches.size()]
+                     .first->copy_start_schedule_after() == i;
+           ++prefetch_start_index) {
+        float& prefetch_remaining =
+            prefetch_remaining_elapsed_times[prefetch_start_index];
+        prefetch_remaining =
+            prefetches[prefetch_start_index % prefetches.size()].second;
+        VLOG(4) << "Prefetch #" << (prefetch_start_index % prefetches.size())
+                << " (" << prefetch_start_index << ") started at " << i
+                << ", remaining elapsed = " << prefetch_remaining;
+      }
+    }
+    VLOG(3) << "Iteration " << iteration;
+    VLOG(3) << "Total elapsed: " << total_elapsed
+            << ", total critical prefetch: " << total_critical_prefetch
+            << ", total bandwidth idle time: " << total_bandwidth_idle_time;
+    result = total_elapsed + total_critical_prefetch;
+  }
+  return result;
+}
+
+/*static*/ std::string
+MemoryBoundLoopOptimizer::LoopValue::AllocationTypeToString(
+    LoopValue::AllocationType allocation_type) {
+  switch (allocation_type) {
+    case AllocationType::kTemporary:
+      return "temporary";
+    case AllocationType::kLoopCarriedDependence:
+      return "loop-carried dependence";
+    case AllocationType::kPinned:
+      return "pinned";
+    case AllocationType::kPrefetch:
+      return "prefetch";
+    default:
+      CHECK(allocation_type == AllocationType::kUnsupported);
+      return "unsupported";
+  }
+}
+
+std::string MemoryBoundLoopOptimizer::LoopValue::ToString() const {
+  std::string values_str;
+  absl::StrAppend(&values_str, "Values:");
+  for (const HloValue* hlo_value : hlo_values) {
+    absl::StrAppend(&values_str, "\n  - ", hlo_value->ToShortString());
+  }
+  std::string allocations_str;
+  if (!allocations.empty()) {
+    absl::StrAppend(&allocations_str, "Allocations:");
+  }
+  for (const auto& allocation : allocations) {
+    absl::StrAppend(&allocations_str, "\n  - ", allocation->ToString());
+  }
+  return absl::StrCat(
+      "Size: ", size, " savings: ", savings,
+      " savings per byte: ", savings_per_byte,
+      " allocation type: ", AllocationTypeToString(allocation_type), "\n",
+      values_str, "\n", allocations_str);
+}
+
+void MemoryBoundLoopOptimizer::SortLoopValues() {
+  absl::c_stable_sort(loop_values_, [](const LoopValue& a, const LoopValue& b) {
+    return a.savings_per_byte > b.savings_per_byte;
+  });
+}
+
+void MemoryBoundLoopOptimizer::AllocateLoopValues() {
+  // This function allocates loop values.
+  std::vector<LoopValue*> prefetch_values;
+  VLOG(3) << "Pre optimization execution time: " << CalculateExecutionTime();
+  for (LoopValue& value : loop_values_) {
+    switch (value.allocation_type) {
+      case LoopValue::AllocationType::kTemporary:
+        AllocateTemporary(value);
+        break;
+      case LoopValue::AllocationType::kPinned:
+        AllocatePinned(value);
+        break;
+      case LoopValue::AllocationType::kPrefetch:
+        prefetch_values.push_back(&value);
+        break;
+      case LoopValue::AllocationType::kLoopCarriedDependence:
+      case LoopValue::AllocationType::kUnsupported:
+        VLOG(1) << "Unsupported allocation: " << value.ToString();
+    }
+  }
+  VLOG(3) << "Execution time after allocating temporaries: "
+          << CalculateExecutionTime();
+  AllocatePrefetches(absl::MakeSpan(prefetch_values));
+  VLOG(3) << "Execution time after allocating prefetches:  "
+          << CalculateExecutionTime();
+}
+
+void MemoryBoundLoopOptimizer::PostProcess() {
+  // At the end, ensure that all loop uses have a corresponding Allocation and
+  // create one in the default memory space if they don't.
+  for (LoopValue& value : loop_values_) {
+    absl::flat_hash_set<HloUse> allocated_uses;
+    for (const auto& allocation : value.allocations) {
+      for (const HloUse& use : allocation->uses()) {
+        allocated_uses.insert(use);
+      }
+    }
+    std::vector<HloUse> unallocated_uses;
+    absl::flat_hash_set<int> use_indices;
+    for (const auto& [idx, use] : value.loop_uses) {
+      use_indices.insert(idx);
+      if (!allocated_uses.contains(use)) {
+        unallocated_uses.push_back(use);
+      }
+    }
+    for (const auto& [next_iteration_idx, use] : value.next_iteration_uses) {
+      if (use_indices.contains(next_iteration_idx)) {
+        continue;
+      }
+      HloInstruction* loop_instruction =
+          hlo_live_range_.flattened_instruction_sequence().instructions().at(
+              loop_start_ + next_iteration_idx);
+      HloUse loop_use{loop_instruction, use.operand_number, use.operand_index};
+      if (!allocated_uses.contains(loop_use)) {
+        unallocated_uses.push_back(loop_use);
+      }
+    }
+    if (!unallocated_uses.empty()) {
+      // TODO(b/281582241): We should find the correct position. For now, we're
+      // using the defining position on the first HLO value.
+      value.allocations.push_back(
+          std::make_unique<MemorySpaceAssignment::Allocation>(
+              value.hlo_values.front()->defining_position(),
+              MemorySpaceAssignment::MemorySpace::kDefault, std::nullopt, 0,
+              loop_size_, /*is_scoped_allocation=*/false));
+      for (const HloUse& use : unallocated_uses) {
+        value.allocations.back()->AddUse(use);
+      }
+    }
+  }
+}
+
+bool MemoryBoundLoopOptimizer::AllocateBetween(int64_t begin_idx,
+                                               int64_t end_idx, int64_t size) {
+  int64_t end_idx_sentinel = end_idx;
+  if (end_idx < begin_idx) {
+    end_idx_sentinel += loop_size_;
+  }
+  for (int64_t i = begin_idx; i <= end_idx_sentinel; ++i) {
+    if (remaining_memory_[i % loop_size_] < size) {
+      return false;
+    }
+  }
+  for (int64_t i = begin_idx; i <= end_idx_sentinel; ++i) {
+    remaining_memory_[i % loop_size_] -= size;
+  }
+  return true;
+}
+
+bool MemoryBoundLoopOptimizer::AllocateTemporary(LoopValue& value) {
+  VLOG(3) << "AllocateTemporary: " << value.ToString();
+  if (value.hlo_values.size() > 1) {
+    VLOG(3) << "LoopValue has more than one hlo value associated.";
+    return false;
+  }
+  int64_t definition_idx = value.loop_positions.front().first;
+  int64_t max_use_idx;
+  if (!value.next_iteration_uses.empty()) {
+    max_use_idx = value.next_iteration_uses.back().first;
+    // If max_use_idx >= definition_idx, then this is a loop carried dependence
+    // and we should not have called this function.
+    CHECK_LT(max_use_idx, definition_idx);
+  } else {
+    max_use_idx = value.loop_uses.back().first;
+  }
+  bool success = AllocateBetween(definition_idx, max_use_idx, value.size);
+  if (success) {
+    VLOG(3) << "Pos: " << value.loop_positions[0].second;
+    value.allocations.push_back(
+        std::make_unique<MemorySpaceAssignment::Allocation>(
+            value.loop_positions[0].second,
+            MemorySpaceAssignment::MemorySpace::kAlternate, std::nullopt,
+            definition_idx, max_use_idx,
+            /*is_scoped_allocation=*/false));
+    AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/true);
+  }
+  return success;
+}
+
+bool MemoryBoundLoopOptimizer::AllocatePinned(LoopValue& value) {
+  bool success = AllocateBetween(0, loop_size_, value.size);
+  if (success) {
+    CHECK(value.header_position);
+    value.allocations.push_back(
+        std::make_unique<MemorySpaceAssignment::Allocation>(
+            *value.header_position,
+            MemorySpaceAssignment::MemorySpace::kAlternate, std::nullopt, 0,
+            loop_size_,
+            /*is_scoped_allocation=*/false));
+    AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/false);
+  }
+  return success;
+}
+
+bool MemoryBoundLoopOptimizer::AllocatePrefetches(
+    absl::Span<LoopValue*> values) {
+  VLOG(3) << "Allocating prefetches num values: " << values.size();
+  AllocatePrefetchesContext context;
+  context.values = values;
+  // Populate value_indices, which is a list of indices into values array sorted
+  // by the start time of the first use.
+  context.value_indices.resize(values.size());
+  absl::c_iota(context.value_indices, 0);
+  absl::c_stable_sort(context.value_indices, [&](int a, int b) {
+    return std::forward_as_tuple(
+               values[a]->loop_uses.begin()->first,
+               values[a]->loop_uses.begin()->second.operand_number) >
+           std::forward_as_tuple(
+               values[b]->loop_uses.begin()->first,
+               values[b]->loop_uses.begin()->second.operand_number);
+  });
+
+  // Populate the data structures that contain additional positions and uses
+  // that would get alternate memory allocations if all of the prefetches were
+  // successful.
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<std::pair<int64_t, ShapeIndex>>>
+      additional_uses_in_alternate_mem;
+  absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
+      additional_positions_in_alternate_mem;
+  for (const LoopValue* value : values) {
+    VLOG(3) << "  prefetch value: " << value->ToString();
+    for (const auto& [idx, use] : value->loop_uses) {
+      additional_uses_in_alternate_mem[use.instruction].push_back(
+          {use.operand_number, use.operand_index});
+    }
+    for (const auto& [idx, position] : value->loop_positions) {
+      additional_positions_in_alternate_mem[position.instruction].push_back(
+          position.index);
+    }
+  }
+  // Calculate the default-memory remaining bandwidths assuming all prefetches
+  // succeed.
+  for (int i = 0; i < loop_size_; ++i) {
+    context.bandwidth_idle_times.push_back(
+        GetBandwidthIdleTime(i, additional_uses_in_alternate_mem,
+                             additional_positions_in_alternate_mem));
+    VLOG(3) << "Remaining bandwidth at " << i << " = "
+            << *context.bandwidth_idle_times.rbegin();
+  }
+
+  context.additional_memory_used.resize(loop_size_, 0);
+
+  // Allocate prefetches by traversing the loop values in reverse order of
+  // the first uses.
+  for (int value_index : context.value_indices) {
+    AllocatePrefetch(value_index, context);
+  }
+
+  for (int i = 0; i < loop_size_; ++i) {
+    remaining_memory_[i] -= context.additional_memory_used[i];
+    VLOG(3) << "Additional memory [" << i
+            << "]: " << context.additional_memory_used[i];
+    VLOG(3) << "Remaining memory [" << i << "]: " << remaining_memory_[i];
+    VLOG(3) << "Remaining bandwidth [" << i
+            << "] : " << context.bandwidth_idle_times[i];
+  }
+  return true;
+}
+
+bool MemoryBoundLoopOptimizer::AllocatePrefetch(
+    int value_index, AllocatePrefetchesContext& context) {
+  LoopValue* value = context.values.at(value_index);
+  VLOG(3) << "Allocating value: " << value->ToString();
+  int first_use_idx = value->loop_uses.front().first;
+  int last_use_idx = value->loop_uses.back().first;
+  int last_use_idx_sentinel = last_use_idx;
+  if (!value->next_iteration_uses.empty()) {
+    last_use_idx = value->next_iteration_uses.back().first;
+    last_use_idx_sentinel = last_use_idx + loop_size_;
+    CHECK_LT(last_use_idx, first_use_idx);
+  }
+  bool out_of_memory = false;
+  for (int i = first_use_idx; i <= last_use_idx_sentinel; ++i) {
+    int loop_idx = i % loop_size_;
+    if (context.additional_memory_used[loop_idx] + value->size >
+        remaining_memory_[loop_idx]) {
+      VLOG(3) << "Ran out of memory allocating for uses.";
+      out_of_memory = true;
+    }
+  }
+  if (out_of_memory) {
+    return false;
+  }
+  float copy_resource =
+      cost_analysis_.GetAsyncCopyElapsed(value->hlo_values.front()->shape());
+  VLOG(3) << "First use: " << value->loop_uses.begin()->second
+          << " use idx: " << first_use_idx
+          << " copy resource: " << copy_resource;
+  std::optional<int> copy_start_time;
+  // The general allocation algorithm for prefetches is to first calculate the
+  // default-memory bandwidth idle times at each point (assuming all prefetches
+  // succeeded).  We show this pictorially below. We also show the previous
+  // iteration for clarity. The algorithm solves allocation for one iteration
+  // and this will be used for all iterations.
+  //
+  //               idx:  0  1  2  3  4  5| 0  1  2  3  4  5|
+  //      bw idle time:  2  2  1  2  3  1| 2  2  1  2  3  1|
+  // additional memory:  0  0  0  0  0  0| 0  0  0  0  0  0|
+  //         iteration:       prev       |      current    |
+  //
+  // Now, let's assume there are two prefetches that need to be scheduled. For
+  // the sake of the example, assume 1 MiB of prefetch uses 1 memory bandwidth
+  // resource:
+  //   - Prefetch 1 is 4 MiB and is first used at index 5.
+  //   - Prefetch 2 is 5 MiB and is first used at index 1.
+  //
+  // We first order these prefetches by their first use from latest to earliest.
+  // Then starting from the prefetch completion time (i.e. the first use time),
+  // move the prefetch start time earlier until the copy resource is satisfied
+  // (or reaching another resource satisfaction criteria explained below) by
+  // consuming the bandwidth idle time of the overlapped instructions. We also
+  // keep track of the additional memory required. Note that index 5 also
+  // accounts for the additional 4 MiB consumed since the data needs to reside
+  // during the execution of the instruction at index 5.  Below is the updated
+  // state after scheduling prefetch 1:
+  //
+  //        prefetch 1:          +====+            +====+
+  //               idx:  0  1  2  3  4  5| 0  1  2  3  4  5|
+  //      bw idle time:  2  2  1  1  0  1| 2  2  1  1  0  1|
+  // additional memory:  0  0  0  4  4  4| 0  0  0  4  4  4|
+  //         iteration:       prev       |      current    |
+  //
+  // To schedule prefetch 2, we similarly start the same way, from its first use
+  // and bring the prefetch start earlier. We first reach index 0 with still an
+  // unsatisfied copy resource of 3:
+  //
+  //        prefetch 2: +=+               +=+                unsat res: 3
+  //        prefetch 1:          +====+            +====+
+  //               idx:  0  1  2  3  4  5| 0  1  2  3  4  5|
+  //      bw idle time:  0  2  1  1  0  1| 0  2  1  1  0  1|
+  // additional memory:  5  5  0  4  4  4| 5  5  0  4  4  4|
+  //         iteration:       prev       |      current    |
+  //
+  // We continue onto the previous iteration:
+  //
+  //        prefetch 2:===+            +====+            +== unsat res: 2
+  //        prefetch 1:          +====+            +====+
+  //               idx:  0  1  2  3  4  5| 0  1  2  3  4  5|
+  //      bw idle time:  0  2  1  1  0  0| 0  2  1  1  0  0|
+  // additional memory:  5  5  0  4  4  9| 5  5  0  4  4  9|
+  //         iteration:       prev       |      current    |
+  //
+  // As we bring the start time of prefetch 2 earlier, it starts overlapping
+  // with prefetch 1:
+  //
+  //        prefetch 2:===+      +==========+      +======== unsat res: 1
+  //        prefetch 1:          +====+            +====+
+  //               idx:  0  1  2  3  4  5| 0  1  2  3  4  5|
+  //      bw idle time:  0  2  1  0  0  0| 0  2  1  0  0  0|
+  // additional memory:  5  5  0  9  9  9| 5  5  0  9  9  9|
+  //         iteration:       prev       |      current    |
+  //
+  // The prefetch resource is still unsatisfied at this point. We can bring the
+  // prefetch earlier. However, the first prefetch's end time is earlier than
+  // the second and we need to maintain FIFO order with regard to prefetches. In
+  // order to maintain this FIFO order, we "early force" prefetches that are
+  // already scheduled by moving the start time earlier along with prefetch 2:
+  //
+  //        prefetch 2:===+   +=============+   +===========
+  //        prefetch 1:       +=======+         +=======+
+  //               idx:  0  1  2  3  4  5| 0  1  2  3  4  5|
+  //      bw idle time:  0  2  0  0  0  0| 0  2  0  0  0  0|
+  // additional memory:  5  5  9  9  9  9| 5  5  9  9  9  9|
+  //         iteration:       prev       |      current    |
+  //
+  // Depending on the options provided, we can use alternative resource
+  // satisfaction criteria. One option is to specify a percentage of the copy
+  // resource that needs to be satisfied instead of the complete amount (100%).
+  // This is called the "desired copy ratio". The reason why desired copy ratio
+  // can be less than 100% is that in a memory-bound loop, we probably do not
+  // have enough aggregate bandwidth resources to satisfy all of the prefetches,
+  // but using up all of the default-memory bandwidth is more important than
+  // having some prefetches with unsatisfied resources. In a similar vein,
+  // another option is to accept prefetches that are fully pipelined, i.e.
+  // their copy start time is scheduled the same time as the copy done time in
+  // the previous iteration, regardless of how much of its copy resources are
+  // actually satisfied. To illustrate a fully pipelined prefetch, consider
+  // prefetch 3 (assume no prefetch 1 or 2 in this example) which is 15 MiB and
+  // its first use is at index 4:
+  //
+  //        prefetch 3:=============+=================+===== unsat res: 4
+  //               idx:  0  1  2  3  4  5| 0  1  2  3  4  5|
+  //      bw idle time:  0  0  0  0  0  0| 0  0  0  0  0  0|
+  // additional memory: 15 15 15 15 30 15|15 15 15 15 30 15|
+  //         iteration:       prev       |      current    |
+  //
+  // Note that the additional memory consumption at index 4 is actually twice
+  // the size of the prefetch as we are effectively double buffering. Also note
+  // that the prefetch has an unsatisfied copy resource of 4 meaning the copy
+  // will be in the critical path, but this actually will be faster than not
+  // scheduling this particular prefetch in the first place since the bandwidth
+  // idle time resource would go unused.
+  float accumulated_copy_resource = 0;
+  std::vector<int> early_forced_prefetch_value_indices;
+  int early_forced_prefetch_value_search_index = 0;
+  float early_forced_prefetch_additional_memory = 0;
+  for (int i = first_use_idx - 1; i >= last_use_idx_sentinel - loop_size_;
+       --i) {
+    int loop_idx = (i + loop_size_) % loop_size_;
+    // Check if this prefetch rolls over to the previous iteration, check if any
+    // already-scheduled prefetches would violate the FIFO order, and if so,
+    // "early-force" them to be co-scheduled with this prefetch to maintain the
+    // FIFO order. This of course increases the required memory, so also keep
+    // track of additional memory that would be consumed.
+    if (i < 0) {
+      for (; context.value_indices[early_forced_prefetch_value_search_index] !=
+             value_index;
+           ++early_forced_prefetch_value_search_index) {
+        VLOG(3) << "Searching for early forced: "
+                << early_forced_prefetch_value_search_index;
+        LoopValue* early_forced_value = context.values.at(
+            context.value_indices[early_forced_prefetch_value_search_index]);
+        if (early_forced_value->allocations.empty()) {
+          continue;
+        }
+        const MemorySpaceAssignment::CopyAllocation* early_forced_prefetch =
+            static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+                early_forced_value->allocations.back().get());
+        VLOG(3) << "Prefetch: " << early_forced_prefetch->ToString();
+
+        // If the prefetch is already a roll-around prefetch, no need to further
+        // early force it.
+        if (early_forced_prefetch->copy_done_schedule_before() <=
+                early_forced_prefetch->copy_start_schedule_after() + 1 ||
+            (early_forced_prefetch->copy_start_schedule_after() ==
+                 loop_size_ - 1 &&
+             early_forced_prefetch->copy_done_schedule_before() == 0)) {
+          break;
+        }
+        if (early_forced_prefetch->copy_start_schedule_after() != loop_idx) {
+          break;
+        }
+        early_forced_prefetch_value_indices.push_back(
+            early_forced_prefetch_value_search_index);
+        early_forced_prefetch_additional_memory += early_forced_value->size;
+        VLOG(3) << "Found early-forced prefetch value: "
+                << early_forced_value->ToString();
+        VLOG(3) << "Early forced prefetch additional memory: "
+                << early_forced_prefetch_additional_memory;
+      }
+    }
+
+    // Overlap memory overhead only happens if the copy start overlaps with the
+    // first use (i.e. fully pipelined), so we'd need to account for 2X the
+    // buffer at this time.
+    int64_t overlap_memory_overhead = 0;
+    if (loop_idx == last_use_idx) {
+      overlap_memory_overhead = value->size;
+      VLOG(3) << "Loop idx == last use idx (" << loop_idx
+              << "), overlap memory overhead = " << overlap_memory_overhead;
+    }
+
+    // OOM; give up prefetch.
+    if (context.additional_memory_used[loop_idx] + value->size +
+            overlap_memory_overhead + early_forced_prefetch_additional_memory >
+        remaining_memory_[loop_idx]) {
+      VLOG(3) << "Ran out of memory. Accumulated copy resource "
+              << accumulated_copy_resource << " out of " << copy_resource
+              << " at " << loop_idx;
+      break;
+    }
+
+    // We ideally find a time to overlap the prefetch fully where the previous
+    // iteration's memory use is disjoint from this iteration. If that is not
+    // possible, there are two compromises we could pick:
+    //   - Find a prefetch time that satisfies a desired ratio < 1 of the
+    //      prefetch elapsed time. This means the prefetch will be critical.
+    //   - Overlap the prefetch with the previous iteration's buffer use, i.e.
+    //     full pipelining. This would increase the peak memory consumption.
+    float bandwidth_idle_time = context.bandwidth_idle_times[loop_idx];
+    VLOG(3) << "Idx " << loop_idx
+            << " bandwidth_idle_time: " << bandwidth_idle_time
+            << " copy resource remaining: "
+            << (copy_resource - accumulated_copy_resource) << " diff: "
+            << (bandwidth_idle_time -
+                (copy_resource - accumulated_copy_resource));
+    if (bandwidth_idle_time >= copy_resource - accumulated_copy_resource) {
+      accumulated_copy_resource = copy_resource;
+      copy_start_time = loop_idx;
+      VLOG(3) << "Found the complete copy ratio and updated accumulated copy "
+                 "resource: "
+              << accumulated_copy_resource;
+      break;
+    } else if (!copy_start_time &&
+               accumulated_copy_resource + bandwidth_idle_time >=
+                   copy_resource * options_.desired_copy_ratio()) {
+      accumulated_copy_resource += bandwidth_idle_time;
+      copy_start_time = loop_idx;
+      VLOG(3) << "Found the desired copy ratio and updated accumulated copy "
+                 "resource: "
+              << accumulated_copy_resource;
+    } else if (options_.allow_unsatisfied_fully_pipelined_prefetch() &&
+               loop_idx == last_use_idx) {
+      // Even if desired resource isn't reached, and if the options allow it,
+      // allow a fully pipelined prefetch.
+      accumulated_copy_resource += bandwidth_idle_time;
+      copy_start_time = loop_idx;
+      VLOG(3) << "Could not reach the desired copy ratio but scheduling "
+                 "fully pipelined prefetch anyway: "
+              << accumulated_copy_resource;
+      break;
+    } else {
+      accumulated_copy_resource += bandwidth_idle_time;
+      VLOG(3) << "Updated accumulated copy resource: "
+              << accumulated_copy_resource;
+    }
+  }
+
+  // Could not find a suitable copy start time.
+  if (!copy_start_time) {
+    return false;
+  }
+
+  VLOG(3) << "Success: copy_start_time: " << *copy_start_time
+          << " leftover copy resource: "
+          << (copy_resource - accumulated_copy_resource);
+  auto update_additional_memory_used = [&](int loop_idx, int64_t addition) {
+    VLOG(4) << "Updating additional memory used at " << loop_idx << ". "
+            << context.additional_memory_used[loop_idx] << " + " << addition
+            << " => " << (context.additional_memory_used[loop_idx] + addition)
+            << " (remaining: " << remaining_memory_[loop_idx] << ")";
+    context.additional_memory_used[loop_idx] += addition;
+    CHECK_LE(context.additional_memory_used[loop_idx],
+             remaining_memory_[loop_idx]);
+  };
+  for (int i = first_use_idx; i <= last_use_idx_sentinel; ++i) {
+    int loop_idx = i % loop_size_;
+    update_additional_memory_used(loop_idx, value->size);
+  }
+  for (int i = first_use_idx - 1; i >= last_use_idx_sentinel - loop_size_;
+       --i) {
+    int loop_idx = (i + loop_size_) % loop_size_;
+    float& bandwidth_idle_time = context.bandwidth_idle_times[loop_idx];
+    // Overlap memory overhead only happens if the copy start overlaps with the
+    // first use (i.e. fully pipelined), so we'd need to account for 2X the
+    // buffer at this time.
+    int64_t overlap_memory_overhead = 0;
+    update_additional_memory_used(loop_idx,
+                                  value->size + overlap_memory_overhead);
+    if (bandwidth_idle_time < copy_resource) {
+      copy_resource -= bandwidth_idle_time;
+      bandwidth_idle_time = 0;
+      if (loop_idx == *copy_start_time) {
+        VLOG(3) << "Remaining copy resource: " << copy_resource;
+        break;
+      }
+    } else {
+      bandwidth_idle_time -= copy_resource;
+      copy_resource = 0;
+      CHECK_EQ(loop_idx, *copy_start_time);
+      break;
+    }
+  }
+
+  // Create the Allocation objects that correspond to the scheduled prefetch.
+  CHECK(value->header_position);
+  value->allocations.push_back(
+      std::make_unique<MemorySpaceAssignment::Allocation>(
+          *value->header_position, MemorySpaceAssignment::MemorySpace::kDefault,
+          std::nullopt, 0, loop_size_, /*is_scoped_allocation=*/false));
+  value->allocations.push_back(
+      std::make_unique<MemorySpaceAssignment::CopyAllocation>(
+          *value->allocations.back(),
+          MemorySpaceAssignment::MemorySpace::kAlternate, std::nullopt,
+          ((*copy_start_time - 1) + loop_size_) % loop_size_,
+          last_use_idx_sentinel, first_use_idx));
+  AddAllLoopPositionsAndUses(*value, /*allocate_next_iteration_uses=*/true);
+
+  // Account for the additional memory used by early forcing the already
+  // scheduled prefetches. Also modify the start times of these to this
+  // prefetch's copy start time.
+  for (int early_forced_prefetch_value_index :
+       early_forced_prefetch_value_indices) {
+    LoopValue* early_forced_value = context.values.at(
+        context.value_indices[early_forced_prefetch_value_index]);
+    CHECK(!early_forced_value->allocations.empty());
+    MemorySpaceAssignment::CopyAllocation* early_forced_prefetch =
+        static_cast<MemorySpaceAssignment::CopyAllocation*>(
+            early_forced_value->allocations.back().get());
+    for (int index = early_forced_prefetch->copy_start_schedule_after();
+         index >= *copy_start_time; --index) {
+      update_additional_memory_used(index, early_forced_value->size);
+      VLOG(3) << "Additional memory used: " << index << " "
+              << context.additional_memory_used[index];
+    }
+    early_forced_prefetch->set_copy_start_schedule_after(
+        ((*copy_start_time - 1) + loop_size_) % loop_size_);
+    VLOG(3) << "Updated prefetch: " << early_forced_prefetch->ToString();
+  }
+  return true;
+}
+
+void MemoryBoundLoopOptimizer::AddAllLoopPositionsAndUses(
+    LoopValue& value, bool allocate_next_iteration_uses) {
+  CHECK_GE(value.allocations.size(), 1);
+  MemorySpaceAssignment::Allocation& allocation = *value.allocations.back();
+  for (const auto& [idx, position] : value.loop_positions) {
+    positions_in_alternate_mem_[position.instruction].push_back(position.index);
+  }
+  for (const auto& [idx, use] : value.loop_uses) {
+    uses_in_alternate_mem_[use.instruction].push_back(
+        {use.operand_number, use.operand_index});
+    allocation.AddUse(use);
+  }
+  if (allocate_next_iteration_uses) {
+    for (const auto& [next_iteration_idx, use] : value.next_iteration_uses) {
+      HloInstruction* loop_instruction =
+          hlo_live_range_.flattened_instruction_sequence().instructions().at(
+              loop_start_ + next_iteration_idx);
+      uses_in_alternate_mem_[loop_instruction].push_back(
+          {use.operand_number, use.operand_index});
+      allocation.AddUse(
+          {loop_instruction, use.operand_number, use.operand_index});
+    }
+  }
+}
+
+float MemoryBoundLoopOptimizer::GetBandwidthIdleTime(int idx) const {
+  const HloInstruction* inst =
+      hlo_live_range_.flattened_instruction_sequence().instructions().at(
+          loop_start_ + idx);
+  std::vector<std::pair<int64_t, ShapeIndex>> empty_operands;
+  std::vector<ShapeIndex> empty_outputs;
+  const std::vector<std::pair<int64_t, ShapeIndex>>* operands_in_alternate_mem =
+      &empty_operands;
+  const std::vector<ShapeIndex>* outputs_in_alternate_mem = &empty_outputs;
+  auto uses_it = uses_in_alternate_mem_.find(inst);
+  if (uses_it != uses_in_alternate_mem_.end()) {
+    operands_in_alternate_mem = &uses_it->second;
+  }
+  auto positions_it = positions_in_alternate_mem_.find(inst);
+  if (positions_it != positions_in_alternate_mem_.end()) {
+    outputs_in_alternate_mem = &positions_it->second;
+  }
+  return cost_analysis_.GetDefaultMemoryBandwidthIdleTime(
+      *inst, *operands_in_alternate_mem, *outputs_in_alternate_mem);
+}
+
+float MemoryBoundLoopOptimizer::GetBandwidthIdleTime(
+    int idx,
+    const absl::flat_hash_map<const HloInstruction*,
+                              std::vector<std::pair<int64_t, ShapeIndex>>>&
+        additional_uses_in_alternate_mem,
+    const absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>&
+        additional_positions_in_alternate_mem) const {
+  const HloInstruction* inst =
+      hlo_live_range_.flattened_instruction_sequence().instructions().at(
+          loop_start_ + idx);
+  std::vector<std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem;
+  std::vector<ShapeIndex> outputs_in_alternate_mem;
+  auto uses_it = uses_in_alternate_mem_.find(inst);
+  if (uses_it != uses_in_alternate_mem_.end()) {
+    operands_in_alternate_mem = uses_it->second;
+  }
+  auto additional_uses_it = additional_uses_in_alternate_mem.find(inst);
+  if (additional_uses_it != additional_uses_in_alternate_mem.end()) {
+    absl::c_copy(additional_uses_it->second,
+                 std::back_inserter(operands_in_alternate_mem));
+  }
+  auto positions_it = positions_in_alternate_mem_.find(inst);
+  if (positions_it != positions_in_alternate_mem_.end()) {
+    outputs_in_alternate_mem = positions_it->second;
+  }
+  auto additional_positions_it =
+      additional_positions_in_alternate_mem.find(inst);
+  if (additional_positions_it != additional_positions_in_alternate_mem.end()) {
+    absl::c_copy(additional_positions_it->second,
+                 std::back_inserter(outputs_in_alternate_mem));
+  }
+  return cost_analysis_.GetDefaultMemoryBandwidthIdleTime(
+      *inst, operands_in_alternate_mem, outputs_in_alternate_mem);
+}
+
+float MemoryBoundLoopOptimizer::GetInstructionElapsed(int idx) const {
+  const HloInstruction* inst =
+      hlo_live_range_.flattened_instruction_sequence().instructions().at(
+          loop_start_ + idx);
+  std::vector<std::pair<int64_t, ShapeIndex>> empty_operands;
+  std::vector<ShapeIndex> empty_outputs;
+  const std::vector<std::pair<int64_t, ShapeIndex>>* operands_in_alternate_mem =
+      &empty_operands;
+  const std::vector<ShapeIndex>* outputs_in_alternate_mem = &empty_outputs;
+  auto uses_it = uses_in_alternate_mem_.find(inst);
+  if (uses_it != uses_in_alternate_mem_.end()) {
+    operands_in_alternate_mem = &uses_it->second;
+  }
+  auto positions_it = positions_in_alternate_mem_.find(inst);
+  if (positions_it != positions_in_alternate_mem_.end()) {
+    outputs_in_alternate_mem = &positions_it->second;
+  }
+  return cost_analysis_.GetInstructionElapsedInAlternateMemory(
+      *inst, *operands_in_alternate_mem, *outputs_in_alternate_mem);
+}
+
+Status AlternateMemoryBestFitHeap::OptimizeMemoryBoundLoop(int loop_start_idx,
+                                                           int loop_end_idx,
+                                                           int loop_size) {
+  // The MemoryBoundLoopOptimizer works with a minimum of three unrolled loop
+  // iterations: previous, current, and next. So, we pick the second iteration
+  // out of the loop as the current iteration.
+  const int iteration_start_idx = loop_start_idx + loop_size;
+  const int iteration_end_idx = iteration_start_idx + loop_size;
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
+      MemoryBoundLoopOptimizer::Create(
+          iteration_start_idx, iteration_end_idx, options_.max_size_in_bytes,
+          options_.memory_bound_loop_optimizer_options, hlo_live_range_,
+          alias_analysis_, *options_.cost_analysis, options_.size_fn));
+  optimizer->Optimize();
+
+  const int loop_optimized_allocations_original_size =
+      loop_optimized_allocations_.size();
+  for (MemoryBoundLoopOptimizer::LoopValue& value : optimizer->loop_values()) {
+    if (!value.allocations.empty()) {
+      loop_optimized_allocations_.push_back(std::move(value.allocations));
+    }
+  }
+
+  // Check if this unrolled loop is in a while loop.
+  const auto& instruction_sequence =
+      hlo_live_range_.flattened_instruction_sequence().instructions();
+  std::vector<HloInstruction*> callers = call_graph_->GetComputationCallers(
+      instruction_sequence[loop_start_idx]->parent());
+  const bool is_in_while_loop =
+      callers.size() == 1 && callers.front()->opcode() == HloOpcode::kWhile;
+
+  // Update the loop_optimized_allocations_map_ with the output of the
+  // optimizer.
+  for (int i = loop_optimized_allocations_original_size;
+       i < loop_optimized_allocations_.size(); ++i) {
+    const MemorySpaceAssignment::AllocationSequence& sequence =
+        loop_optimized_allocations_.at(i);
+    CHECK(!sequence.empty());
+    VLOG(3) << "  alloc: " << sequence.back()->ToString();
+    for (const auto& allocation : sequence) {
+      // Check if the loop is in a while loop and the position needs to be
+      // allocated in the default memory.
+      const bool require_pos_in_default_space =
+          is_in_while_loop &&
+          (allocation->memory_space() == MemorySpace::kDefault ||
+           allocation->is_copy_allocation());
+      for (const HloUse& use : allocation->uses()) {
+        const int64_t use_idx =
+            hlo_live_range_.instruction_schedule().at(use.instruction) -
+            iteration_start_idx;
+        CHECK_GE(use_idx, 0);
+        CHECK_LT(use_idx, loop_size);
+        for (int64_t i = loop_start_idx + use_idx; i <= loop_end_idx;
+             i += loop_size) {
+          HloInstruction* repeated_inst = instruction_sequence[i];
+          HloUse repeated_use{repeated_inst, use.operand_number,
+                              use.operand_index};
+          loop_optimized_allocations_map_[repeated_use] = {use_idx, loop_size,
+                                                           allocation.get()};
+          VLOG(3) << " Setting optimized allocations map. Use: "
+                  << repeated_use.ToString() << " idx: " << use_idx
+                  << " allocation: " << allocation->ToString();
+          if (require_pos_in_default_space) {
+            const HloValue& value =
+                alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+                    repeated_inst->operand(use.operand_number),
+                    use.operand_index);
+            // If any of the positions is a parameter in a while loop, we add a
+            // required assignment in the default memory space.
+            for (const HloPosition& value_position : value.positions()) {
+              if (value_position.instruction->parent() ==
+                      repeated_inst->parent() &&
+                  value_position.instruction->opcode() ==
+                      HloOpcode::kParameter) {
+                AddRequiredAssignment(value_position.instruction,
+                                      value_position.index,
+                                      MemorySpace::kDefault);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return OkStatus();
+}
+
+namespace {
+// A helper function to get the distance between a use and its producer (or -1
+// if producer is a gte, parameter or tuple).
+std::function<int(const HloInstruction*)> GetOperandDistanceFunction(
+    const HloLiveRange& hlo_live_range, const HloInstruction* use_inst) {
+  const int use_idx = hlo_live_range.instruction_schedule().at(use_inst);
+  return [&, use_idx](const HloInstruction* operand) -> int {
+    // We just use -1 for parameter, tuple, and gte instructions. We could make
+    // this "see through" the gtes if we get too many false positives.
+    if (operand->opcode() == HloOpcode::kParameter ||
+        operand->opcode() == HloOpcode::kTuple ||
+        operand->opcode() == HloOpcode::kGetTupleElement) {
+      return -1;
+    }
+    return use_idx - hlo_live_range.instruction_schedule().at(operand);
+  };
+}
+
+// A helper function to check if the operand distances of two instructions
+// are compatible. This assumes `a` is scheduled loop size candidate
+// instructions before `b`. The operand distances are compatible if either
+// distance is -1, or if they are the same, or if they are separated by loop
+// size candidate.
+bool AreOperandCandidatesCompatible(int loop_size_candidate,
+                                    absl::Span<const int> a_distances,
+                                    absl::Span<const int> b_distances) {
+  if (a_distances.size() != b_distances.size()) {
+    return false;
+  }
+  for (int i = 0; i < a_distances.size(); ++i) {
+    const int a_value = a_distances.at(i);
+    const int b_value = b_distances.at(i);
+    if (a_value != -1 && b_value != -1 &&
+        a_value + loop_size_candidate != b_value && a_value != b_value) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
+void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
+  absl::flat_hash_map<absl::string_view, int> fingerprint_schedule_map;
+  const auto& instruction_sequence =
+      hlo_live_range_.flattened_instruction_sequence().instructions();
+  // The minimum and maximum loop sizes that we consider.
+  const int kMinLoopSize = 4;
+  const int kMaxLoopSize = 400;
+  const float kMinNumIterations = 3.0;
+  int optimized_loop_idx = 0;
+  while (optimized_loop_idx < instruction_sequence.size()) {
+    // Iterate over the flattened instruction sequence. We first try to find a
+    // loop candidate where the fingerprint between two instructions matches by
+    // the loop size candidate.
+    int loop_size_candidate = -1;
+    int loop_start_idx = -1;
+    int loop_end_idx = -1;
+    for (; optimized_loop_idx < instruction_sequence.size();
+         ++optimized_loop_idx) {
+      const HloInstruction* inst = instruction_sequence[optimized_loop_idx];
+      auto fingerprint_it = fingerprint_map_.find(inst);
+      if (inst->opcode() != HloOpcode::kParameter &&
+          inst->opcode() != HloOpcode::kTuple &&
+          inst->opcode() != HloOpcode::kGetTupleElement &&
+          fingerprint_it != fingerprint_map_.end()) {
+        // Find and the latest instruction with the same fingerprint as this.
+        auto fingerprint_schedule_it =
+            fingerprint_schedule_map.find(fingerprint_it->second);
+        if (fingerprint_schedule_it != fingerprint_schedule_map.end()) {
+          int distance = optimized_loop_idx - fingerprint_schedule_it->second;
+          if (distance >= kMinLoopSize && distance <= kMaxLoopSize) {
+            // We found two instructions with the same fingerprint. The distance
+            // between the two is the loop size candidate.
+            loop_size_candidate = distance;
+            break;
+          }
+        }
+        fingerprint_schedule_map[fingerprint_it->second] = optimized_loop_idx;
+      }
+
+      VLOG(3) << " " << optimized_loop_idx << ": "
+              << instruction_sequence[optimized_loop_idx]->parent()->name()
+              << " " << instruction_sequence[optimized_loop_idx]->name()
+              << " fingerprint: "
+              << (fingerprint_it == fingerprint_map_.end()
+                      ? "none"
+                      : fingerprint_it->second);
+    }
+    VLOG(3) << "Loop size candidate: " << loop_size_candidate;
+    if (loop_size_candidate == -1) {
+      break;
+    }
+
+    std::vector<std::vector<int>> operand_distances;
+
+    // Scan the instructions with the candidate loop size. We try to calculate
+    // the size of the loop by finding the instructions that are loop size
+    // candidate apart, have the same fingerprint and compatible operand
+    // distances. We start scanning the candidate loop a few instructions
+    // earlier than the fingerprint identified in case the loop starts a bit
+    // earlier than the fingerprint logic.
+    const int kLoopScanHeadStart = 10;
+    for (int i = std::max(
+             0, optimized_loop_idx - loop_size_candidate - kLoopScanHeadStart);
+         i < instruction_sequence.size(); ++i) {
+      const HloInstruction* inst = instruction_sequence[i];
+      auto fingerprint_it = fingerprint_map_.find(inst);
+      auto ignore_op = [](const HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kParameter ||
+               instruction->opcode() == HloOpcode::kTuple ||
+               instruction->opcode() == HloOpcode::kGetTupleElement;
+      };
+      if (loop_start_idx == -1) {
+        if (i > optimized_loop_idx - loop_size_candidate) {
+          break;
+        }
+        if (ignore_op(inst) || fingerprint_it == fingerprint_map_.end()) {
+          continue;
+        }
+        if (i + loop_size_candidate >= instruction_sequence.size()) {
+          break;
+        }
+        const HloInstruction* candidate_inst =
+            instruction_sequence[i + loop_size_candidate];
+        auto candidate_fingerprint_it = fingerprint_map_.find(candidate_inst);
+        if (ignore_op(candidate_inst) ||
+            candidate_fingerprint_it == fingerprint_map_.end() ||
+            fingerprint_it->second != candidate_fingerprint_it->second) {
+          // Fingerprint mismatch.
+          continue;
+        }
+        std::vector<int> inst_operand_distances;
+        absl::c_transform(inst->operands(),
+                          std::back_inserter(inst_operand_distances),
+                          GetOperandDistanceFunction(hlo_live_range_, inst));
+        std::vector<int> candidate_inst_operand_distances;
+        absl::c_transform(
+            candidate_inst->operands(),
+            std::back_inserter(candidate_inst_operand_distances),
+            GetOperandDistanceFunction(hlo_live_range_, candidate_inst));
+        VLOG(3) << "i : " << i << " "
+                << absl::StrJoin(inst_operand_distances, ", ") << " | "
+                << absl::StrJoin(candidate_inst_operand_distances, ", ");
+        if (!AreOperandCandidatesCompatible(loop_size_candidate,
+                                            inst_operand_distances,
+                                            candidate_inst_operand_distances)) {
+          // Operand distance mistatch.
+          continue;
+        }
+        // Found the start of the loop.
+        loop_start_idx = i;
+      }
+      operand_distances.push_back({});
+      if (ignore_op(inst) || fingerprint_it == fingerprint_map_.end()) {
+        continue;
+      }
+      absl::c_transform(inst->operands(),
+                        std::back_inserter(operand_distances.back()),
+                        GetOperandDistanceFunction(hlo_live_range_, inst));
+      if (i >= loop_start_idx + loop_size_candidate) {
+        // Verify that this still obeys the fingerprint and operand distance
+        // invariants.
+        const HloInstruction* prev_inst =
+            instruction_sequence[i - loop_size_candidate];
+        auto prev_fingerprint_it = fingerprint_map_.find(prev_inst);
+        if (prev_fingerprint_it == fingerprint_map_.end()) {
+          break;
+        }
+        if (fingerprint_it->second != prev_fingerprint_it->second) {
+          VLOG(3) << "Mismatch (fp) at " << i << ", "
+                  << (i - loop_size_candidate) << ": " << fingerprint_it->second
+                  << " vs " << prev_fingerprint_it->second;
+          break;
+        }
+        if (!AreOperandCandidatesCompatible(
+                loop_size_candidate,
+                *(operand_distances.rbegin() + loop_size_candidate),
+                operand_distances.back())) {
+          VLOG(3) << "Mismatch (op) at " << i << ", "
+                  << (i - loop_size_candidate) << ": "
+                  << absl::StrJoin(operand_distances.back(), ", ") << " vs "
+                  << absl::StrJoin(
+                         *(operand_distances.rbegin() + loop_size_candidate),
+                         ", ");
+          break;
+        }
+      }
+      loop_end_idx = i;
+    }
+    float num_iterations = 0;
+    if (loop_start_idx != -1) {
+      num_iterations = static_cast<float>(loop_end_idx + 1 - loop_start_idx) /
+                       loop_size_candidate;
+    }
+    VLOG(3) << "Loop start: " << loop_start_idx << " loop end: " << loop_end_idx
+            << " num iterations: " << num_iterations;
+
+    optimized_loop_idx = std::max(optimized_loop_idx, loop_end_idx) + 1;
+
+    if (num_iterations >= kMinNumIterations) {
+      VLOG(2) << "Found valid loop. Loop start: " << loop_start_idx
+              << " loop end: " << loop_end_idx
+              << " num iterations: " << num_iterations;
+
+      TF_CHECK_OK(OptimizeMemoryBoundLoop(loop_start_idx, loop_end_idx,
+                                          loop_size_candidate));
+    }
+  }
+}
+
 HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   if (options_.autotuning_config.has_value()) {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
@@ -1857,6 +3344,10 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
       VLOG(3) << " " << i << ": " << instruction_sequence[i]->parent()->name()
               << " " << instruction_sequence[i]->name();
     }
+  }
+
+  if (options_.memory_bound_loop_optimizer_options.enabled()) {
+    IdentifyAndOptimizeMemoryBoundLoops();
   }
 
   for (const auto& interval : sorted_buffer_intervals) {
@@ -2118,6 +3609,8 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
       int64_t use_time = instruction_schedule.at(hlo_use.instruction);
       int64_t latest_prefetch_time = use_time;
       bool allow_no_copy_alternate_mem_allocation = true;
+      bool allow_prefetch = true;
+      bool prefer_no_copy_alternate_mem_allocation = false;
       std::optional<int64_t> earliest_prefetch_time = std::nullopt;
 
       // Control flow  calls include kWhile, kCall, and kConditional opcodes.
@@ -2211,6 +3704,51 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           hlo_use.instruction ==
               hlo_use.instruction->parent()->root_instruction()) {
         std::optional<int64_t> preferred_prefetch_time = std::nullopt;
+        auto loop_optimized_allocation_it =
+            loop_optimized_allocations_map_.find(use.hlo_use);
+        if (loop_optimized_allocation_it !=
+            loop_optimized_allocations_map_.end()) {
+          const LoopOptimizedAllocationInfo& loop_optimized_allocation_info =
+              loop_optimized_allocation_it->second;
+          const MemorySpaceAssignment::Allocation* allocation =
+              loop_optimized_allocation_info.loop_optimized_allocation;
+          VLOG(3) << "Found optimized allocation for " << use.hlo_use.ToString()
+                  << " (loop idx: " << loop_optimized_allocation_info.use_index
+                  << "): " << allocation->ToString();
+          if (allocation->is_copy_allocation()) {
+            allow_no_copy_alternate_mem_allocation = true;
+            const MemorySpaceAssignment::CopyAllocation* copy_allocation =
+                static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+                    allocation);
+            int64_t effective_copy_start_time =
+                copy_allocation->copy_start_schedule_after();
+            if (copy_allocation->copy_start_schedule_after() ==
+                    loop_optimized_allocation_info.loop_size - 1 &&
+                copy_allocation->copy_done_schedule_before() == 0) {
+              effective_copy_start_time =
+                  -loop_optimized_allocation_info.loop_size;
+            } else if (copy_allocation->copy_start_schedule_after() + 1 >=
+                       copy_allocation->copy_done_schedule_before()) {
+              effective_copy_start_time -=
+                  loop_optimized_allocation_info.loop_size;
+            }
+            preferred_prefetch_time =
+                hlo_live_range_.instruction_schedule().at(hlo_use.instruction) -
+                loop_optimized_allocation_info.use_index +
+                effective_copy_start_time;
+            VLOG(3) << "Prefer prefetch at " << *preferred_prefetch_time
+                    << " (effective: " << effective_copy_start_time << ")";
+          } else if (allocation->memory_space() == MemorySpace::kDefault) {
+            allow_prefetch = false;
+            allow_no_copy_alternate_mem_allocation = false;
+            VLOG(3) << "Disallowing alternate memory allocation.";
+          } else {
+            CHECK(allocation->memory_space() == MemorySpace::kAlternate);
+            prefer_no_copy_alternate_mem_allocation = true;
+            VLOG(3) << "Prefer no-copy alternate memory allocation.";
+          }
+        }
+
         if (options_.use_repeated_instance_for_preferred_prefetch_time) {
           const std::vector<const HloInstruction*>* repeated_insts =
               GetRepeatedInstructionList(hlo_use.instruction);
@@ -2271,8 +3809,11 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         request.end_time = use_time;
         request.latest_prefetch_time = latest_prefetch_time;
         request.size = allocation_value.size();
+        request.prefer_no_copy_alternate_mem_allocation =
+            prefer_no_copy_alternate_mem_allocation;
         request.allow_no_copy_alternate_mem_allocation =
             allow_no_copy_alternate_mem_allocation;
+        request.allow_prefetch = allow_prefetch;
         request.earliest_prefetch_time = earliest_prefetch_time;
         request.preferred_prefetch_time = preferred_prefetch_time;
         request.preferred_offset = preferred_offset;
@@ -3430,11 +4971,39 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   }
 
   // Finally, try to prefetch the buffer into alternate memory.
-  if (!request.allocation_value->requires_contiguous_allocation()) {
+  if (request.allow_prefetch &&
+      !request.allocation_value->requires_contiguous_allocation()) {
     Result prefetch_result =
         Prefetch(request, **prev_allocation_in_default_mem_it);
     if (prefetch_result == Result::kSuccess) {
+      if (request.preferred_prefetch_time) {
+        // Warn if the prefetch time picked doesn't match the preferred prefetch
+        // time.
+        CHECK(!request.allocation_value->allocation_sequence()->empty());
+        const MemorySpaceAssignment::Allocation* allocation =
+            request.allocation_value->allocation_sequence()->back().get();
+        CHECK(allocation->is_copy_allocation());
+        const int64_t prefetch_time =
+            static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+                allocation)
+                ->copy_start_schedule_after();
+        if (prefetch_time != *request.preferred_prefetch_time) {
+          LOG(WARNING) << "Scheduled prefetch time (" << prefetch_time
+                       << ") doesn't match the preferred prefetch time ("
+                       << *request.preferred_prefetch_time
+                       << "): " << request.use->hlo_use.ToString();
+        }
+      }
+      request.allocation_value->allocation_sequence()->back();
       return Result::kSuccess;
+    }
+    // Warn if there was a preferred prefetch time but we couldn't actually
+    // prefetch.
+    if (request.preferred_prefetch_time) {
+      LOG(WARNING) << "The request has a preferred prefetch time ("
+                   << *request.preferred_prefetch_time
+                   << ") which could not be satisfied: "
+                   << request.use->hlo_use.ToString();
     }
     result_mark(prefetch_result, allocation_result);
   }
@@ -3552,7 +5121,10 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
 
   const HloPosition& defining_position =
       request.allocation_value->defining_position();
-  if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
+  // If prefer_no_copy_alternate_mem_allocation is true, bypass the live range
+  // duration checks.
+  if (!request.prefer_no_copy_alternate_mem_allocation &&
+      !options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
           defining_position.shape(), request.start_time + 1,
           request.end_time)) {
     return Result::kFailLiveRangeTooLong;
@@ -3638,6 +5210,10 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     request.allocation_value->allocation_sequence()->back()->AddUse(
         request.use->hlo_use);
     return Result::kSuccess;
+  }
+  if (request.prefer_no_copy_alternate_mem_allocation) {
+    LOG(WARNING) << "Preferred no-copy allocation, but this was not possible: "
+                 << request.use->hlo_use.ToString();
   }
   return Result::kFailOutOfMemory;
 }
@@ -3858,6 +5434,12 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
         options_.cost_analysis
             ? options_.cost_analysis->GetAsyncCopyElapsed(shape)
             : 0.1;
+    // If there is a preferred prefetch time due to a loop optimized allocation,
+    // we already keep track of the prefetch resources there, so skip tracking
+    // resources here.
+    if (request.preferred_prefetch_time) {
+      prefetch_resource = 0;
+    }
     if (!prefetch_async_copy_resource_.HasEnoughResource(
             alternate_mem_interval.start, prefetch_end_time,
             prefetch_resource)) {
@@ -4231,9 +5813,10 @@ HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() const {
 }
 
 std::string MemorySpaceAssignment::Allocation::ToString() const {
-  std::string memory_space_str = "def";
-  if (memory_space_ == MemorySpace::kAlternate) {
-    memory_space_str = absl::StrCat("alt (off: ", chunk_->offset, ")");
+  std::string memory_space_str =
+      memory_space_ == MemorySpace::kDefault ? "def" : "alt";
+  if (chunk_) {
+    absl::StrAppend(&memory_space_str, " (off: ", chunk_->offset, ")");
   }
   return absl::StrCat((is_scoped_allocation() ? "Scoped " : ""),
                       "Allocation in ", memory_space_str, " defined at ",
@@ -4243,9 +5826,10 @@ std::string MemorySpaceAssignment::Allocation::ToString() const {
 }
 
 std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
-  std::string memory_space_str = "def";
-  if (memory_space_ == MemorySpace::kAlternate) {
-    memory_space_str = absl::StrCat("alt (off: ", chunk_->offset, ")");
+  std::string memory_space_str =
+      memory_space_ == MemorySpace::kDefault ? "def" : "alt";
+  if (chunk_) {
+    absl::StrAppend(&memory_space_str, " (off: ", chunk_->offset, ")");
   }
   return absl::StrCat("Copy Allocation in ", memory_space_str,
                       ", start_time:", start_time(), ", end_time:", end_time(),

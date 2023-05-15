@@ -2135,6 +2135,7 @@ struct GoogleEdgeTpuSettingsT : public ::flatbuffers::NativeTable {
   bool delegate_should_manage_cache_for_outputs = true;
   tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED;
   tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED;
+  bool allow_fp16_precision_for_fp32 = false;
 };
 
 struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -2150,7 +2151,8 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
     VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_INPUTS = 16,
     VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_OUTPUTS = 18,
     VT_PREFER_CACHE_COHERENCY_FOR_INPUTS = 20,
-    VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS = 22
+    VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS = 22,
+    VT_ALLOW_FP16_PRECISION_FOR_FP32 = 24
   };
   int32_t log_verbosity() const {
     return GetField<int32_t>(VT_LOG_VERBOSITY, -1);
@@ -2182,6 +2184,9 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
   tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs() const {
     return static_cast<tflite::GoogleEdgeTpuSettings_::TriState>(GetField<int32_t>(VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS, 0));
   }
+  bool allow_fp16_precision_for_fp32() const {
+    return GetField<uint8_t>(VT_ALLOW_FP16_PRECISION_FOR_FP32, 0) != 0;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_LOG_VERBOSITY, 4) &&
@@ -2196,6 +2201,7 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
            VerifyField<uint8_t>(verifier, VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_OUTPUTS, 1) &&
            VerifyField<int32_t>(verifier, VT_PREFER_CACHE_COHERENCY_FOR_INPUTS, 4) &&
            VerifyField<int32_t>(verifier, VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS, 4) &&
+           VerifyField<uint8_t>(verifier, VT_ALLOW_FP16_PRECISION_FOR_FP32, 1) &&
            verifier.EndTable();
   }
   GoogleEdgeTpuSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2237,6 +2243,9 @@ struct GoogleEdgeTpuSettingsBuilder {
   void add_prefer_cache_coherency_for_outputs(tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs) {
     fbb_.AddElement<int32_t>(GoogleEdgeTpuSettings::VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS, static_cast<int32_t>(prefer_cache_coherency_for_outputs), 0);
   }
+  void add_allow_fp16_precision_for_fp32(bool allow_fp16_precision_for_fp32) {
+    fbb_.AddElement<uint8_t>(GoogleEdgeTpuSettings::VT_ALLOW_FP16_PRECISION_FOR_FP32, static_cast<uint8_t>(allow_fp16_precision_for_fp32), 0);
+  }
   explicit GoogleEdgeTpuSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2259,7 +2268,8 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
     bool delegate_should_manage_cache_for_inputs = true,
     bool delegate_should_manage_cache_for_outputs = true,
     tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED,
-    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED) {
+    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED,
+    bool allow_fp16_precision_for_fp32 = false) {
   GoogleEdgeTpuSettingsBuilder builder_(_fbb);
   builder_.add_prefer_cache_coherency_for_outputs(prefer_cache_coherency_for_outputs);
   builder_.add_prefer_cache_coherency_for_inputs(prefer_cache_coherency_for_inputs);
@@ -2267,6 +2277,7 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
   builder_.add_extension_data(extension_data);
   builder_.add_priority(priority);
   builder_.add_log_verbosity(log_verbosity);
+  builder_.add_allow_fp16_precision_for_fp32(allow_fp16_precision_for_fp32);
   builder_.add_delegate_should_manage_cache_for_outputs(delegate_should_manage_cache_for_outputs);
   builder_.add_delegate_should_manage_cache_for_inputs(delegate_should_manage_cache_for_inputs);
   builder_.add_use_async_api(use_async_api);
@@ -2285,7 +2296,8 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettingsD
     bool delegate_should_manage_cache_for_inputs = true,
     bool delegate_should_manage_cache_for_outputs = true,
     tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED,
-    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED) {
+    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED,
+    bool allow_fp16_precision_for_fp32 = false) {
   auto extension_data__ = extension_data ? _fbb.CreateVector<uint8_t>(*extension_data) : 0;
   auto model_identifier__ = model_identifier ? _fbb.CreateString(model_identifier) : 0;
   return tflite::CreateGoogleEdgeTpuSettings(
@@ -2299,7 +2311,8 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettingsD
       delegate_should_manage_cache_for_inputs,
       delegate_should_manage_cache_for_outputs,
       prefer_cache_coherency_for_inputs,
-      prefer_cache_coherency_for_outputs);
+      prefer_cache_coherency_for_outputs,
+      allow_fp16_precision_for_fp32);
 }
 
 ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(::flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4735,7 +4748,8 @@ inline bool operator==(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSet
       (lhs.delegate_should_manage_cache_for_inputs == rhs.delegate_should_manage_cache_for_inputs) &&
       (lhs.delegate_should_manage_cache_for_outputs == rhs.delegate_should_manage_cache_for_outputs) &&
       (lhs.prefer_cache_coherency_for_inputs == rhs.prefer_cache_coherency_for_inputs) &&
-      (lhs.prefer_cache_coherency_for_outputs == rhs.prefer_cache_coherency_for_outputs);
+      (lhs.prefer_cache_coherency_for_outputs == rhs.prefer_cache_coherency_for_outputs) &&
+      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32);
 }
 
 inline bool operator!=(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs) {
@@ -4762,6 +4776,7 @@ inline void GoogleEdgeTpuSettings::UnPackTo(GoogleEdgeTpuSettingsT *_o, const ::
   { auto _e = delegate_should_manage_cache_for_outputs(); _o->delegate_should_manage_cache_for_outputs = _e; }
   { auto _e = prefer_cache_coherency_for_inputs(); _o->prefer_cache_coherency_for_inputs = _e; }
   { auto _e = prefer_cache_coherency_for_outputs(); _o->prefer_cache_coherency_for_outputs = _e; }
+  { auto _e = allow_fp16_precision_for_fp32(); _o->allow_fp16_precision_for_fp32 = _e; }
 }
 
 inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> GoogleEdgeTpuSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -4782,6 +4797,7 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
   auto _delegate_should_manage_cache_for_outputs = _o->delegate_should_manage_cache_for_outputs;
   auto _prefer_cache_coherency_for_inputs = _o->prefer_cache_coherency_for_inputs;
   auto _prefer_cache_coherency_for_outputs = _o->prefer_cache_coherency_for_outputs;
+  auto _allow_fp16_precision_for_fp32 = _o->allow_fp16_precision_for_fp32;
   return tflite::CreateGoogleEdgeTpuSettings(
       _fbb,
       _log_verbosity,
@@ -4793,7 +4809,8 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
       _delegate_should_manage_cache_for_inputs,
       _delegate_should_manage_cache_for_outputs,
       _prefer_cache_coherency_for_inputs,
-      _prefer_cache_coherency_for_outputs);
+      _prefer_cache_coherency_for_outputs,
+      _allow_fp16_precision_for_fp32);
 }
 
 

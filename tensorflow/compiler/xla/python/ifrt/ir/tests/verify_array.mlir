@@ -29,7 +29,7 @@ func.func @array_devices_should_be_distinct() {
 // -----
 
 func.func @array_requires_same_permutation_and_axis_sizes() {
-  // expected-error@+2 {{Expect same size for `permutation` and `axis_sizes`. Actual 2 vs 1}}
+  // expected-error@+2 {{Expect same non-zero size for `permutation` and `axis_sizes`. Actual 2 vs 1}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 1x1 to [0,1] on 2, [0,1]>
   return
@@ -59,5 +59,23 @@ func.func @array_requires_same_size_of_devices_and_from_axes() {
   // expected-error@+2 {{Requires the same amount of `devices` and from `sharding`. Actual: 3 vs 4}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 2x2 to [0,1] on 2x2, [0,1,2]>
+  return
+}
+
+// -----
+
+func.func @array_requires_non_empty_dim_shards() {
+  // expected-error@+2 {{Dim shards is empty}}
+  %0 = builtin.unrealized_conversion_cast to
+       !ifrt.array<tensor<4x4xi32>,  to [0,1] on 2x2, [0,1,2,3]>
+  return
+}
+
+// -----
+
+func.func @array_requires_non_empty_permutation() {
+  // expected-error@+2 {{Expect same non-zero size for `permutation` and `axis_sizes`. Actual 0 vs 0}}
+  %0 = builtin.unrealized_conversion_cast to
+       !ifrt.array<tensor<4x4xi32>, 2x2 to [] on , [0,1,2,3]>
   return
 }

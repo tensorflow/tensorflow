@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -9,14 +10,15 @@ package(
 # seem to confuse the memory_profiler, and the tests begin to flake. Add new
 # test files as needed.
 
-py_library(
+py_strict_library(
     name = "memory_test_util",
     srcs = ["memory_test_util.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/python/eager:context"],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "memory_test",
     size = "medium",
     srcs = ["memory_test.py"],
@@ -31,15 +33,19 @@ cuda_py_test(
     deps = [
         ":memory_test_util",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "@six_archive//:six",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "remote_memory_test",
     size = "medium",
     srcs = ["remote_memory_test.py"],
@@ -51,9 +57,11 @@ cuda_py_test(
     deps = [
         ":memory_test_util",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/training:server_lib",
     ],
 )

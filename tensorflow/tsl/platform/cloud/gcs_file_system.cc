@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include "absl/status/status.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -378,7 +380,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
           offset + copy_size >= buffer_end && buffer_end_is_past_eof_;
       if (copy_size < n && !consumed_buffer_to_eof) {
         Status status = FillBuffer(offset + copy_size);
-        if (!status.ok() && !errors::IsOutOfRange(status)) {
+        if (!status.ok() && !absl::IsOutOfRange(status)) {
           // Empty the buffer to avoid caching bad reads.
           buffer_.resize(0);
           return status;
@@ -407,7 +409,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
     StringPiece str_piece;
     Status status = read_fn_(filename_, buffer_start_, buffer_size_, &str_piece,
                              &(buffer_[0]));
-    buffer_end_is_past_eof_ = errors::IsOutOfRange(status);
+    buffer_end_is_past_eof_ = absl::IsOutOfRange(status);
     buffer_.resize(str_piece.size());
     return status;
   }
@@ -642,7 +644,7 @@ class GcsWritableFile : public WritableFile {
                                  already_uploaded);
         },
         retry_config_);
-    if (errors::IsNotFound(upload_status)) {
+    if (absl::IsNotFound(upload_status)) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
       return errors::Unavailable(
@@ -1463,7 +1465,7 @@ Status GcsFileSystem::FileExists(const string& fname, TransactionToken* token) {
   // Check if the object exists.
   GcsFileStat stat;
   const Status status = StatForObject(fname, bucket, object, &stat);
-  if (!errors::IsNotFound(status)) {
+  if (!absl::IsNotFound(status)) {
     return status;
   }
 
@@ -1656,7 +1658,7 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
     *result = stat.base.is_directory;
     return OkStatus();
   }
-  if (errors::IsInvalidArgument(s)) {
+  if (absl::IsInvalidArgument(s)) {
     *result = false;
     return OkStatus();
   }
@@ -1856,7 +1858,7 @@ Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
     *stat = gcs_stat.base;
     return OkStatus();
   }
-  if (!errors::IsNotFound(status)) {
+  if (!absl::IsNotFound(status)) {
     return status;
   }
   bool is_folder;

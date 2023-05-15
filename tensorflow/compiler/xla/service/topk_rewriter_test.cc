@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -41,6 +42,7 @@ namespace m = ::xla::match;
 namespace xla {
 namespace {
 
+namespace op = xla::testing::opcode_matchers;
 using ::tsl::testing::IsOkAndHolds;
 using TopkRewriterTest = HloTestBase;
 
@@ -574,6 +576,43 @@ ENTRY cluster {
   };
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(source_module), std::nullopt,
                                        round_trip));
+}
+
+TEST_F(TopkRewriterTest, TopKDecomposition) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+compare {
+  p.0.lhs = bf16[] parameter(0)
+  p.0.rhs = bf16[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
+}
+
+ENTRY TopK {
+  x = bf16[10,10]{0,1} parameter(0)
+  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                          TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  auto sort_matcher = op::Sort(op::Parameter(0), op::Iota());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::Slice(op::GetTupleElement(sort_matcher, 0)),
+                        op::Slice(op::GetTupleElement(sort_matcher, 1))));
+
+  // Check that we also match the topk rewriter, effectively roundtripping.
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

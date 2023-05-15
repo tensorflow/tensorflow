@@ -55,6 +55,9 @@ constexpr double kTargetTimeSigmas = 1.0;
 // downsizing a buffer.
 constexpr double kBufferUpsizeMultiplier = 2.0;
 constexpr double kBufferDownsizeMultipliter = 0.9;
+// Threshold of low buffer watermark before a buffer is a candidate for
+// upsizing.
+constexpr int64_t kBufferLowWatermarkThreshold = 2;
 
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
@@ -1898,7 +1901,7 @@ void Node::CollectBufferParametersToUpsize(
           (parameter->state == nullptr || !parameter->state->tunable)) {
         continue;
       }
-      if (buffered_elements_low_ <= 0 &&
+      if (buffered_elements_low_ <= kBufferLowWatermarkThreshold &&
           buffered_elements_high_ >= parameter->value) {
         parameter->value = parameter->state->value;
         node_parameters[this] = parameter.get();

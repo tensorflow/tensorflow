@@ -38,11 +38,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
 
   absl::string_view device_vendor() const;
 
-  absl::string_view ToString() const override;
-
  private:
   std::string device_vendor_;
-  std::string to_string_;
   int slice_index_;
 };
 

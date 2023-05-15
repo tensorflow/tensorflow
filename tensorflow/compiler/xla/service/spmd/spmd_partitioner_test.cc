@@ -13331,6 +13331,66 @@ ENTRY main.4 {
   EXPECT_EQ(alltoall, nullptr);
 }
 
+TEST_F(SpmdPartitioningTest, ReshardCrash) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.6 {
+  Arg_0.1 = f32[8,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ReshardNoFullRematCompatible) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.6 {
+  Arg_0.1 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_NE(allreduce, nullptr);
+  // It should not touch the middle dim in the [2,2,2] sharding.
+  EXPECT_EQ(allreduce->replica_groups().size(), 2);
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
+            nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ReshardNoFullRematIncompatible) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.6 {
+  Arg_0.1 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,3,4,2,6,5,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_NE(allreduce, nullptr);
+  // It should not touch the middle dim in the [2,2,2] sharding.
+  EXPECT_EQ(allreduce->replica_groups().size(), 2);
+  // Collective permute to resolve different device orders.
+  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
+            nullptr);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

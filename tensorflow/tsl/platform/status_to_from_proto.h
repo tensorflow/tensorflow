@@ -30,10 +30,14 @@ namespace tsl {
 // Converts a `Status` to a `StatusProto`.
 tensorflow::StatusProto StatusToProto(const Status& s);
 
+#if defined(PLATFORM_GOOGLE)
 // Constructs a `Status` from a `StatusProto`.
-Status StatusFromProto(const tensorflow::StatusProto& proto,
-                       SourceLocation loc = SourceLocation::current());
-
+Status StatusFromProto(
+    const tensorflow::StatusProto& proto,
+    absl::SourceLocation loc = absl::SourceLocation::current());
+#else
+Status StatusFromProto(const tensorflow::StatusProto& proto);
+#endif
 }  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_STATUS_TO_FROM_PROTO_H_

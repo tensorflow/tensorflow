@@ -962,7 +962,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       d2y_dx2 = g.gradient(dy_dx, x)  # d2y/dx2 := 6x
     d3y_dx3 = g.gradient(d2y_dx2, x)  # d3y/dx3 := 6
     x = 3
-    self.assertEqual(self.evaluate(y), x**3)
+    self.assertAllClose(self.evaluate(y), x**3)
     self.assertEqual(self.evaluate(dy_dx), 3 * x**2)
     self.assertEqual(self.evaluate(d2y_dx2), 6 * x)
     self.assertEqual(self.evaluate(d3y_dx3), 6)
