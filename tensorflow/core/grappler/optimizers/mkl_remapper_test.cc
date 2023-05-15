@@ -969,6 +969,7 @@ TEST_F(MklFusedBatchMatMul, MulAndAdd) {
 }
 
 TEST_F(MklFusedBatchMatMul, MulAndAdd2) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   for (const auto adjx : {false, true})
     for (const auto adjy : {false, true}) {
       this->VerifyPreceedingScalarMul<float>(adjx, adjy);
