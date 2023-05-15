@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -849,15 +850,6 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
           /*work_queue=*/nullptr,
           graph_name.empty() ? output_tensor_names[0] : graph_name));
 
-  TF_ASSIGN_OR_RETURN(
-      auto request_info,
-      CreateRequestInfo(options_, /*run_options=*/{},
-                        options_.runtime->work_queue(), &resource_context_,
-                        /*client_graph_resource_context=*/nullptr,
-                        &loaded_client_graph.runner_table(),
-                        &loaded_client_graph.resource_array(),
-                        fallback_state_));
-
   // Get a shared_ptr of the executable so that during the current request the
   // executable to use is guaranteed to be alive.
   auto executable_context = loaded_client_graph.executable_context();
@@ -869,10 +861,14 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
       &loaded_client_graph.sync_resource_state());
   execution_context.AddUserContext(std::move(sync_context));
 
+  tensorflow::tfd::KernelFallbackCompatRequestState kernel_fallback_state(
+      tfd::GetDefaultRunner(), &fallback_state_.get().device_manager(),
+      /*step_id=*/0, &loaded_client_graph.runner_table(),
+      &loaded_client_graph.resource_array(),
+      /*user_intra_op_threadpool=*/nullptr, /*model_metadata=*/std::nullopt,
+      &fallback_state_.get().process_function_library_runtime());
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
-      &request_info->tfrt_request_context
-           ->GetData<tensorflow::tfd::KernelFallbackCompatRequestState>(),
-      request_info->tfrt_request_context->resource_context());
+      &kernel_fallback_state, &resource_context_);
   execution_context.AddUserContext(std::move(tf_context));
 
   auto serving_function = executable_context->bytecode_executable->GetFunction(
