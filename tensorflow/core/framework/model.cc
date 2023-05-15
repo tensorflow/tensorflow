@@ -205,13 +205,13 @@ std::string RemoveArrayIndices(absl::string_view s) {
   absl::string_view::size_type pos;
   std::string res;
   do {
-    pos = s.find("[", start_pos);
+    pos = s.find('[', start_pos);
     if (pos == absl::string_view::npos) {
       break;
     }
     res.append(s.data() + start_pos, pos - start_pos + 1);
     start_pos = pos + 1;
-    pos = s.find("]", start_pos);
+    pos = s.find(']', start_pos);
     if (pos == absl::string_view::npos) {
       break;
     }
@@ -364,7 +364,7 @@ Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
     const std::shared_ptr<Node> node = to_serialize.front();
     to_serialize.pop_front();
     TF_RETURN_IF_ERROR(node->ToProto(&(nodes[node->id()])));
-    for (auto input : node->inputs()) {
+    for (const auto& input : node->inputs()) {
       to_serialize.push_back(input);
     }
   }
@@ -2246,7 +2246,7 @@ void Model::FlushMetrics() {
     auto node = queue.front();
     queue.pop_front();
     node->FlushMetrics();
-    for (auto input : node->inputs()) {
+    for (const auto& input : node->inputs()) {
       queue.push_back(input);
     }
   }
@@ -2627,7 +2627,7 @@ void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
     interleave_many_nodes.push_back(snapshot);
   }
   Node::ModelParameters tunable_parameters;
-  for (auto node : interleave_many_nodes) {
+  for (const auto& node : interleave_many_nodes) {
     if (!IsAsyncInterleaveManyNode(node)) {
       continue;
     }
@@ -2698,7 +2698,7 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     all_nodes.push_back(snapshot);
   }
   Node::ModelParameters tunable_parameters;
-  for (auto node : all_nodes) {
+  for (const auto& node : all_nodes) {
     if (IsAsyncInterleaveManyNode(node)) {
       continue;
     }
