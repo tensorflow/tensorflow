@@ -110,7 +110,7 @@ static absl::Status CublasLtMatmulImpl(
   if (!plan.ok()) return plan.status();
 
   auto algos = (*plan)->GetAlgorithms(stream);
-  if (!algos.ok()) return ToAbslStatus(algos.status());
+  if (!algos.ok()) return algos.status();
 
   se::DeviceMemoryBase a_data = GetDeviceAddress(a);
   se::DeviceMemoryBase b_data = GetDeviceAddress(b);
@@ -139,7 +139,7 @@ static absl::Status CublasLtMatmulImpl(
       stream, a_data, b_data, c_data, d_data, bias_data, aux_data, a_scale_data,
       b_scale_data, c_scale_data, d_scale_data, d_amax_data,
       (*algos)[algorithm], scratch_allocator);
-  if (!st.ok()) return ToAbslStatus(st);
+  if (!st.ok()) return st;
 
   return absl::OkStatus();
 }

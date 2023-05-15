@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -55,7 +57,7 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
                       ExtractLayoutFromOperand(dtensor_send.getInput()));
 
   if (!send_layout_or_null.has_value())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Input to DTensorSend must have specified layout.");
 
   const Layout& send_layout = send_layout_or_null.value();
@@ -66,14 +68,14 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
 
   // If any one of send/recv mesh are empty, return error.
   if (send_mesh.IsEmpty() || recv_mesh.IsEmpty())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Found empty mesh when sending/receiving tensor across clusters.");
 
   // If send host not found in list of receiving hosts, return error.
   std::vector<std::string> send_hosts = send_layout.ReducedMesh().hosts();
   std::vector<std::string> recv_hosts = recv_layout.ReducedMesh().hosts();
   if (send_hosts != recv_hosts)
-    return errors::InvalidArgument("Send and receive hosts don't match");
+    return absl::InvalidArgumentError("Send and receive hosts don't match");
 
   // Check shards in sending host match those in the receiving host.
   const auto send_host_shard_map = send_layout.HostShardMap();
@@ -83,15 +85,15 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
         send_host_shard_map.find(host)->second;
     ShardVector shards_in_recv_host = recv_host_shard_map.find(host)->second;
     if (shards_in_send_host != shards_in_recv_host)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Send and receive host shard vectors don't match. Send shard_vector:",
           shards_in_send_host.ToString(),
-          " / Recv host spec : ", shards_in_recv_host.ToString());
+          " / Recv host spec : ", shards_in_recv_host.ToString()));
   }
 
   // Send/Recv mesh must be different.
   if (recv_mesh == send_mesh)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Found CopyToMesh op sending tensor to same mesh. Only use "
         "CopyToMesh to transfer data across different mesh cluster. For "
         "changing layout within the same mesh, use tf.Relayout op.");
@@ -100,7 +102,7 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
   // For example, TPU mesh -> GPU mesh or TPU mesh -> another TPU mesh
   // is disallowed.
   if (!send_mesh.is_cpu_mesh() && !recv_mesh.is_cpu_mesh())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "tf.CopyToMesh op must be used to send data from/to host mesh.");
 
   return OkStatus();
@@ -116,7 +118,7 @@ StatusOr<mlir::Operation*> ExpandRelayoutOp(RelayoutOp relayout,
     if (sharding_spec == Layout::kMatch) match_present = true;
 
   if (!match_present && output_layout != target_layout)
-    return errors::Internal(
+    return absl::InternalError(
         "output layout of Relayout op after layout propagation does not match "
         "layout specified by Relayout op.");
 
@@ -135,7 +137,7 @@ StatusOr<mlir::Operation*> ExpandRelayoutOp(RelayoutOp relayout,
   auto value_or_status =
       EmitRelayout(relayout.getInput(), input_layout, output_layout);
   if (!value_or_status.ok())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Unsupported layout received for {0} op. Trying "
                       "to set tensor "
                       "to layout : {1}. Found error {2}",
@@ -330,7 +332,7 @@ DTensorRecvSPMDExpander::ComputeLayoutForward(
   mlir::TF::DTensorRecv dtensor_recv =
       mlir::dyn_cast<mlir::TF::DTensorRecv>(op);
   if (!dtensor_recv) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Expecting DTensorRecvOp but got {0}", OpName(op)).str());
   }
   return llvm::DenseMap<int, Layout>({{0, dtensor_recv.getLayout()}});

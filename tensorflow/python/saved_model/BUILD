@@ -409,7 +409,9 @@ py_strict_library(
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
-    ],
+    ] + if_google([
+        "//tensorflow/tools/proto_splitter/python:saved_model",
+    ]),
 )
 
 py_strict_library(
@@ -468,11 +470,14 @@ tf_py_strict_test(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:saver",
         "//tensorflow/python/util:compat",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
+    ] + if_google([
+        "//tensorflow/tools/proto_splitter:constants",
+    ]),
 )
 
-py_library(
+py_strict_library(
     name = "load",
     srcs = ["load.py"],
     srcs_version = "PY3",
@@ -874,6 +879,7 @@ tf_python_pybind_extension(
     features = ["-layering_check"],
     visibility = [
         "//tensorflow/python/checkpoint:__subpackages__",
+        "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/training:__subpackages__",
     ],
     deps = [

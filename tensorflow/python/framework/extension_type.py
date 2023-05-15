@@ -389,6 +389,7 @@ def is_packed(value):
 # ==============================================================================
 
 
+@tf_export('experimental.ExtensionTypeSpec')
 class ExtensionTypeSpec(type_spec.TypeSpec):
   """Base class for tf.ExtensionType TypeSpec."""
 

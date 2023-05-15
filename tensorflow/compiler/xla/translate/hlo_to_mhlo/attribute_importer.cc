@@ -258,4 +258,16 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const Shape shape,
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
 }
 
+mlir::Attribute ConvertSharding(const xla::HloSharding& sharding,
+                                mlir::Builder* builder) {
+  return builder->getStringAttr(sharding.ToString(/*include_metadata=*/true));
+}
+
+mlir::Attribute ConvertSharding(const xla::OpSharding& sharding,
+                                mlir::Builder* builder) {
+  auto hlo_sharding = xla::HloSharding::FromProto(sharding);
+  if (!hlo_sharding.ok()) return {};
+  return ConvertSharding(hlo_sharding.value(), builder);
+}
+
 }  // namespace xla

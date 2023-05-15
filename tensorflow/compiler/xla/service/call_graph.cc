@@ -69,6 +69,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kFusion:
     case HloOpcode::kCustomCall:
       return CallContext::kEmbedded;

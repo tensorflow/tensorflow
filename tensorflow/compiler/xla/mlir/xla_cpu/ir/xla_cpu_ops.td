@@ -31,6 +31,9 @@ class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
 def TensorOrMemref :
   AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
 
+def TensorOrMemrefOrToken :
+  AnyTypeOf<[AnyMemRef, AnyRankedTensor, MHLO_Token]>;
+
 def AllReduceOp : XlaCpu_Op<"all_reduce",
     [SameOperandsElementType,
      SameVariadicOperandSize,
@@ -193,6 +196,40 @@ def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
     bufferization::AliasingOpResultList getAliasingOpResults(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
+      return {{getOperation()->getOpResult(0),
+               bufferization::BufferRelation::Equivalent}};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+  }];
+}
+
+def InfeedOp : XlaCpu_Op<"infeed", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of Infeed";
+  let description = [{
+    The difference between this and HLO's outfeed is that the former bufferizes
+    to itself.
+  }];
+  let arguments = (ins
+    Variadic<TensorOrMemrefOrToken>:$dst,
+    DefaultValuedStrAttr<StrAttr, "">:$config,
+    OptionalAttr<ArrayAttr>:$layout
+  );
+  let results = (outs
+      Variadic<TensorOrMemrefOrToken>
+  );
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return false;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return true;
+    }
+    bufferization::AliasingOpResultList getAliasingOpResults(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
       return {{getOperation()->getOpResult(0),
                bufferization::BufferRelation::Equivalent}};
     }

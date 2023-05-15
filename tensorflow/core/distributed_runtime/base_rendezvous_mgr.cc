@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -32,6 +33,16 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
+
+namespace {
+
+size_t HashCall(BaseRecvTensorCall* call) {
+  // Salt hash with "42" to avoid using the same hash function for the shard key
+  // and the hashtable contained within the the shard itself.
+  return absl::HashOf(call, 42);
+}
+
+}  // namespace
 
 BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
     : cache_(new RendezvousCache<BaseRemoteRendezvous>()),
@@ -376,7 +387,7 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   // aggregating errors across devices: this allows us to prefer our original
   // status message over any cancellation related errors.
   Status derived_status = s;
-  if (errors::IsCancelled(s) || errors::IsAborted(s)) {
+  if (absl::IsCancelled(s) || absl::IsAborted(s)) {
     derived_status = StatusGroup::MakeDerived(s);
   }
 
@@ -441,7 +452,7 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
     }
   }
 
-  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  int hash = HashCall(call) % num_shards_;
   bool buckets_found = false;
   bool already_cancelled = false;
   {
@@ -496,7 +507,7 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
 
 void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
                                           const Rendezvous::Args& args) {
-  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  int hash = HashCall(call) % num_shards_;
   auto cm = args.cancellation_manager;
   bool is_last_call = false;
   {

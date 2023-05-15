@@ -170,7 +170,7 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
     auto done_event =
         (*send)(channel.handle, stream, ToShape(arg), GetDeviceAddress(arg),
                 GenerateFrontEndAttributeMap(frontend_attrs));
-    if (!done_event.ok()) return ToAbslStatus(done_event.status());
+    if (!done_event.ok()) return done_event.status();
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
 
@@ -200,7 +200,7 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
     auto dst = GetDeviceAddress(arg);
     auto done_event = (*recv)(channel.handle, stream, ToShape(arg), &dst,
                               GenerateFrontEndAttributeMap(frontend_attrs));
-    if (!done_event.ok()) return ToAbslStatus(done_event.status());
+    if (!done_event.ok()) return done_event.status();
     return events->PushEvent(channel.handle, std::move(*done_event));
   }
 

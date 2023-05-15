@@ -54,6 +54,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",

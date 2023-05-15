@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -243,7 +244,7 @@ DatasetClient<T>::ReadFromTasks(const std::vector<TaskInfo>& tasks) {
       StatusOr<GetElementResult> element_result = ReadFromTask(task);
       // A task may be cancelled when it has finished but other workers are
       // still producing data.
-      if (errors::IsCancelled(element_result.status())) {
+      if (absl::IsCancelled(element_result.status())) {
         continue;
       }
       TF_RETURN_IF_ERROR(element_result.status());

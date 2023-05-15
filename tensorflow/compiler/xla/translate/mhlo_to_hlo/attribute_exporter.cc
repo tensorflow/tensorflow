@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -215,6 +216,14 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
         std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
   }
   return aliasInfo;
+}
+
+std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
+  xla::OpSharding sharding_proto;
+  if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;
+  StatusOr<xla::HloSharding> sharding_cpp = xla::ParseSharding(sharding.str());
+  if (sharding_cpp.ok()) return sharding_cpp->ToProto();
+  return std::nullopt;
 }
 
 }  // namespace xla

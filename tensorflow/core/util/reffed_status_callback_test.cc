@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -30,7 +32,7 @@ namespace {
 
 TEST(TestReffedStatusCallback, CallsBackOK) {
   bool called = false;
-  Status status = errors::InvalidArgument("");
+  Status status = absl::InvalidArgumentError("");
   auto done = [&called, &status](const Status& s) {
     called = true;
     status = s;
@@ -50,8 +52,8 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
     status = s;
   };
   auto* cb = new ReffedStatusCallback(std::move(done));
-  cb->UpdateStatus(errors::Internal("1"));
-  cb->UpdateStatus(errors::InvalidArgument("2"));
+  cb->UpdateStatus(absl::InternalError("1"));
+  cb->UpdateStatus(absl::InvalidArgumentError("2"));
   EXPECT_FALSE(called);
   cb->Unref();
   EXPECT_TRUE(called);
@@ -72,9 +74,9 @@ TEST(TestReffedStatusCallback, RefMulti) {
   };
   auto* cb = new ReffedStatusCallback(std::move(done));
   cb->Ref();
-  cb->UpdateStatus(errors::Internal("1"));
+  cb->UpdateStatus(absl::InternalError("1"));
   cb->Ref();
-  cb->UpdateStatus(errors::Internal("2"));
+  cb->UpdateStatus(absl::InternalError("2"));
   cb->Unref();
   cb->Unref();
   EXPECT_FALSE(called);
@@ -102,7 +104,7 @@ TEST(TestReffedStatusCallback, MultiThreaded) {
   for (int i = 0; i < 5; ++i) {
     cb->Ref();
     threads.Schedule([cb]() {
-      cb->UpdateStatus(errors::InvalidArgument("err"));
+      cb->UpdateStatus(absl::InvalidArgumentError("err"));
       cb->Unref();
     });
   }

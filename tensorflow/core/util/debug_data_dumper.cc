@@ -30,7 +30,7 @@ DebugDataDumper* DebugDataDumper::Global() {
 DebugDataDumper::DebugDataDumper() { LoadEnvvars(); }
 
 void DebugDataDumper::LoadEnvvars() {
-  // Load TF_DUMP_GRAPH_PREFIX.
+  // Load TF_DUMP_GRAPH_WRAPPED.
   const char* dump_wrapped = getenv("TF_DUMP_GRAPH_WRAPPED");
   dump_wrapped_ = static_cast<bool>(dump_wrapped);
 

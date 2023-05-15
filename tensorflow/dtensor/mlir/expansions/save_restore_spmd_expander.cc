@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -183,7 +184,8 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
         saving_specs) {
   mlir::ModuleOp module = original_save->getParentOfType<mlir::ModuleOp>();
   if (!module)
-    return errors::Internal("SaveV2 op isn't enclosed inside a mlir::ModuleOp");
+    return absl::InternalError(
+        "SaveV2 op isn't enclosed inside a mlir::ModuleOp");
 
   mlir::SymbolTable symbol_table(module);
 
@@ -201,10 +203,10 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
   if (extraction_status.ok()) {
     for (const std::string& shape_and_slice : original_shape_and_slices) {
       if (!shape_and_slice.empty())
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             absl::StrCat("DTensor SaveV2 requires shape_and_slices() field to "
                          "be empty for tensors, but get : ",
-                         shape_and_slice));
+                         shape_and_slice)));
     }
   } else {
     VLOG(2) << "Failed to extract and verify shape_and_slices() from "
@@ -277,7 +279,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
                           GetGlobalShapeOfValueFromDTensorLayout(
                               original_save.getTensorNames()));
       if (tensor_names_shape.size() != 1)
-        return errors::Internal(
+        return absl::InternalError(
             llvm::formatv("SaveV2 op got `tensor_names` with rank {0}) but "
                           "expects rank to be 1.",
                           tensor_names_shape.size())
@@ -372,7 +374,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
 
 StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
   if (!llvm::isa<mlir::TF::SaveV2Op>(op)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Expecting SaveV2Op but got {0}", OpName(op)).str());
   }
 
@@ -393,9 +395,9 @@ StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(absl::optional<Layout> layout,
                         ExtractLayoutFromOperand(tensor));
     if (!layout)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "layout is required when saving a DTensor but find no layout "
-          "attached");
+          "attached"));
 
     TF_ASSIGN_OR_RETURN(llvm::ArrayRef<int64_t> tensor_shape,
                         GetGlobalShapeOfValueFromDTensorLayout(it.value()));
@@ -429,7 +431,7 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   mlir::TF::MergeV2CheckpointsOp merge_v2 =
       mlir::dyn_cast<mlir::TF::MergeV2CheckpointsOp>(op);
   if (!merge_v2) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Expecting MergeV2CheckpointsOp but got {0}", OpName(op))
             .str());
   }
@@ -563,7 +565,7 @@ StatusOr<mlir::Operation*> ExpandRestoreV2OpHelper(
   // Prepare for building CaseOp.
   mlir::ModuleOp module = op->template getParentOfType<mlir::ModuleOp>();
   if (!module)
-    return errors::Internal(
+    return absl::InternalError(
         "DTensorRestoreV2 op isn't enclosed inside a mlir::ModuleOp");
 
   mlir::SymbolTable symbol_table(module);
@@ -679,7 +681,7 @@ StatusOr<mlir::Operation*> ExpandDTensorRestoreV2Op(mlir::Operation* op) {
   mlir::TF::DTensorRestoreV2Op restore_v2 =
       mlir::dyn_cast<mlir::TF::DTensorRestoreV2Op>(op);
   if (!restore_v2) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Expecting DTensorRestoreV2Op but got {0}", OpName(op))
             .str());
   }
@@ -687,7 +689,7 @@ StatusOr<mlir::Operation*> ExpandDTensorRestoreV2Op(mlir::Operation* op) {
   mlir::ArrayAttr input_shapes_attr =
       restore_v2->getAttrOfType<mlir::ArrayAttr>("input_shapes");
   if (!input_shapes_attr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "DTensorRestoreV2Op requires input_shapes attributes.");
   }
 
@@ -696,7 +698,7 @@ StatusOr<mlir::Operation*> ExpandDTensorRestoreV2Op(mlir::Operation* op) {
   for (const auto& shape : input_shapes_attr) {
     mlir::TF::ShapeAttr shape_attr = shape.cast<mlir::TF::ShapeAttr>();
     if (!shape_attr.hasStaticShape()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           llvm::formatv("DTensorRestoreV2Op requires statically known input "
                         "shape, but got non-static shape: {0}.",
                         shape_attr)
@@ -708,7 +710,7 @@ StatusOr<mlir::Operation*> ExpandDTensorRestoreV2Op(mlir::Operation* op) {
 
   mlir::ArrayAttr input_layouts_attr = restore_v2.getInputLayouts();
   if (!input_layouts_attr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "DTensorRestoreV2Op requires input_layouts attributes.");
   }
   std::vector<Layout> input_layouts;
@@ -800,7 +802,7 @@ StatusOr<mlir::Operation*> SaveRestoreSPMDExpander::ExpandOp(
     return ExpandRestoreV2Op(op);
   }
 
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       llvm::formatv("SPMD for op : {0} is not implemented ", OpName(op)).str());
 }
 
@@ -827,7 +829,7 @@ StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
         }
         auto next_op = consuming_op->getResult(0).getUsers();
         if (next_op.empty()) {
-          return errors::Internal(
+          return absl::InternalError(
               "Expected a result of an identity op to be consumed by another "
               "op, but was empty during RestoreV2 Expansion.");
         }
@@ -866,7 +868,7 @@ SaveRestoreSPMDExpander::ComputeLayoutForward(
     mlir::TF::RestoreV2Op restore_v2 = mlir::cast<mlir::TF::RestoreV2Op>(op);
     TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
     if (!mesh.is_cpu_mesh()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           llvm::formatv(
               "RestoreV2Op must run on a CPU mesh, but was running on: {0}",
               mesh.ToString())
@@ -878,11 +880,11 @@ SaveRestoreSPMDExpander::ComputeLayoutForward(
     TF_ASSIGN_OR_RETURN(
         auto layouts, GetLayoutsFromAssignVariableOps(module_op, &restore_v2));
     if (layouts.size() != restore_v2.getNumResults()) {
-      return errors::Internal(llvm::formatv("Failed to get {0} output layouts "
-                                            "for RestoreV2Op. Got {1} layouts.",
-                                            restore_v2.getNumResults(),
-                                            layouts.size())
-                                  .str());
+      return absl::InternalError(
+          llvm::formatv("Failed to get {0} output layouts "
+                        "for RestoreV2Op. Got {1} layouts.",
+                        restore_v2.getNumResults(), layouts.size())
+              .str());
     }
     llvm::DenseMap<int, Layout> output_layouts(restore_v2.getNumResults());
 
@@ -909,7 +911,7 @@ SaveRestoreSPMDExpander::ComputeLayoutForward(
     }
     return output_layouts;
   }
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       llvm::formatv("Layout propagation for op : {0} is not implemented",
                     OpName(op))
           .str());

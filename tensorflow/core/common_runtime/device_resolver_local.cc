@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -24,7 +25,7 @@ Status DeviceResolverLocal::GetDeviceAttributes(const string& device,
   Device* dev;
   // LookupDevice returns InvalidArgument if the device is not found.
   Status s = dev_mgr_->LookupDevice(device, &dev);
-  if (errors::IsInvalidArgument(s)) {
+  if (absl::IsInvalidArgument(s)) {
     return errors::NotFound(device, " not found");
   } else if (!s.ok()) {
     return s;

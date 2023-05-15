@@ -243,6 +243,10 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // with the exception of ArrayAttr which is converted recursively.
     SmallVector<NamedAttribute> hloAttrs;
     for (NamedAttribute stablehloAttr : stablehloOp->getAttrs()) {
+      if constexpr (std::is_same<StablehloOpTy,
+                                 stablehlo::CustomCallOp>::value) {
+        if (stablehloAttr.getName() == "mhlo.backend_config") continue;
+      }
       auto hloAttr = convertAttr(stablehloAttr.getValue());
       if (!hloAttr) return failure();
       hloAttrs.push_back({stablehloAttr.getName(), hloAttr});
@@ -260,6 +264,25 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     } else {
       hloOp = rewriter.replaceOpWithNewOp<StablehloToHloOp<StablehloOpTy>>(
           stablehloOp, hloTypes, hloOperands, hloAttrs);
+    }
+
+    if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
+      auto stablehloBackendConfig = stablehloOp->getAttr("mhlo.backend_config");
+      if (stablehloBackendConfig) {
+        if (auto oldHloBackendConfig =
+                hloOp.getBackendConfigAttr()
+                    .template dyn_cast_or_null<StringAttr>()) {
+          if (oldHloBackendConfig != "") return failure();
+        } else {
+          return failure();
+        }
+        if (stablehloOp.getApiVersion() !=
+            stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL)
+          return failure();
+
+        hloOp.setBackendConfigAttr(stablehloBackendConfig);
+        hloOp.setApiVersion(mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI);
+      }
     }
 
     // Finally, populate the regions while converting argument types

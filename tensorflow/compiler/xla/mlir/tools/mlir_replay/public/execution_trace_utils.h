@@ -52,6 +52,9 @@ llvm::SmallVector<mlir::Attribute> ValueToAttribute(
 // Deserializes the given literal.
 tsl::StatusOr<InterpreterValue> LiteralToValue(
     const xla::LiteralProto& literal);
+// Deserializes the given literal and then casts it to the given type.
+tsl::StatusOr<InterpreterValue> LiteralToValue(const xla::LiteralProto& literal,
+                                               mlir::Type type);
 
 // Deserializes the given literal.
 tsl::StatusOr<InterpreterValue> LiteralToValue(const xla::Literal& literal);

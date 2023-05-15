@@ -31,6 +31,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+namespace {
+std::string GetHostnameByPath(absl::string_view xspace_path) {
+  std::string file_name = std::string(tensorflow::io::Basename(xspace_path));
+  std::vector<std::string> parts = absl::StrSplit(file_name, '.');
+  return parts[0];
+}
+}  // namespace
 
 StatusOr<SessionSnapshot> SessionSnapshot::Create(
     std::vector<std::string> xspace_paths,
@@ -73,8 +80,19 @@ StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
   return xspace_from_file;
 }
 
+StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpaceByName(
+    absl::string_view name) const {
+  if (auto it = hostname_map_.find(name); it != hostname_map_.end()) {
+    return GetXSpace(it->second);
+  }
+
+  return errors::InvalidArgument("Can not find the XSpace by name: ", name,
+                                 ". The total number of XSpace is ",
+                                 xspace_paths_.size());
+}
+
 std::string SessionSnapshot::GetHostname(size_t index) const {
-  return std::string(tensorflow::io::Basename(xspace_paths_.at(index)));
+  return GetHostnameByPath(xspace_paths_.at(index));
 }
 
 }  // namespace profiler

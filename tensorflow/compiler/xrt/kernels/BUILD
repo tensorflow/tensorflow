@@ -97,6 +97,7 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_program_group",
         "//tensorflow/core/tpu/kernels:tpu_program_group_interface",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,

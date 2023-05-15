@@ -37,8 +37,3 @@ function create_python_test_dir() {
   mkdir -p "$1"
   cmd /c "mklink /J $1\\tensorflow .\\tensorflow"
 }
-
-function reinstall_tensorflow_pip() {
-  echo "y" | pip uninstall tensorflow -q || true
-  pip install ${1} --no-deps
-}

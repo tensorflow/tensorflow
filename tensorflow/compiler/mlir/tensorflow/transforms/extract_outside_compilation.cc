@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,10 +33,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
@@ -62,6 +64,7 @@ namespace {
 
 constexpr char kDeviceAttr[] = "device";
 constexpr char kHostFunctionAttr[] = "host_func";
+constexpr char kXlaMapOutsideCompilationAttr[] = "_xla_map_outside_compilation";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kNoReplicationCluster[] = "__no_replication_cluster";
 
@@ -444,23 +447,189 @@ void GetExternalOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops,
   }
 }
 
-// Creates the HostCompute with `inputs` and `outputs`
-// using `communication_key`.
-TF::_XlaHostComputeMlirOp CreateHostCompute(
-    OpBuilder& builder, Location loc,
-    const llvm::SmallSetVector<Value, 4>& inputs, llvm::ArrayRef<Value> outputs,
-    llvm::StringRef args_communication_key,
-    llvm::StringRef retvals_communication_key,
-    llvm::StringRef serialized_func_module) {
+// Output `shard_type`, which is the type of each shard, given `full_type`. If
+// the full shape is (num_cores_per_replica * a, b, c), then the shard shape is
+// (a, b, c). `context_op` is used for error reporting, in case of errors.
+LogicalResult GetShardShapedType(Operation* context_op,
+                                 int num_cores_per_replica, Type full_type,
+                                 Type& shard_type) {
+  RankedTensorType ranked_type = full_type.dyn_cast<RankedTensorType>();
+  if (!ranked_type)
+    return context_op->emitOpError()
+           << "A map_outside_compilation op's input and output types must be "
+              "ranked tensors.";
+  ArrayRef<int64_t> in_shape = ranked_type.getShape();
+  if (in_shape.empty() || in_shape[0] < 0) {
+    return context_op->emitOpError()
+           << "A map_outside_compilation op's input and output shapes must "
+              "have rank at least one and the first dimension must be known.";
+  }
+  int64_t split_size = in_shape[0] / num_cores_per_replica;
+  if (in_shape[0] % num_cores_per_replica != 0) {
+    return context_op->emitOpError()
+           << "A map_outside_compilation op's input and output shapes must be "
+              "divisible by num_cores_per_replica="
+           << num_cores_per_replica;
+  }
+  llvm::SmallVector<int64_t, 4> shape;
+  shape.push_back(split_size);
+  for (int i = 1; i < in_shape.size(); ++i) {
+    shape.push_back(in_shape[i]);
+  }
+  shard_type = RankedTensorType::Builder(ranked_type).setShape(shape);
+  return success();
+}
+
+// Output `sharding`, which is the sharding of `val`. `context_op` is used for
+// error reporting, in case of errors.
+// TODO(b/255350483): Explicitly pass the sharding to map_outside_compilation,
+//   so it does not need to be retrieved from a Value.
+LogicalResult GetShardingOfValue(Operation* context_op, Value val,
+                                 std::string& sharding) {
+  Operation* op = val.getDefiningOp();
+  // val should always have a defining op because cluster inputs always have
+  // defining ops.
+  assert(op);
+  StringAttr sharding_attr = op->getAttrOfType<StringAttr>("_XlaSharding");
+  if (!sharding_attr)
+    return context_op->emitOpError()
+           << "A map_outside_compilation op's input should have an explicit "
+              "sharding. There is no _XlaSharding attribute on the input op.";
+  sharding = sharding_attr.str();
+  return success();
+}
+
+// Create an `_XlaHostComputeMlir` for the map_outside_compilation case. Inputs
+// are converted from split sharding to MANUAL sharding and outputs are
+// converted from MANUAL sharding to split sharding. Output `full_outputs`,
+// which is the outputs of the `_XlaHostComputeMlir` and add the
+// `_XlaHostComputeMlir` to `host_compute_out_ops`.
+LogicalResult CreateHostComputeMap(
+    Operation* original_op, OpBuilder& builder, Location loc,
+    ArrayRef<Value> inputs, ArrayRef<Value> outputs,
+    StringRef args_communication_key, StringRef retvals_communication_key,
+    StringRef serialized_func_module, int num_cores_per_replica,
+    SmallVector<Value, 4>& full_outputs,
+    SmallVector<Operation*, 4>& host_compute_out_ops) {
+  // Get output types.
+  llvm::SmallVector<Type, 4> shard_output_types;
+  llvm::SmallVector<Type, 4> full_output_types;
+  shard_output_types.reserve(outputs.size());
+  full_output_types.reserve(outputs.size());
+  for (const auto& output : outputs) {
+    Type shard_type;
+    if (failed(GetShardShapedType(original_op, num_cores_per_replica,
+                                  output.getType(), shard_type)))
+      return failure();
+    shard_output_types.push_back(shard_type);
+    full_output_types.push_back(output.getType());
+  }
+
+  // There should be at least 1 input so common_split_sharding can be defined.
+  if (inputs.empty())
+    return original_op->emitOpError()
+           << "map_outside_compilation should have at least one input";
+
+  // Convert split sharded inputs to MANUAL sharded inputs.
+  // common_split_sharding is the split sharding that is common to all inputs
+  // and outputs.
+  std::string common_split_sharding;
+  llvm::SmallVector<Value, 4> manual_inputs;
+  manual_inputs.reserve(inputs.size());
+  for (Value in : inputs) {
+    Type shard_type;
+    if (failed(GetShardShapedType(original_op, num_cores_per_replica,
+                                  in.getType(), shard_type)))
+      return failure();
+    std::string in_sharding;
+    if (failed(GetShardingOfValue(original_op, in, in_sharding)))
+      return failure();
+    if (common_split_sharding.empty()) {
+      common_split_sharding = std::move(in_sharding);
+    } else {
+      if (common_split_sharding != in_sharding)
+        return original_op->emitOpError()
+               << "All inputs and outputs of map_outside_compilation should "
+                  "have the same sharding.";
+    }
+    auto in_manual = builder.create<TF::XlaSpmdFullToShardShapeOp>(
+        loc, shard_type, in, common_split_sharding, /*dim=*/-1,
+        /*unspecified_dims=*/builder.getI64ArrayAttr({}));
+    manual_inputs.push_back(in_manual);
+  }
+
+  // Create the _XlaHostComputeMlirOp
+  auto host_compute = builder.create<TF::_XlaHostComputeMlirOp>(
+      loc, shard_output_types, manual_inputs,
+      /*send_key=*/builder.getStringAttr(args_communication_key),
+      /*recv_key=*/builder.getStringAttr(retvals_communication_key),
+      /*host_mlir_module=*/builder.getStringAttr(serialized_func_module),
+      /*manual_sharding=*/builder.getBoolAttr(true));
+  host_compute_out_ops.push_back(host_compute);
+
+  // Convert MANUAL sharded outputs to split sharded outputs.
+  for (auto [full_type, out] :
+       llvm::zip(full_output_types, host_compute.getResults())) {
+    RankedTensorType full_type_ranked = full_type.dyn_cast<RankedTensorType>();
+    if (!full_type_ranked)
+      return original_op->emitOpError()
+             << "map_outside_compilation must have ranked outputs";
+    auto out_full = builder.create<TF::XlaSpmdShardToFullShapeOp>(
+        loc, full_type, out, common_split_sharding, full_type_ranked.getShape(),
+        /*dim=*/-1,
+        /*unspecified_dims=*/builder.getI64ArrayAttr({}));
+    host_compute_out_ops.push_back(out_full);
+    full_outputs.push_back(out_full);
+  }
+
+  return success();
+}
+
+// Create the _XlaHostComputeMlir with `inputs` and `outputs` for the ordinary
+// outside_compilation case.
+// Output `full_outputs`, which is the outputs of the `_XlaHostComputeMlir` and
+// add the `_XlaHostComputeMlir` to `host_compute_out_ops`.
+void CreateHostComputeNotMap(OpBuilder& builder, Location loc,
+                             ArrayRef<Value> inputs, ArrayRef<Value> outputs,
+                             StringRef args_communication_key,
+                             StringRef retvals_communication_key,
+                             StringRef serialized_func_module,
+                             SmallVector<Value, 4>& full_outputs,
+                             SmallVector<Operation*, 4>& host_compute_out_ops) {
   llvm::SmallVector<Type, 4> device_output_types;
   for (const auto& output : outputs)
     device_output_types.push_back(output.getType());
   auto host_compute = builder.create<TF::_XlaHostComputeMlirOp>(
-      loc, device_output_types, inputs.getArrayRef(),
+      loc, device_output_types, inputs,
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
       /*host_mlir_module=*/builder.getStringAttr(serialized_func_module));
-  return host_compute;
+  host_compute_out_ops.push_back(host_compute);
+  for (Value v : host_compute.getResults()) full_outputs.push_back(v);
+}
+
+// Create the _XlaHostComputeMlir with `inputs` and `outputs`.
+// Output `full_outputs`, which is the outputs of the `_XlaHostComputeMlir` and
+// add the `_XlaHostComputeMlir` to `host_compute_out_ops`.
+LogicalResult CreateHostCompute(
+    Operation* original_op, OpBuilder& builder, Location loc,
+    ArrayRef<Value> inputs, ArrayRef<Value> outputs,
+    StringRef args_communication_key, StringRef retvals_communication_key,
+    StringRef serialized_func_module, bool is_map_oc, int num_cores_per_replica,
+    SmallVector<Value, 4>& full_outputs,
+    SmallVector<Operation*, 4>& host_compute_out_ops) {
+  if (is_map_oc) {
+    return CreateHostComputeMap(
+        original_op, builder, loc, inputs, outputs, args_communication_key,
+        retvals_communication_key, serialized_func_module,
+        num_cores_per_replica, full_outputs, host_compute_out_ops);
+  } else {
+    CreateHostComputeNotMap(builder, loc, inputs, outputs,
+                            args_communication_key, retvals_communication_key,
+                            serialized_func_module, full_outputs,
+                            host_compute_out_ops);
+    return success();
+  }
 }
 
 void MarkOutsideCompiled(Operation* op) {
@@ -498,10 +667,10 @@ bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
 // region as insertion.
 // For static-shapes, Replace operand usages if op is in the same region as
 // insertion or if the op is outside compiled and will be moved to host later.
-void ReplaceExternalOperandUsage(
-    const llvm::SmallSetVector<Value, 4>& external_operands,
-    Operation* recv_at_host, Operation* insertion_point,
-    Block* original_op_block) {
+void ReplaceExternalOperandUsage(ArrayRef<Value> external_operands,
+                                 Operation* recv_at_host,
+                                 Operation* insertion_point,
+                                 Block* original_op_block) {
   auto replace_operand_usage = [&](OpOperand& operand) {
     if (TF::CanBeRefined(operand.get().getType()) ||
         HasDynamicOutputs(operand.getOwner())) {
@@ -531,10 +700,9 @@ bool HasDynamicOutputs(llvm::ArrayRef<Value> outputs) {
 
 // Replaces usages of `external_outputs` which are values returned by outside
 // compilation with the corresponding outputs from `host_compute`.
-void ReplaceExternalOutputUsage(
-    const llvm::SmallSetVector<Value, 4>& external_outputs,
-    TF::_XlaHostComputeMlirOp host_compute) {
-  bool has_dynamic_outputs = HasDynamicOutputs(external_outputs.getArrayRef());
+void ReplaceExternalOutputUsage(ArrayRef<Value> external_outputs,
+                                ArrayRef<Value> host_compute_outputs) {
+  bool has_dynamic_outputs = HasDynamicOutputs(external_outputs);
 
   auto replace_output_usage = [&](OpOperand& operand) {
     // Don't replace output usages if in host computation (defining op and user
@@ -551,25 +719,16 @@ void ReplaceExternalOutputUsage(
              !HasOutsideCompilationAncestor(operand.getOwner());
     }
   };
-  for (auto result : llvm::zip(external_outputs, host_compute.getResults())) {
+  for (auto result : llvm::zip(external_outputs, host_compute_outputs)) {
     Value external_output = std::get<0>(result);
     external_output.replaceUsesWithIf(std::get<1>(result),
                                       replace_output_usage);
   }
 }
 
-// Move `clustered_ops` to run on host and adds communication ops to transfer
-// `external_operands` and `external_outputs` to/from device/host.  Inserts
-// ops at `insertion_point` and uses `compilation_key` and `device_ordinal` when
-// creating comm ops.
-void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
-                   const llvm::SmallSetVector<Value, 4>& external_operands,
-                   const llvm::SmallSetVector<Value, 4>& external_outputs,
-                   Operation* insertion_point, Value compilation_key,
-                   Value device_ordinal, int default_device_ordinal,
-                   StringAttr device_type_attr, int& communication_key_index) {
-  OpBuilder builder(insertion_point);
-  Operation& op = *clustered_ops.back();
+std::pair<std::string, std::string> MakeCommunicationKeys(
+    ArrayRef<Operation*> clustered_ops, ArrayRef<Value> external_operands,
+    int communication_key_index, Operation& op) {
   std::string args_communication_key =
       llvm::formatv("host_compute_channel_{0}_args", (communication_key_index))
           .str();
@@ -586,22 +745,22 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
         llvm::formatv("if_predicate_channel_{0}", (communication_key_index))
             .str();
   }
+  return std::pair(args_communication_key, retvals_communication_key);
+}
 
-  std::string serialized_func_module;
-  if (HasDynamicOutputs(external_outputs.getArrayRef())) {
-    func::FuncOp shape_op = BuildFunction(
-        clustered_ops.getArrayRef(), external_operands.getArrayRef(),
-        external_outputs.getArrayRef(), &builder);
-    EncapsulateFuncAndSerialize(shape_op, &serialized_func_module);
-  }
-
-  builder.setInsertionPoint(&op);
-  auto host_compute =
-      CreateHostCompute(builder, op.getLoc(), external_operands,
-                        external_outputs.getArrayRef(), args_communication_key,
-                        retvals_communication_key, serialized_func_module);
-  // Insert ops on the host side computation to receive data from device.
-  builder.setInsertionPoint(insertion_point);
+// Add ops to the host-side. These are `RecvAtHost`, `clustered_ops` moved from
+// device cluster, `SendFromHost`. Add these host-side ops to `host_ops`. Return
+// the `RecvAtHost` op.
+Operation* CreateHostOps(ArrayRef<Operation*> clustered_ops,
+                         ArrayRef<Value> external_operands,
+                         ArrayRef<Value> external_outputs,
+                         Operation* host_insertion_point, Value compilation_key,
+                         Value device_ordinal, int default_device_ordinal,
+                         StringAttr device_type_attr, OpBuilder& builder,
+                         Operation& op, std::string args_communication_key,
+                         std::string retvals_communication_key,
+                         SmallVector<Operation*, 4>& host_ops) {
+  builder.setInsertionPoint(host_insertion_point);
   llvm::SmallVector<Type, 4> host_operand_types;
   for (const auto& operand : external_operands)
     host_operand_types.push_back(operand.getType());
@@ -609,37 +768,174 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   Operation* recv_at_host = CreateRecvAtHostOp(
       builder, op.getLoc(), host_operand_types, compilation_key, device_ordinal,
       default_device_ordinal, device_type_attr, args_communication_key);
-  Block* original_op_block = op.getBlock();
+
+  if (!external_operands.empty()) host_ops.push_back(recv_at_host);
   Operation* after_op = recv_at_host;
   for (Operation* cluster_op : clustered_ops) {
     cluster_op->moveAfter(after_op);
     cluster_op->removeAttr(StringAttr::get(op.getContext(), kDeviceAttr));
     after_op = cluster_op;
+    host_ops.push_back(cluster_op);
   }
 
   if (!external_outputs.empty()) {
-    CreateSendFromHostOp(builder, op.getLoc(), external_outputs.getArrayRef(),
-                         compilation_key, device_ordinal,
-                         default_device_ordinal, device_type_attr,
-                         retvals_communication_key);
+    Operation* send_from_host = CreateSendFromHostOp(
+        builder, op.getLoc(), external_outputs, compilation_key, device_ordinal,
+        default_device_ordinal, device_type_attr, retvals_communication_key);
+    host_ops.push_back(send_from_host);
   }
+
+  return recv_at_host;
+}
+
+// Clone the first outside compiled region to one for each TPU core. This is
+// used for map_outside_compilation.
+// Message identification arguments to RecvAtHost and SendFromHost are changed.
+void CloneFirstHost(ArrayRef<Operation*> core_to_host_insertion_point,
+                    ArrayRef<Value> core_to_compilation_key,
+                    ArrayRef<Value> core_to_device_ordinal,
+                    int num_cores_per_replica, ArrayRef<Operation*> host0_ops,
+                    OpBuilder& builder) {
+  for (int core = 1; core < num_cores_per_replica; ++core) {
+    IRMapping mapper;
+    for (Operation* op : host0_ops) {
+      builder.setInsertionPoint(core_to_host_insertion_point[core]);
+      Operation* clone = builder.clone(*op, mapper);
+      mapper.map(op, clone);
+      if (auto recv_at_host = llvm::dyn_cast<TF::_XlaRecvAtHostOp>(clone)) {
+        recv_at_host.setDeviceOrdinal(core);
+        clone->setOperand(0, core_to_compilation_key[core]);
+      } else if (auto send_from_host =
+                     llvm::dyn_cast<TF::_XlaSendFromHostOp>(clone)) {
+        send_from_host.setDeviceOrdinal(core);
+        clone->setOperand(1, core_to_compilation_key[core]);
+      } else if (auto recv_at_host =
+                     llvm::dyn_cast<TF::_XlaRecvAtHostV2Op>(clone)) {
+        recv_at_host.setOperand(0, core_to_compilation_key[core]);
+        builder.setInsertionPoint(recv_at_host);
+        // core_ordinal = device_ordinal + core
+        // where device_ordinal is the base device for the replica
+        Value device_ordinal = core_to_device_ordinal[core];
+        Value const_core = builder.create<TF::ConstOp>(
+            recv_at_host.getLoc(), builder.getI64IntegerAttr(core));
+        Value core_ordinal = builder.create<TF::AddV2Op>(
+            recv_at_host.getLoc(), device_ordinal.getType(), device_ordinal,
+            const_core);
+        recv_at_host.setOperand(1, core_ordinal);
+      } else if (auto send_from_host =
+                     llvm::dyn_cast<TF::_XlaSendFromHostV2Op>(clone)) {
+        send_from_host.setOperand(1, core_to_compilation_key[core]);
+        builder.setInsertionPoint(send_from_host);
+        // core_ordinal = device_ordinal + core
+        // where device_ordinal is the base device for the replica
+        Value device_ordinal = core_to_device_ordinal[core];
+        Value const_core = builder.create<TF::ConstOp>(
+            send_from_host.getLoc(), builder.getI64IntegerAttr(core));
+        Value core_ordinal = builder.create<TF::AddV2Op>(
+            send_from_host.getLoc(), device_ordinal.getType(), device_ordinal,
+            const_core);
+        send_from_host.setOperand(2, core_ordinal);
+      }
+    }
+  }
+}
+
+// Move `clustered_ops` to run on host and adds communication ops to transfer
+// `external_operands` and `external_outputs` to/from device/host.  Inserts
+// ops at `insertion_point` and uses `compilation_key` and `device_ordinal` when
+// creating comm ops.
+LogicalResult MoveToHostSingleCluster(
+    ArrayRef<Operation*> clustered_ops, ArrayRef<Value> external_operands,
+    ArrayRef<Value> external_outputs,
+    ArrayRef<Operation*> core_to_host_insertion_point,
+    ArrayRef<Value> core_to_compilation_key,
+    ArrayRef<Value> core_to_device_ordinal, int default_device_ordinal,
+    StringAttr device_type_attr, bool is_map_oc, int num_cores_per_replica,
+    int& communication_key_index) {
+  OpBuilder builder(core_to_host_insertion_point[0]);
+  Operation& op = *clustered_ops.back();
+  Block* original_op_block = op.getBlock();
+  auto [args_communication_key, retvals_communication_key] =
+      MakeCommunicationKeys(clustered_ops, external_operands,
+                            communication_key_index, op);
+
+  std::string serialized_func_module;
+  if (HasDynamicOutputs(external_outputs)) {
+    func::FuncOp shape_op = BuildFunction(clustered_ops, external_operands,
+                                          external_outputs, &builder);
+    EncapsulateFuncAndSerialize(shape_op, &serialized_func_module);
+  }
+
+  builder.setInsertionPoint(&op);
+  SmallVector<Value, 4> host_compute_outputs;
+  SmallVector<Operation*, 4> host_compute_out_ops;
+  if (failed(CreateHostCompute(
+          &op, builder, op.getLoc(), external_operands, external_outputs,
+          args_communication_key, retvals_communication_key,
+          serialized_func_module, is_map_oc, num_cores_per_replica,
+          host_compute_outputs, host_compute_out_ops)))
+    return failure();
+
+  // Insert ops on the host side computation to receive data from device.
+  // host0_ops are the ops that will make up the first host process. In the
+  // map_outside_compilation case, there are multiple host processes, which will
+  // be created by cloning.
+  SmallVector<Operation*, 4> host0_ops;
+  Operation* recv_at_host = CreateHostOps(
+      clustered_ops, external_operands, external_outputs,
+      core_to_host_insertion_point[0], core_to_compilation_key[0],
+      core_to_device_ordinal.empty() ? nullptr : core_to_device_ordinal[0],
+      default_device_ordinal, device_type_attr, builder, op,
+      args_communication_key, retvals_communication_key, host0_ops);
 
   if (external_operands.empty()) {
     recv_at_host->erase();
   } else {
-    ReplaceExternalOperandUsage(external_operands,
-                                /*recv_at_host=*/recv_at_host,
-                                /*insertion_point=*/insertion_point,
-                                /*original_op_block=*/original_op_block);
+    ReplaceExternalOperandUsage(
+        external_operands, recv_at_host,
+        /*insertion_point=*/core_to_host_insertion_point[0], original_op_block);
   }
 
-  ReplaceExternalOutputUsage(external_outputs, host_compute);
+  ReplaceExternalOutputUsage(external_outputs, host_compute_outputs);
+
+  // Clone the first outside compiled region to one for each TPU core.
+  if (is_map_oc)
+    CloneFirstHost(core_to_host_insertion_point, core_to_compilation_key,
+                   core_to_device_ordinal, num_cores_per_replica, host0_ops,
+                   builder);
+
+  ReplaceExternalOutputUsage(external_outputs, host_compute_outputs);
 
   if (external_operands.empty() && external_outputs.empty()) {
-    host_compute.erase();
+    for (Operation* op : host_compute_out_ops) op->erase();
   } else {
     ++communication_key_index;
   }
+
+  return success();
+}
+
+// Update is_map_oc the true if op has attribute _xla_map_outside_compilation
+// and false otherwise. Check that this is consistent with the previous setting
+// of is_map_oc.
+LogicalResult UpdateIsMapOutsideCompilation(Operation& op, bool control_above,
+                                            std::optional<bool>& is_map_oc) {
+  bool op_is_map_oc =
+      op.hasAttrOfType<StringAttr>(kXlaMapOutsideCompilationAttr);
+  if (is_map_oc) {
+    if (op_is_map_oc != *is_map_oc) {
+      return op.emitOpError()
+             << "Cannot mix map_outside_compilation with ordinary "
+                "outside_compilation in the same graph.";
+    }
+  } else {
+    is_map_oc = op_is_map_oc;
+  }
+  if (control_above && op_is_map_oc) {
+    return op.emitOpError() << "map_outside_compilation inside control flow "
+                               "is not implemented.";
+  }
+  return success();
 }
 
 // Move outside compiled ops in `src` to `insertion_point` in host
@@ -649,13 +945,21 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 // `communication_key_index` which is incremented when used. Communication ops
 // are added only when needed and at the location need.  There are checks to
 // ensure that duplicate communication between device and host is not added.
-// When `return_value_from_host` is not nullptr, MoveOpsToHost will also update
-// its value.
-LogicalResult MoveOpsToHost(
-    tf_device::ClusterOp device_cluster, Block* src, Operation* insertion_point,
-    Value compilation_key, Value device_ordinal, int default_device_ordinal,
+// When `return_value_from_host` is not nullptr, MoveToHostMultiCluster will
+// also update its value. `control_above` means that this Block is within
+// control flow, which is not currently supported with map_outside_compilation.
+// `is_map_oc` tracks whether map_outside_compilation is used, for the whole
+// program. Currently only map_outside_compilation-only or ordinary
+// outside_compilation only is supported.
+LogicalResult MoveToHostMultiCluster(
+    tf_device::ClusterOp device_cluster, Block* src,
+    ArrayRef<Operation*> core_to_host_insertion_point,
+    ArrayRef<Value> core_to_compilation_key,
+    ArrayRef<Value> core_to_device_ordinal, int default_device_ordinal,
+    bool control_above, std::optional<bool>& is_map_oc,
     int& communication_key_index,
     llvm::SmallVector<Value, 4>* return_value_from_host = nullptr) {
+  int num_cores_per_replica = core_to_host_insertion_point.size();
   // Contains all of the outside compiled operations that should be moved to the
   // host using a single `_XlaHostComputeMlir` op.  This should only contain a
   // single op except in the case where some of the input/output shapes are
@@ -668,6 +972,9 @@ LogicalResult MoveOpsToHost(
     if (HasOutsideCompilationAncestorExclusive(&op) ||
         !op.hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
       continue;
+
+    if (failed(UpdateIsMapOutsideCompilation(op, control_above, is_map_oc)))
+      return failure();
 
     llvm::SmallSetVector<Value, 4> external_outputs;
     llvm::SmallVector<Value, 4> host_outputs;
@@ -684,10 +991,13 @@ LogicalResult MoveOpsToHost(
           return_value_from_host->push_back(output);
         }
       }
-      MoveOpsToHost(clustered_ops, external_operands, external_outputs,
-                    insertion_point, compilation_key, device_ordinal,
-                    default_device_ordinal, device_type_attr,
-                    communication_key_index);
+      if (failed(MoveToHostSingleCluster(
+              clustered_ops.getArrayRef(), external_operands.getArrayRef(),
+              external_outputs.getArrayRef(), core_to_host_insertion_point,
+              core_to_compilation_key, core_to_device_ordinal,
+              default_device_ordinal, device_type_attr, *is_map_oc,
+              num_cores_per_replica, communication_key_index)))
+        return failure();
       clustered_ops.clear();
     }
 
@@ -708,10 +1018,13 @@ LogicalResult MoveOpsToHost(
         }
       }
 
-      MoveOpsToHost(clustered_ops, external_operands, external_outputs,
-                    insertion_point, compilation_key, device_ordinal,
-                    default_device_ordinal, device_type_attr,
-                    communication_key_index);
+      if (failed(MoveToHostSingleCluster(
+              clustered_ops.getArrayRef(), external_operands.getArrayRef(),
+              external_outputs.getArrayRef(), core_to_host_insertion_point,
+              core_to_compilation_key, core_to_device_ordinal,
+              default_device_ordinal, device_type_attr, *is_map_oc,
+              num_cores_per_replica, communication_key_index)))
+        return failure();
       clustered_ops.clear();
     }
   }
@@ -736,27 +1049,34 @@ void GetReturnValueFromDevice(
 // (outside compiled) computation into two separate control flow ops with
 // communication between the device/host for data dependencies.  Both device and
 // host control flow initially remain within `device_cluster` and a subsequency
-// call to MoveOpsToHost moves the host side control flow to the host launch in
-// tf_device.parallel_execute.  Uses `compilation_key, `device_ordinal` and
-// `communication_key_index` when creating communication ops.
+// call to MoveToHostSingleCluster moves the host side control flow to the host
+// launch in tf_device.parallel_execute.  Uses `compilation_key,
+// `device_ordinal` and `communication_key_index` when creating communication
+// ops.
 LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
-                                   Value compilation_key, Value device_ordinal,
+                                   ArrayRef<Value> core_to_compilation_key,
+                                   ArrayRef<Value> core_to_device_ordinal,
                                    int default_device_ordinal,
-                                   int& communication_key_index) {
+                                   int& communication_key_index,
+                                   std::optional<bool>& is_map_oc) {
   auto result = device_cluster.GetBody().walk([&](Operation* op) {
     if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(if_op);
       auto host_if = CloneEmptyIfWithPredicate(if_op, builder);
-      if (failed(MoveOpsToHost(
+      if (failed(MoveToHostMultiCluster(
               device_cluster, &if_op.getThenBranch().front(),
-              host_if.getThenBranch().front().getTerminator(), compilation_key,
-              device_ordinal, default_device_ordinal, communication_key_index)))
+              {host_if.getThenBranch().front().getTerminator()},
+              core_to_compilation_key, core_to_device_ordinal,
+              default_device_ordinal, /*control_above=*/true, is_map_oc,
+              communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(
+      if (failed(MoveToHostMultiCluster(
               device_cluster, &if_op.getElseBranch().front(),
-              host_if.getElseBranch().front().getTerminator(), compilation_key,
-              device_ordinal, default_device_ordinal, communication_key_index)))
+              {host_if.getElseBranch().front().getTerminator()},
+              core_to_compilation_key, core_to_device_ordinal,
+              default_device_ordinal, /*control_above=*/true, is_map_oc,
+              communication_key_index)))
         return WalkResult::interrupt();
       // Mark op as stateful due to side-effecting communication ops.
       if_op->setAttr("is_stateless", builder.getBoolAttr(false));
@@ -778,24 +1098,32 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp device_cluster,
       builder.setInsertionPoint(while_op.getCond().front().getTerminator());
       builder.create<TF::XlaSendToHostOp>(while_op.getLoc(), condition,
                                           condition_send_recv_key);
+      // device_ordinal0 is the ordinal of TPU_REPLICATED_CORE_0 and is only
+      // used in the replicated case.
+      Value device_ordinal0 = nullptr;
+      if (!core_to_device_ordinal.empty())
+        device_ordinal0 = core_to_device_ordinal[0];
       builder.setInsertionPointToEnd(&cond.front());
       auto recv_condition_at_host = CreateRecvAtHostOp(
           builder, while_op.getLoc(), TypeRange{condition.getType()},
-          compilation_key, device_ordinal, default_device_ordinal,
+          core_to_compilation_key[0], device_ordinal0, default_device_ordinal,
           device_cluster->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr),
           condition_send_recv_key);
       builder.create<TF::YieldOp>(while_op.getLoc(),
                                   recv_condition_at_host->getResults());
 
-      if (failed(MoveOpsToHost(device_cluster, &while_op.getCond().front(),
-                               recv_condition_at_host, compilation_key,
-                               device_ordinal, default_device_ordinal,
-                               communication_key_index)))
+      if (failed(MoveToHostMultiCluster(
+              device_cluster, &while_op.getCond().front(),
+              {recv_condition_at_host}, core_to_compilation_key,
+              core_to_device_ordinal, default_device_ordinal,
+              /*control_above=*/true, is_map_oc, communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(
+      if (failed(MoveToHostMultiCluster(
               device_cluster, &while_op.getBody().front(),
-              host_while.getBody().front().getTerminator(), compilation_key,
-              device_ordinal, default_device_ordinal, communication_key_index)))
+              {host_while.getBody().front().getTerminator()},
+              core_to_compilation_key, core_to_device_ordinal,
+              default_device_ordinal, /*control_above=*/true, is_map_oc,
+              communication_key_index)))
         return WalkResult::interrupt();
       // Mark op as stateful due to side-effecting communication ops.
       while_op->setAttr("is_stateless", builder.getBoolAttr(false));
@@ -859,8 +1187,8 @@ LogicalResult GetDefaultDeviceOrdinal(tf_device::ClusterOp device_cluster,
 // The results of parallel executes is the combination of return values from
 // both host and device.
 llvm::SmallVector<Type, 4> GetParallelExecuteResultsTypes(
-    const llvm::SmallVector<Value, 4>& return_value_from_host,
-    const llvm::SmallVector<Value, 4>& return_value_from_device) {
+    ArrayRef<Value> return_value_from_host,
+    ArrayRef<Value> return_value_from_device) {
   llvm::SmallVector<Type, 4> parallel_execute_result_types;
   const int num_of_outputs =
       return_value_from_host.size() + return_value_from_device.size();
@@ -939,7 +1267,7 @@ void RemapDeviceClusterResultsWithParallelExecuteResults(
 
 // Get the vector of results for new device cluster
 llvm::SmallVector<Value, 4> GetNewDeviceResults(
-    const llvm::SmallVector<Value, 4>& return_value_from_device) {
+    ArrayRef<Value> return_value_from_device) {
   llvm::SmallVector<Value, 4> device_results;
   device_results.reserve(return_value_from_device.size());
   for (Value old_result : return_value_from_device)
@@ -949,7 +1277,7 @@ llvm::SmallVector<Value, 4> GetNewDeviceResults(
 
 // Get the vector of types of results for new device cluster
 llvm::SmallVector<Type, 4> GetNewDeviceTypes(
-    const llvm::SmallVector<Value, 4>& return_value_from_device) {
+    ArrayRef<Value> return_value_from_device) {
   llvm::SmallVector<Type, 4> device_result_types;
   device_result_types.reserve(return_value_from_device.size());
   for (Value old_result : return_value_from_device)
@@ -983,10 +1311,11 @@ void MoveTmpLaunchOpToNewLaunchOp(tf_device::LaunchOp tmp_host_launch_op,
 // Still, one region is for the host computation for outside compilation and
 // the other one is for the original Device cluster computation.
 tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
-    OpBuilder& builder, int num_regions, llvm::StringRef host_device,
-    tf_device::ClusterOp device_cluster, tf_device::LaunchOp tmp_host_launch_op,
-    const llvm::SmallVector<Value, 4>& return_value_from_host,
-    const llvm::SmallVector<Value, 4>& return_value_from_device) {
+    OpBuilder& builder, int num_regions, ArrayRef<std::string> core_to_host,
+    tf_device::ClusterOp device_cluster,
+    ArrayRef<tf_device::LaunchOp> core_to_tmp_host_launch,
+    ArrayRef<Value> return_value_from_host,
+    ArrayRef<Value> return_value_from_device) {
   llvm::SmallVector<Type, 4> parallel_execute_result_types =
       GetParallelExecuteResultsTypes(return_value_from_host,
                                      return_value_from_device);
@@ -994,25 +1323,35 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
   builder.setInsertionPoint(device_cluster);
   auto parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
       device_cluster.getLoc(), num_regions, parallel_execute_result_types);
-  Block& host_computation_block =
-      parallel_execute_op.GetRegionBlockWithIndex(0);
-  builder.setInsertionPointToEnd(&host_computation_block);
+  SmallVector<tf_device::LaunchOp, 4> core_to_host_launch;
+  for (int core = 0; core < core_to_tmp_host_launch.size(); ++core) {
+    Block& host_computation_block =
+        parallel_execute_op.GetRegionBlockWithIndex(core);
+    builder.setInsertionPointToEnd(&host_computation_block);
 
-  // Create a single launch op for all outside compiled ops.
-  llvm::SmallVector<Value, 4> host_results;
-  host_results.insert(host_results.end(), return_value_from_host.begin(),
-                      return_value_from_host.end());
-  tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
-      builder, device_cluster, host_device, host_results);
+    // map_outside_compilation with return values from host is not implemented.
+    // This would only be needed if head-tail-outside-compilation supports
+    // map_outside_compilation";
+    assert(core == 0 || return_value_from_host.empty());
 
-  // Create a return op for host computation block
-  builder.setInsertionPointToEnd(&host_computation_block);
-  builder.create<tf_device::ReturnOp>(device_cluster.getLoc(),
-                                      host_launch_op->getResults());
+    // Create a single launch op for all outside compiled ops.
+    llvm::SmallVector<Value, 4> host_results;
+    host_results.insert(host_results.end(), return_value_from_host.begin(),
+                        return_value_from_host.end());
+    tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
+        builder, device_cluster, core_to_host[core], host_results);
+    core_to_host_launch.push_back(host_launch_op);
+
+    // Create a return op for host computation block
+    builder.setInsertionPointToEnd(&host_computation_block);
+    builder.create<tf_device::ReturnOp>(device_cluster.getLoc(),
+                                        host_launch_op->getResults());
+  }
 
   // Move the launch body to last parallel_execute block.
   Block& parallel_execute_device_block =
-      parallel_execute_op.GetRegionBlockWithIndex(1);
+      parallel_execute_op.GetRegionBlockWithIndex(
+          core_to_tmp_host_launch.size());
   builder.setInsertionPointToEnd(&parallel_execute_device_block);
 
   // Get the vector of results and types of results for new device cluster
@@ -1042,8 +1381,13 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
 
   MoveOldTpuClusterToNewTpuCluster(device_cluster, after_op_r);
 
-  Operation* after_op_host_cluster = host_launch_op.GetBody().getTerminator();
-  MoveTmpLaunchOpToNewLaunchOp(tmp_host_launch_op, after_op_host_cluster);
+  // Move each host-side Launch op.
+  for (int core = 0; core < core_to_tmp_host_launch.size(); ++core) {
+    Operation* after_op_host_cluster =
+        core_to_host_launch[core].GetBody().getTerminator();
+    MoveTmpLaunchOpToNewLaunchOp(core_to_tmp_host_launch[core],
+                                 after_op_host_cluster);
+  }
 
   return parallel_execute_op;
 }
@@ -1052,102 +1396,121 @@ tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
 // a region for `device_cluster` computation by extracting outside compiled ops
 // to host computation.
 LogicalResult CreateParallelExecuteForOutsideCompilation(
-    ModuleOp module, tf_device::ClusterOp device_cluster,
-    llvm::StringRef host_device,
+    tf_device::ClusterOp device_cluster,
     llvm::SmallVector<tf_device::ParallelExecuteOp, 4>& ops,
+    std::optional<bool>& is_map_oc, ArrayRef<std::string> core_to_host,
     bool has_tpu_device) {
   OpBuilder builder(device_cluster);
   llvm::SmallVector<Value, 4> returns_from_host;
 
   // Create a temporary parallel_execute. This is temporary because the result
-  // type is not determined until after it is filled. There are two regions in
-  // `tmp_parallel_execute_op`. The first one is for the host computation for
-  // outside compilation and the second one is for the original Device cluster
-  // computation.
-  const int num_regions = 2;
+  // type is not determined until after it is filled. The parallel_execute has
+  // `num_host_regions` assigned to hosts and 1 region for the Device cluster.
+  // In the ordinary outside compilation case `num_host_regions` is 1 and in the
+  // `map_outside_compilation` case `num_host_regions == num_cores_per_replica`.
+  const int num_host_regions = core_to_host.size();
+  const int num_regions = 1 + num_host_regions;
   auto tmp_parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
       device_cluster.getLoc(), num_regions, llvm::ArrayRef<Type>{});
-  Block& tmp_host_computation_block =
-      tmp_parallel_execute_op.GetRegionBlockWithIndex(0);
-  builder.setInsertionPointToEnd(&tmp_host_computation_block);
+  SmallVector<Operation*, 4> core_to_host_insertion_point;
+  SmallVector<tf_device::LaunchOp, 4> core_to_tmp_launch;
+  SmallVector<Operation*, 4> compilation_key_ops;
+  SmallVector<Value, 4> core_to_compilation_key;
+  SmallVector<Operation*, 4> core_to_device_ordinal_op;
+  SmallVector<Value, 4> core_to_device_ordinal;
+  for (int core = 0; core < num_host_regions; ++core) {
+    Block& tmp_host_computation_block =
+        tmp_parallel_execute_op.GetRegionBlockWithIndex(core);
+    builder.setInsertionPointToEnd(&tmp_host_computation_block);
+    // Create a single tmp launch op for all outside compiled ops.
+    llvm::SmallVector<Value, 4> tmp_host_results;
+    tf_device::LaunchOp tmp_host_launch_op = CreateLaunchOpForOutsideCluster(
+        builder, device_cluster, core_to_host[core], tmp_host_results);
+    core_to_tmp_launch.push_back(tmp_host_launch_op);
+    // Create a tmp return op for tmp host computation block
+    builder.setInsertionPointToEnd(&tmp_host_computation_block);
+    builder.create<tf_device::ReturnOp>(device_cluster.getLoc(),
+                                        llvm::ArrayRef<Value>{});
+    core_to_host_insertion_point.push_back(
+        tmp_host_launch_op.GetBody().getTerminator());
 
-  // Create a single tmp launch op for all outside compiled ops.
-  llvm::SmallVector<Value, 4> tmp_host_results;
-  tf_device::LaunchOp tmp_host_launch_op = CreateLaunchOpForOutsideCluster(
-      builder, device_cluster, host_device, tmp_host_results);
+    builder.setInsertionPoint(tmp_host_launch_op.GetBody().getTerminator());
 
-  // Create a tmp return op for tmp host computation block
-  builder.setInsertionPointToEnd(&tmp_host_computation_block);
-  builder.create<tf_device::ReturnOp>(device_cluster.getLoc(),
-                                      llvm::ArrayRef<Value>{});
-
-  builder.setInsertionPoint(tmp_host_launch_op.GetBody().getTerminator());
-
-  Operation* compilation_key_op = nullptr;
-  Value compilation_key = nullptr;
-  Operation* device_ordinal_op = nullptr;
-
-  if (has_tpu_device) {
-    compilation_key_op =
-        CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
-    compilation_key =
-        llvm::dyn_cast<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
-            compilation_key_op)
-            .getProgram();
-    device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
-        device_cluster.getLoc(),
-        RankedTensorType::get({}, builder.getI64Type()));
-  } else {
-    compilation_key_op =
-        CreateCpuGpuComilationKeyPlaceholder(device_cluster.getLoc(), builder);
-    compilation_key =
-        llvm::dyn_cast<Value>(compilation_key_op->getResults()[0]);
-    device_ordinal_op = builder.create<TF::ConstOp>(
-        device_cluster.getLoc(),
-        DenseIntElementsAttr::get(
-            RankedTensorType::get({}, builder.getI64Type()),
-            static_cast<int64_t>(0)));
+    // Create message identification ops.
+    Operation* compilation_key_op = nullptr;
+    Value compilation_key = nullptr;
+    Operation* device_ordinal_op = nullptr;
+    if (has_tpu_device) {
+      compilation_key_op =
+          CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
+      compilation_key =
+          llvm::dyn_cast<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+              compilation_key_op)
+              .getProgram();
+      device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
+          device_cluster.getLoc(),
+          RankedTensorType::get({}, builder.getI64Type()));
+    } else {
+      compilation_key_op = CreateCpuGpuComilationKeyPlaceholder(
+          device_cluster.getLoc(), builder);
+      compilation_key =
+          llvm::dyn_cast<Value>(compilation_key_op->getResults()[0]);
+      device_ordinal_op = builder.create<TF::ConstOp>(
+          device_cluster.getLoc(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get({}, builder.getI64Type()),
+              static_cast<int64_t>(0)));
+    }
+    compilation_key_ops.push_back(compilation_key_op);
+    core_to_compilation_key.push_back(compilation_key);
+    core_to_device_ordinal_op.push_back(device_ordinal_op);
+    if (device_cluster->getParentOfType<tf_device::ReplicateOp>())
+      core_to_device_ordinal.push_back(
+          core_to_device_ordinal_op[core]->getResults()[0]);
   }
 
-  Value device_ordinal = nullptr;
-
-  if (device_cluster->getParentOfType<tf_device::ReplicateOp>()) {
-    device_ordinal = device_ordinal_op->getResults()[0];
-  }
+  builder.setInsertionPoint(tmp_parallel_execute_op);
   int default_device_ordinal = 0;
   if (failed(GetDefaultDeviceOrdinal(device_cluster, default_device_ordinal))) {
     return failure();
   }
+  // communication_key_index is part of the message identifier and is
+  // incremented for each _XlaHostComputeMlir.
   int communication_key_index = 0;
+
   // Decompose control flow into device and host control flow when outside
   // compilation is included.
-  if (failed(DecomposeControlFlow(device_cluster, compilation_key,
-                                  device_ordinal, default_device_ordinal,
-                                  communication_key_index)))
+  if (failed(DecomposeControlFlow(
+          device_cluster, core_to_compilation_key, core_to_device_ordinal,
+          default_device_ordinal, communication_key_index, is_map_oc)))
     return failure();
 
   // Move all outside compiled ops including control flow to tmp host launch.
   // Also set the values returned from the host when ops are moved.
-  if (failed(MoveOpsToHost(device_cluster, &device_cluster.GetBody(),
-                           tmp_host_launch_op.GetBody().getTerminator(),
-                           compilation_key, device_ordinal,
-                           default_device_ordinal, communication_key_index,
-                           &returns_from_host)))
+  if (failed(MoveToHostMultiCluster(
+          device_cluster, &device_cluster.GetBody(),
+          core_to_host_insertion_point, core_to_compilation_key,
+          core_to_device_ordinal, default_device_ordinal,
+          /*control_above=*/false, is_map_oc, communication_key_index,
+          &returns_from_host)))
     return failure();
 
   llvm::SmallVector<Value, 4> returns_from_device;
   GetReturnValueFromDevice(device_cluster, returns_from_host,
                            returns_from_device);
 
-  if (communication_key_index == 0) compilation_key_op->erase();
-  if (communication_key_index == 0 || device_ordinal == nullptr)
-    device_ordinal_op->erase();
+  // Remove unused message identification ops.
+  if (communication_key_index == 0)
+    for (auto op : compilation_key_ops) op->erase();
+  if (communication_key_index == 0 || core_to_device_ordinal.empty())
+    for (auto op : core_to_device_ordinal_op) op->erase();
 
-  RemoveOutsideCompilation(tmp_host_launch_op);
+  for (tf_device::LaunchOp tmp_host_launch_op : core_to_tmp_launch)
+    RemoveOutsideCompilation(tmp_host_launch_op);
 
   tf_device::ParallelExecuteOp parallel_execute_op =
-      CreateFinalParallelExecuteOp(builder, num_regions, host_device,
-                                   device_cluster, tmp_host_launch_op,
+      CreateFinalParallelExecuteOp(builder, num_regions, core_to_host,
+                                   device_cluster, core_to_tmp_launch,
                                    returns_from_host, returns_from_device);
 
   ops.push_back(tmp_parallel_execute_op);
@@ -1167,11 +1530,10 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
 LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
   for (OpResult result : cluster.getResults()) {
     if (!tensorflow::TypeValidForXLA(result.getType())) {
-      cluster.emitError()
-          << "The ExtractHeadTailOutsideCompilation pass produced a Device "
-             "cluster with a result with a non-XLA type: "
-          << result.getType();
-      return failure();
+      return cluster.emitError()
+             << "The ExtractHeadTailOutsideCompilation pass produced a Device "
+                "cluster with a result with a non-XLA type: "
+             << result.getType();
     }
   }
   return success();
@@ -1185,11 +1547,10 @@ LogicalResult CheckAncestorNotOutsideComp(Operation* op) {
   Operation* iter_op = op;
   while (auto* parent_op = iter_op->getParentOp()) {
     if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
-      op->emitOpError()
-          << "An op marked for outside compilation (having attribute "
-          << kXlaOutsideCompilationAttr
-          << ") has an ancestor marked for outside compilation.";
-      return failure();
+      return op->emitOpError()
+             << "An op marked for outside compilation (having attribute "
+             << kXlaOutsideCompilationAttr
+             << ") has an ancestor marked for outside compilation.";
     }
     iter_op = parent_op;
   }
@@ -1226,15 +1587,15 @@ void ExtractOutsideCompilation::runOnOperation() {
     return signalPassFailure();
 
   llvm::SmallVector<tf_device::ParallelExecuteOp, 4> tmp_parallel_execute_ops;
+  std::optional<bool> is_map_oc;
 
   module.walk([&](tf_device::ClusterOp device_cluster) {
     if (HasOutsideCompilationNested(device_cluster.getOperation())) {
-      std::string host_device;
-      if (failed(tensorflow::GetHostDeviceOutsideComputation(
-              devices, device_cluster, &host_device)))
+      SmallVector<std::string, 8> core_to_host;
+      if (failed(tensorflow::GetDeviceToHostMap(device_cluster, core_to_host)))
         return signalPassFailure();
       if (failed(CreateParallelExecuteForOutsideCompilation(
-              module, device_cluster, host_device, tmp_parallel_execute_ops,
+              device_cluster, tmp_parallel_execute_ops, is_map_oc, core_to_host,
               tensorflow::HasTPUDevice(devices))))
         return signalPassFailure();
     }
@@ -1248,8 +1609,10 @@ void ExtractOutsideCompilation::runOnOperation() {
   // on ops outside of tf_device.cluster don't have any meaning and can lead to
   // errors later on.  These ops were likely lifted out of the
   // tf_device.cluster in an earlier pass.
-  module.walk(
-      [](Operation* op) { op->removeAttr("_xla_outside_compilation"); });
+  module.walk([](Operation* op) {
+    op->removeAttr(kXlaOutsideCompilationAttr);
+    op->removeAttr(kXlaMapOutsideCompilationAttr);
+  });
 
   if (failed(CheckPostconditions(module))) return signalPassFailure();
 }

@@ -1,8 +1,8 @@
 # RUN: xla-translate -hlo-to-mlir-hlo %s | FileCheck %s
 
 # CHECK-LABEL: module @main attributes
-# CHECK-SAME: mhlo.spmd_output_sharding = "\08\03\1A\02\01\02\22\02\00\01"
-# CHECK-SAME: mhlo.spmd_parameters_shardings = ["\08\03\1A\02\01\02\22\02\00\01"]
+# CHECK-SAME: mhlo.spmd_output_sharding = "{devices=[1,2]0,1}"
+# CHECK-SAME: mhlo.spmd_parameters_shardings = ["{devices=[1,2]0,1}"]
 
 hlo_module       {
   name: "main"

@@ -563,6 +563,7 @@ cc_library(
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/util:byte_swap_array",
+        "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",

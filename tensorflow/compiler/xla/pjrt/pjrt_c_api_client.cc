@@ -1432,6 +1432,26 @@ absl::string_view PjRtCApiTopologyDescription::platform_version() const {
   return absl::string_view(args.platform_version, args.platform_version_size);
 }
 
+std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+PjRtCApiTopologyDescription::DeviceDescriptions() const {
+  PJRT_TopologyDescription_GetDeviceDescriptions_Args args;
+  args.struct_size =
+      PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.topology = c_topology_.get();
+  pjrt::LogFatalIfPjrtError(
+      c_api_->PJRT_TopologyDescription_GetDeviceDescriptions(&args), c_api_);
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> out;
+  out.reserve(args.num_descriptions);
+  for (PJRT_DeviceDescription* device_desc :
+       absl::Span<PJRT_DeviceDescription*>(args.descriptions,
+                                           args.num_descriptions)) {
+    out.push_back(
+        std::make_unique<PjRtCApiDeviceDescription>(c_api_, device_desc));
+  }
+  return out;
+}
+
 // Initializes `PJRT_Compile_Args`, which will be used to call
 // API PJRT_Compile().
 static StatusOr<std::unique_ptr<PjRtExecutable>> InitializeArgsAndCompileAot(

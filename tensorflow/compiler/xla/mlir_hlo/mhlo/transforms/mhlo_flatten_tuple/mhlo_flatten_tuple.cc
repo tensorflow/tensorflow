@@ -67,31 +67,59 @@ Value createTupleValue(OpBuilder &builder, Location loc,
   return builder.create<mhlo::TupleOp>(loc, flattenValues);
 }
 
+void flattenTupleValue(OpBuilder &builder, Location loc, Value value,
+                       llvm::SmallVectorImpl<Value> &flattenedValues) {
+  auto tupleType = value.getType().dyn_cast<TupleType>();
+  if (!tupleType) {
+    flattenedValues.push_back(value);
+    return;
+  }
+  int flattenIdx = 0;
+  for (auto innerType : tupleType.getTypes()) {
+    auto innerValue = builder.create<mhlo::GetTupleElementOp>(
+        loc, innerType, value, builder.getI32IntegerAttr(flattenIdx++));
+    flattenTupleValue(builder, loc, innerValue, flattenedValues);
+  }
+}
+
 struct FlattenCustomCallOp : public OpRewritePattern<CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(CustomCallOp op,
                                 PatternRewriter &rewriter) const override {
+    bool flattenResult =
+        op->getNumResults() == 1 && op->getResult(0).getType().isa<TupleType>();
+    bool flattenOperands = llvm::any_of(op.getInputs(), [](Value operand) {
+      return operand.getType().isa<TupleType>();
+    });
+
+    if (!flattenResult && !flattenOperands) return failure();
+
+    llvm::SmallVector<Value> flattenedOperands;
+    for (auto operand : op.getInputs())
+      flattenTupleValue(rewriter, op->getLoc(), operand, flattenedOperands);
+
     llvm::SmallVector<Type, 4> flattenedResultTypes;
-    if (op->getNumResults() != 1 ||
-        !op->getResult(0).getType().isa<TupleType>())
-      return failure();
+    if (!flattenResult) {
+      flattenedResultTypes.push_back(op->getResult(0).getType());
+    } else {
+      // Check for nested tuples.
+      for (Type innerType :
+           op->getResult(0).getType().cast<TupleType>().getTypes())
+        if (innerType.isa<TupleType>()) return failure();
 
-    // Check for nested tuples.
-    for (Type innerType :
-         op->getResult(0).getType().cast<TupleType>().getTypes())
-      if (innerType.isa<TupleType>()) return failure();
-
-    for (auto result : op->getResults())
-      flattenTupleType(result, flattenedResultTypes);
+      for (auto result : op->getResults())
+        flattenTupleType(result, flattenedResultTypes);
+    }
 
     auto flattenedCall = rewriter.create<mhlo::CustomCallOp>(
-        op->getLoc(), flattenedResultTypes, op->getOperands(), op->getAttrs());
+        op->getLoc(), flattenedResultTypes, flattenedOperands, op->getAttrs());
 
-    auto tuple =
-        createTupleValue(rewriter, op->getLoc(), flattenedCall.getResults(),
-                         op->getResult(0).getType());
-    rewriter.replaceOp(op, tuple);
+    rewriter.replaceOp(op, flattenResult
+                               ? createTupleValue(rewriter, op->getLoc(),
+                                                  flattenedCall.getResults(),
+                                                  op->getResult(0).getType())
+                               : flattenedCall.getResult(0));
     return success();
   }
 };

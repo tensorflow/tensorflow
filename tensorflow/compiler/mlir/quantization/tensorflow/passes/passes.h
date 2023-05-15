@@ -109,7 +109,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
 // Creates an instance of the PreprocessOp pass, which will perform op
 // preprocessing to allow multi-axis quantization, prior to quantization.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
-    const QuantizationSpecs& quant_specs, OpSet op_set);
+    OpSet op_set,
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
 
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
 // ops from the final quantized graph.

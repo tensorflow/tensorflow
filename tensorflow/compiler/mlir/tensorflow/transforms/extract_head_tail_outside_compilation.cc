@@ -53,10 +53,15 @@ namespace TFDevice {
 
 namespace {
 
+constexpr char kXlaMapOutsideCompilationAttr[] = "_xla_map_outside_compilation";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
+// Return true if `op` has attributes that say it can be outside compiled by
+// this pass. This pass ignores _xla_map_outside_compilation, which will only be
+// handled by extract_outside_compilation pass.
 bool HasOutsideCompilationAttribute(Operation* op) {
-  return op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr) != nullptr;
+  return op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr) != nullptr &&
+         !op->hasAttrOfType<BoolAttr>(kXlaMapOutsideCompilationAttr);
 }
 
 // Finds op that created a given value. If the value is a BlockArgument, this

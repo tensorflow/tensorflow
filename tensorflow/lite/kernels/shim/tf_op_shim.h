@@ -96,20 +96,20 @@ class TfOpKernel : public ::tensorflow::OpKernel {
   explicit TfOpKernel(::tensorflow::OpKernelConstruction* c)
       : OpKernel(c), impl_(std::make_unique<ImplType>()) {
     TfInitContext ctx(c);
-    c->SetStatus(::tensorflow::FromAbslStatus(impl_->Init(&ctx)));
+    c->SetStatus(impl_->Init(&ctx));
   }
 
   // The main computation of the op
   void Compute(::tensorflow::OpKernelContext* c) override {
     TfInvokeContext ctx(c);
-    OP_REQUIRES_OK(c, ::tensorflow::FromAbslStatus(impl_->Invoke(&ctx)));
+    OP_REQUIRES_OK(c, impl_->Invoke(&ctx));
   }
 
   // Shape inference for the op.
   static tensorflow::Status ShapeInference(
       ::tensorflow::shape_inference::InferenceContext* c) {
     TfShapeInferenceContext ctx(c);
-    return ::tensorflow::FromAbslStatus(ImplType::ShapeInference(&ctx));
+    return ImplType::ShapeInference(&ctx);
   }
 
   // The operation name

@@ -632,8 +632,14 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
       return failure();
   }
 
-  CreateReplaceOpAndInfer<tosa::AvgPool2dOp>(
-      rewriter, op, output_type, tf_avgpool_op.getValue(), kernel, stride, pad);
+  // Tosa supports FP16 and FP32 accumulator type for FP16 input. When the time
+  // FP16 is supported, the accumulator type can be selected based on trade-off
+  // between performance and accuracy. Set to FP32 by default.
+  auto acc_attr = mlir::TypeAttr::get(rewriter.getF32Type());
+
+  CreateReplaceOpAndInfer<tosa::AvgPool2dOp>(rewriter, op, output_type,
+                                             tf_avgpool_op.getValue(), kernel,
+                                             stride, pad, acc_attr);
   return success();
 }
 

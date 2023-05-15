@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -48,6 +49,11 @@ class SessionSnapshot {
   // The caller of this function will take ownership of the XSpace.
   StatusOr<std::unique_ptr<XSpace>> GetXSpace(size_t index) const;
 
+  // Gets XSpace proto.
+  // The caller of this function will take ownership of the XSpace.
+  StatusOr<std::unique_ptr<XSpace>> GetXSpaceByName(
+      absl::string_view name) const;
+
   // Gets host name.
   std::string GetHostname(size_t index) const;
 
@@ -59,12 +65,19 @@ class SessionSnapshot {
                   std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces)
       : xspace_paths_(std::move(xspace_paths)), xspaces_(std::move(xspaces)) {
     session_run_dir_ = tensorflow::io::Dirname(xspace_paths_.at(0));
+    for (size_t i = 0; i < xspace_paths_.size(); ++i) {
+      std::string host_name = GetHostname(i);
+      hostname_map_[host_name] = i;
+    }
   }
 
   // File paths to XSpace protos.
   std::vector<std::string> xspace_paths_;
   // The run directory of the profile session.
   absl::string_view session_run_dir_;
+
+  absl::flat_hash_map<std::string /*host_name*/, size_t /*index*/>
+      hostname_map_;
 
   // XSpace protos pre-loaded by the profiler plugin.
   // TODO(profiler): Use blobstore paths to initialize SessionSnapshot instead

@@ -493,7 +493,9 @@ java_test_with_tflite(
     # run every test case in this test in a separate shard, which ensures that
     # they run in a separate process that doesn't have the native libraries
     # loaded yet.
-    shard_count = 3,
+    # LINT.IfChange(TensorFlowLiteTestShardCount)
+    shard_count = 5,  # grep -c @Test src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java
+    # LINT.ThenChange(src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java)
     tags = [
         "v1only",
     ],

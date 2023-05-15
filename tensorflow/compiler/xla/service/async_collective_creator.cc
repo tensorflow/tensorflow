@@ -75,7 +75,7 @@ StatusOr<ReplacedAsync> CreateAsyncAllGather(HloInstruction* instruction) {
 }
 
 StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
-    HloInstruction* instruction) {
+    HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   HloComputation* computation = instruction->parent();
   auto* cp = Cast<HloCollectivePermuteInstruction>(instruction);
   HloInstruction* start;
@@ -83,9 +83,9 @@ StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
   if (cp->operand_count() == 1) {
     start = computation->AddInstruction(
         HloInstruction::CreateCollectivePermuteStart(
-            ShapeUtil::MakeTupleShape({operand->shape(), cp->shape(),
-                                       ShapeUtil::MakeShape(U32, {}, {}),
-                                       ShapeUtil::MakeShape(U32, {}, {})}),
+            ShapeInference::InferCollectivePermuteStartShape(
+                {&operand->shape()}, context_shapes)
+                .value(),
             operand, cp->source_target_pairs(), cp->channel_id()));
   } else {
     CHECK_EQ(cp->operand_count(), 4);
@@ -95,7 +95,8 @@ StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
         [](const HloInstruction* operand) { return &(operand->shape()); });
     start = computation->AddInstruction(
         HloInstruction::CreateCollectivePermuteStart(
-            ShapeInference::InferCollectivePermuteStartShape(operand_shapes)
+            ShapeInference::InferCollectivePermuteStartShape(operand_shapes,
+                                                             context_shapes)
                 .value(),
             operand, cp->mutable_operand(1), cp->mutable_operand(2),
             cp->mutable_operand(3), cp->source_target_pairs(),
@@ -166,7 +167,8 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
           async_pair = CreateAsyncAllGather(instruction);
           break;
         case HloOpcode::kCollectivePermute:
-          async_pair = CreateAsyncCollectivePermute(instruction);
+          async_pair = CreateAsyncCollectivePermute(
+              instruction, config_.get_context_shapes(instruction));
           break;
         case HloOpcode::kAllToAll:
         case HloOpcode::kReduceScatter:

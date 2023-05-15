@@ -35,14 +35,14 @@ tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
 }
 
 tensorflow::Status CreateTfErrorStatus(const DecodedDiagnostic& error) {
-  return tensorflow::FromAbslStatus(error.status);
+  return error.status;
 }
 
 tensorflow::Status ToTfStatus(const tfrt::AsyncValue* av) {
   CHECK(av != nullptr && av->IsAvailable())  // Crash OK
       << "Expected a ready async value.";
   if (av->IsError()) {
-    return tensorflow::FromAbslStatus(av->GetError());
+    return av->GetError();
   }
   return ::tensorflow::OkStatus();
 }

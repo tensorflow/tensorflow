@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -875,7 +876,7 @@ TEST(CurlHttpRequestTest, StatsGetNotFound) {
   EXPECT_EQ(&http_request, stats.record_response_request_);
   EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
   EXPECT_EQ(HttpRequest::RequestMethod::kGet, stats.record_response_method_);
-  EXPECT_TRUE(errors::IsNotFound(stats.record_response_result_));
+  EXPECT_TRUE(absl::IsNotFound(stats.record_response_result_));
   EXPECT_EQ(s, stats.record_response_result_);
 
   // Check interaction with libcurl.

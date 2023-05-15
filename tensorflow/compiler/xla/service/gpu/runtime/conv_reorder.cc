@@ -53,7 +53,7 @@ absl::Status ConvReorderFilterImpl(
   auto executed = run_options->stream()->CudnnReorderConvolutionFilterAndBias(
       GetFilterDescriptor(filter_dims), input, &output, std::nullopt,
       std::nullopt);
-  if (!executed.ok()) return ToAbslStatus(executed);
+  if (!executed.ok()) return executed;
 
   return absl::OkStatus();
 }
@@ -74,7 +74,7 @@ absl::Status ConvReorderFilterAndBiasImpl(
   auto executed = run_options->stream()->CudnnReorderConvolutionFilterAndBias(
       GetFilterDescriptor(filter_dims), filter_input, &filter_output,
       std::make_optional(bias_input), std::make_optional(bias_output));
-  if (!executed.ok()) return ToAbslStatus(executed);
+  if (!executed.ok()) return executed;
 
   return absl::OkStatus();
 }

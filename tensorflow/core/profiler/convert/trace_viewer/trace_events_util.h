@@ -15,11 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 
+#include <memory>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -179,6 +182,21 @@ Out nway_merge(const ContainerContainer& containers, Out out, Cmp cmp) {
     push_down_root(sources.begin(), sources.end(), heap_cmp);
   }
 }
+
+// Interface that allows defining classes that map XLines within a single XPlane
+// to multiple virtual devices in trace viewer.
+class ResourceGrouperInterface {
+ public:
+  virtual ~ResourceGrouperInterface() = default;
+
+  virtual std::vector<std::pair<uint32_t /*resource_id*/, absl::string_view>>
+  Devices() const = 0;
+
+  virtual uint32_t GetDeviceId(uint32_t resource_id) const = 0;
+};
+
+std::unique_ptr<ResourceGrouperInterface> CreateDefaultResourceGrouper(
+    uint32_t device_id, absl::string_view name);
 
 }  // namespace profiler
 }  // namespace tensorflow

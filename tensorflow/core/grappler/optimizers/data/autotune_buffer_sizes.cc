@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/autotune_buffer_sizes.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -81,7 +83,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
           stats->num_changes++;
         }
       } else {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "The autotune_buffer_sizes rewrite does not currently support "
             "non-constant buffer_size input.");
       }

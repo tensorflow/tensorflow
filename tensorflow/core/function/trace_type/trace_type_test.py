@@ -237,7 +237,7 @@ class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
 
     class MockWrapper(tuple):
       # Generated through trackable data structures:
-      # //tensorflow/python/training/tracking/data_structures.py
+      # //tensorflow/python/trackable/data_structures.py
       # With design pattern similar to Python functools:
       # https://docs.python.org/3/library/functools.html?highlight=__wrapped__#functools.update_wrapper
       __wrapped__ = ActualType(1, 2, 3)

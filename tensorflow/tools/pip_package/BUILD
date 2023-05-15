@@ -156,6 +156,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/sparse_ops:sparse_xent_op_test_base",
     "//tensorflow/python/lib:__init__",
+    "//tensorflow/python/ops/parallel_for:test_util",
     "//tensorflow/python/ops/structured:structured_tensor_dynamic",
     "//tensorflow/python/platform:resource_loader",
     "//tensorflow/python/profiler:trace",
@@ -182,13 +183,14 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:public_api",
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
+    "//tensorflow/tools/docs:tf_doctest_lib",
+    "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
     "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
     "//tensorflow:tensorflow_py",
-    "//tensorflow/tools/docs:tf_doctest_lib",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.

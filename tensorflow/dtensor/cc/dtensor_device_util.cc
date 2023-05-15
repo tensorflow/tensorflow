@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -215,11 +216,11 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
   }
   const TensorProto* indices;
   if (!TryGetNodeAttr(node.attrs(), indices_attr, &indices)) {
-    return errors::Internal(
+    return absl::InternalError(
         "Arg indices must be set when setting inferred resource layouts.");
   }
   if (indices->int_val_size() != layouts.size()) {
-    return errors::Internal(
+    return absl::InternalError(
         "Arg indices for inferred resource argument must match the "
         "size of inferred resource layout.");
   }
@@ -257,15 +258,15 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
   const auto serialized_layouts = op->attrs().Find(kLayoutAttr);
 
   if (!serialized_layouts) {
-    return errors::InvalidArgument(
-        op->op_def().name(), " doesn't contain attribute : ", kLayoutAttr);
+    return absl::InvalidArgumentError(absl::StrCat(
+        op->op_def().name(), " doesn't contain attribute : ", kLayoutAttr));
   }
 
   // We assume that there is one layout for each output.
   if (serialized_layouts->list().s_size() != op->num_outputs()) {
-    return errors::InvalidArgument(
-        "Number of outputs to ", op->op_def().name(),
-        " does not match number of layouts attached");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Number of outputs to ", op->op_def().name(),
+                     " does not match number of layouts attached"));
   }
 
   return Layout::FromString(serialized_layouts->list().s(output_index));
@@ -282,7 +283,8 @@ StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
   if (status.ok()) {
     const int dims = shape.dims();
     if (dims < 0) {
-      return errors::InvalidArgument("Unavailable tensor shape!");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unavailable tensor shape!"));
     }
     std::vector<int64_t> result;
     result.reserve(dims);
@@ -535,12 +537,12 @@ tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
   // empty. This is still hacky as we use empty layout as placeholder for
   // eagerly placed VarHandleOp.
   if (!dereferenced_layout_.has_value() && new_layout.IsEmpty()) {
-    return tsl::errors::InvalidArgument("New layout is empty.");
+    return absl::InvalidArgumentError("New layout is empty.");
   }
   if (dereferenced_layout_.has_value() &&
       !LayoutsAreCompatible(dereferenced_layout_, new_layout)) {
     // TODO(xiejw, allenl): Consider allowing variables to switch layouts.
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Attempted to overwrite an existing Layout.");
   }
   dereferenced_layout_.emplace(new_layout);
@@ -550,8 +552,8 @@ tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
 tsl::Status ResourceHandleWithLayout::UpdateAttrs(
     const EmbeddingResourceAttrs& attrs) {
   if (attrs_.has_value()) {
-    return tsl::errors::InvalidArgument(
-        "Attempted to overwrite an existing embedding resource attribute.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Attempted to overwrite an existing embedding resource attribute."));
   }
   attrs_.emplace(attrs);
   return tsl::OkStatus();
@@ -660,7 +662,7 @@ template <>
 StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
     const DTensorOperation& doperation,
     const std::vector<TensorWithLayout*>& inputs, const int input_index) const {
-  return tsl::errors::Unavailable(
+  return absl::UnavailableError(
       "ExecutionFunctions manager can not check if the input is foldable, as "
       "the information is maintained by other types of managers (e.g. ModuleOp "
       "manager)");
@@ -921,7 +923,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
 
       TF_RETURN_IF_ERROR(node->input_node(in_index, &input_node));
       if (!input_node->IsArg())
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Input node to mesh computation must be arg node.");
 
       int global_index;
@@ -970,7 +972,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
   }
 
   if (execution_functions.function_list.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "MLIR transformed graph does not have any functions to execute for "
         "mesh.");
   }
@@ -1051,7 +1053,8 @@ StatusOr<std::vector<std::vector<TFE_TensorHandle*>>> PrepareEmbeddingInputs(
 
   // Check if there is no embedding resource input found.
   if (table_vars_input_index.empty()) {
-    return errors::Internal("There are no TPU embedding resource input found.");
+    return absl::InternalError(
+        "There are no TPU embedding resource input found.");
   }
   std::vector<std::vector<TFE_TensorHandle*>> parallel_inputs;
   // Assure parallel inputs has numeric order as table ids.
@@ -1109,9 +1112,9 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     if (!status.ok()) {
       TF_SetStatus(s, static_cast<TF_Code>(status.code()),
                    tsl::NullTerminatedMessage(status));
-      return errors::Internal(
-          "Failed to set embedding resource attrs. \n Got error: ",
-          status.message());
+      return absl::InternalError(
+          absl::StrCat("Failed to set embedding resource attrs. \n Got error: ",
+                       status.message()));
     }
   }
   return table_id_node_map;
@@ -1127,7 +1130,7 @@ StatusOr<std::string> ValidateResourceMeshConsistency(
     if (mesh_str.empty()) {
       mesh_str = input_mesh_str;
     } else if (mesh_str != input_mesh_str) {
-      return errors::Internal(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "All inputs of embedding resource must be on same mesh. but get : ",
           mesh_str, " != ", input_mesh_str));
     }
@@ -1142,15 +1145,15 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
     const std::string& checkpoint_fn_name) {
   if (checkpoint_fn_name != kLoadEmbeddingFn &&
       checkpoint_fn_name != kRetrieveEmbeddingFn) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(absl::StrCat(
         "Found wrong function name: ", checkpoint_fn_name,
-        " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn));
+        " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn)));
   }
 
   StatusOr<std::map<int64_t, std::vector<Node*>>> table_id_node_map =
       GetTPUEmbeddingInputNodes(status, *graph, inputs);
   if (!table_id_node_map.ok()) {
-    return errors::Internal(table_id_node_map.status().message());
+    return absl::InternalError(table_id_node_map.status().message());
   }
 
   StatusOr<std::string> mesh_str = ValidateResourceMeshConsistency(inputs);
@@ -1166,7 +1169,7 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
   for (int i = 0; i < num_tables; ++i) {
     auto node_vec_ptr = table_id_node_map->find(i);
     if (node_vec_ptr == table_id_node_map->end()) {
-      return errors::Internal(
+      return absl::InternalError(
           absl::StrCat("Embedding table id ", i, " is not found."));
     }
     for (const Node* n : node_vec_ptr->second) {

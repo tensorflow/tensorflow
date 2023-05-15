@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -128,6 +129,8 @@ cc_library(
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

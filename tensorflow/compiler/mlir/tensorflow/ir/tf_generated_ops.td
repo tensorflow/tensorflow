@@ -4621,6 +4621,36 @@ This operation creates a tensor of `shape` and `dtype`.
   let hasFolder = 1;
 }
 
+def TF_EncodePngOp : TF_Op<"EncodePng", [Pure]> {
+  let summary = "PNG-encode an image.";
+
+  let description = [{
+`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+where `channels` is:
+
+*   1: for grayscale.
+*   2: for grayscale + alpha.
+*   3: for RGB.
+*   4: for RGBA.
+
+The ZLIB compression level, `compression`, can be -1 for the PNG-encoder
+default or a value from 0 to 9.  9 is the highest compression level, generating
+the smallest output, but is slower.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Uint16, TF_Uint8]>, [{3-D with shape `[height, width, channels]`.}]>:$image,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$compression
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{0-D. PNG-encoded image.}]>:$contents
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_EnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingArbitraryTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
 Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
@@ -11187,6 +11217,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
 
     // returns the callee of this operation.
     func::FuncOp func() {

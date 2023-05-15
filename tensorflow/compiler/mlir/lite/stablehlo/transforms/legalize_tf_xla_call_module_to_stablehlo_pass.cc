@@ -90,7 +90,8 @@ class ConvertTFXlaCallModuleOp
          stablehlo_module_op.get().getOps<mlir::func::FuncOp>()) {
       mlir::func::FuncOp cloned_func_op = func_op.clone();
       if (cloned_func_op.getSymName().contains(
-              kStablehloModuleDefaultEntryFuncName)) {
+              kStablehloModuleDefaultEntryFuncName) &&
+          cloned_func_op.getSymVisibility() == "public") {
         main_fn = cloned_func_op;
         main_fn.setSymVisibility(stablehlo_builder.getStringAttr("private"));
       }

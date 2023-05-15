@@ -292,6 +292,7 @@ cc_library(
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:tensor_layout",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -379,6 +380,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = True,
 )
@@ -501,6 +503,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",

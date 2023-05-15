@@ -36,6 +36,7 @@ build --copt=-Wno-gnu-offsetof-extensions
 build --profile=/tf/pkg/profile.json.gz
 
 # CUDA: Set up compilation CUDA version and paths
+<<<<<<< HEAD
 build:cuda --@local_config_cuda//:enable_cuda
 build:cuda --@local_config_cuda//:cuda_compiler=clang
 build:cuda --repo_env TF_NEED_CUDA=1
@@ -48,6 +49,20 @@ build:cuda --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
 build:cuda --action_env=TF_CUDA_CLANG="1"
 build:cuda --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 build:cuda --crosstool_top="@sigbuild-r2.13-clang_config_cuda//crosstool:toolchain"
+=======
+build --@local_config_cuda//:enable_cuda
+build --@local_config_cuda//:cuda_compiler=clang
+build --repo_env TF_NEED_CUDA=1
+build --config cuda_clang
+build --action_env=TF_CUDA_VERSION="11"
+build --action_env=TF_CUDNN_VERSION="8"
+build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
+build --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
+build --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
+build --action_env=TF_CUDA_CLANG="1"
+build --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
+build --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
+>>>>>>> upstream/master
 
 # CUDA: Enable TensorRT optimizations
 # https://developer.nvidia.com/tensorrt
@@ -81,6 +96,7 @@ test --test_summary=short
 # Pass --config=nonpip to run the same suite of tests. If you want to run just
 # one test for investigation, you don't need --config=nonpip; just run the
 # bazel test invocation as normal.
+<<<<<<< HEAD
 test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_rocm,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_rocm,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
@@ -148,6 +164,13 @@ test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_exclu
 test:pip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
 test:pip --config=pip_venv --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
+=======
+test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium
+test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+>>>>>>> upstream/master
 # For building libtensorflow archives
 test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
 build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
@@ -161,7 +184,7 @@ build:rbe --bes_backend=buildeventservice.googleapis.com
 build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
 build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
-build:rbe --flaky_test_attempts=3
+build:rbe --flaky_test_attempts=2
 build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:rbe --remote_timeout=3600
@@ -169,29 +192,35 @@ build:rbe --spawn_strategy=remote,worker,standalone,local
 build:rbe --remote_download_toplevel
 build:rbe --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
 build:rbe --linkopt=-lrt --host_linkopt=-lrt --linkopt=-lm --host_linkopt=-lm  # Unclear why this is here
-build:rbe --host_crosstool_top="@sigbuild-r2.13-clang_config_cuda//crosstool:toolchain"
-build:rbe --crosstool_top="@sigbuild-r2.13-clang_config_cuda//crosstool:toolchain"
-build:rbe --extra_toolchains="@sigbuild-r2.13-clang_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe --extra_execution_platforms="@sigbuild-r2.13-clang_config_platform//:platform"
-build:rbe --host_platform="@sigbuild-r2.13-clang_config_platform//:platform"
-build:rbe --platforms="@sigbuild-r2.13-clang_config_platform//:platform"
+build:rbe --host_crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
+build:rbe --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
+build:rbe --extra_toolchains="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe --extra_execution_platforms="@sigbuild-r2.14-clang_config_platform//:platform"
+build:rbe --host_platform="@sigbuild-r2.14-clang_config_platform//:platform"
+build:rbe --platforms="@sigbuild-r2.14-clang_config_platform//:platform"
 # Python config is the same across all containers because the binary is the same
-build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.13-clang_config_python"
+build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.14-clang_config_python"
 build:rbe --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 build:rbe --project_id="tensorflow-testing"
 
 # For Remote build execution -- GPU configuration
 build:rbe --repo_env=REMOTE_GPU_TESTING=1
 test:rbe --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
-build:rbe --repo_env=TF_CUDA_CONFIG_REPO="@sigbuild-r2.13-clang_config_cuda"
-build:rbe --repo_env=TF_TENSORRT_CONFIG_REPO="@sigbuild-r2.13-clang_config_tensorrt"
-build:rbe --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.13-clang_config_nccl"
-build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.13-clang_config_python"
+build:rbe --repo_env=TF_CUDA_CONFIG_REPO="@sigbuild-r2.14-clang_config_cuda"
+build:rbe --repo_env=TF_TENSORRT_CONFIG_REPO="@sigbuild-r2.14-clang_config_tensorrt"
+build:rbe --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.14-clang_config_nccl"
+build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.14-clang_config_python"
 
 # For continuous builds
+<<<<<<< HEAD
 test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
 test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
 test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium
+=======
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=2 --test_size_filters=small,medium
+>>>>>>> upstream/master
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 test:pycpp_large_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm

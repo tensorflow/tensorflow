@@ -53,9 +53,9 @@ StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
 
-  CompileOptions compile_options;
+  auto compile_options = std::make_unique<CompileOptions>();
   ExecutableBuildOptions& build_options =
-      compile_options.executable_build_options;
+      compile_options->xla_options.executable_build_options;
   for (Device* device : devices) {
     build_options.set_device_ordinal(device->id());
     if (replicated) {

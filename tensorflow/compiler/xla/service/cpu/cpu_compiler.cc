@@ -735,6 +735,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<ConditionalSimplifier>();
   }();
   pipeline.AddPass<BitcastDtypesExpander>();
+  pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTopK;
+  });
 
   // XLA lowers topk to a libcall while the MLIR based pipeline does not yet
   // support libcalls. Disable this for now.

@@ -24,7 +24,11 @@ limitations under the License.
 // pass quite as many raw pointers around. Would also be nice to reduce code
 // duplication.
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA //|| TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+>>>>>>> upstream/master
 #define EIGEN_USE_GPU
 
 #include <algorithm>
@@ -117,11 +121,19 @@ class SvdOpGpu : public AsyncOpKernel {
     // TODO(jamessspencer): if not full_matrices, compute full U and V matrices
     // using Gesvdjbatched and return slices.
     const bool batched =
+<<<<<<< HEAD
     #if GOOGLE_CUDA
         m <= 32 && n <= 32 && batch_size > 1 && (full_matrices_ || m == n);
     #else
         false;
     #endif
+=======
+#if GOOGLE_CUDA
+        m <= 32 && n <= 32 && batch_size > 1 && (full_matrices_ || m == n);
+#else
+        false;
+#endif
+>>>>>>> upstream/master
     // Copies of U and V if required so can take transposes after SVD.
     Tensor u_copy, v_copy;
     Scalar* outputU_ptr = NULL;
@@ -187,8 +199,13 @@ class SvdOpGpu : public AsyncOpKernel {
                batch_size * m * sizeof(Scalar));
     }
 
+<<<<<<< HEAD
     if (batched) {      
     #if GOOGLE_CUDA
+=======
+    if (batched) {
+#if GOOGLE_CUDA
+>>>>>>> upstream/master
       cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_NOVECTOR;
       if (compute_uv_) jobz = CUSOLVER_EIG_MODE_VECTOR;
       OP_REQUIRES_OK_ASYNC(
@@ -197,9 +214,16 @@ class SvdOpGpu : public AsyncOpKernel {
                                 outputU_ptr, m, outputV_ptr, n, dev_info_ptr,
                                 batch_size),
           done);
+<<<<<<< HEAD
     }
     #endif
     else {
+=======
+#else
+      eigen_assert(false && "not supported");
+#endif
+    } else {
+>>>>>>> upstream/master
       for (int64 batch = 0; batch < batch_size; ++batch) {
         Scalar* input = input_ptr + batch * m * n;
         RealScalar* outputS = outputS_ptr + batch * p;

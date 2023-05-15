@@ -253,6 +253,18 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
 
   CHECK(disabled_pass_names.empty() || enabled_pass_names.empty());
 
+  if (disabled_pass_names.contains(name())) {
+    // Disable the full pass.
+    VLOG(1) << "Disable the full pass: " << name();
+    return {};
+  }
+
+  if (enabled_pass_names.contains(name())) {
+    VLOG(1) << "Enable the full pass: " << name();
+    // Enable the full pass.
+    enabled_pass_names.clear();
+  }
+
   std::vector<HloPassInterface*> enabled_passes;
   if (!enabled_pass_names.empty()) {
     for (auto& pass : passes_) {

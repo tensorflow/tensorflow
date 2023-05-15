@@ -222,13 +222,12 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return ValueOrThrow(LiteralToPython(std::move(literal)));
            })
-      .def("live_buffers",
-           [](const ClientAndPtr<PjRtDevice>& device) {
-             PythonDeprecationWarning(
-                 "Per device live_buffers() is going to be deprecated. Please "
-                 "use the jax.live_arrays() for jax.Arrays instead.");
-             return py::list();
-           });
+      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
+        PythonDeprecationWarning(
+            "Per device live_buffers() is going to be deprecated. Please "
+            "use the jax.live_arrays() for jax.Arrays instead.");
+        return py::list();
+      });
   static PyMethodDef get_attr_method = {
       "__getattr__",
       +[](PyObject* self, PyObject* args) -> PyObject* {
@@ -368,6 +367,10 @@ PYBIND11_MODULE(xla_extension, m) {
         xla::ValueOrThrow(GetInterpreterClient());
     return std::make_shared<PyClient>(
         ifrt::PjRtClient::Create(std::move(client)));
+  });
+  m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
+    xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
+    return pjrt_api.ok();
   });
   m.def("load_pjrt_plugin",
         [](std::string platform_name, std::string library_path) {

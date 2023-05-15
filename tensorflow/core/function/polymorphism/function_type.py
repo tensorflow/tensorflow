@@ -156,7 +156,25 @@ class Parameter(inspect.Parameter):
 
 
 class FunctionType(inspect.Signature):
-  """Represents the signature of a polymorphic/monomorphic function."""
+  """Represents the type of a TensorFlow function.
+
+  FunctionType is the canonical way to represent the input/output contract of
+  all kinds of functions within the tf.function domain, including:
+    - Polymorphic Function
+    - Concrete Function
+    - Atomic Function
+
+  It provides consistent, centralized and layered logic for:
+    - Canonicalization of Python input arguments
+    - Type-based dispatch to monomorphic functions
+    - Packing/unpacking structured python values to Tensors
+    - Generation of structured placeholder values for tracing
+
+  Additionaly, it also provides:
+    - Lossless serialization
+    - Native integration with Python function signature representation
+    - Seamless migration from older representation formats
+  """
 
   def __init__(self,
                parameters: Sequence[inspect.Parameter],
@@ -167,11 +185,12 @@ class FunctionType(inspect.Signature):
 
   @property
   def parameters(self) -> Mapping[str, Any]:
+    """Returns an ordered mapping of parameter name to specification."""
     return super().parameters
 
   @property
   def captures(self) -> collections.OrderedDict:
-    """Return an ordered mapping of capture id to type."""
+    """Returns an ordered mapping of capture id to type."""
     return self._captures
 
   @property
@@ -579,3 +598,29 @@ def from_structured_signature(
   return FunctionType(
       parameters, capture_types or {}, return_annotation=return_type
   )
+
+
+def to_structured_signature(function_type: FunctionType) -> Tuple[Any, Any]:
+  """Returns structured input and output signatures from a FunctionType."""
+  def to_signature(x_type):
+    if x_type is None:
+      raise TypeError(
+          "Can not generate structured signature if FunctionType is not fully"
+          f" specified. Received {function_type}"
+      )
+    return x_type.placeholder_value(
+        trace_type.InternalPlaceholderContext(unnest_only=True)
+    )
+
+  args_signature = []
+  kwargs_signature = {}
+  for p in function_type.parameters.values():
+    if p.kind == Parameter.POSITIONAL_ONLY:
+      args_signature.append(to_signature(p.type_constraint))
+    else:
+      kwargs_signature[p.name] = to_signature(p.type_constraint)
+
+  input_signature = (tuple(args_signature), kwargs_signature)
+  output_signature = to_signature(function_type.output)
+
+  return input_signature, output_signature

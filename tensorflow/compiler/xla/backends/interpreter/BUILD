@@ -56,6 +56,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
+        "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:triangular_solve_expander",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/stream_executor",

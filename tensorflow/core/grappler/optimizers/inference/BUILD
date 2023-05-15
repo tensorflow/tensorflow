@@ -21,6 +21,15 @@ tf_proto_library(
     visibility = DEFAULT_VISIBILITY,
 )
 
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "batch_op_rewriter_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":batch_op_rewriter_proto"],
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "batch_op_rewriter",
     srcs = ["batch_op_rewriter.cc"],

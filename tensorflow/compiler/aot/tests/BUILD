@@ -437,6 +437,7 @@ tf_cc_test(
     tags = [
         "manual",
         "no_mac",  # TODO(b/228273415)
+        "not_run:arm",
     ],
     deps = [
         ":test_graph_tfadd",
@@ -510,6 +511,7 @@ tf_cc_test(
     tags = [
         "manual",
         "no_mac",  # TODO(b/228273415)
+        "not_run:arm",
     ],
     deps = [
         ":test_graph_tfadd_mlir_bridge",

@@ -91,7 +91,7 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
 
     // Convert entry function to the XLA entrypoint.
     pm.addPass(CreateExportRuntimeFunctionsPass());
-    pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
+    pm.addPass(cpu::createConvertXlaCpuToCpuRuntimePass());
     pm.addPass(CreateConvertCustomCallsPass());
     pm.addPass(CreateConvertAssertsPass());
   }

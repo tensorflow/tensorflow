@@ -234,7 +234,7 @@ class AsyncCheckpointHelper:
     # Initiate the underlying Checkpoint instance with the copied items.
     self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
     # Initiate the underlying Checkpoint instance's save_counter.
-    save_counter = self._checkpoint.save_counter
+    save_counter = self._checkpoint.save_counter.numpy()
     logging.info("Initializing async checkpoint's save_counter: %d",
                  save_counter)
 

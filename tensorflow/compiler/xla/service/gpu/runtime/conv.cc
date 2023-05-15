@@ -369,7 +369,7 @@ static absl::Status ConvImpl(
             side_input_attrs);
 
         StatusOr<GpuConvConfig> conv_config = GetGpuConvConfig(descriptor, "");
-        if (!conv_config.ok()) return ToAbslStatus(conv_config.status());
+        if (!conv_config.ok()) return conv_config.status();
 
         return ConvRunner(*std::move(conv_config));
       });
@@ -402,7 +402,7 @@ static absl::Status ConvImpl(
         conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
             gpu_conv_config, run_options, debug_options, buffers,
             result_buffer);
-    if (!autotune_result.ok()) return ToAbslStatus(autotune_result.status());
+    if (!autotune_result.ok()) return autotune_result.status();
 
     // Set algorithm in the convolution runner state.
     AutotuneResult best_algo = autotune_result.value();
@@ -422,7 +422,7 @@ static absl::Status ConvImpl(
     se::DeviceMemoryAllocator* allocator = run_options->allocator();
     StatusOr<se::OwningDeviceMemory> allocated_buffer =
         allocator->Allocate(run_options->device_ordinal(), scratch_buffer_size);
-    if (!allocated_buffer.ok()) return ToAbslStatus(allocated_buffer.status());
+    if (!allocated_buffer.ok()) return allocated_buffer.status();
     se::DeviceMemoryBase new_scratch_buffer(allocated_buffer->ptr(),
                                             scratch_buffer_size);
 
@@ -430,7 +430,7 @@ static absl::Status ConvImpl(
     auto st = RunGpuConv((*conv)->config, buffers, result_buffer,
                          new_scratch_buffer, run_options->stream(), opts);
     if (!st.ok() || !run_options->stream()->ok()) {
-      return ToAbslStatus(st);
+      return st;
     }
     return absl::OkStatus();
   }
@@ -439,7 +439,7 @@ static absl::Status ConvImpl(
   auto st = RunGpuConv((*conv)->config, buffers, result_buffer, scratch_buffer,
                        run_options->stream(), opts);
   if (!st.ok() || !run_options->stream()->ok()) {
-    return ToAbslStatus(st);
+    return st;
   }
 
   return absl::OkStatus();

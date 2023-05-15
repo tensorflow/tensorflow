@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -164,7 +165,8 @@ class GraphExecutor {
 
     // Returns a `CostRecorder` if none has been created before for this
     // `LoadedClientGraph`.
-    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder() const;
+    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder(
+        uint64_t normalize_ratio = 1) const;
 
     // Updates the op cost values in this `LoadedClientGraph` with records from
     // `cost_recorder`.

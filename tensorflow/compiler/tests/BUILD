@@ -56,7 +56,11 @@ py_library(
         "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
+<<<<<<< HEAD
         "//tensorflow/python/platform:sysconfig",
+=======
+        "//tensorflow/python/tpu:tpu_py",
+>>>>>>> upstream/master
         "//third_party/py/numpy",
     ],
 )
@@ -540,6 +544,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "tensor_float_32_test",
+    size = "medium",
+    srcs = ["tensor_float_32_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv3d_test",
     size = "medium",
     srcs = ["conv3d_test.py"],
@@ -835,6 +858,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_oss",  # TODO(b/282033702): Re-enable this test in OSS.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -2307,7 +2331,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
-        "//tensorflow/python/tpu",
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 
@@ -2339,7 +2363,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
-        "//tensorflow/python/tpu",
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 

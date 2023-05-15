@@ -29,6 +29,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
 #include "tensorflow/core/platform/errors.h"
@@ -172,7 +174,7 @@ class Object : public Handle {
         }
       }
     }
-    return tensorflow::errors::NotFound("Key not in dictionary.");
+    return absl::NotFoundError("Key not in dictionary.");
   }
 
   /// Sets `key` attribute with the underlying value of `h`.
@@ -202,7 +204,7 @@ class Dictionary final : public Handle {
   tensorflow::StatusOr<T> Get(const Handle& key) {
     auto it = value_.dict().find(key.value_);
     if (it != value_.dict().end()) return Cast<T>(Handle(it->second));
-    return tensorflow::errors::NotFound("Key not in dictionary.");
+    return absl::NotFoundError("Key not in dictionary.");
   }
   /// Sets `key` with value `value`.
   void Set(const String& key, Handle value) {
@@ -282,7 +284,7 @@ tensorflow::Status Tensor::GetValue(absl::Span<T> data) const {
   {
     const auto abstract_t = value_.tensor().get();
     if (!tensorflow::ImmediateExecutionTensorHandle::classof(abstract_t)) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Attempting to get value of non eager tensor.");
     }
     auto imm_t =
@@ -315,7 +317,7 @@ class Tuple : public Handle {
   template <class T>
   tensorflow::StatusOr<T> Get(size_t i) {
     if (i >= value_.tuple().size())
-      return tensorflow::errors::InvalidArgument("Out of bounds index.");
+      return absl::InvalidArgumentError("Out of bounds index.");
     return Cast<T>(Handle(value_.tuple()[i]));
   }
 
@@ -348,7 +350,7 @@ class List final : public Handle {
   template <class T>
   tensorflow::StatusOr<T> Get(size_t i) {
     if (i >= size()) {
-      return tensorflow::errors::InvalidArgument("Out of bounds index.");
+      return absl::InvalidArgumentError("Out of bounds index.");
     }
     return Cast<T>(Handle(value_.list()[i]));
   }
@@ -356,7 +358,7 @@ class List final : public Handle {
   /// Sets value `h` at index `i`.
   tensorflow::Status Set(size_t i, Handle h) {
     if (i >= size()) {
-      return tensorflow::errors::InvalidArgument("Out of bounds index.");
+      return absl::InvalidArgumentError("Out of bounds index.");
     }
     value_.list()[i] = std::move(h.value_);
     return ::tensorflow::OkStatus();
@@ -533,7 +535,7 @@ tensorflow::StatusOr<T> Cast(Handle handle) {
   if (handle.value_.type() == TypeToTaggedType<T>() ||
       std::is_same<T, Handle>::value)
     return T((std::move(handle.value_)));
-  return tensorflow::errors::InvalidArgument("Incompatible cast.");
+  return absl::InvalidArgumentError("Incompatible cast.");
 }
 
 // Converters for C++ primitives like float and int to handles. Allows callable
@@ -656,10 +658,10 @@ class UneraseCallHelper<Fn, TReturn, TSignatureArg, TSignatureRest...> {
     Handle h(std::move(args_in.tuple()[argument_index]));
     tensorflow::StatusOr<TSignatureArg> x = Cast<TSignatureArg>(std::move(h));
     if (!x.ok())
-      return tensorflow::errors::InvalidArgument(
-          std::string("Function ") + name + " Arg " +
-          std::to_string(argument_index) +
-          " cannot be cast to desired signature type ");
+      return absl::InvalidArgumentError(
+          absl::StrCat(std::string("Function ") + name + " Arg " +
+                       std::to_string(argument_index) +
+                       " cannot be cast to desired signature type "));
     return UneraseCallHelper<Fn, TReturn, TSignatureRest...>::template Call(
         name, fn, argument_index + 1, args_in, args..., *x);
   }
@@ -683,9 +685,9 @@ class CallableWrapper {
                                                TaggedValue kwargs) {
     constexpr size_t argument_count = sizeof...(TFuncArgs);
     if (argument_count != args.tuple().size())
-      return tensorflow::errors::InvalidArgument(
-          std::string("Function ") + name_ + " expected " +
-          std::to_string(argument_count) + " args.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(std::string("Function ") + name_ + " expected " +
+                       std::to_string(argument_count) + " args."));
     return UneraseCallHelper<Fn, TReturn, TFuncArgs...>::Call(name_, functor_,
                                                               0, args);
   }

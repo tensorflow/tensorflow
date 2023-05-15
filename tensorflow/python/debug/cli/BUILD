@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -7,7 +7,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "profile_analyzer_cli",
     srcs = ["profile_analyzer_cli.py"],
     srcs_version = "PY3",
@@ -22,7 +22,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "base_ui",
     srcs = ["base_ui.py"],
     srcs_version = "PY3",
@@ -33,14 +33,14 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "curses_widgets",
     srcs = ["curses_widgets.py"],
     srcs_version = "PY3",
     deps = [":debugger_cli_common"],
 )
 
-py_library(
+py_strict_library(
     name = "curses_ui",
     srcs = ["curses_ui.py"],
     srcs_version = "PY3",
@@ -54,7 +54,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "readline_ui",
     srcs = ["readline_ui.py"],
     srcs_version = "PY3",
@@ -64,23 +64,23 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "ui_factory",
     srcs = ["ui_factory.py"],
     srcs_version = "PY3",
     deps = [
-        ":curses_ui",
-        ":readline_ui",
+        ":curses_ui",  # build_cleaner keep.
+        ":readline_ui",  # build_cleaner keep.
     ],
 )
 
-py_library(
+py_strict_library(
     name = "command_parser",
     srcs = ["command_parser.py"],
     srcs_version = "PY3",
 )
 
-py_library(
+py_strict_library(
     name = "tensor_format",
     srcs = ["tensor_format.py"],
     srcs_version = "PY3",
@@ -91,7 +91,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "cli_shared",
     srcs = ["cli_shared.py"],
     srcs_version = "PY3",
@@ -107,7 +107,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "evaluator",
     srcs = ["evaluator.py"],
     srcs_version = "PY3",
@@ -117,7 +117,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "analyzer_cli",
     srcs = ["analyzer_cli.py"],
     srcs_version = "PY3",
@@ -133,7 +133,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "cli_config",
     srcs = ["cli_config.py"],
     srcs_version = "PY3",
@@ -143,7 +143,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "debugger_cli_common",
     srcs = ["debugger_cli_common.py"],
     srcs_version = "PY3",
@@ -154,7 +154,7 @@ py_library(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "offline_analyzer",
     srcs = ["offline_analyzer.py"],
     python_version = "PY3",
@@ -162,18 +162,18 @@ py_binary(
     deps = [":offline_analyzer_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "offline_analyzer_lib",
     srcs = ["offline_analyzer.py"],
     srcs_version = "PY3",
     deps = [
         ":analyzer_cli",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug/lib:debug_data",
+        "@absl_py//absl:app",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "curses_ui_test",
     size = "small",
     srcs = ["curses_ui_test.py"],
@@ -195,7 +195,7 @@ py_test(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "readline_ui_test",
     size = "small",
     srcs = ["readline_ui_test.py"],
@@ -209,11 +209,12 @@ py_test(
         ":ui_factory",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform:gfile",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "debugger_cli_common_test",
     size = "small",
     srcs = ["debugger_cli_common_test.py"],
@@ -229,7 +230,7 @@ py_test(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "cli_config_test",
     size = "small",
     srcs = ["cli_config_test.py"],
@@ -244,7 +245,7 @@ py_test(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "command_parser_test",
     size = "small",
     srcs = ["command_parser_test.py"],
@@ -257,7 +258,7 @@ py_test(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tensor_format_test",
     size = "small",
     srcs = ["tensor_format_test.py"],
@@ -266,6 +267,7 @@ py_test(
     deps = [
         ":cli_test_utils",
         ":tensor_format",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/debug/lib:debug_data",
@@ -273,7 +275,7 @@ py_test(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "cli_shared_test",
     size = "small",
     srcs = ["cli_shared_test.py"],
@@ -292,7 +294,7 @@ py_test(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "evaluator_test",
     size = "small",
     srcs = [
@@ -310,14 +312,14 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "cli_test_utils",
     srcs = ["cli_test_utils.py"],
     srcs_version = "PY3",
     deps = ["//third_party/py/numpy"],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "analyzer_cli_test",
     size = "small",
     srcs = ["analyzer_cli_test.py"],
@@ -352,7 +354,7 @@ cuda_py_test(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "profile_analyzer_cli_test",
     size = "small",
     srcs = ["profile_analyzer_cli_test.py"],

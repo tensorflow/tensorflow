@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/framework/function.h"
@@ -109,7 +110,7 @@ TEST_F(EagerContextTest, CompositeDevice) {
       "/job:localhost/replica:0/task:0/device:COMPOSITE:1", &device));
   EXPECT_EQ(device, composite_device_2);
 
-  EXPECT_TRUE(errors::IsNotFound(context()->FindCompositeDeviceFromName(
+  EXPECT_TRUE(absl::IsNotFound(context()->FindCompositeDeviceFromName(
       "/job:localhost/replica:0/task:0/device:COMPOSITE:2", &device)));
 }
 

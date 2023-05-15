@@ -2730,6 +2730,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:

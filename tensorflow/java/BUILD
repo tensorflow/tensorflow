@@ -439,7 +439,9 @@ tf_cc_binary(
             "-z defs",
             "-s",
             "-Wl,--version-script,$(location {})".format(LINKER_VERSION_SCRIPT),
-            "-Wl,--undefined-version",
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end
         ],
     }),
     linkshared = 1,

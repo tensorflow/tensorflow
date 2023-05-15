@@ -61,6 +61,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -561,6 +562,31 @@ LogicalResult StatefulPartitionedCallOp::verifySymbolUses(
 LogicalResult TPUPartitionedCallOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
   return VerifyPartitionedCall(*this, symbolTable);
+}
+
+template <typename CallOpClass>
+static void SetPartitionCalleeFromCallable(CallOpClass op,
+                                           mlir::CallInterfaceCallable callee) {
+  // Direct call.
+  if (SymbolRefAttr fAttr = op.getFAttr()) {
+    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    return op.setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
+  }
+  // Indirect call, callee Value is the first operand.
+  return op.setOperand(0, callee.get<Value>());
+}
+
+void PartitionedCallOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
+}
+void StatefulPartitionedCallOp::setCalleeFromCallable(
+    CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
+}
+void TPUPartitionedCallOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
 }
 
 //===----------------------------------------------------------------------===//
