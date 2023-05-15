@@ -1,21 +1,89 @@
-diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
---- stablehlo/stablehlo/dialect/Base.td
-+++ stablehlo/stablehlo/dialect/Base.td
-@@ -33,8 +33,8 @@
- def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
- def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -370,6 +370,7 @@
+         ":reference_tensor",
+         ":reference_types",
+         ":stablehlo_ops",
++        ":stablehlo_type_inference",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:FuncDialect",
+         "@llvm-project//mlir:IR",
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -376,8 +376,8 @@
+ //            padding_high,
+ //                         dilatedBound(window_shape[d]))
+ //      where (padding_low, padding_high) is the padding-pair for d.
+-SmallVector<int64_t> inferWindowOutputShape(
+-    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window) {
++SmallVector<int64_t> inferWindowOutputShape(ArrayRef<int64_t> baseShape,
++                                            ArrayRef<WindowDimension> window) {
+   assert(baseShape.size() == window.size() &&
+          "Size of window dimensions must match the size of base shape.");
  
--def HLO_Float : AnyTypeOf<[F8E4M3FN, F8E5M2, F8E4M3FNUZ, F8E5M2FNUZ,
--                           F8E4M3B11FNUZ, F16, F32, F64, BF16]>;
-+def HLO_Float : AnyTypeOf<[F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ, F8E5M2,
-+                           F8E5M2FNUZ, F16, F32, F64, BF16]>;
- def HLO_Float32Or64 : AnyTypeOf<[F32, F64]>;
+@@ -652,7 +652,7 @@
+     SmallVector<int64_t>& windowDims,
+     SmallVector<WindowDimension>& inferredWindow) {
+   // reduce_window_c1
+-  if (inputArgTypes.size() < 1)
++  if (inputArgTypes.empty())
+     return emitOptionalError(location, "requires at least 1 input value");
  
- def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
+   // Check for unranked tensors in input operands.
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -76,8 +76,8 @@
+     ArrayRef<int64_t> lhsDilation, ArrayRef<int64_t> rhsDilation,
+     ArrayRef<bool> windowReversal, std::optional<Location> loc);
+ 
+-SmallVector<int64_t> inferWindowOutputShape(
+-    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window);
++SmallVector<int64_t> inferWindowOutputShape(ArrayRef<int64_t> baseShape,
++                                            ArrayRef<WindowDimension> window);
+ 
+ LogicalResult verifyReplicaGroups(std::optional<Location> location,
+                                   DenseIntElementsAttr replicaGroups,
+@@ -297,8 +297,8 @@
+                                SmallVectorImpl<Type>& inferredReturnTypes);
+ 
+ LogicalResult inferReverseOp(
+-    std::optional<Location> location, Type operands,
+-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnTypes);
++    std::optional<Location> location, Type operandType,
++    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
+ LogicalResult inferRngOp(
+     std::optional<Location> location, Value a, Value b, Value shape,
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -18,7 +18,6 @@
+ #include "stablehlo/integrations/c/StablehloAttributes.h"
+ #include "stablehlo/integrations/c/StablehloDialect.h"
+ #include "stablehlo/integrations/c/StablehloTypes.h"
+-#include "stablehlo/integrations/python/PortableApi.h"
+ 
+ namespace py = pybind11;
+ 
+@@ -481,7 +480,10 @@
+   //
+   // Portable APIs
+   //
+-  mlir::stablehlo::AddPortableApi(m);
++  // TODO(b/282235236): Replace with `stablehlo::AddPortableApi(m)`.
++  // Cannot use AddPortableApi right away because that would break JAX.
++  m.def("get_current_version", []() { return "0.11.3"; });
++  m.def("get_minimum_version", []() { return "0.9.0"; });
+ 
+   //
+   // Serialization APIs.
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
-@@ -17,3 +17,10 @@
+@@ -17,3 +17,12 @@
  # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
  from ._stablehlo_ops_gen import *
  from .._mlir_libs._stablehlo import *
@@ -25,280 +93,105 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py 
 +  """Return the earliest StableHLO version that the current StableHLO version
 +    is still forward compatible with.
 +  """
-+  return "0.9.0"
++  # TODO(b/282232437): Delete this TensorFlow-only API, now that we have an OSS
++  # equivalent that does the same thing.
++  return get_minimum_version()
+diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+@@ -210,18 +210,22 @@
+   assert type(api_version) == int
+   assert api_version > 0
+ 
++
+ def is_semver_format(version_str):
+-  return re.match('^\d+\.\d+\.\d+$', version_str)
++  return re.match("^\d+\.\d+\.\d+$", version_str)
++
+ 
+ @run
+ def test_current_version():
+   curr_version = stablehlo.get_current_version()
+   assert is_semver_format(curr_version)
+ 
++
+ @run
+ def test_minimum_version():
+   curr_version = stablehlo.get_minimum_version()
+   assert is_semver_format(curr_version)
++
+ 
+ ASM = """
+ func.func @test(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+diff --ruN a/stablehlo/stablehlo/reference/CMakeLists.txt b/stablehlo/stablehlo/reference/CMakeLists.txt
+--- stablehlo/stablehlo/reference/CMakeLists.txt
++++ stablehlo/stablehlo/reference/CMakeLists.txt
+@@ -90,4 +90,5 @@
+   StablehloReferenceScope
+   StablehloReferenceSizes
+   StablehloReferenceTensor
++  StablehloTypeInference
+ )
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -62,10 +62,10 @@
+                                  const Axes &dimensions, Region &body,
+                                  Scope &scope) {
+   SmallVector<Type> inputTypes;
+-  for (auto input : inputs) inputTypes.push_back(input.getType());
++  for (const auto &input : inputs) inputTypes.push_back(input.getType());
+ 
+   SmallVector<Type> initValueTypes;
+-  for (auto initValue : initValues)
++  for (const auto &initValue : initValues)
+     initValueTypes.push_back(initValue.getType());
+ 
+   SmallVector<ShapedTypeComponents> inferredReduceTypes;
+@@ -78,7 +78,7 @@
+         invalidArgument("Could not infer ReduceOp's return type"));
+ 
+   SmallVector<ShapedType> resultTypes;
+-  for (auto inferredType : inferredReduceTypes) {
++  for (const auto &inferredType : inferredReduceTypes) {
+     auto shapedType = hlo::createShapedType(inferredType);
+     if (!shapedType)
+       llvm::report_fatal_error("Could not infer ReduceOp's return type");
+@@ -980,7 +980,7 @@
+        resultIt != results[0].index_end(); ++resultIt) {
+     SmallVector<Tensor> windows;
+     auto windowStart = (*resultIt) * windowStrides;
+-    for (auto paddedInput : paddedInputs)
++    for (const auto &paddedInput : paddedInputs)
+       windows.push_back(evalSliceOp(paddedInput, windowStart,
+                                     windowStart + windowDimensions,
+                                     windowDilations));
+@@ -1108,7 +1108,7 @@
+                                bool isStable, Region &comparator,
+                                Scope &scope) {
+   SmallVector<Tensor> results;
+-  for (auto input : inputs) results.push_back(Tensor(input.getType()));
++  for (const auto &input : inputs) results.push_back(Tensor(input.getType()));
+   auto adjustedDimension =
+       dimension >= 0 ? dimension : dimension + inputs[0].getRank();
+ 
 diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
 --- stablehlo/stablehlo/reference/Tensor.cpp
 +++ stablehlo/stablehlo/reference/Tensor.cpp
-@@ -100,14 +100,24 @@
-       getSizeInBytes(elementType) * flattenIndex(getShape(), index);
+@@ -93,11 +93,11 @@
+ Tensor::Tensor(ShapedType type, AsmResourceBlob blob)
+     : impl_(llvm::makeIntrusiveRefCnt<detail::Buffer>(type, std::move(blob))) {}
  
-   // Handle floating-point types.
-+  if (elementType.isFloat8E4M3B11FNUZ()) {
-+    auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
-+    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3B11FNUZ(),
-+                                        APInt(8, *elementData)));
-+  }
-+  if (elementType.isFloat8E4M3FN()) {
-+    auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
-+    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3FN(),
-+                                        APInt(8, *elementData)));
-+  }
-   if (elementType.isFloat8E4M3FNUZ()) {
-     auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
-     return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3FNUZ(),
-                                         APInt(8, *elementData)));
-   }
--  if (elementType.isFloat8E4M3B11FNUZ()) {
-+  if (elementType.isFloat8E5M2()) {
-     auto elementData = reinterpret_cast<const uint8_t *>(elementPtr);
--    return Element(elementType, APFloat(llvm::APFloatBase::Float8E4M3B11FNUZ(),
-+    return Element(elementType, APFloat(llvm::APFloatBase::Float8E5M2(),
-                                         APInt(8, *elementData)));
-   }
-   if (elementType.isFloat8E5M2FNUZ()) {
-@@ -222,7 +232,8 @@
-       getSizeInBytes(elementType) * flattenIndex(getShape(), index);
- 
-   // Handle floating-point types.
--  if (elementType.isFloat8E4M3FNUZ() || elementType.isFloat8E4M3B11FNUZ() ||
-+  if (elementType.isFloat8E4M3B11FNUZ() || elementType.isFloat8E4M3FN() ||
-+      elementType.isFloat8E4M3FNUZ() || elementType.isFloat8E5M2() ||
-       elementType.isFloat8E5M2FNUZ()) {
-     auto elementData = reinterpret_cast<uint8_t *>(elementPtr);
-     auto value = element.getFloatValue();
-@@ -377,16 +388,17 @@
-   auto elemType = type.getElementType();
- 
-   // Handle floating-point types.
--  if (elemType.isFloat8E4M3FNUZ() || elemType.isFloat8E4M3B11FNUZ() ||
-+  if (elemType.isFloat8E4M3B11FNUZ() || elemType.isFloat8E4M3FN() ||
-+      elemType.isFloat8E4M3FNUZ() || elemType.isFloat8E5M2() ||
-       elemType.isFloat8E5M2FNUZ()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(), [&](APFloat value) -> uint8_t {
-           return value.bitcastToAPInt().getZExtValue();
-         }));
- 
--    // For f8E4M3FNUZ, f8E4M3B11FNUZ, and f8E5M2FNUZ floating-point types, we
--    // use uint8_t as their storage type because there are no builtin types for
--    // those.
-+    // For f8E4M3B11FNUZ, f8E4M3FN, f8E4M3FNUZ, f8E5M2, and f8E5M2FNUZ
-+    // floating-point types, we use uint8_t as their storage type because there
-+    // are no builtin types for those.
-     return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-                             floatValues));
-   }
-@@ -398,7 +410,7 @@
-         }));
- 
-     // For both f16 and bf16 floating-point types, we use uint16_t as their
--    // storage type because there are no buitin types for those.
-+    // storage type because there are no builtin types for those.
-     return Tensor(
-         type,
-         HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(floatValues));
-diff --ruN a/stablehlo/stablehlo/reference/Types.cpp b/stablehlo/stablehlo/reference/Types.cpp
---- stablehlo/stablehlo/reference/Types.cpp
-+++ stablehlo/stablehlo/reference/Types.cpp
-@@ -44,7 +44,8 @@
+-Tensor::Tensor(ShapedType type, const Element &element)
++Tensor::Tensor(ShapedType type, const Element &initValue)
+     : impl_(llvm::makeIntrusiveRefCnt<detail::Buffer>(type)) {
+   for (auto indexIt = this->index_begin(); indexIt != this->index_end();
+        ++indexIt)
+-    this->set(*indexIt, element);
++    this->set(*indexIt, initValue);
  }
  
- bool isSupportedFloatType(Type type) {
--  return type.isFloat8E4M3FNUZ() || type.isFloat8E4M3B11FNUZ() ||
-+  return type.isFloat8E4M3B11FNUZ() || type.isFloat8E4M3FN() ||
-+         type.isFloat8E4M3FNUZ() || type.isFloat8E5M2() ||
-          type.isFloat8E5M2FNUZ() || type.isF16() || type.isBF16() ||
-          type.isF32() || type.isF64();
- }
-diff --ruN a/stablehlo/stablehlo/tests/interpret_constant.mlir b/stablehlo/stablehlo/tests/interpret_constant.mlir
---- stablehlo/stablehlo/tests/interpret_constant.mlir
-+++ stablehlo/stablehlo/tests/interpret_constant.mlir
-@@ -80,24 +80,41 @@
- 
- // -----
- 
--func.func @constant_op_test_f8_e4m3_fnuz() {
--  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FNUZ>
--  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.25, 240.0, -240.0, 0.000976562, -0.000976562]> : tensor<10xf8E4M3FNUZ>
-+func.func @constant_op_test_f8_e4m3b11_fnuz() {
-+  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3B11FNUZ>
-+  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.101563, 3.25, 30.0, -30.0, 0.00012207, -0.00012207]> : tensor<10xf8E4M3B11FNUZ>
-   func.return
- }
- 
- // -----
- 
--func.func @constant_op_test_f8_e4m3b11_fnuz() {
--  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3B11FNUZ>
--  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.25, 30.0, -30.0, 0.0001220703125, -0.0001220703125]> : tensor<10xf8E4M3B11FNUZ>
-+func.func @constant_op_test_f8_e4m3_fn() {
-+  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FN>
-+  check.expect_almost_eq_const %0, dense<[0.0, -0.0, 1.0, 0.125, 0.1015630, 3.25, 0x7F, 0xFF, 0.001953130, -0.001953130]> : tensor<10xf8E4M3FN>
-   func.return
- }
- 
- // -----
-+
-+func.func @constant_op_test_f8_e4m3_fnuz() {
-+  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E4M3FNUZ>
-+  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.101563, 3.25, 240.0, -240.0, 0.000976562, -0.0009765620]> : tensor<10xf8E4M3FNUZ>
-+  func.return
-+}
-+
-+// -----
-+
-+func.func @constant_op_test_f8_e5m2() {
-+  %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E5M2>
-+  check.expect_almost_eq_const %0, dense<[0.0, -0.0, 1.0, 0.125, 0.09375, 3.0, 0x7F, 0xFF, 0.0000152588, -0.0000152588]> : tensor<10xf8E5M2>
-+  func.return
-+}
-+
-+// -----
-+
- func.func @constant_op_test_f8_e5m2_fnuz() {
-   %0 = stablehlo.constant dense<[0.0, -0.0, 1.0, 0.125, 0.1, 3.1415, 0x7F, 0xFF, 0x01, 0x81]> : tensor<10xf8E5M2FNUZ>
--  check.expect_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.1, 3.0, 57344.0, -57344.0, 7.62939e-06, -7.62939e-06]> : tensor<10xf8E5M2FNUZ>
-+  check.expect_almost_eq_const %0, dense<[0.0, 0.0, 1.0, 0.125, 0.09375, 3.0, 57344.0, -57344.0, 0.00000762939, -0.00000762939]> : tensor<10xf8E5M2FNUZ>
-   func.return
- }
- 
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -1474,7 +1474,7 @@
- // -----
- 
- func.func @cholesky_invalid_elt(%arg0: tensor<1x2x2xi32>) -> tensor<1x2x2xi32> {
--  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<1x2x2xi32>}}
-+  // expected-error@+1 {{operand #0 must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<1x2x2xi32>}}
-   %0 = "stablehlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xi32>) -> tensor<1x2x2xi32>
-   func.return %0: tensor<1x2x2xi32>
- }
-@@ -1957,7 +1957,7 @@
- 
- func.func @rng_normal_invalid_mu_rank(%mu: tensor<1xf32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
-   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
--  // expected-error@+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-+  // expected-error@+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-   %0 = "stablehlo.rng"(%mu, %sigma, %shape) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
-   func.return %0 : tensor<2x3x5xf32>
- }
-@@ -1966,7 +1966,7 @@
- 
- func.func @rng_normal_invalid_sigma_rank(%mu: tensor<f32>, %sigma: tensor<1xf32>) -> tensor<2x3x5xf32> {
-   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
--  // expected-error@+1 {{#1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-+  // expected-error@+1 {{#1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-   %0 = "stablehlo.rng"(%mu, %sigma, %shape) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
-   func.return %0 : tensor<2x3x5xf32>
- }
-@@ -1984,7 +1984,7 @@
- 
- func.func @rng_normal_invalid_type(%arg0: tensor<complex<f32>>, %arg1: tensor<f32>) {
-   %cst = "stablehlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
--  // expected-error @+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
-+  // expected-error @+1 {{#0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
-   %0 = "stablehlo.rng"(%arg0, %arg1, %cst) {rng_distribution = #stablehlo<rng_distribution NORMAL>}: (tensor<complex<f32>>, tensor<f32>, tensor<1xi64>) -> tensor<7xf32>
-   func.return
- }
-@@ -2027,7 +2027,7 @@
- 
- func.func @rng_uniform_invalid_a_rank(%a: tensor<1xf32>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
-   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
--  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-+  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
-   func.return %0 : tensor<2x3x5xf32>
- }
-@@ -2037,7 +2037,7 @@
- 
- func.func @rng_uniform_invalid_b_rank(%a: tensor<f32>, %b: tensor<1xf32>) -> tensor<2x3x5xf32> {
-   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
--  // expected-error@+1 {{operand #1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-+  // expected-error@+1 {{operand #1 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<1xf32>'}}
-   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
-   func.return %0 : tensor<2x3x5xf32>
- }
-@@ -2055,7 +2055,7 @@
- 
- func.func @rng_uniform_invalid_type(%a: tensor<complex<f32>>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
-   %shape = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
--  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
-+  // expected-error@+1 {{operand #0 must be 0D tensor of pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<complex<f32>>'}}
-   %0 = "stablehlo.rng"(%a, %b, %shape) {rng_distribution = #stablehlo<rng_distribution UNIFORM>}: (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
-   func.return %0 : tensor<2x3x5xf32>
- }
-@@ -2698,7 +2698,7 @@
- // -----
- 
- func.func @floor_invalid_i32_type(%arg0: tensor<4xi32>) -> tensor<4xi32> {
--  // expected-error@+1 {{must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<4xi32>'}}
-+  // expected-error@+1 {{must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<4xi32>'}}
-   %0 = "stablehlo.floor"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
-   func.return %0 : tensor<4xi32>
- }
-@@ -4912,7 +4912,7 @@
- // -----
- 
- func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xi32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
--  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2x2x2xi32>'}}
-+  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2x2x2xi32>'}}
-   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xi32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
-   func.return %0#0 : tensor<2x2x2x2xf32>
- }
-@@ -4945,7 +4945,7 @@
- // -----
- 
- func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
--  // expected-error@+1 {{result #1 must be 1D tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2xf32>'}}
-+  // expected-error@+1 {{result #1 must be 1D tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<2x2xf32>'}}
-   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2x2xf32>, tensor<2xf32>)
-   func.return %0#0 : tensor<2x2x2x2xf32>
- }
-@@ -4953,7 +4953,7 @@
- // -----
- 
- func.func @error_batch_norm_grad(%input: tensor<*xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<*xf32> {
--  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<*xf32>'}}
-+  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<*xf32>'}}
-   %0:3 = "stablehlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<*xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<*xf32>, tensor<2xf32>, tensor<2xf32>)
-   func.return %0#0 : tensor<*xf32>
- }
-@@ -5691,7 +5691,7 @@
- // -----
- 
- func.func @is_finite_int_input(%arg0: tensor<3xi32>) -> tensor<3xi1> {
--  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or f8E4M3FNUZ type or f8E5M2FNUZ type or f8E4M3B11FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<3xi32>'}}
-+  // expected-error@+1 {{operand #0 must be tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<3xi32>'}}
-   %0 = "stablehlo.is_finite"(%arg0) {} : (tensor<3xi32>) -> tensor<3xi1>
-   func.return %0 : tensor<3xi1>
- }
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
-@@ -179,13 +179,15 @@
-   %cst_4 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
-   %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
-   %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
--  %cst_7 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2FNUZ>
--  %cst_8 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FNUZ>
--  %cst_9 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3B11FNUZ>
--  %cst_10 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
--  %cst_11 = arith.constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
--  %cst_12 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
--  %cst_13 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
-+  %cst_7 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3B11FNUZ>
-+  %cst_8 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FN>
-+  %cst_9 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E4M3FNUZ>
-+  %cst_10 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2>
-+  %cst_11 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf8E5M2FNUZ>
-+  %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
-+  %cst_13 = arith.constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
-+  %cst_14 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
-+  %cst_15 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
-   func.return
- }
- 
+ Element Tensor::get(const Index &index) const {
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
