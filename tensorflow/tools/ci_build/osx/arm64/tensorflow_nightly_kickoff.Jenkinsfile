@@ -25,14 +25,9 @@ pipeline {
                         build 'tensorflow-as-build-nightly'
                     }
                 }
-                stage("Run PIP Test Suite") {
-                    steps {
-                        build 'tensorflow-as-piptest-ci'
-                    }
-                }
                 stage("Run Non PIP Test Suite") {
                     steps {
-                        build 'tensorflow-as-test-ci'
+                        build 'tensorflow-as-test-nightly'
                     }
                 }
             }

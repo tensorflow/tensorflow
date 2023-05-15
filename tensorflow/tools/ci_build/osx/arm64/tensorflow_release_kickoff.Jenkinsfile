@@ -24,11 +24,6 @@ pipeline {
                         build 'tensorflow-as-build-release'
                     }
                 }
-                stage("Run PIP Test Suite") {
-                    steps {
-                        build 'tensorflow-as-piptest-release'
-                    }
-                }
                 stage("Run Non PIP Test Suite") {
                     steps {
                         build 'tensorflow-as-test-release'
