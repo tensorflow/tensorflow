@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
@@ -132,8 +133,8 @@ class XlaCallModuleOp : public XlaOpKernel {
                             xla_computation->proto(), module_config));
       xla::HloPrintOptions options;
       options = xla::HloPrintOptions::ShortParsable();
-      VLOG(3) << "XlaCallModule converted to HLO module "
-              << hlo_module->ToString(options);
+      XLA_VLOG_LINES(3, absl::StrCat("XlaCallModule converted to HLO module ",
+                                     hlo_module->ToString(options)));
     }
 
     xla::XlaOp output = xla::Call(ctx->builder(), *xla_computation, inputs);

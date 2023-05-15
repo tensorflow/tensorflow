@@ -385,6 +385,7 @@ cc_library(
     srcs = ["xla_call_module_loader.cc"],
     hdrs = ["xla_call_module_loader.h"],
     deps = [
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
@@ -423,6 +424,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:sharding_op_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
