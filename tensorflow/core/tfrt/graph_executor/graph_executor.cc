@@ -119,8 +119,8 @@ tensorflow::Status RunMlrtFunction(
   //
   // TODO(chky, rohitju): Unify tfrt::SyncContext with tf_mlrt::Context.
   tfrt::ExecutionContext exec_ctx(request_context);
-  execution_context.AddUserContext(
-      std::make_unique<tfrt::SyncContext>(&exec_ctx, sync_resource_state));
+  execution_context.AddUserContext(std::make_unique<tfrt::SyncContext>(
+      *request_context->host(), sync_resource_state));
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
@@ -857,7 +857,6 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
                         &loaded_client_graph.runner_table(),
                         &loaded_client_graph.resource_array(),
                         fallback_state_));
-  tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
 
   // Get a shared_ptr of the executable so that during the current request the
   // executable to use is guaranteed to be alive.
@@ -866,7 +865,8 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
       executable_context->bytecode_executable.get());
 
   auto sync_context = std::make_unique<tfrt::SyncContext>(
-      &exec_ctx, &loaded_client_graph.sync_resource_state());
+      *options_.runtime->core_runtime()->GetHostContext(),
+      &loaded_client_graph.sync_resource_state());
   execution_context.AddUserContext(std::move(sync_context));
 
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
