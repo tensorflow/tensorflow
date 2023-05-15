@@ -29,11 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/concurrent_region.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
@@ -245,7 +247,8 @@ static absl::Status LaunchGraph(
     CapturedFunctionExecutionCount::Snapshot* counts,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
     NonAtomicallyUpgradeableRWLock* gpu_lock,
-    CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
+    ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
+    CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
   VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
 
@@ -259,7 +262,7 @@ static absl::Status LaunchGraph(
   auto user_data = [&] {
     return CustomCall::UserData(run_options, debug_options, ptx, cubin,
                                 temp_buffer, kernels, convs, executable,
-                                gemm_config, gpu_lock);
+                                gemm_config, gpu_lock, region_status);
   };
 
   absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>*> get_count =
@@ -272,7 +275,16 @@ static absl::Status LaunchGraph(
   uint64_t count = (**get_count)->fetch_add(1);
   uint64_t instantiation_threshold =
       debug_options->xla_gpu_cuda_graph_instantiation_threshold();
-  if (count < instantiation_threshold) {
+
+  // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
+  // back on regular execution if we detect tracing activity.
+#if CUDA_VERSION >= 12000
+  bool is_profiling = false;
+#else
+  bool is_profiling = tsl::profiler::ScopedAnnotationStack::IsEnabled();
+#endif
+
+  if (count < instantiation_threshold || is_profiling) {
     // Run captured graph directly.
     absl::Status result = RunGraphWithoutCapture(run_options, function_ref,
                                                  fwd_args, user_data());
@@ -342,6 +354,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .UserData<NonAtomicallyUpgradeableRWLock*>()
+        .UserData<ConcurrentRegionStatus*>()
         .RemainingArgs()
         .Attr<CustomCall::FunctionOrdinal>("capture"));
 
