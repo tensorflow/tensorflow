@@ -72,7 +72,7 @@ pipeline {
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
 
-                        sh 'python /Users/admin/metal_plugin_test.py'
+                        sh 'python ${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/metal_plugin_test.py'
 
                     }
                 }
@@ -129,7 +129,7 @@ pipeline {
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
 
-                        sh 'python /Users/admin/metal_plugin_test.py'
+                        sh 'python ${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/metal_plugin_test.py'
 
                     }
                 }
@@ -185,7 +185,7 @@ pipeline {
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
 
-                        sh 'python /Users/admin/metal_plugin_test.py'
+                        sh 'python ${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/metal_plugin_test.py'
                     }
                 }
                 stage("Python 3.11") {
@@ -241,7 +241,7 @@ pipeline {
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
 
-                        sh 'python /Users/admin/metal_plugin_test.py'
+                        sh 'python ${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/metal_plugin_test.py'
                     }
                 }
             }
