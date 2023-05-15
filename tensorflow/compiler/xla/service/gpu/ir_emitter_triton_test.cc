@@ -443,7 +443,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: %triton_gemm_r (
+; CHECK: %triton_gemm_r_computation (
 ; CHECK: %triton_gemm_r =
 ; CHECK-SAME: fusion
 )");
