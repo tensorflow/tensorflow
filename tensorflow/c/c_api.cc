@@ -2618,11 +2618,6 @@ void TF_SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device
   tensorflow::RecordMutation(graph, *op, "setting device");
 }
 
-void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
-                TF_Status* status) {
-  TF_UpdateEdge(graph, new_src, dst, status);
-}
-
 void TF_RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
   mutex_lock l(graph->mu);
   std::vector<const tensorflow::Edge*> control_edges;
