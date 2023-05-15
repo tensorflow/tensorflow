@@ -305,7 +305,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
           StatusOr<CompilationResult*> res =
               Compile(fusion, device_config, conf);
           if (!res.ok()) {
-            LOG(ERROR) << "Failure: " << res.status().ToString();
+            LOG(ERROR) << "Failure: " << res.status();
           }
           counter.DecrementCount();
         });
