@@ -477,7 +477,7 @@ tf_py_strict_test(
     ]),
 )
 
-py_library(
+py_strict_library(
     name = "load",
     srcs = ["load.py"],
     srcs_version = "PY3",
