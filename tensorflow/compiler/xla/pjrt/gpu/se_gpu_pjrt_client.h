@@ -50,7 +50,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
     const std::optional<std::set<int>>& allowed_devices = std::nullopt,
-    std::optional<std::string> platform_name = std::nullopt);
+    std::optional<std::string> platform_name = std::nullopt,
+    bool should_stage_host_to_device_transfers = true);
 
 }  // namespace xla
 

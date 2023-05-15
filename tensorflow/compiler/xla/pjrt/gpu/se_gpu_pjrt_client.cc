@@ -682,7 +682,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
     const std::optional<std::set<int>>& allowed_devices,
-    std::optional<std::string> platform_name) {
+    std::optional<std::string> platform_name,
+    bool should_stage_host_to_device_transfers) {
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
                       GetGpuXlaClient(platform_name, allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
@@ -708,8 +709,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       GpuName(), xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
-      std::move(host_memory_allocator),
-      /*should_stage_host_to_device_transfers=*/true,
+      std::move(host_memory_allocator), should_stage_host_to_device_transfers,
       /*gpu_run_options=*/std::move(gpu_run_options)));
 }
 
