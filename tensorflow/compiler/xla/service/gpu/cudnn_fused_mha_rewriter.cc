@@ -657,6 +657,7 @@ StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
           {/*lhs=*/rhs_bmm2, /*rhs=*/lhs_bmm2}, bmm_2->custom_call_target()));
 
   TF_RETURN_IF_ERROR(new_gem_custom_call->set_backend_config(new_gemm_config));
+  new_gem_custom_call->set_metadata(bmm_2->metadata());
 
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
       bmm_2, HloInstruction::CreateTranspose(original_bmm2_shape,
@@ -882,6 +883,7 @@ StatusOr<bool> FuseMultiHeadedAttentionBlock(HloComputation* comp, HloInstructio
           call_shape, operands, absl::string_view(custom_call_name)));
   TF_RETURN_IF_ERROR(fmha_call->set_backend_config(fmha_config));
   TF_RETURN_IF_ERROR(SetName(bmm_1->GetModule(), fmha_call));
+  fmha_call->set_metadata(bmm_1->metadata());
 
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
       bmm_2,
