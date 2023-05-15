@@ -384,7 +384,7 @@ absl::Status UnfreezeConstantsAndSaveVariables(
       !create_dir_status.ok()) {
     LOG(ERROR) << "Failed to create checkpoint directory at: "
                << checkpoint_dir;
-    return tsl::ToAbslStatus(create_dir_status);
+    return create_dir_status;
   }
 
   TF_ASSIGN_OR_RETURN(const auto _,

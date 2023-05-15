@@ -388,7 +388,7 @@ Status GpuRuntimeExecutable::Execute(
 
   // Initialize state required for running functions exported from FFI modules.
   absl::StatusOr<FfiStateVector> ffi_state = ffi_modules_state_.state_vector();
-  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
+  if (!ffi_state.ok()) return ffi_state.status();
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(

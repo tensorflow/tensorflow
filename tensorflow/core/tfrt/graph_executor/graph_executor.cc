@@ -158,7 +158,7 @@ tensorflow::Status RunMlrtFunction(
 
   if (!execution_context.status().ok()) {
     outputs->resize(mlrt_outputs.size(), tensorflow::Tensor());
-    return tsl::FromAbslStatus(execution_context.status());
+    return execution_context.status();
   }
 
   for (auto& mlrt_output : mlrt_outputs) {
@@ -365,14 +365,14 @@ tensorflow::Status GraphExecutionRunOnFunction(
   tensorflow::StatusGroup status_group;
 
   if (chain->IsError()) {
-    status_group.Update(FromAbslStatus(chain->GetError()));
+    status_group.Update(chain->GetError());
   }
 
   for (tfrt::RCReference<tfrt::AsyncValue>& result : results) {
     DCHECK(result->IsAvailable());
 
     if (result->IsError()) {
-      status_group.Update(FromAbslStatus(result->GetError()));
+      status_group.Update(result->GetError());
       outputs->push_back(tensorflow::Tensor());
       continue;
     }
@@ -881,7 +881,7 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
 
   execution_context.CallByMove(serving_function, input_values, outputs);
   mlrt::Execute(execution_context);
-  return tsl::FromAbslStatus(execution_context.status());
+  return execution_context.status();
 }
 
 std::unique_ptr<CostRecorder>

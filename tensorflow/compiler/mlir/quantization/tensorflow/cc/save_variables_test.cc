@@ -114,8 +114,7 @@ TEST_F(SaveVariablesToCheckpointTest, VariableSavedToCheckpoint) {
   BundleReader bundle_reader(env_, *checkpoint_prefix);
 
   Tensor loaded_tensor{};
-  EXPECT_TRUE(
-      tsl::ToAbslStatus(bundle_reader.Lookup("var_0", &loaded_tensor)).ok());
+  EXPECT_TRUE(bundle_reader.Lookup("var_0", &loaded_tensor).ok());
 
   ExpectEqual(loaded_tensor, AsTensor<float>({1.0, 2.0}));
 }
@@ -161,13 +160,11 @@ TEST_F(SaveVariablesToCheckpointTest, MultipleVariablesSavedToCheckpoint) {
   BundleReader bundle_reader(env_, *checkpoint_prefix);
 
   Tensor loaded_var_0{};
-  EXPECT_TRUE(
-      tsl::ToAbslStatus(bundle_reader.Lookup("var_0", &loaded_var_0)).ok());
+  EXPECT_TRUE(bundle_reader.Lookup("var_0", &loaded_var_0).ok());
   ExpectEqual(loaded_var_0, AsTensor<float>({1.0, 2.0}));
 
   Tensor loaded_var_1{};
-  EXPECT_TRUE(
-      tsl::ToAbslStatus(bundle_reader.Lookup("var_1", &loaded_var_1)).ok());
+  EXPECT_TRUE(bundle_reader.Lookup("var_1", &loaded_var_1).ok());
   ExpectEqual(loaded_var_1, AsTensor<int>({3, 4, 5, 6}));
 }
 

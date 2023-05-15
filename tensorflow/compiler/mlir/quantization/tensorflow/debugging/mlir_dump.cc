@@ -77,7 +77,7 @@ absl::StatusOr<std::unique_ptr<llvm::raw_fd_ostream>> CreateMlirDumpFile(
   auto *env = tsl::Env::Default();
   const tsl::Status status = env->RecursivelyCreateDir(*dump_dir);
   if (!status.ok()) {
-    return tsl::ToAbslStatus(status);
+    return status;
   }
 
   std::error_code ec{};  // NOLINT: Required to create llvm::raw_fd_ostream

@@ -178,12 +178,12 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 
   // Create a graph from running the graph capture function.
   auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
-    return FromAbslStatus(function_ref(args, runtime::NoResultConverter{}, opts,
-                                       /*verify_arguments=*/InDebugMode())
-                              .status());
+    return function_ref(args, runtime::NoResultConverter{}, opts,
+                        /*verify_arguments=*/InDebugMode())
+        .status();
   });
 
-  if (!captured.ok()) return ToAbslStatus(captured.status());
+  if (!captured.ok()) return captured.status();
   return std::move(*captured);
 }
 
@@ -286,7 +286,7 @@ static absl::Status LaunchGraph(
         if (!g.ok()) return g.status();
 
         auto e = se::gpu::InstantiateCudaGraph(std::move(*g));
-        if (!e.ok()) return ToAbslStatus(e.status());
+        if (!e.ok()) return e.status();
 
         return GraphInstance(ptrs_hash, std::move(*e));
       });
@@ -299,7 +299,7 @@ static absl::Status LaunchGraph(
   // If pointers did not change we can run captured graph.
   if (ptrs_hash == (*instance)->ptr_hash) {
     VLOG(3) << "Execute cached graph instance";
-    return ToAbslStatus((*instance)->exec.Launch(run_options->stream()));
+    return (*instance)->exec.Launch(run_options->stream());
   }
 
   // Otherwise we have to re-capture the graph and update the graph instance.
@@ -311,12 +311,12 @@ static absl::Status LaunchGraph(
 
   // Update captured graph executable.
   auto updated = (*instance)->exec.Update(std::move(*g));
-  if (!updated.ok()) return ToAbslStatus(updated);
+  if (!updated.ok()) return updated;
 
   // Update captured graph pointers hash.
   (*instance)->ptr_hash = ptrs_hash;
 
-  return ToAbslStatus((*instance)->exec.Launch(run_options->stream()));
+  return (*instance)->exec.Launch(run_options->stream());
 
 #else  // #if !GOOGLE_CUDA
 

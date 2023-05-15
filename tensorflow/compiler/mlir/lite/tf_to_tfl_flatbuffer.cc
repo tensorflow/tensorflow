@@ -323,8 +323,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   mlir::PassManager pass_manager(module.getContext());
   mlir::registerPassManagerCLOptions();
   if (mlir::failed(mlir::applyPassManagerCLOptions(pass_manager))) {
-    return tensorflow::FromAbslStatus(
-        absl::UnknownError("failed to apply MLIR pass manager CL options"));
+    return absl::UnknownError("failed to apply MLIR pass manager CL options");
   }
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(

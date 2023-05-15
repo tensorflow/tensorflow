@@ -3486,8 +3486,7 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, use_tuple_args,
                                return_tuple, options);
-  if (failed(converter.Run()))
-    return ::tsl::FromAbslStatus(diag_handler.ConsumeStatus());
+  if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());
@@ -3560,7 +3559,7 @@ xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
         unsigned index = ret.getOperandNumber();
         xla::XlaOp operand;
         if (failed(GetXlaOp(ret.get(), lowering, &operand, &inst)))
-          return ::tsl::FromAbslStatus(diag_handler.ConsumeStatus());
+          return diag_handler.ConsumeStatus();
         returns[index] = operand;
       }
     } else {
@@ -3568,7 +3567,7 @@ xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
       if (failed(converter.Lower(&inst, /*is_entry_function=*/true,
                                  /*ret_shardings=*/{}, &builder, &lowering,
                                  &return_value)))
-        return ::tsl::FromAbslStatus(diag_handler.ConsumeStatus());
+        return diag_handler.ConsumeStatus();
     }
   }
 

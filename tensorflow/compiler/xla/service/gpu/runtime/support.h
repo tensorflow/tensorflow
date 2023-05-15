@@ -49,7 +49,7 @@ inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 
 template <typename T>
 absl::StatusOr<T> ToAbsl(StatusOr<T> status_or) {
-  if (!status_or.ok()) return ToAbslStatus(status_or.status());
+  if (!status_or.ok()) return status_or.status();
   return std::move(status_or).value();
 }
 

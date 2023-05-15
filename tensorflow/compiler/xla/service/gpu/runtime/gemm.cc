@@ -149,7 +149,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   Status executed =
       RunGemm(*gemm_config, lhs_data, rhs_data, output_data, stream);
 
-  if (!executed.ok()) return ToAbslStatus(executed);
+  if (!executed.ok()) return executed;
 
   return absl::OkStatus();
 }

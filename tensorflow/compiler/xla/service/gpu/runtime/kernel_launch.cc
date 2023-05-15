@@ -128,7 +128,7 @@ static absl::Status LaunchImpl(
   // Execute device kernel on the execution stream.
   auto executed = ExecuteKernelOnStream(***kernel, buffer_args,
                                         launch_dimensions, execution_stream);
-  if (!executed.ok()) return ToAbslStatus(executed);
+  if (!executed.ok()) return executed;
 
   return absl::OkStatus();
 }

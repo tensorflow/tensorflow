@@ -181,7 +181,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           c, adaptive_shared_batch_scheduler_options, max_batch_size_,
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           batch_function_, disable_padding_, &new_resource);
-      if (!status.ok()) return tsl::ToAbslStatus(status);
+      if (!status.ok()) return status;
       return tensorflow::core::RefCountPtr<BatchResourceType>(
           new_resource.release());
     };
@@ -193,7 +193,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           c, num_batch_threads_, max_batch_size_, batch_timeout_micros_,
           max_enqueued_batches_, allowed_batch_sizes_, batch_function_,
           enable_large_batch_splitting_, disable_padding_, &new_resource);
-      if (!status.ok()) return tsl::ToAbslStatus(status);
+      if (!status.ok()) return status;
       return tensorflow::core::RefCountPtr<BatchResourceType>(
           new_resource.release());
     };
@@ -201,7 +201,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
 
   auto br = client_graph_resource_context->GetOrCreateResource<
       tensorflow::core::RefCountPtr<BatchResourceType>>(shared_name_, creator);
-  if (!br.ok()) OP_REQUIRES_OK_ASYNC(c, tsl::FromAbslStatus(br.status()), done);
+  if (!br.ok()) OP_REQUIRES_OK_ASYNC(c, br.status(), done);
   auto expected_name = BatchResourceType::GetBatchFunctionName(batch_function_);
   auto received_name =
       BatchResourceType::GetBatchFunctionName((*br)->get()->batch_function());

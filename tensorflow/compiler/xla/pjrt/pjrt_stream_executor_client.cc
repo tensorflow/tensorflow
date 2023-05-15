@@ -2034,7 +2034,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
                                  /*done=*/true);
 
       if (!sent.ok()) {
-        done_event.SetError(ToAbslStatus(sent));
+        done_event.SetError(sent);
       } else {
         done_event.SetStateConcrete();
       }
@@ -2074,7 +2074,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
           "Chunk size (%d) was not a multiple of the granule size (%d)",
           chunk.size(), granule_size_in_bytes())));
-      return PjRtFuture<Status>(FromAbslStatus(done_.GetError()));
+      return PjRtFuture<Status>(done_.GetError());
     }
 
     if (current_bytes_ + chunk.size() > total_bytes_) {
@@ -2082,7 +2082,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
           absl::StrFormat("Adding chunk of size %d would overflow buffer of "
                           "size %d (%d already transferred)",
                           chunk.size(), total_bytes_, current_bytes_)));
-      return PjRtFuture<Status>(FromAbslStatus(done_.GetError()));
+      return PjRtFuture<Status>(done_.GetError());
     }
 
     se::DeviceMemoryBase dst(
