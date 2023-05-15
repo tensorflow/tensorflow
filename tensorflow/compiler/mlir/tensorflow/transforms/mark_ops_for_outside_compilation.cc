@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
@@ -395,6 +397,36 @@ void UnmarkChildren(ModuleOp module) {
   });
 }
 
+constexpr int kTooManyOutsideCompileRegionThreshold = 32;
+
+void WarnOnExcessOutsideCompilationOps(ModuleOp module) {
+  // Count the number of outside compilation ops. If it exceeds the reporting
+  // threshold, warn the user that their model may run slowly.
+  llvm::SmallVector<Operation*, 8> outside_compile_ops;
+  module->walk([&](Operation* op) {
+    if (op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+      outside_compile_ops.push_back(op);
+    }
+  });
+
+  if (outside_compile_ops.size() > kTooManyOutsideCompileRegionThreshold) {
+    llvm::SmallVector<std::string, 8> op_info;
+    for (auto& op : outside_compile_ops) {
+      op_info.push_back(tensorflow::OpAsString(*op));
+    }
+
+    LOG(WARNING) << op_info.size() << " outside compilation "
+                 << "regions found while processing "
+                 << module->getName().getStringRef().str()
+                 << ". This may result in excessively slow model execution. "
+                    "Ops found: "
+                 << absl::StrJoin(op_info, "\n");
+  } else {
+    LOG(INFO) << "Found " << outside_compile_ops.size()
+              << " outside compilation regions.";
+  }
+}
+
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
@@ -446,6 +478,8 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   if (result.wasInterrupted()) return signalPassFailure();
 
   UnmarkChildren(module);
+
+  WarnOnExcessOutsideCompilationOps(module);
 }
 
 }  // namespace
