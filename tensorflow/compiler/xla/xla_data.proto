@@ -199,10 +199,6 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // (Optional) Bit size of each element. When unspecified or being 0, default
-  // to ShapeUtil::ByteSizeOfPrimitiveType.
-  int64 element_size_in_bits = 7;
-
   // Memory space where this array resides. The integer field is interpreted in
   // a backend-specific manner.
   int64 memory_space = 8;
@@ -238,6 +234,8 @@ message LayoutProto {
   reserved "format";
   reserved 5;
   reserved "max_sparse_elements";
+  reserved 7;
+  reserved "element_size_in_bits";
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \

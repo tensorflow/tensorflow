@@ -72,8 +72,7 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const bool> dim_unique,
                absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
                PrimitiveType index_primitive_type,
-               PrimitiveType pointer_primitive_type,
-               int64_t element_size_in_bits, int64_t memory_space,
+               PrimitiveType pointer_primitive_type, int64_t memory_space,
                std::unique_ptr<Shape> physical_shape,
                int64_t dynamic_shape_metadata_prefix_bytes)
     : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
@@ -83,7 +82,6 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       tiles_(tiles.begin(), tiles.end()),
       index_primitive_type_(index_primitive_type),
       pointer_primitive_type_(pointer_primitive_type),
-      element_size_in_bits_(element_size_in_bits),
       memory_space_(memory_space),
       physical_shape_(std::move(physical_shape)),
       dynamic_shape_metadata_prefix_bytes_(
@@ -97,7 +95,6 @@ Layout::Layout(const Layout& other)
       tiles_(other.tiles_),
       index_primitive_type_(other.index_primitive_type_),
       pointer_primitive_type_(other.pointer_primitive_type_),
-      element_size_in_bits_(other.element_size_in_bits_),
       memory_space_(other.memory_space_),
       physical_shape_(other.physical_shape_ != nullptr
                           ? std::make_unique<Shape>(*other.physical_shape_)
@@ -118,7 +115,6 @@ Layout& Layout::operator=(const Layout& other) {
     tiles_ = other.tiles_;
     index_primitive_type_ = other.index_primitive_type_;
     pointer_primitive_type_ = other.pointer_primitive_type_;
-    element_size_in_bits_ = other.element_size_in_bits_;
     memory_space_ = other.memory_space_;
     if (other.physical_shape_ != nullptr) {
       physical_shape_ = std::make_unique<Shape>(*other.physical_shape_);
@@ -153,7 +149,6 @@ Layout& Layout::operator=(Layout&& other) = default;
   }
   layout.set_index_primitive_type(proto.index_primitive_type());
   layout.set_pointer_primitive_type(proto.pointer_primitive_type());
-  layout.set_element_size_in_bits(proto.element_size_in_bits());
   layout.set_memory_space(proto.memory_space());
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
@@ -183,7 +178,6 @@ LayoutProto Layout::ToProto() const {
   }
   proto.set_index_primitive_type(index_primitive_type());
   proto.set_pointer_primitive_type(pointer_primitive_type());
-  proto.set_element_size_in_bits(element_size_in_bits_);
   proto.set_memory_space(memory_space_);
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
@@ -273,13 +267,6 @@ void Layout::Print(Printer* printer) const {
     }
   }
 
-  if (element_size_in_bits() != 0) {
-    print_colon();
-    printer->Append("E(");
-    printer->Append(element_size_in_bits());
-    printer->Append(")");
-  }
-
   if (memory_space() != 0) {
     print_colon();
     printer->Append("S(");
@@ -328,10 +315,6 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
   }
   if (!ignore_pointer_primitive_type_ &&
       lhs.pointer_primitive_type() != rhs.pointer_primitive_type()) {
-    return false;
-  }
-  if (!ignore_element_size_ &&
-      lhs.element_size_in_bits() != rhs.element_size_in_bits()) {
     return false;
   }
   if (!ignore_memory_space_ && lhs.memory_space() != rhs.memory_space()) {

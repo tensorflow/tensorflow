@@ -105,7 +105,7 @@ class Layout {
                   absl::Span<const Tile> tiles,
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
                   PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
-                  int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+                  int64_t memory_space = 0,
                   std::unique_ptr<Shape> physical_shape = nullptr,
                   int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
@@ -161,23 +161,16 @@ class Layout {
       return *this;
     }
 
-    Equal& IgnoreElementSize() {
-      ignore_element_size_ = true;
-      return *this;
-    }
-
     Equal& MinorToMajorOnly() {
       return IgnoreTiles()
           .IgnoreIndexPrimitiveType()
           .IgnorePointerPrimitiveType()
           .IgnoreMemorySpace()
-          .IgnorePhysicalShape()
-          .IgnoreElementSize();
+          .IgnorePhysicalShape();
     }
 
    private:
     bool ignore_tiles_ = false;
-    bool ignore_element_size_ = false;
     bool ignore_index_primitive_type_ = false;
     bool ignore_pointer_primitive_type_ = false;
     bool ignore_memory_space_ = false;
@@ -289,12 +282,6 @@ class Layout {
   absl::Span<const Tile> tiles() const { return tiles_; }
   absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
-  int64_t element_size_in_bits() const { return element_size_in_bits_; }
-  Layout& set_element_size_in_bits(int64_t value) {
-    element_size_in_bits_ = value;
-    return *this;
-  }
-
   PrimitiveType index_primitive_type() const { return index_primitive_type_; }
   Layout& set_index_primitive_type(PrimitiveType value) {
     index_primitive_type_ = value;
@@ -343,8 +330,8 @@ class Layout {
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
-                      l.element_size_in_bits_, l.index_primitive_type_,
-                      l.pointer_primitive_type_, l.memory_space_);
+                      l.index_primitive_type_, l.pointer_primitive_type_,
+                      l.memory_space_);
   }
 
  private:
@@ -376,10 +363,6 @@ class Layout {
   // these must either be INVALID, or an unsigned integer type.
   PrimitiveType index_primitive_type_ = PRIMITIVE_TYPE_INVALID;
   PrimitiveType pointer_primitive_type_ = PRIMITIVE_TYPE_INVALID;
-
-  // The number of bits used to store an individual array element.
-  // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
-  int64_t element_size_in_bits_ = 0;
 
   // The assigned memory space.
   int64_t memory_space_ = 0;

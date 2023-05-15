@@ -1121,9 +1121,7 @@ TEST(ShapeUtilTest, B_251055887) {
 
 TEST(ShapeUtilTest, Int4ShapeSize) {
   Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
-  int4_shape.mutable_layout()->set_element_size_in_bits(4);
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape), 64 * 128 / 2);
-  EXPECT_EQ(ShapeUtil::ArraySize(int4_shape), 64 * 128 / 2);
 
   // Ensure the size is correct with int4 tiling.
   Shape int4_shape2 = ShapeUtil::MakeShape(S4, {9216, 6144});
@@ -1133,9 +1131,7 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   layout->add_tiles();
   *layout->mutable_tiles(0) = Tile({8 * (32 / 4), 128});
   *layout->mutable_tiles(1) = Tile({32 / 4, 1});
-  layout->set_element_size_in_bits(4);
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
-  EXPECT_EQ(ShapeUtil::ArraySize(int4_shape2), 9216 * 6144 / 2);
 }
 
 TEST(Transpose021Test, NoTranspose) {

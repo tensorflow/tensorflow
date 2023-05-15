@@ -34,7 +34,6 @@ using ::Eigen::half;      // NOLINT(misc-unused-using-decls)
 using complex64 = std::complex<float>;
 using complex128 = std::complex<double>;
 
-// LINT.IfChange
 template <typename UnderlyingTy>
 struct i4 {
  private:
@@ -111,8 +110,6 @@ struct i4 {
 
 using u4 = i4<uint8_t>;
 using s4 = i4<int8_t>;
-// LINT.ThenChange(//tensorflow/compiler/xla/literal.cc)
-
 }  // namespace xla
 
 // Alias namespace ::stream_executor as ::xla::se.

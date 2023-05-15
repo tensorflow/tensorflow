@@ -865,13 +865,6 @@ Literal LiteralBase::Relayout(const Layout& new_layout,
   Shape* subshape = ShapeUtil::GetMutableSubshape(&new_shape, shape_index);
   TF_CHECK_OK(LayoutUtil::ValidateLayoutForShape(new_layout, *subshape));
   *subshape->mutable_layout() = new_layout;
-  // LINT.IfChange
-  // s4 literals are stored in uint8_t/int8_t, therefore element_size_in_bits
-  // must be removed.
-  if (subshape->layout().element_size_in_bits() == 4) {
-    subshape->mutable_layout()->set_element_size_in_bits(0);
-  }
-  // LINT.ThenChange(//tensorflow/compiler/xla/types.h)
   Literal result(new_shape);
   TF_CHECK_OK(result.CopyFrom(*this));
   return result;
