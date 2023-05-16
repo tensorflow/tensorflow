@@ -693,7 +693,7 @@ tf_cuda_library(
 
 tf_cuda_cc_test(
     name = "c_api_remote_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "c_api_remote_test.cc",
     ],
