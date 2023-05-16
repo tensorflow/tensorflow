@@ -449,6 +449,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 10,
     tags = ["nomac"],
     deps = [
         ":gpu_device_info_for_tests",
@@ -500,6 +501,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 10,
     tags = ["nomac"],
     deps = [
         "//tensorflow/compiler/xla:comparison_util",
