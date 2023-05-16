@@ -94,7 +94,7 @@ body {
   fusion.549 = bf16[15,1,2,48,128,2048]{5,4,3,2,1,0} fusion(param_0, param_1, param_2), kind=kLoop, calls=fused_computation.549
   bitcast = bf16[15,1,2,2048,48,128]{3,5,4,2,1,0} bitcast(fusion.549)
   constant_one = s32[] constant(1)
-  add = s32[] add(param_2, constant_one)
+  add = s32[] add(param_2, constant_one), control-predecessors={fusion.549}
   ROOT tuple = (bf16[2,48,128,2048]{3,2,1,0}, bf16[15,1,2,2048,48,128]{3,5,4,2,1,0}, s32[]) tuple(param_0, bitcast, add)
 }
 
