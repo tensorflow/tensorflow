@@ -235,7 +235,7 @@ class DistributedSaveTest(
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "already started or completed"):
+        errors.AlreadyExistsError, "already started or completed"):
       self.evaluate(
           distributed_save_op.distributed_save(
               dataset, self._test_dir, cluster.dispatcher_address()))

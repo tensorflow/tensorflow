@@ -26,6 +26,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import test_mode
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 # Enum value for `SnapshotStreamInfo` states.
@@ -115,7 +116,9 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryBlocksOverwrite(self):
     cluster, ds = self.setup()
     cluster.restart_dispatcher()
-    with self.assertRaisesOpError("is already started or completed"):
+    with self.assertRaisesRegex(
+        errors.AlreadyExistsError, "is already started or completed"
+    ):
       distributed_save_op.distributed_save(
           ds, self._path, cluster.dispatcher_address()
       )

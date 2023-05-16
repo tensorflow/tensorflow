@@ -60,8 +60,8 @@ StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
 
 Status SnapshotManager::Start(const SnapshotRequest& request) {
   if (env_->FileExists(request.path()).ok()) {
-    return InvalidArgument("Distributed tf.data snapshot at ", request.path(),
-                           " already exists.");
+    return errors::AlreadyExists("tf.data snapshot at ", request.path(),
+                                 " already exists.");
   }
   TF_ASSIGN_OR_RETURN(sources_, CreateSources(request.dataset()));
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());

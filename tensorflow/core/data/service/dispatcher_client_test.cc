@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -135,7 +136,7 @@ TEST_F(DispatcherClientTest, SnapshotAlreadyStarted) {
       dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
   EXPECT_THAT(
       dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata),
-      StatusIs(error::INVALID_ARGUMENT, HasSubstr("already started")));
+      StatusIs(error::ALREADY_EXISTS, HasSubstr("already started")));
 }
 
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {

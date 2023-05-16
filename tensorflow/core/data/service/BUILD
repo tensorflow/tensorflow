@@ -379,6 +379,7 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
