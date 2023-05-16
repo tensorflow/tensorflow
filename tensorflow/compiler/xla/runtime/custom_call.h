@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -36,6 +35,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
@@ -700,7 +701,7 @@ void SetResultsFromTuple(std::index_sequence<ResultIs...>, FnArgs fn_args,
 
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
-// strucuture.
+// structure.
 struct DecodingOffsets {
   int64_t args = 0;
   int64_t attrs = 0;
@@ -722,6 +723,9 @@ struct DecodingContext {
 
   // User-provided auxiliary data.
   const CustomCall::UserData* user_data;
+
+  // User-provided diagnostic engine for reporting detailed errors.
+  const DiagnosticEngine* diagnostic;
 };
 
 template <typename T, CustomCall::RuntimeChecks checks>
@@ -801,7 +805,11 @@ struct Decode<internal::UserData<T>, checks> {
   ABSL_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, DecodingContext& ctx) {
     using UserDataT = std::remove_pointer_t<T>;
-    return DecodeUserData<UserDataT, checks>(ctx.user_data);
+    if (auto decoded = DecodeUserData<UserDataT, checks>(ctx.user_data);
+        LLVM_LIKELY(succeeded(decoded)))
+      return decoded;
+    return ctx.diagnostic->EmitError(InternalError(
+        "failed to decode UserData of type %s", typeid(T).name()));
   }
 };
 
@@ -931,7 +939,7 @@ class CustomCallHandler : public CustomCall {
       diagnostic = DiagnosticEngine::DefaultDiagnosticEngine();
 
     // If all runtime checks are disabled we are just reinterpreting opaque
-    // `args`, `attrs` and `rets` memory acording to the custom call handler
+    // `args`, `attrs` and `rets` memory according to the custom call handler
     // signature and skip all checks (these checks will be optimized out).
     auto eval = [](bool condition) {
       return checks == RuntimeChecks::kNone ? false : condition;
@@ -986,8 +994,8 @@ class CustomCallHandler : public CustomCall {
     internal::DecodingOffsets offsets;
 
     // Package all the data required for decoding custom call operands.
-    internal::DecodingContext ctx{args,       rets,    attrs,    attrs_,
-                                  attrs_idx_, values_, user_data};
+    internal::DecodingContext ctx{args,       rets,    attrs,     attrs_,
+                                  attrs_idx_, values_, user_data, diagnostic};
 
     // Decode all operands into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
@@ -998,9 +1006,16 @@ class CustomCallHandler : public CustomCall {
     // Check if all operands and results were decoded.
     bool all_decoded = (succeeded(std::get<Is>(fn_args)) && ...);
 
-    if (LLVM_UNLIKELY(!all_decoded))
-      return diagnostic->EmitError(
-          InvalidArgument("Failed to decode all custom call operands"));
+    if (LLVM_UNLIKELY(!all_decoded)) {
+      std::array<bool, kSize> decoded = {succeeded(std::get<Is>(fn_args))...};
+      auto bad_args = llvm::make_filter_range(
+          llvm::enumerate(decoded), [](auto pair) { return !pair.value(); });
+      auto to_str = [](auto pair) { return std::to_string(pair.index()); };
+
+      return diagnostic->EmitError(InvalidArgument(
+          "Failed to decode all custom call operands (bad operads at: %s)",
+          llvm::join(llvm::map_range(bad_args, to_str), ", ")));
+    }
 
     // Custom call returns logical result to signal failures.
     if constexpr (kIsLogicalErr) {

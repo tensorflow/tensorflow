@@ -342,6 +342,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",

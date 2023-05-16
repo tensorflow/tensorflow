@@ -414,6 +414,7 @@ Status GpuRuntimeExecutable::Execute(
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
   diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
+    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
     absl::StrAppend(&diagnostic, d.status().message());
     return success();
   });

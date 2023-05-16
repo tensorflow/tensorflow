@@ -21,10 +21,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -51,6 +51,7 @@ using xla::runtime::Executable;
 using xla::runtime::MemrefDesc;
 using xla::runtime::ScalarArg;
 using xla::runtime::StridedMemrefView;
+using xla::runtime::success;
 
 //===----------------------------------------------------------------------===//
 // CUDA graphs caching.
@@ -140,11 +141,13 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   const ServiceExecutableRunOptions capture_opts(capture_run_options);
   user_data.insert(&capture_opts);
 
-  std::string error;
+  // Collect all emitted diagnostic messages.
+  std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& diagnostic) {
-    error.append(diagnostic.status().message());
-    return runtime::success();
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
+    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
+    absl::StrAppend(&diagnostic, d.status().message());
+    return success();
   });
 
   // Prepare options for executing graph capture function.
@@ -187,7 +190,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 
   if (!captured.ok()) {
     return InternalError("CaptureCudaGraph failed (%s): %s",
-                         error.empty() ? "<no details>" : error,
+                         diagnostic.empty() ? "<no details>" : diagnostic,
                          captured.status().ToString());
   }
   return std::move(*captured);
@@ -201,11 +204,13 @@ static absl::Status RunGraphWithoutCapture(
   Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;
 
-  std::string error;
+  // Collect all emitted diagnostic messages.
+  std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& diagnostic) {
-    error.append(diagnostic.status().message());
-    return runtime::success();
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
+    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
+    absl::StrAppend(&diagnostic, d.status().message());
+    return success();
   });
   opts.diagnostic_engine = &diagnostic_engine;
 
@@ -236,7 +241,7 @@ static absl::Status RunGraphWithoutCapture(
           .status();
   if (!status.ok()) {
     return InternalError("RunGraphWithoutCapture failed (%s): %s",
-                         error.empty() ? "<no details>" : error,
+                         diagnostic.empty() ? "<no details>" : diagnostic,
                          status.ToString());
   }
   return absl::OkStatus();
