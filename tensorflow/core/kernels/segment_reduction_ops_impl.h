@@ -362,7 +362,7 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     T* out_ptr = output.data();
     ReductionF reduction;
 
-    bool data_is_1D = inner_dim == 1;
+    bool is_inner_dim_1d = inner_dim == 1;
 
     // `num_real_segment` counts the rows actually reduced from input,
     // the rows with negative segment index will be excluded.
@@ -430,7 +430,7 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64_t input_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const int64_t output_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
-    if(data_is_1D) {
+    if(is_inner_dim_1d) {
         cpu_device.parallelFor(num_segments, cost, reductionWorker1D);
     }
     else {
