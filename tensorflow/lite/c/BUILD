@@ -340,6 +340,7 @@ cc_library(
 )
 
 # For use with library targets that can't use relative paths.
+# LINT.IfChange(exported_headers)
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
@@ -361,6 +362,7 @@ alias(
     name = "tensorflowlite_c_impl_hdrs_filegroup",
     actual = "//tensorflow/lite/core/c:headers_filegroup",
 )
+# LINT.ThenChange(../java/BUILD:TFLITE_HEADERS)
 
 # Test the C extension API code.
 test_suite(
