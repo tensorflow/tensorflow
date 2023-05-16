@@ -2501,6 +2501,7 @@ tf_xla_py_test(
     use_xla_device = False,  # Uses tf.function(jit_compile=True)
     deps = [
         ":xla_test",
+        "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
