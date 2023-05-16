@@ -64,6 +64,10 @@ class SessionSnapshot {
   // path-based file read will be disabled in this mode.
   bool HasAccessibleRunDir() const { return has_accessible_run_dir_; }
 
+  // Gets the path of the fast file for a given tool.
+  std::optional<std::string> GetFilePath(absl::string_view toolname,
+                                         absl::string_view host) const;
+
  private:
   SessionSnapshot(std::vector<std::string> xspace_paths,
                   std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces)

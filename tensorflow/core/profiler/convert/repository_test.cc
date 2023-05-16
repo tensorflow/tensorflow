@@ -69,6 +69,35 @@ TEST(Repository, GetSpaceByHostName) {
   EXPECT_THAT(xspace1_or.value()->hostnames(0), Eq("hostname1"));
 }
 
+TEST(Repository, GetSSTableFile) {
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"log/plugins/profile/hostname0.xplane.pb"},
+                              /*xspaces=*/std::nullopt);
+  TF_CHECK_OK(session_snapshot_or.status());
+  auto sstable_path =
+      session_snapshot_or.value().GetFilePath("trace_viewer@", "hostname0");
+  auto not_found_path =
+      session_snapshot_or.value().GetFilePath("memory_viewer", "hostname0");
+  EXPECT_THAT(sstable_path, Eq("log/plugins/profile/hostname0.SSTABLE"));
+  EXPECT_THAT(not_found_path, Eq(std::nullopt));
+}
+
+TEST(Repository, GetSSTableFileWithXSpace) {
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  // prepare host 0.
+  auto space0 = std::make_unique<XSpace>();
+  *(space0->add_hostnames()) = "hostname0";
+  // with index 1 which shouldn't impact the space finding by name.
+  xspaces.push_back(std::move(space0));
+  auto session_snapshot_or = SessionSnapshot::Create(
+      {"log/plugins/profile/hostname0.xplane.pb"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  auto file_path_init_by_xspace =
+      session_snapshot_or.value().GetFilePath("trace_viewer@", "hostname0");
+  // The file path should be disabled in this mode.
+  EXPECT_THAT(file_path_init_by_xspace, Eq(std::nullopt));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

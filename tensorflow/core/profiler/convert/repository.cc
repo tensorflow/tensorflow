@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -93,6 +94,17 @@ StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpaceByName(
 
 std::string SessionSnapshot::GetHostname(size_t index) const {
   return GetHostnameByPath(xspace_paths_.at(index));
+}
+
+std::optional<std::string> SessionSnapshot::GetFilePath(
+    absl::string_view toolname, absl::string_view hostname) const {
+  if (!has_accessible_run_dir_) return std::nullopt;
+  std::string file_name = "";
+  if (toolname == "trace_viewer@")
+    file_name = absl::StrCat(hostname, ".", "SSTABLE");
+  if (!file_name.empty())
+    return tensorflow::io::JoinPath(session_run_dir_, file_name);
+  return std::nullopt;
 }
 
 }  // namespace profiler
