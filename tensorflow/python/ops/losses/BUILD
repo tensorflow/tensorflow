@@ -1,5 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -27,7 +26,6 @@ py_strict_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:cond",
         "//tensorflow/python:confusion_matrix",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
@@ -58,13 +56,15 @@ py_strict_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.py"],
     deps = [
-        ":losses",
+        ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:test_lib",
     ],
 )
