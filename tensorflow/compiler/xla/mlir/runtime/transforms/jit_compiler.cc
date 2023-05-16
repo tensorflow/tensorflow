@@ -221,6 +221,21 @@ absl::Status JitCompiler::ComputeOrdinalsForExportedFunctions(
   return absl::OkStatus();
 }
 
+absl::Status ExportMainWithOrdinal0(mlir::ModuleOp module,
+                                    mlir::MLIRContext& mlir_context) {
+  SymbolTable sym_table(module);
+
+  // Add `rt.export` operations for all explicitly exported functions.
+  if (auto func = sym_table.lookup<FunctionOpInterface>("main")) {
+    OpBuilder(func).create<ExportOp>(func.getLoc(), func, 0);
+  }
+  mlir::PassManager pm(&mlir_context);
+  pm.addPass(CreateOrdinalAssignmentPass());
+  if (failed(pm.run(module)))
+    return absl::InternalError("failed to run ordinal assignment pass");
+  return absl::OkStatus();
+}
+
 /*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
 JitCompiler::Instantiate(JitCompiler::Options opts,
                          std::string_view mlir_module,
