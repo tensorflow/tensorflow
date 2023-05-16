@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -256,7 +257,7 @@ Status SnapshotManager::ReadOnDiskSource(
     global_split_indices.insert(global_split_index);
   }
 
-  streams_[stream_index].num_assigned_splits[source_index] =
+  streams_[stream_index].num_assigned_splits_per_source[source_index] =
       split_filenames.size();
   return OkStatus();
 }
@@ -264,6 +265,8 @@ Status SnapshotManager::ReadOnDiskSource(
 Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
   streams_[stream_index].state = Stream::State::kDone;
+  ++num_completed_streams_;
+  num_completed_splits_ += streams_[stream_index].num_assigned_splits();
   if (absl::c_all_of(streams_, [](const Stream& stream) {
         return stream.state == Stream::State::kDone;
       })) {
@@ -349,6 +352,11 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
+  LOG_EVERY_N_SEC(INFO, 60)
+      << "tf.data snapshot progress: " << num_completed_streams_ << " of "
+      << streams_.size() << " streams completed; " << num_completed_splits_
+      << " of " << num_assigned_splits_ << " splits completed.";
+
   dead_workers_.erase(request.worker_address());
 
   if (mode_ == Mode::kDone || mode_ == Mode::kError) {
@@ -399,7 +407,7 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
 
   Stream& stream = streams_[request.stream_index()];
   int64_t local_split_index =
-      stream.num_assigned_splits[request.source_index()];
+      stream.num_assigned_splits_per_source[request.source_index()];
   int64_t global_split_index = num_assigned_splits_;
   response.set_local_split_index(local_split_index);
   if (end_of_splits) {
@@ -417,7 +425,7 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
       split_path, {split}, tsl::io::compression::kNone, env_));
   split.AsProtoTensorContent(response.mutable_split());
 
-  ++stream.num_assigned_splits[request.source_index()];
+  ++stream.num_assigned_splits_per_source[request.source_index()];
   ++num_assigned_splits_;
   return OkStatus();
 }

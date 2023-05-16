@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
@@ -137,7 +138,8 @@ class SnapshotManager {
   int64_t num_sources() const { return split_providers_.size(); }
 
   struct Stream {
-    explicit Stream(int64_t num_sources) : num_assigned_splits(num_sources) {}
+    explicit Stream(int64_t num_sources)
+        : num_assigned_splits_per_source(num_sources) {}
 
     enum class State {
       // The stream is not finished and the worker is heartbeating.
@@ -147,7 +149,12 @@ class SnapshotManager {
     };
 
     // A counter of assigned splits for each source.
-    std::vector<int64_t> num_assigned_splits;
+    std::vector<int64_t> num_assigned_splits_per_source;
+
+    int64_t num_assigned_splits() const {
+      return absl::c_accumulate(num_assigned_splits_per_source, 0);
+    }
+
     State state = State::kActive;
   };
 
@@ -155,9 +162,13 @@ class SnapshotManager {
   std::vector<Stream> streams_;
   // A mapping of assigned worker to stream index.
   absl::flat_hash_map<std::string, int64_t> assignments_;
+  // A counter of completed streams for this snapshot.
+  int64_t num_completed_streams_ = 0;
 
-  // A counter of assigned aplits for this snapshot.
+  // A counter of assigned splits for this snapshot.
   int64_t num_assigned_splits_ = 0;
+  // A counter of completed splits for this snapshot.
+  int64_t num_completed_splits_ = 0;
 
   enum class Mode {
     // No streams are done.
