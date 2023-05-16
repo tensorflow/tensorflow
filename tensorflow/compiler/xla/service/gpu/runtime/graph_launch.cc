@@ -320,22 +320,27 @@ static absl::Status LaunchGraph(
       });
   if (!instance.ok()) return instance.status();
 
-  // Lock graph instance mutex for exclusive access, because we potentially
-  // might have to update it with a new graph version.
-  absl::MutexLock lock((*instance)->mutex.get());
+  {
+    // Lock graph instance for read only access. If we'll have to update the
+    // graph, we'll update to a writer lock below.
+    absl::ReaderMutexLock lock((*instance)->mutex.get());
 
-  // If pointers did not change we can run captured graph.
-  if (ptrs_hash == (*instance)->ptr_hash) {
-    VLOG(3) << "Execute cached graph instance";
-    return (*instance)->exec.Launch(run_options->stream());
+    // If pointers did not change we can run captured graph.
+    if (ptrs_hash == (*instance)->ptr_hash) {
+      VLOG(3) << "Execute cached graph instance";
+      return (*instance)->exec.Launch(run_options->stream());
+    }
   }
 
   // Otherwise we have to re-capture the graph and update the graph instance.
   VLOG(3) << "Update cached graph instance";
-
   // Capture CUDA graph by running capture function.
   auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
   if (!g.ok()) return g.status();
+
+  // At this point we have to grab a writer lock, because we might potentially
+  // have concurrent execution of the cached graph instance.
+  absl::WriterMutexLock lock((*instance)->mutex.get());
 
   // Update captured graph executable.
   auto updated = (*instance)->exec.Update(std::move(*g));
