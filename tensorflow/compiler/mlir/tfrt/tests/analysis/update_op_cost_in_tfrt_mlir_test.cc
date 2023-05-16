@@ -76,7 +76,7 @@ TEST_P(CostUpdateTest, Basic) {
   tensorflow::tfrt_stub::CostRecorder cost_recorder(GetParam().normalize_ratio);
   absl::flat_hash_map<int64_t, uint64_t> expected_op_cost_map;
   for (const auto& [op_key, cost] : fake_recorded_op_cost_map) {
-    cost_recorder.RecordCostNanosecond(op_key, cost);
+    cost_recorder.RecordCost(op_key, cost);
     expected_op_cost_map[op_key] = cost_recorder.GetCost(op_key);
   }
 
