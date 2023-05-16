@@ -2692,9 +2692,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testMlirStableHLOPresetQuantizationMethod(
       self, preset_quantization_method
   ):
-    k_num_filters = 38
+    num_filters = 38
     model = tf.keras.models.Sequential(
-        [tf.keras.layers.Conv2D(k_num_filters, (3, 3), activation='relu')]
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
     )
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
@@ -2704,6 +2704,45 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             preset_quantization_method=quant_opts_pb2.PresetQuantizationMethod(
                 preset_method=preset_quantization_method
+            )
+        )
+    )
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter._experimental_quantization_options = quantization_options
+
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS
+    ]
+    converter.exclude_conversion_metadata = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_stablehlo_model = converter.convert()
+    self.assertIsNotNone(quantized_stablehlo_model)
+
+  @test_util.run_v2_only
+  def testMlirStableHLOCustomQuantizationMethod(self):
+    num_filters = 38
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
+    )
+    model.build(input_shape=(1, 5, 5, 3))
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
+    save(model, saved_model_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            custom_quantization_method=quant_opts_pb2.CustomQuantizationMethod(
+                quantization_component_spec=[
+                    quant_opts_pb2.QuantizationComponentSpec(
+                        quantization_component=quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent.COMPONENT_WEIGHT,
+                        bit_width=quant_opts_pb2.QuantizationComponentSpec.BitWidth.BIT_WIDTH_16,
+                        bit_type=quant_opts_pb2.QuantizationComponentSpec.BitType.BIT_TYPE_FLOAT,
+                    ),
+                    quant_opts_pb2.QuantizationComponentSpec(
+                        quantization_component=quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent.COMPONENT_BIAS,
+                        bit_width=quant_opts_pb2.QuantizationComponentSpec.BitWidth.BIT_WIDTH_16,
+                    ),
+                ]
             )
         )
     )

@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
 
+#include "absl/container/flat_hash_set.h"
+#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/utils/fill_quantization_options.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace stablehlo {
@@ -24,8 +28,30 @@ namespace quantization {
 
 void AddQuantizationPasses(mlir::PassManager& pass_manager,
                            const QuantizationOptions& quantization_options) {
+  QuantizationOptions quantization_options_ = quantization_options;
+  if (quantization_options.quantization_method()
+          .has_preset_quantization_method()) {
+    quantization_options_ =
+        mlir::stablehlo::FillPresetQuantizationOptions(quantization_options);
+  }
+
+  // TODO(b/276999414): Add activation and bias quantization component as
+  // respective quantization passes are created.
+  QuantizationComponentSpec weight_component;
+  for (const auto& component : quantization_options_.quantization_method()
+                                   .custom_quantization_method()
+                                   .quantization_component_spec()) {
+    switch (component.quantization_component()) {
+      case QuantizationComponentSpec::COMPONENT_WEIGHT:
+        weight_component = component;
+        break;
+      default:
+        break;
+    }
+  }
+
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::CreateQuantizeWeightPass(quantization_options));
+      mlir::stablehlo::CreateQuantizeWeightPass(weight_component));
 }
 
 }  // namespace quantization

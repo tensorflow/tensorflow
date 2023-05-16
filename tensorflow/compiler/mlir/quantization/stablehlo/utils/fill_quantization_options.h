@@ -13,28 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_PASSES_H_
-
-#include <memory>
-#include <string>
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UTILS_FILL_QUANTIZATION_OPTIONS_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UTILS_FILL_QUANTIZATION_OPTIONS_H_
 
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
-
-#define GEN_PASS_DECL
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
 namespace mlir {
 namespace stablehlo {
 
-// Creates a pass that quantizes weight component of StableHLO graph.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
-    ::stablehlo::quantization::QuantizationComponentSpec
-        quantization_component_spec);
+::stablehlo::quantization::QuantizationOptions FillPresetQuantizationOptions(
+    ::stablehlo::quantization::QuantizationOptions quantization_options);
 
 }  // namespace stablehlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UTILS_FILL_QUANTIZATION_OPTIONS_H_
