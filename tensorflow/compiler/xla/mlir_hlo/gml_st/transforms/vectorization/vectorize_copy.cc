@@ -21,6 +21,8 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/vectorization/vectorization.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -42,25 +44,11 @@ struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
     auto srcType = op.getSource().getType().cast<BaseMemRefType>();
     auto targetType = op.getTarget().getType().cast<BaseMemRefType>();
 
-    auto isStaticShapeAndContiguousRowMajor = [](MemRefType type) {
-      if (!type.hasStaticShape()) return false;
-
-      SmallVector<int64_t> strides;
-      int64_t offset;
-      if (failed(getStridesAndOffset(type, strides, offset))) return false;
-
-      int64_t runningStride = 1;
-      for (unsigned i = strides.size(); i > 0; --i) {
-        if (strides[i - 1] != runningStride) return false;
-        runningStride *= type.getDimSize(i - 1);
-      }
-      return true;
-    };
-
     auto isContiguousMemrefType = [&](BaseMemRefType type) {
       auto memrefType = type.dyn_cast<mlir::MemRefType>();
-      return memrefType && (memrefType.getLayout().isIdentity() ||
-                            isStaticShapeAndContiguousRowMajor(memrefType));
+      return memrefType &&
+             (memrefType.getLayout().isIdentity() ||
+              memref::isStaticShapeAndContiguousRowMajor(memrefType));
     };
 
     auto isSmallMemrefType = [&](BaseMemRefType type) {
