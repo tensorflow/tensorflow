@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {
 namespace runtime {
@@ -112,25 +113,30 @@ static std::unique_ptr<Type> ConvertCanonicalType(
   if (type.isFloat8E4M3B11FNUZ()) return PrimitiveType::F8E4M3B11FNUZ;
   if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isIndex()) return PrimitiveType::S64;
-  if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
-  if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isBF16()) return PrimitiveType::BF16;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;
-  if (type.isUnsignedInteger(8)) return PrimitiveType::U8;
-  if (type.isUnsignedInteger(16)) return PrimitiveType::U16;
-  if (type.isUnsignedInteger(32)) return PrimitiveType::U32;
-  if (type.isUnsignedInteger(64)) return PrimitiveType::U64;
   if (type.isInteger(1)) return PrimitiveType::PRED;
-  if (type.isInteger(8)) return PrimitiveType::S8;
-  if (type.isInteger(16)) return PrimitiveType::S16;
-  if (type.isInteger(32)) return PrimitiveType::S32;
-  if (type.isInteger(64)) return PrimitiveType::S64;
+  if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
+    unsigned int width = int_type.getWidth();
+    if (auto primitive_type =
+            int_type.isUnsigned()
+                ? primitive_util::UnsignedIntegralTypeForBitWidth(width)
+                : primitive_util::SignedIntegralTypeForBitWidth(width);
+        primitive_type != PRIMITIVE_TYPE_INVALID) {
+      return primitive_type;
+    }
+  }
   if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
     auto element_type = complex_type.getElementType();
-    if (element_type.isF32()) return PrimitiveType::C64;
-    if (element_type.isF64()) return PrimitiveType::C128;
+    TF_ASSIGN_OR_RETURN(auto element_primitive_type,
+                        ConvertElementType(element_type));
+    if (auto complex_primitive_type =
+            primitive_util::ComplexType(element_primitive_type);
+        complex_primitive_type != PRIMITIVE_TYPE_INVALID) {
+      return complex_primitive_type;
+    }
   }
 
   return InvalidArgumentError(

@@ -28,6 +28,8 @@ cc_library(
     tags = ["no_pip"],
     deps = [
         "//tensorflow/compiler/xla:bit_cast",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",

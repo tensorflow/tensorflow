@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
+#include "tensorflow/compiler/xla/primitive_util.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -818,77 +820,23 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     Literal* miscompared_ptr =
         (miscompare_callback == nullptr ? nullptr : &miscompared);
 
-    switch (expected.shape().element_type()) {
-      case PRED:
-        result = Equal<bool>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S4:
-        result = Equal<s4>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S8:
-        result = Equal<int8_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S16:
-        result = Equal<int16_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S32:
-        result = Equal<int32_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S64:
-        result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U4:
-        result = Equal<u4>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U8:
-        result = Equal<uint8_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U16:
-        result = Equal<uint16_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U32:
-        result = Equal<uint32_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U64:
-        result = Equal<uint64_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F8E5M2:
-        result = Equal<tsl::float8_e5m2>(expected, actual, index, 0,
-                                         miscompared_ptr);
-        break;
-      case F8E4M3FN:
-        result = Equal<tsl::float8_e4m3fn>(expected, actual, index, 0,
-                                           miscompared_ptr);
-        break;
-      case F8E4M3B11FNUZ:
-        result = Equal<tsl::float8_e4m3b11>(expected, actual, index, 0,
-                                            miscompared_ptr);
-        break;
-      case BF16:
-        result = Equal<bfloat16>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F16:
-        result = Equal<half>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F32:
-        result = Equal<float>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F64:
-        result = Equal<double>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case C64:
-        result = Equal<complex64>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case C128:
-        result = Equal<complex128>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case TOKEN:
-        // Tokens have no on-device representation and are trivially equal.
-        return OkStatus();
-      default:
-        LOG(FATAL) << "Unsupported primitive type: "
-                   << PrimitiveType_Name(expected.shape().element_type());
-    }
+    primitive_util::PrimitiveTypeSwitch<void>(
+        [&](auto primitive_type_constant) -> void {
+          if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+            using NativeT =
+                primitive_util::NativeTypeOf<primitive_type_constant>;
+            result =
+                Equal<NativeT>(expected, actual, index, 0, miscompared_ptr);
+            return;
+          }
+          if constexpr (primitive_type_constant == TOKEN) {
+            // Tokens have no on-device representation and are trivially equal.
+            return;
+          }
+          LOG(FATAL) << "Unsupported primitive type: "
+                     << PrimitiveType_Name(expected.shape().element_type());
+        },
+        expected.shape().element_type());
 
     if (!result.ok() && miscompare_callback) {
       miscompare_callback(expected, actual, LiteralSlice(miscompared),

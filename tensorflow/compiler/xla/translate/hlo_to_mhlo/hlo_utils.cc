@@ -25,8 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/tsl/platform/bfloat16.h"
-#include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -232,32 +231,24 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getF32Type();
     case PrimitiveType::F64:
       return builder.getF64Type();
-    case PrimitiveType::S4:
-      return builder.getIntegerType(4);
-    case PrimitiveType::S8:
-      return builder.getIntegerType(8);
-    case PrimitiveType::S16:
-      return builder.getIntegerType(16);
-    case PrimitiveType::S32:
-      return builder.getIntegerType(32);
-    case PrimitiveType::S64:
-      return builder.getIntegerType(64);
-    case PrimitiveType::U4:
-      return builder.getIntegerType(4, /*isSigned=*/false);
-    case PrimitiveType::U8:
-      return builder.getIntegerType(8, /*isSigned=*/false);
-    case PrimitiveType::U16:
-      return builder.getIntegerType(16, /*isSigned=*/false);
-    case PrimitiveType::U32:
-      return builder.getIntegerType(32, /*isSigned=*/false);
-    case PrimitiveType::U64:
-      return builder.getIntegerType(64, /*isSigned=*/false);
-    case PrimitiveType::C64:
-      return mlir::ComplexType::get(builder.getF32Type());
-    case PrimitiveType::C128:
-      return mlir::ComplexType::get(builder.getF64Type());
     // TODO(b/130356985): Support unsigned primitive types.
     default:
+      if (primitive_util::IsIntegralType(element_type)) {
+        return mlir::IntegerType::get(
+            builder.getContext(),
+            /*width=*/primitive_util::BitWidth(element_type),
+            /*signed=*/
+            primitive_util::IsUnsignedIntegralType(element_type)
+                ? mlir::IntegerType::Unsigned
+                : mlir::IntegerType::Signless);
+      }
+      if (primitive_util::IsComplexType(element_type)) {
+        TF_ASSIGN_OR_RETURN(
+            mlir::Type component_type,
+            ConvertPrimitiveTypeToMLIRType(
+                primitive_util::ComplexComponentType(element_type), builder));
+        return mlir::ComplexType::get(component_type);
+      }
       return Internal("Unsupported type: %s", PrimitiveType_Name(element_type));
   }
 }

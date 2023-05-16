@@ -93,52 +93,15 @@ Literal CreateScalarImpl(F&& value_provider, Args... args) {
 
 template <template <PrimitiveType> class F, typename... Args>
 Literal CreateScalar(PrimitiveType primitive_type, Args... args) {
-  switch (primitive_type) {
-    case U8:
-      return CreateScalarImpl<U8>(F<U8>{}, std::forward<Args>(args)...);
-    case U16:
-      return CreateScalarImpl<U16>(F<U16>{}, std::forward<Args>(args)...);
-    case U32:
-      return CreateScalarImpl<U32>(F<U32>{}, std::forward<Args>(args)...);
-    case U64:
-      return CreateScalarImpl<U64>(F<U64>{}, std::forward<Args>(args)...);
-    case S8:
-      return CreateScalarImpl<S8>(F<S8>{}, std::forward<Args>(args)...);
-    case S16:
-      return CreateScalarImpl<S16>(F<S16>{}, std::forward<Args>(args)...);
-    case S32:
-      return CreateScalarImpl<S32>(F<S32>{}, std::forward<Args>(args)...);
-    case S64:
-      return CreateScalarImpl<S64>(F<S64>{}, std::forward<Args>(args)...);
-    case F8E5M2:
-      return CreateScalarImpl<F8E5M2>(F<F8E5M2>{}, std::forward<Args>(args)...);
-    case F8E4M3FN:
-      return CreateScalarImpl<F8E4M3FN>(F<F8E4M3FN>{},
-                                        std::forward<Args>(args)...);
-    case F8E4M3B11FNUZ:
-      return CreateScalarImpl<F8E4M3B11FNUZ>(F<F8E4M3B11FNUZ>{},
-                                             std::forward<Args>(args)...);
-    case F16:
-      return CreateScalarImpl<F16>(F<F16>{}, std::forward<Args>(args)...);
-    case BF16:
-      return CreateScalarImpl<BF16>(F<BF16>{}, std::forward<Args>(args)...);
-    case F32:
-      return CreateScalarImpl<F32>(F<F32>{}, std::forward<Args>(args)...);
-    case F64:
-      return CreateScalarImpl<F64>(F<F64>{}, std::forward<Args>(args)...);
-    case C64:
-      return CreateScalarImpl<C64>(F<C64>{}, std::forward<Args>(args)...);
-    case C128:
-      return CreateScalarImpl<C128>(F<C128>{}, std::forward<Args>(args)...);
-    case PRED:
-      return CreateScalarImpl<PRED>(F<PRED>{}, std::forward<Args>(args)...);
-    case TUPLE:
-      LOG(FATAL) << "tuple element type cannot be a scalar type.";
-    case OPAQUE_TYPE:
-      LOG(FATAL) << "opaque element type cannot be a scalar type.";
-    default:
-      LOG(FATAL) << "Unhandled primitive type " << primitive_type;
-  }
+  return primitive_util::PrimitiveTypeSwitch<Literal>(
+      [&](auto primitive_type_constant) -> Literal {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          return CreateScalarImpl<primitive_type_constant>(
+              F<primitive_type_constant>{}, std::forward<Args>(args)...);
+        }
+        LOG(FATAL) << "Unhandled primitive type " << primitive_type;
+      },
+      primitive_type);
 }
 
 template <PrimitiveType kType>
@@ -405,51 +368,19 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
         IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
     std::vector<int64_t> to_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
-    switch (literal.shape().element_type()) {
-      case PRED:
-        new_literal.Set<bool>(to_multi_index,
-                              literal.Get<bool>(from_multi_index));
-        break;
-      case U8:
-        new_literal.Set<uint8_t>(to_multi_index,
-                                 literal.Get<uint8_t>(from_multi_index));
-        break;
-      case U32:
-        new_literal.Set<uint32_t>(to_multi_index,
-                                  literal.Get<uint32_t>(from_multi_index));
-        break;
-      case S32:
-        new_literal.Set<int32_t>(to_multi_index,
-                                 literal.Get<int32_t>(from_multi_index));
-        break;
-      case U64:
-        new_literal.Set<uint64_t>(to_multi_index,
-                                  literal.Get<uint64_t>(from_multi_index));
-        break;
-      case S64:
-        new_literal.Set<int64_t>(to_multi_index,
-                                 literal.Get<int64_t>(from_multi_index));
-        break;
-      case F32:
-        new_literal.Set<float>(to_multi_index,
-                               literal.Get<float>(from_multi_index));
-        break;
-      case F64:
-        new_literal.Set<double>(to_multi_index,
-                                literal.Get<double>(from_multi_index));
-        break;
-      case C64:
-        new_literal.Set<complex64>(to_multi_index,
-                                   literal.Get<complex64>(from_multi_index));
-        break;
-      case C128:
-        new_literal.Set<complex128>(to_multi_index,
-                                    literal.Get<complex128>(from_multi_index));
-        break;
-      default:
-        LOG(FATAL) << "Unhandled primitive element type: "
-                   << PrimitiveType_Name(literal.shape().element_type());
-    }
+    primitive_util::PrimitiveTypeSwitch<void>(
+        [&](auto primitive_type_constant) -> void {
+          if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+            using NativeT = typename primitive_util::PrimitiveTypeToNative<
+                primitive_type_constant>::type;
+            new_literal.Set<NativeT>(to_multi_index,
+                                     literal.Get<NativeT>(from_multi_index));
+            return;
+          }
+          LOG(FATAL) << "Unhandled primitive element type: "
+                     << PrimitiveType_Name(literal.shape().element_type());
+        },
+        literal.shape().element_type());
   }
 
   return new_literal;
@@ -472,56 +403,17 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 /*static*/ void LiteralUtil::SetScalarLiteral(
     MutableLiteralBase& literal, absl::Span<const int64_t> multi_index,
     const LiteralBase& scalar) {
-  switch (literal.shape().element_type()) {
-    case PRED:
-      SetScalarAtIndexImpl<PRED>(literal, multi_index, scalar);
-      break;
-    case U8:
-      SetScalarAtIndexImpl<U8>(literal, multi_index, scalar);
-      break;
-    case U16:
-      SetScalarAtIndexImpl<U16>(literal, multi_index, scalar);
-      break;
-    case U32:
-      SetScalarAtIndexImpl<U32>(literal, multi_index, scalar);
-      break;
-    case U64:
-      SetScalarAtIndexImpl<U64>(literal, multi_index, scalar);
-      break;
-    case S8:
-      SetScalarAtIndexImpl<S8>(literal, multi_index, scalar);
-      break;
-    case S16:
-      SetScalarAtIndexImpl<S16>(literal, multi_index, scalar);
-      break;
-    case S32:
-      SetScalarAtIndexImpl<S32>(literal, multi_index, scalar);
-      break;
-    case S64:
-      SetScalarAtIndexImpl<S64>(literal, multi_index, scalar);
-      break;
-    case F16:
-      SetScalarAtIndexImpl<F16>(literal, multi_index, scalar);
-      break;
-    case BF16:
-      SetScalarAtIndexImpl<BF16>(literal, multi_index, scalar);
-      break;
-    case F32:
-      SetScalarAtIndexImpl<F32>(literal, multi_index, scalar);
-      break;
-    case F64:
-      SetScalarAtIndexImpl<F64>(literal, multi_index, scalar);
-      break;
-    case C64:
-      SetScalarAtIndexImpl<C64>(literal, multi_index, scalar);
-      break;
-    case C128:
-      SetScalarAtIndexImpl<C128>(literal, multi_index, scalar);
-      break;
-    default:
-      LOG(FATAL) << "Unsupported element type: "
-                 << literal.shape().element_type();
-  }
+  primitive_util::PrimitiveTypeSwitch<void>(
+      [&](auto primitive_type_constant) -> void {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          SetScalarAtIndexImpl<primitive_type_constant>(literal, multi_index,
+                                                        scalar);
+          return;
+        }
+        LOG(FATAL) << "Unsupported element type: "
+                   << literal.shape().element_type();
+      },
+      literal.shape().element_type());
 }
 
 /* static */ Literal LiteralUtil::MaxElement(const LiteralSlice& literal) {

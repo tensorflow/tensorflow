@@ -130,18 +130,6 @@ xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   }
 }
 
-PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
-  switch (complex_type) {
-    case C64:
-      return F32;
-    case C128:
-      return F64;
-    default:
-      LOG(FATAL) << "Primitive type is not complex: "
-                 << PrimitiveType_Name(complex_type);
-  }
-}
-
 // Class to memoize the computation of
 //   absl::AsciiStrToLower(PrimitiveType_Name(p))
 // for all PrimitiveType values "p"

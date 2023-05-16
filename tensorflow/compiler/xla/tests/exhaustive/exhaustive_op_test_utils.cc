@@ -421,8 +421,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(const InputLiterals& input_literals,
     CHECK_EQ(subnormal_test_inputs.size(), subnormal_test_results.size());
     for (int i = 0; i < subnormal_test_inputs.size(); ++i) {
       using IntegralNativeRefT =
-          typename ExhaustiveOpTestBase<RefT::value,
-                                        N>::ComponentIntegralNativeT;
+          typename ExhaustiveOpTestBase<kRef, N>::ComponentIntegralNativeT;
       absl::StrAppend(
           &mismatch,
           absl::StrFormat("  %10s (evaluated at %s)\n",

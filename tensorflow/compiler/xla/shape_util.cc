@@ -574,37 +574,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::ElementIsSigned(const Shape& shape) {
-  switch (shape.element_type()) {
-    case S4:
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-    case F8E5M2:
-    case F8E4M3FN:
-    case F8E4M3B11FNUZ:
-    case F16:
-    case BF16:
-    case F32:
-    case F64:
-      return true;
-
-    case PRED:
-    case U4:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-    case C64:
-    case C128:
-    case TUPLE:
-    case OPAQUE_TYPE:
-    case TOKEN:
-      return false;
-
-    default:
-      LOG(FATAL) << "Unhandled element type " << shape.element_type();
-  }
+  return primitive_util::IsSignedIntegralType(shape.element_type()) ||
+         primitive_util::IsFloatingPointType(shape.element_type());
 }
 
 /* static */ bool ShapeUtil::ElementIsComplex(const Shape& shape) {
