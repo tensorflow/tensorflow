@@ -36,11 +36,7 @@ build --copt=-Wno-gnu-offsetof-extensions
 build --profile=/tf/pkg/profile.json.gz
 
 # Use the NVCC toolchain to compile for manylinux2014
-<<<<<<< HEAD
-# build --crosstool_top="@sigbuild-r2.13-clang_config_cuda//crosstool:toolchain"
-=======
-build --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
->>>>>>> upstream/master
+# build --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
 
 # Test-related settings below this point.
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
@@ -58,13 +54,8 @@ test --test_summary=short
 # bazel test invocation as normal.
 test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
-<<<<<<< HEAD
-test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
-test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/python/training:server_lib_test -//tensorflow/python/data/kernel_tests:iterator_test_cpu -//tensorflow/python/client:session_list_devices_test
-=======
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
->>>>>>> upstream/master
 
 # For building libtensorflow archives
 test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test

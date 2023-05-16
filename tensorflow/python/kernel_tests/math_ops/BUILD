@@ -242,14 +242,8 @@ cuda_py_strict_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-<<<<<<< HEAD
-        "//tensorflow/python:gradient_checker_v2",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:gradient_checker_v2",
-=======
         "//tensorflow/python:gradient_checker",
         "//tensorflow/python:gradients_impl",
->>>>>>> upstream/master
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python/eager:context",

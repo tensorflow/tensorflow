@@ -329,10 +329,6 @@ class GpuSolver {
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info, int batch_size);
 
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
   // See
   // https://rocblas.readthedocs.io/en/latest/API_Reference_Guide.html#trsm_batched
   // trsm_batched performs the following batched operation:
@@ -345,16 +341,6 @@ class GpuSolver {
   // op( A ) = A^H.
   // Each matrix X_i is overwritten on B_i for i = 1, ..., batch_count.
   template <typename Scalar>
-<<<<<<< HEAD
-  Status TrsmBatched(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
-                    rocblas_diagonal diag, int m, int n, const Scalar* alpha,
-                    const Scalar* const dev_Aarray[], int lda, 
-                    Scalar* dev_Barray[], int ldb, int batch_size);
-
-
-  template <typename Scalar>
-  Status Trsv(rocblas_fill uplo, rocblas_operation trans, rocblas_diagonal diag, 
-=======
   Status TrsmBatched(rocblas_side side, rocblas_fill uplo,
                      rocblas_operation trans, rocblas_diagonal diag, int m,
                      int n, const Scalar* alpha,
@@ -363,7 +349,6 @@ class GpuSolver {
 
   template <typename Scalar>
   Status Trsv(rocblas_fill uplo, rocblas_operation trans, rocblas_diagonal diag,
->>>>>>> upstream/master
               int n, const Scalar* A, int lda, Scalar* x, int intcx);
 
   template <typename Scalar>
@@ -373,10 +358,7 @@ class GpuSolver {
 
   // Singular value decomposition.
   // See: https://hipsolver.readthedocs.io/en/latest/api_lapackfunc.html#svds
-<<<<<<< HEAD
-=======
   // No GesvdjBatched yet.
->>>>>>> upstream/master
   template <typename Scalar>
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
                int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
