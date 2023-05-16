@@ -58,6 +58,8 @@ def get_stream_assignments(cluster, n, snapshot_idx=0):
 
 class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
+  maxDiff = None
+
   def setUp(self):
     super().setUp()
     self._path = os.path.join(
@@ -94,6 +96,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     return os.path.join(
         self.splits_dir(stream_idx, worker=worker),
         f"source_{source_idx}",
+        "repetition_0",
     )
 
   def _make_stream_dir(self, stream_name, worker=0):
@@ -183,13 +186,6 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryFailsWithOutOfBoundsSplitName(self):
-    cluster, _ = self.setup(num_workers=0)
-    write_file(os.path.join(self.source_dir(), "split_1_1"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
   def testSnapshotRecoveryFailsWithMissingGlobalIndexInSplitNames(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_0_1"))
@@ -232,12 +228,30 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
-    get_stream_assignments(cluster, n)  # Block until all workers have streams.
+    get_stream_assignments(cluster, n)  # Blocks until all workers have streams.
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
+    # TODO(b/250921378): Verify the number of elements.
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRepeatedDatasetRecoversAndCompletes(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    ds = dataset_ops.Dataset.range(100)
+    ds = ds.repeat(10)
+    distributed_save_op.distributed_save(
+        ds, self._path, cluster.dispatcher_address()
+    )
+
+    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
+    # TODO(b/250921378): Verify the number of elements.
 
   def _snapshot_is_done(self):
     return os.path.exists(os.path.join(self._path, "DONE"))

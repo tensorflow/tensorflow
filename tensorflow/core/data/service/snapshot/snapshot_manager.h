@@ -103,6 +103,11 @@ class SnapshotManager {
   tsl::Status ReadOnDiskSource(
       int64_t stream_index, int64_t source_index,
       absl::flat_hash_set<int64_t>& global_split_indices);
+  tsl::Status ReadOnDiskSplit(
+      int64_t source_index, const std::vector<std::string>& split_files,
+      const std::string& split_file,
+      absl::flat_hash_set<int64_t>& global_split_indices);
+  tsl::Status SkipSplit(SplitProvider& split_provider);
 
   // Helpers for `WorkerHeartbeat` above. These may update the in-memory and
   // on-disk states.
@@ -133,10 +138,6 @@ class SnapshotManager {
   // timeout.
   absl::flat_hash_set<std::string> dead_workers_;
 
-  // A split provider for each input source of the dataset being snapshotted.
-  std::vector<std::unique_ptr<SplitProvider>> split_providers_;
-  int64_t num_sources() const { return split_providers_.size(); }
-
   struct Stream {
     explicit Stream(int64_t num_sources)
         : num_assigned_splits_per_source(num_sources) {}
@@ -157,6 +158,21 @@ class SnapshotManager {
 
     State state = State::kActive;
   };
+
+  struct Source {
+    // A split provider for each input source of the dataset being snapshotted.
+    std::unique_ptr<SplitProvider> split_provider;
+    // The number of times the split provider has repeated.
+    int64_t repetition_index = 0;
+  };
+
+  std::vector<Source> sources_;
+  // Creates sources for the specified dataset.
+  StatusOr<std::vector<Source>> CreateSources(
+      const DatasetDef& dataset_def) const;
+  // Resets a source when it runs out of splits, to support repetitions.
+  Status ResetSource(Source& source, int64_t source_index);
+  int64_t num_sources() const { return sources_.size(); }
 
   // All streams for this snapshot.
   std::vector<Stream> streams_;

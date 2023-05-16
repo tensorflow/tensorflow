@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/btree_map.h"
 #include "absl/time/time.h"
@@ -69,8 +70,10 @@ class SnapshotSplitProvider : public SplitProvider {
 
   // Reads from the split directory and returns a map of split index to absolute
   // file path of the split, starting at `start_index`.
-  StatusOr<absl::btree_map<int64_t, std::string>> GetSplitsFiles(
-      int64_t start_index) const;
+  Status GetSplitsFiles(
+      int64_t start_index,
+      absl::btree_map<int64_t, std::string>& split_to_file_map,
+      int64_t& repetition_index) const;
 
   // Verifies `split_files` contains consecutive splits starting at
   // `start_index`.
@@ -89,6 +92,9 @@ class SnapshotSplitProvider : public SplitProvider {
 
   // The next split to read.
   int64_t next_split_index_ TF_GUARDED_BY(mu_) = 0;
+
+  // Number of times the dataset has repeated.
+  int64_t repetition_index_ TF_GUARDED_BY(mu_) = 0;
 
   // Maps the local split index to the absolute split file path.
   absl::btree_map<int64_t, std::string> split_to_file_map_ TF_GUARDED_BY(mu_);

@@ -241,7 +241,7 @@ message SnapshotRequest {
 // Next tag: 1
 message SnapshotResponse {}
 
-// Next tag: 5
+// Next tag: 6
 message GetSnapshotSplitRequest {
   // The address of the worker requesting the split.
   string worker_address = 4;
@@ -254,6 +254,9 @@ message GetSnapshotSplitRequest {
 
   // The index of the dataset source from which to get the split.
   int64 source_index = 3;
+
+  // The repetition of the dataset from which to get the split.
+  int64 repetition_index = 5;
 }
 
 // Next tag: 4

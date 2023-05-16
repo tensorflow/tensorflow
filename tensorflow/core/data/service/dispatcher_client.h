@@ -73,7 +73,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   virtual Status GetSnapshotSplit(const std::string& worker_address,
                                   const std::string& base_path,
                                   int64_t stream_index, int64_t source_index,
-                                  Tensor& split, int64_t& local_split_index,
+                                  int64_t repetition_index, Tensor& split,
+                                  int64_t& local_split_index,
                                   bool& end_of_splits);
 
   // Initiates the process of materializing `dataset`'s output to `path`.
