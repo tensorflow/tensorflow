@@ -102,6 +102,7 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:pjrt_compile_on_demand_op",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
     ]),

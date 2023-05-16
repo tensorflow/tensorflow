@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/lib/io/buffered_inputstream.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/tsl/lib/io/random_inputstream.h"
 
 namespace tsl {
@@ -87,7 +88,7 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
     }
     pos_++;
   }
-  if (errors::IsOutOfRange(s) && !result->empty()) {
+  if (absl::IsOutOfRange(s) && !result->empty()) {
     return OkStatus();
   }
   return s;
@@ -124,7 +125,7 @@ Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   // Filling the buffer might lead to a situation when we go past the end of
   // the file leading to an OutOfRange() status return. But we might have
   // obtained enough data to satisfy the function call. Returning OK then.
-  if (errors::IsOutOfRange(s) &&
+  if (absl::IsOutOfRange(s) &&
       (result->size() == static_cast<size_t>(bytes_to_read))) {
     return OkStatus();
   }
@@ -146,7 +147,7 @@ Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
     Status s = input_stream_->SkipNBytes(bytes_to_skip - (limit_ - pos_));
     pos_ = 0;
     limit_ = 0;
-    if (errors::IsOutOfRange(s)) {
+    if (absl::IsOutOfRange(s)) {
       file_status_ = s;
     }
     return s;
@@ -195,7 +196,7 @@ Status BufferedInputStream::ReadAll(T* result) {
     pos_ = limit_;
   }
 
-  if (errors::IsOutOfRange(status)) {
+  if (absl::IsOutOfRange(status)) {
     file_status_ = status;
     return OkStatus();
   }
@@ -244,7 +245,7 @@ Status BufferedInputStream::SkipLine() {
       return OkStatus();
     }
   }
-  if (errors::IsOutOfRange(s) && skipped) {
+  if (absl::IsOutOfRange(s) && skipped) {
     return OkStatus();
   }
   return s;

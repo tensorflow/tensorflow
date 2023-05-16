@@ -196,6 +196,7 @@ tf_cc_test(
     deps = [
         ":tensor_utils",
         "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

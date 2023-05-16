@@ -129,6 +129,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/util:env_var",
+        "@com_google_absl//absl/status",
     ] + tsl_grpc_cc_dependencies(),
 )
 

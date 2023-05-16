@@ -61,6 +61,7 @@ cc_library(
         ":inputstream_interface",
         ":random_inputstream",
         "//tensorflow/tsl/platform:env",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = True,
 )

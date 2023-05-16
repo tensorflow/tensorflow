@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
+#include "absl/status/status.h"
 #include "tensorflow/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
@@ -173,7 +174,7 @@ class RPCState : public GrpcClientCQTag {
             << context_->debug_error_string();
     // Retry if we have any attempts left
     if (++num_retries_ <= max_retries_ &&
-        (errors::IsUnavailable(s) || errors::IsUnknown(s))) {
+        (absl::IsUnavailable(s) || absl::IsUnknown(s))) {
       response_buf_.Clear();
       VLOG(1) << "Retrying call for " << method_ << "Retry: " << num_retries_
               << " of " << max_retries_;

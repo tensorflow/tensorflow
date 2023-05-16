@@ -210,6 +210,7 @@ tsl_cc_test(
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/profiler/utils:time_utils_impl",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ] + tf_protos_profiler_service(),
 )

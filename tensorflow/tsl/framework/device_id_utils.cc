@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/framework/device_id_manager.h"
@@ -126,7 +127,7 @@ StatusOr<int> GetDeviceIdFromDeviceParsedName(
   if (platform_id_status.ok()) {
     return platform_device_id.value();
   }
-  if (tsl::errors::IsNotFound(platform_id_status)) {
+  if (absl::IsNotFound(platform_id_status)) {
     return tf_device_id.value();
   }
   return platform_id_status;
