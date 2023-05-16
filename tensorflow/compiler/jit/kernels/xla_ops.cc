@@ -384,19 +384,9 @@ Status CompileToPjRtLoadedExecutable(
   }
 
   PjRtDeviceCompiler* pjrt_device_compiler;
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<PjRtDeviceCompiler>(
-      rm->default_container(), "pjrt_device_compiler", &pjrt_device_compiler,
-      [&](PjRtDeviceCompiler** pjrt_device_compiler) {
-        return BuildPjRtDeviceCompiler(platform_info, ctx.function_library(),
-                                       pjrt_device_compiler);
-      }));
   DeviceCompilationProfiler* profiler;
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
-      rm->default_container(), "pjrt_device_compilation_profiler", &profiler,
-      [](DeviceCompilationProfiler** profiler) {
-        *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
-      }));
+  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info, ctx.function_library(), &pjrt_device_compiler, &profiler));
   // Hold the reference to the PJRT device compiler and profiler during
   // evaluation. (We could probably free them sooner because the ResourceMgr
   // will retain references, but this is more obviously correct.)

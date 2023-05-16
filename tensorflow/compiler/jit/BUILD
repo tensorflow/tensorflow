@@ -355,6 +355,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:tf_pjrt_client",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
+        "//tensorflow/core/tfrt/common:global_state",
         "//tensorflow/core/tfrt/common:pjrt_util",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/log",
@@ -596,6 +597,7 @@ tf_cc_test(
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_googletest//:gtest_main",
     ],
 )

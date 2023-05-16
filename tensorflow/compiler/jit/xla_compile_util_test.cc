@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 namespace {
@@ -116,6 +117,32 @@ TEST(XlaCompileUtilTest, PjRtXlaCompileOnDemandFlagTest) {
   // The requested device is allowlisted, but the flag is turned off.
   rollout_config.enabled_for_compile_on_demand_ = false;
   EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
+}
+
+TEST(XlaCompileUtilTest, PjRtDeviceCompilerResourceName) {
+  EXPECT_EQ(GetPjRtDeviceCompilerResourceName(DeviceType(DEVICE_TPU)),
+            "pjrt_device_compiler_TPU");
+  EXPECT_EQ(GetPjRtDeviceCompilerResourceName(DeviceType(DEVICE_TPU_NODE)),
+            "pjrt_device_compiler_TPU");
+  EXPECT_EQ(GetPjRtDeviceCompilerResourceName(DeviceType(DEVICE_CPU)),
+            "pjrt_device_compiler_CPU");
+  EXPECT_EQ(GetPjRtDeviceCompilerResourceName(DeviceType(DEVICE_GPU)),
+            "pjrt_device_compiler_GPU");
+}
+
+TEST(XlaCompileUtilTest, PjRtDeviceCompilationProfilerResourceName) {
+  EXPECT_EQ(
+      GetPjRtDeviceCompilationProfilerResourceName(DeviceType(DEVICE_TPU)),
+      "pjrt_device_compilation_profiler_TPU");
+  EXPECT_EQ(
+      GetPjRtDeviceCompilationProfilerResourceName(DeviceType(DEVICE_TPU_NODE)),
+      "pjrt_device_compilation_profiler_TPU");
+  EXPECT_EQ(
+      GetPjRtDeviceCompilationProfilerResourceName(DeviceType(DEVICE_CPU)),
+      "pjrt_device_compilation_profiler_CPU");
+  EXPECT_EQ(
+      GetPjRtDeviceCompilationProfilerResourceName(DeviceType(DEVICE_GPU)),
+      "pjrt_device_compilation_profiler_GPU");
 }
 
 }  // namespace

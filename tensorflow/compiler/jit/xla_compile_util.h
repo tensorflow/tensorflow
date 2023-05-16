@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/core/graph/graph.h"
@@ -47,6 +48,14 @@ StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
 // Checks if single device compilation and execution with PJRT is enabled for
 // `device_type` in either the XlaLaunch op or the XlaCompileOnDemand op.
 bool UsePjRtForSingleDeviceCompilation(const DeviceType& device_type);
+
+// Gets the resource name of the PjRt DeviceCompiler for `device_type`.
+std::string GetPjRtDeviceCompilerResourceName(const DeviceType& device_type);
+
+// Gets the resource name of the DeviceCompilationProfiler for `device_type`
+// when PjRt is used for compilation and execution.
+std::string GetPjRtDeviceCompilationProfilerResourceName(
+    const DeviceType& device_type);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_

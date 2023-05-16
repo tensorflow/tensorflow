@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -171,46 +172,8 @@ Status XlaCompileOnDemandOp::Compile(
     DeviceCompilationProfiler** profiler,
     const XlaCompiler::CompilationResult** result,
     xla::PjRtLoadedExecutable** executable) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = ctx->resource_manager();
-  if (!rm) {
-    return errors::Internal("No resource manager.");
-  }
-
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<PjRtDeviceCompiler>(
-      rm->default_container(), "pjrt_device_compiler", pjrt_device_compiler,
-      [&](PjRtDeviceCompiler** pjrt_device_compiler) {
-        return BuildPjRtDeviceCompiler(platform_info_, ctx->function_library(),
-                                       pjrt_device_compiler);
-      }));
-
-  auto* existing_pjrt_client = (*pjrt_device_compiler)->client();
-  TF_ASSIGN_OR_RETURN(auto* latest_pjrt_client,
-                      GetPjRtClient(platform_info_.device_type()));
-  if (existing_pjrt_client != latest_pjrt_client) {
-    // PjRtClient has changed. Delete the PjRtDeviceCompiler (and the cache
-    // within) and create a new one.
-    TF_RETURN_IF_ERROR(rm->Delete<PjRtDeviceCompiler>(rm->default_container(),
-                                                      "pjrt_device_compiler"));
-    VLOG(2) << "PjRtClient has changed. Deleted the old PJRT DeviceCompiler.";
-
-    TF_RETURN_IF_ERROR(rm->LookupOrCreate<PjRtDeviceCompiler>(
-        rm->default_container(), "pjrt_device_compiler", pjrt_device_compiler,
-        [&](PjRtDeviceCompiler** pjrt_device_compiler) {
-          VLOG(2) << "Creating a new PJRT device compiler for device: "
-                  << ctx->device()->name();
-          return BuildPjRtDeviceCompiler(
-              platform_info_, ctx->function_library(), pjrt_device_compiler);
-        }));
-  }
-
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
-      rm->default_container(), "pjrt_device_compilation_profiler", profiler,
-      [](DeviceCompilationProfiler** profiler) {
-        *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
-      }));
+  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info_, ctx->function_library(), pjrt_device_compiler, profiler));
 
   XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
       *(ctx->function_library()), ctx->device(), platform_info_);
