@@ -272,6 +272,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::UpperBoundOp>(),
             TypeID::get<TF::WhereOp>(),
             TypeID::get<TF::XlaBroadcastHelperOp>(),
+            TypeID::get<TF::XlaCallModuleOp>(),
             TypeID::get<TF::XlaCustomCallV2Op>(),
             TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
             TypeID::get<TF::XlaKeyValueSortOp>(),
