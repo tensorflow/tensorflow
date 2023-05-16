@@ -60,10 +60,19 @@ class SessionSnapshot {
   // Gets the run directory of the profile session.
   absl::string_view GetSessionRunDir() const { return session_run_dir_; }
 
+  // Gets whether the session has an accessible run dir. If false, any
+  // path-based file read will be disabled in this mode.
+  bool HasAccessibleRunDir() const { return has_accessible_run_dir_; }
+
  private:
   SessionSnapshot(std::vector<std::string> xspace_paths,
                   std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces)
-      : xspace_paths_(std::move(xspace_paths)), xspaces_(std::move(xspaces)) {
+      : xspace_paths_(std::move(xspace_paths)),
+        // If the snapshot was initialized by xspaces, the file path and run dir
+        // is a path tensorflow can't read from or write to so any file IO
+        // encapsulated in this class will be disabled in this mode.
+        has_accessible_run_dir_(!xspaces.has_value()),
+        xspaces_(std::move(xspaces)) {
     session_run_dir_ = tensorflow::io::Dirname(xspace_paths_.at(0));
     for (size_t i = 0; i < xspace_paths_.size(); ++i) {
       std::string host_name = GetHostname(i);
@@ -78,6 +87,8 @@ class SessionSnapshot {
 
   absl::flat_hash_map<std::string /*host_name*/, size_t /*index*/>
       hostname_map_;
+
+  const bool has_accessible_run_dir_;
 
   // XSpace protos pre-loaded by the profiler plugin.
   // TODO(profiler): Use blobstore paths to initialize SessionSnapshot instead

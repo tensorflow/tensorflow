@@ -38,6 +38,7 @@ TEST(Repository, GetHostName) {
   TF_CHECK_OK(session_snapshot_or.status());
   EXPECT_THAT(session_snapshot_or.value().GetHostname(0), Eq("hostname0"));
   EXPECT_THAT(session_snapshot_or.value().GetHostname(1), Eq("hostname1"));
+  EXPECT_TRUE(session_snapshot_or.value().HasAccessibleRunDir());
 }
 
 TEST(Repository, GetSpaceByHostName) {
@@ -62,6 +63,7 @@ TEST(Repository, GetSpaceByHostName) {
   auto xspace0_or = session_snapshot_or.value().GetXSpaceByName("hostname0");
   TF_CHECK_OK(xspace0_or.status());
   auto xspace1_or = session_snapshot_or.value().GetXSpaceByName("hostname1");
+  EXPECT_FALSE(session_snapshot_or.value().HasAccessibleRunDir());
   TF_CHECK_OK(xspace1_or.status());
   EXPECT_THAT(xspace0_or.value()->hostnames(0), Eq("hostname0"));
   EXPECT_THAT(xspace1_or.value()->hostnames(0), Eq("hostname1"));
