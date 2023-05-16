@@ -1892,10 +1892,10 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
       // Stop move instruction if the memory pressure is too high.
       if (move_in_or_out.second > 0 &&
           move_in_or_out.second / move_in_or_out.first.size() >
-              kMemoryAllowance) {
+              memory_increase_allowance_) {
         VLOG(1) << "Stop moving operands because of memory pressure: "
                 << move_in_or_out.second << " / " << move_in_or_out.first.size()
-                << " > " << kMemoryAllowance << "\n";
+                << " > " << memory_increase_allowance_ << "\n";
         benefit = -1;
       } else {
         VLOG(1) << "Increase memory pressure by " << move_in_or_out.second
