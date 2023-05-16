@@ -58,7 +58,7 @@ namespace bar {
 // Memory stats:
 //   arg bytes total:    392
 //   arg bytes aligned:  576
-//   temp bytes total:   126
+//   temp bytes total:   171
 //   temp bytes aligned: 512
 class MyClass final : public tensorflow::XlaCompiledCpuFunction {
  public:
@@ -354,18 +354,18 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
     static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 2ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 3ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 4ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
+::xla::cpu_function_runtime::BufferInfo(97ULL, ~0U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(34ULL, 0U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(5ULL, ~0U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(386ULL, 1U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(5ULL, ~0U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(386ULL, 2U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(5ULL, ~0U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(386ULL, 3U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(481ULL, ~0U, 0U),
+::xla::cpu_function_runtime::BufferInfo(386ULL, 4U, ~0U),
+::xla::cpu_function_runtime::BufferInfo(17ULL, ~0U, 1U),
+::xla::cpu_function_runtime::BufferInfo(81ULL, ~0U, 2U)
       };
     return kBufferInfos;
   }
@@ -378,7 +378,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // The 0-based index of the result tuple in the temporary buffers.
-  static constexpr size_t kResultIndex = 11;
+  static constexpr size_t kResultIndex = 0;
 
   // Array of names of each positional argument, terminated by nullptr.
   static const char** StaticArgNames() {
