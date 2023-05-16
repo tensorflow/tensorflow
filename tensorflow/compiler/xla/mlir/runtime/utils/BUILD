@@ -62,3 +62,13 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
 )
+
+cc_library(
+    name = "float_16bits",
+    hdrs = ["float_16bits.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//mlir:mlir_float16_utils",
+    ],
+)

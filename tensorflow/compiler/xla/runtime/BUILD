@@ -212,6 +212,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
         "//tensorflow/compiler/xla/mlir/runtime/utils:c_runner_utils",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:float_16bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
