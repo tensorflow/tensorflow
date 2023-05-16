@@ -140,7 +140,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
 #if TENSORFLOW_USE_ROCM
   // ROCm uses hsaco hashes to distinguish between modules.
   // Bad things happen if multiple modules with identical code are loaded.
-  binary_.reserve(binary_.size() + 272);
+  binary_.resize(binary_.size() + 16);
   *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
