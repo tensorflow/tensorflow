@@ -4994,7 +4994,6 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
                        << "): " << request.use->hlo_use.ToString();
         }
       }
-      request.allocation_value->allocation_sequence()->back();
       return Result::kSuccess;
     }
     // Warn if there was a preferred prefetch time but we couldn't actually
