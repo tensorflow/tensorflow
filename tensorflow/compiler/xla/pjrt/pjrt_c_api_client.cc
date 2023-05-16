@@ -40,9 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 
-// TODO(b/238999986): Remove this when we have decomposed shape.
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-
 namespace xla {
 
 // Helper macros
@@ -1186,6 +1183,77 @@ const Shape& PjRtCApiBuffer::on_device_shape() const {
   return shape_.value();
 }
 
+namespace {
+
+// TODO(b/238999986): these utilities exist only to serialize an XLA shape, and
+// will likely be removed, in favor of a more targeted representation of shapes.
+
+// Helper functions for creating a view of possibly-inlined C arrays.
+
+// 'Src' and 'Dst' are allowed to be different types to make this usable with
+// memory-identical types, e.g. int64_t and int64_t. This should not be used
+// with types that require a static_cast.
+template <typename Dst, typename Src, typename SrcList>
+static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
+  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
+  const Src* src = src_list.size > PJRT_C_API_MAX_INLINED
+                       ? src_list.heap
+                       : &src_list.inlined[0];
+  return absl::Span<const Dst>(reinterpret_cast<const Dst*>(src),
+                               src_list.size);
+}
+
+absl::Span<const int> MakeSpan(const PJRT_IntList& src_list) {
+  return MakeSpanBase<int, int, PJRT_IntList>(src_list);
+}
+
+absl::Span<const int64_t> MakeSpan(const PJRT_Int64List& src_list) {
+  return MakeSpanBase<int64_t, int64_t, PJRT_Int64List>(src_list);
+}
+
+absl::Span<const bool> MakeSpan(const PJRT_BoolList& src_list) {
+  return MakeSpanBase<bool, bool, PJRT_BoolList>(src_list);
+}
+
+xla::Tile FromC(const PJRT_XLA_Tile* c_tile) {
+  absl::Span<const int64_t> dims = MakeSpan(c_tile->dimensions);
+  return xla::Tile(dims);
+}
+
+xla::Layout FromC(const PJRT_XLA_Layout* c_layout) {
+  absl::Span<const int64_t> minor_to_major = MakeSpan(c_layout->minor_to_major);
+  absl::Span<const int> dim_level_type_ints =
+      MakeSpan(c_layout->dim_level_types);
+  xla::DimLevelTypeVector dim_level_types;
+  dim_level_types.reserve(dim_level_type_ints.size());
+  for (int dim_level_type : dim_level_type_ints) {
+    dim_level_types.push_back(static_cast<xla::DimLevelType>(dim_level_type));
+  }
+  absl::Span<const int> dim_unique_ints = MakeSpan(c_layout->dim_unique);
+  absl::InlinedVector<bool, xla::InlineRank()> dim_unique(
+      dim_unique_ints.begin(), dim_unique_ints.end());
+  absl::Span<const int> dim_ordered_ints = MakeSpan(c_layout->dim_unique);
+  absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(
+      dim_ordered_ints.begin(), dim_ordered_ints.end());
+  absl::InlinedVector<xla::Tile, 1> tiles;
+  const PJRT_XLA_Tile* c_tiles = c_layout->tiles.size > PJRT_C_API_MAX_INLINED
+                                     ? c_layout->tiles.heap
+                                     : c_layout->tiles.inlined;
+  tiles.reserve(c_layout->tiles.size);
+  for (int i = 0; i < c_layout->tiles.size; ++i) {
+    tiles.push_back(FromC(&c_tiles[i]));
+  }
+  return xla::Layout(
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
+      static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
+      c_layout->element_size_in_bits, c_layout->memory_space,
+      /*physical_shape=*/nullptr,
+      c_layout->dynamic_shape_metadata_prefix_bytes);
+}
+
+}  // namespace
+
 static Shape GetDeviceShape(PJRT_Buffer* c_buffer, const PJRT_Api* api,
                             bool is_logical_on_device_shape) {
   PJRT_Buffer_OnDeviceTrimmedShape_Args args;
@@ -1201,31 +1269,30 @@ static Shape GetDeviceShape(PJRT_Buffer* c_buffer, const PJRT_Api* api,
 
   CHECK_NE(element_type, xla::PrimitiveType::TUPLE);
 
-  absl::Span<const int64_t> dims = ApiConverter::MakeSpan(args.dimensions);
-  absl::Span<const bool> dynamic_dims =
-      ApiConverter::MakeSpan(args.dynamic_dimensions);
+  absl::Span<const int64_t> dims = MakeSpan(args.dimensions);
+  absl::Span<const bool> dynamic_dims = MakeSpan(args.dynamic_dimensions);
 
   Shape trimmed_shape = Shape(element_type, dims, dynamic_dims, {});
 
   if (args.has_layout) {
-    *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
+    *(trimmed_shape.mutable_layout()) = FromC(&args.layout);
   }
 
   // TODO(amangu): Refactor the deletion.
-  if (args.dimensions.size > TPU_C_API_MAX_INLINED) {
+  if (args.dimensions.size > PJRT_C_API_MAX_INLINED) {
     delete[] args.dimensions.heap;
   }
 
-  if (args.dynamic_dimensions.size > TPU_C_API_MAX_INLINED) {
+  if (args.dynamic_dimensions.size > PJRT_C_API_MAX_INLINED) {
     delete[] args.dynamic_dimensions.heap;
   }
 
   if (args.has_layout) {
-    if (args.layout.minor_to_major.size > TPU_C_API_MAX_INLINED) {
+    if (args.layout.minor_to_major.size > PJRT_C_API_MAX_INLINED) {
       delete[] args.layout.minor_to_major.heap;
     }
 
-    if (args.layout.tiles.size > TPU_C_API_MAX_INLINED) {
+    if (args.layout.tiles.size > PJRT_C_API_MAX_INLINED) {
       delete[] args.layout.tiles.heap;
     }
   }

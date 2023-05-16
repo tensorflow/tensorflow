@@ -20,9 +20,6 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-// TODO(b/238999986): Remove this.
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
 
@@ -1020,6 +1017,58 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Destroy_Args, buffer);
 // called and frees `buffer`. `buffer` can be nullptr.
 typedef PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 
+// Maximum number of array elements to inline into structs for performance.
+#define PJRT_C_API_MAX_INLINED 6
+
+typedef struct PJRT_IntList {
+  union {
+    int* heap;  // owned
+    int inlined[PJRT_C_API_MAX_INLINED];
+  };
+  int64_t size;
+} PJRT_IntList;
+
+typedef struct PJRT_Int64List {
+  union {
+    int64_t* heap;  // owned
+    int64_t inlined[PJRT_C_API_MAX_INLINED];
+  };
+  int64_t size;
+} PJRT_Int64List;
+
+typedef struct PJRT_BoolList {
+  union {
+    bool* heap;  // owned
+    bool inlined[PJRT_C_API_MAX_INLINED];
+  };
+  int64_t size;
+} PJRT_BoolList;
+
+typedef struct PJRT_XLA_Tile {
+  PJRT_Int64List dimensions;
+} PJRT_XLA_Tile;
+
+typedef struct PJRT_XLA_TileList {
+  union {
+    PJRT_XLA_Tile* heap;  // owned
+    PJRT_XLA_Tile inlined[PJRT_C_API_MAX_INLINED];
+  };
+  int64_t size;
+} PJRT_XLA_TileList;
+
+typedef struct PJRT_XLA_Layout {
+  PJRT_Int64List minor_to_major;
+  PJRT_IntList dim_level_types;
+  PJRT_IntList dim_unique;
+  PJRT_IntList dim_ordered;
+  PJRT_XLA_TileList tiles;
+  int index_primitive_type;
+  int pointer_primitive_type;
+  int64_t element_size_in_bits;
+  int64_t memory_space;
+  int64_t dynamic_shape_metadata_prefix_bytes;
+} PJRT_XLA_Layout;
+
 // This trimmed shape doesn't have any Tuple information. In case of Tuple,
 // assert is triggered from the C API  Client.
 // TODO(b/238999986): This is a temporary solution. Remove this later.
@@ -1027,13 +1076,13 @@ struct PJRT_Buffer_OnDeviceTrimmedShape_Args {
   size_t struct_size;
   void* priv;
   PJRT_Buffer* buffer;
-  int element_type;             // out
-  Int64List dimensions;         // out
-  BoolList dynamic_dimensions;  // out
+  int element_type;                  // out
+  PJRT_Int64List dimensions;         // out
+  PJRT_BoolList dynamic_dimensions;  // out
   bool has_layout;
   // Whether it calls logical_on_device_shape.
   bool is_logical_on_device_shape;
-  XLA_Layout layout;  // out
+  PJRT_XLA_Layout layout;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
 
