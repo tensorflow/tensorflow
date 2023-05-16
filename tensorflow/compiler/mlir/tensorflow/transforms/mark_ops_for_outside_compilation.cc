@@ -398,6 +398,7 @@ void UnmarkChildren(ModuleOp module) {
 }
 
 constexpr int kTooManyOutsideCompileRegionThreshold = 32;
+constexpr int kOpDetailCount = 8;
 
 void WarnOnExcessOutsideCompilationOps(ModuleOp module) {
   // Count the number of outside compilation ops. If it exceeds the reporting
@@ -410,8 +411,9 @@ void WarnOnExcessOutsideCompilationOps(ModuleOp module) {
   });
 
   if (outside_compile_ops.size() > kTooManyOutsideCompileRegionThreshold) {
-    llvm::SmallVector<std::string, 8> op_info;
-    for (auto& op : outside_compile_ops) {
+    llvm::SmallVector<std::string, kOpDetailCount> op_info;
+    for (int i = 0; i < kOpDetailCount; ++i) {
+      auto& op = outside_compile_ops[i];
       op_info.push_back(tensorflow::OpAsString(*op));
     }
 
