@@ -881,7 +881,7 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_test.cc"],
     data = [
         ":test_op1.so",
