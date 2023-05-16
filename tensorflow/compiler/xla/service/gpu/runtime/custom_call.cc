@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 
+#include <exception>
 #include <string>
 #include <string_view>
 
@@ -100,9 +101,21 @@ static absl::Status XlaCustomCallImpl(
         void (*)(se::gpu::GpuStreamHandle, void**, const char*, size_t);
     auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
 
-    xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
-                    buffers.data(), backend_config.data(),
-                    backend_config.size());
+    // As this is calling an external library, we should catch the
+    // error as there isn't another working correctly path to return
+    // an error to XLA.
+    try {
+      xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
+                      buffers.data(), backend_config.data(),
+                      backend_config.size());
+    } catch (std::exception& e) {
+      return absl::UnknownError(
+          absl::StrCat(call_target_name,
+                       " XLA extension have thrown an exception: ", e.what()));
+    } catch (...) {
+      return absl::UnknownError(absl::StrCat(
+          call_target_name, " XLA extension have thrown an exception."));
+    }
 
     return absl::OkStatus();
   }
@@ -116,9 +129,21 @@ static absl::Status XlaCustomCallImpl(
     auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
 
     XlaCustomCallStatus custom_call_status;
-    xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
-                    buffers.data(), backend_config.data(),
-                    backend_config.size(), &custom_call_status);
+    // As this is calling an external library, we should catch the
+    // error as there isn't another working correctly path to return
+    // an error to XLA.
+    try {
+      xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
+                      buffers.data(), backend_config.data(),
+                      backend_config.size(), &custom_call_status);
+    } catch (std::exception& e) {
+      return absl::UnknownError(
+          absl::StrCat(call_target_name,
+                       " XLA extension have thrown an exception: ", e.what()));
+    } catch (...) {
+      return absl::UnknownError(absl::StrCat(
+          call_target_name, " XLA extension have thrown an exception."));
+    }
 
     if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
       return absl::InternalError(message.value());
