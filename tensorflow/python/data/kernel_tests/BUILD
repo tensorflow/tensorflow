@@ -545,6 +545,7 @@ tf_py_strict_test(
     name = "interleave_test",
     size = "small",
     srcs = ["interleave_test.py"],
+    flaky = True,
     shard_count = 24,
     deps = [
         ":checkpoint_test_base",

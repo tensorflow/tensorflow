@@ -964,7 +964,6 @@ def set_other_cuda_vars(environ_cp):
 
 def system_specific_test_config(environ_cp):
   """Add default build and test flags required for TF tests to bazelrc."""
-  write_to_bazelrc('test --flaky_test_attempts=2')
   write_to_bazelrc('test --test_size_filters=small,medium')
 
   # Each instance of --test_tag_filters or --build_tag_filters overrides all

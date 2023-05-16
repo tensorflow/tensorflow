@@ -854,6 +854,7 @@ tf_xla_py_test(
         "gpu",
         "gpu_a100",
     ],
+    flaky = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [

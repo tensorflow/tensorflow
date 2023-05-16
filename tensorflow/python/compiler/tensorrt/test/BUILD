@@ -447,6 +447,7 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "rank_two_test",
     srcs = ["rank_two_test.py"],
+    flaky = True,
     python_version = "PY3",
     tags = base_tags,
     xla_enable_strict_auto_jit = False,

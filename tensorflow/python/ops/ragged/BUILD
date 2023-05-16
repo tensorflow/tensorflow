@@ -1532,6 +1532,7 @@ py_strict_test(
 py_strict_test(
     name = "ragged_cross_op_test",
     srcs = ["ragged_cross_op_test.py"],
+    flaky = True,
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
