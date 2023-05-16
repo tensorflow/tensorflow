@@ -78,16 +78,18 @@ TEST_F(XlaHostRecvDeviceContextTest, CopyDeviceTensorToCPU) {
 
   // Copy the cpu_tensor to the GPU first before trying to copy it back.
   stream.ThenMemcpy(&gpu_dst, origin_cpu_tensor.data(), gpu_dst.size());
-  Status status = stream.BlockHostUntilDone();
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   tsl::AsyncValueRef<se::Event> done_event =
       tsl::MakeConstructedAsyncValueRef<se::Event>(stream.parent());
   done_event->Init();
-  XlaHostRecvDeviceContext device_context(&stream, gpu_dst, shape, done_event);
-  TF_ASSERT_OK(device_context.CopyDeviceTensorToCPUSync(
+  XlaHostRecvDeviceContext* device_context =
+      new XlaHostRecvDeviceContext(&stream, gpu_dst, shape, done_event);
+  TF_ASSERT_OK(device_context->CopyDeviceTensorToCPUSync(
       &device_tensor, "", device_.get(), &dest_cpu_tensor));
 
   tensorflow::test::ExpectClose(origin_cpu_tensor, dest_cpu_tensor);
+  device_context->Unref();
 }
 
 }  // namespace
