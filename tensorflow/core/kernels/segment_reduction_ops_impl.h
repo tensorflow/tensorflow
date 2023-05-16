@@ -362,7 +362,7 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     T* out_ptr = output.data();
     ReductionF reduction;
 
-    bool data_is_1D = data.dimensions()[1] == 1;
+    bool data_is_1D = inner_dim == 1;
 
     // `num_real_segment` counts the rows actually reduced from input,
     // the rows with negative segment index will be excluded.
