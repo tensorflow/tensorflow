@@ -183,7 +183,7 @@ struct ConvertNdConvOp {
 
     auto num_spatial_dims =
         conv_op.getDimensionNumbers().getInputSpatialDimensions().size();
-    // TODO(b/158636600): Currently we don't support 3D Convolution.
+    // TODO: b/158636600 - Currently we don't support 3D Convolution.
     if (num_spatial_dims != SupportedSpatialDims) return false;
 
     return true;
@@ -203,6 +203,20 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     //
     // Check that input is a supported 1d convolution.
     //
+
+    // stablehlo.convolution allows ops without window strides, where default
+    // value 1 will be set for each spatial dimension. However, window_strides
+    // are needed for mhlo.convolution -> tf.Conv2D conversion. Therefore, in
+    // this conversion path have a fallback to set window strides if not set.
+    if (!conv_op.getWindowStrides().has_value()) {
+      const int window_strides_size =
+          conv_op.getDimensionNumbers().getInputSpatialDimensions().size();
+      std::vector<int64_t> window_strides_2d_array_default(window_strides_size,
+                                                           1);
+      DenseIntElementsAttr window_strides_2d_default =
+          rewriter.getI64TensorAttr(window_strides_2d_array_default);
+      conv_op.setWindowStridesAttr(window_strides_2d_default);
+    }
 
     if (!IsSupportedConvOp(conv_op) || conv_op->getNumResults() != 1)
       return rewriter.notifyMatchFailure(conv_op, "unsupported conv op.");

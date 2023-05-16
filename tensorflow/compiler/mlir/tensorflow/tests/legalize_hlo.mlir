@@ -1733,13 +1733,25 @@ func.func @no_convert_conv1d_feature_group_gt_1(%arg0: tensor<16x32x256xbf16>, %
   func.return %0 : tensor<16x32x128xbf16>
 }
 
-// CHECK-LABEL:   func.func @no_convert_conv1d_missing_windows_strides(
-// CHECK-SAME:                                                         %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
-// CHECK-SAME:                                                         %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
-// CHECK:           %[[VAL_2:.*]] = mhlo.convolution(%[[VAL_0]], %[[VAL_1]]) dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f], window = {pad = {{\[\[}}0, 0]], lhs_dilate = [1], rhs_dilate = [1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<16x32x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16>
-// CHECK:           return %[[VAL_2]] : tensor<16x32x256xbf16>
+// CHECK-LABEL:   func.func @convert_conv1d_missing_windows_strides_fallback(
+// CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
+// CHECK-SAME:                              %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+// CHECK-DAG:       %[[VAL_2:.*]] = arith.constant dense<[16, 32, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<16x32x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_5:.*]] = "tf.Transpose"(%[[VAL_3]], %[[VAL_4]]) : (tensor<16x32x256x1xbf16>, tensor<4xi64>) -> tensor<16x32x1x256xbf16>
+// CHECK-DAG:       %[[VAL_6:.*]] = arith.constant dense<[1, 256, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_7:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_6]]) : (tensor<1x256x256xbf16>, tensor<4xi64>) -> tensor<1x256x256x1xbf16>
+// CHECK-DAG:       %[[VAL_8:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_9:.*]] = "tf.Transpose"(%[[VAL_7]], %[[VAL_8]]) : (tensor<1x256x256x1xbf16>, tensor<4xi64>) -> tensor<1x1x256x256xbf16>
+// CHECK:           %[[VAL_10:.*]] = "tf.Conv2D"(%[[VAL_5]], %[[VAL_9]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<16x32x1x256xbf16>, tensor<1x1x256x256xbf16>) -> tensor<16x32x1x256xbf16>
+// CHECK:           %[[VAL_11:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_12:.*]] = "tf.Transpose"(%[[VAL_10]], %[[VAL_11]]) : (tensor<16x32x1x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK:           %[[VAL_13:.*]] = arith.constant dense<[16, 32, 256]> : tensor<3xi64>
+// CHECK:           %[[VAL_14:.*]] = "tf.Reshape"(%[[VAL_12]], %[[VAL_13]]) : (tensor<16x32x256x1xbf16>, tensor<3xi64>) -> tensor<16x32x256xbf16>
+// CHECK:           return %[[VAL_14]] : tensor<16x32x256xbf16>
 // CHECK:         }
-func.func @no_convert_conv1d_missing_windows_strides(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+func.func @convert_conv1d_missing_windows_strides_fallback(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,
@@ -1750,6 +1762,25 @@ func.func @no_convert_conv1d_missing_windows_strides(%arg0: tensor<16x32x256xbf1
     rhs_dilation = dense<1> : tensor<1xi64>
   } : (tensor<16x32x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16>
   func.return %0 : tensor<16x32x256xbf16>
+}
+
+// CHECK-LABEL:   func.func @convert_conv1d_missing_windows_strides_fallback_2(
+// CHECK-SAME:                              %[[VAL_0:.*]]: tensor<1x64x64x4xbf16>,
+// CHECK-SAME:                              %[[VAL_1:.*]]: tensor<3x3x4x320xbf16>) -> tensor<1x62x62x320xbf16> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Conv2D"(%[[VAL_0]], %[[VAL_1]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<1x64x64x4xbf16>, tensor<3x3x4x320xbf16>) -> tensor<1x62x62x320xbf16>
+// CHECK:           return %[[VAL_2]] : tensor<1x62x62x320xbf16>
+// CHECK:         }
+func.func @convert_conv1d_missing_windows_strides_fallback_2(%arg0: tensor<1x64x64x4xbf16>, %arg1: tensor<3x3x4x320xbf16>) -> tensor<1x62x62x320xbf16> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x64x64x4xbf16>, tensor<3x3x4x320xbf16>) -> tensor<1x62x62x320xbf16>
+  func.return %0 : tensor<1x62x62x320xbf16>
 }
 
 // CHECK-LABEL:   func @convert_conv2d(
