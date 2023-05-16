@@ -108,6 +108,14 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                            const Shape& target_shape,
                                            const HloSharding& sharding);
 
+// Propagates sharding through reshape. It tries to find partial matches on
+// subsets of dimensions that could satisfy ReshapeSharding() constraints, then
+// combine them. It doesn't require all dimensions to satisfy the constraints
+// of ReshapeSharding().
+HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
+                                            const Shape& target_shape,
+                                            const HloSharding& sharding);
+
 // Returns the HloSharding with the tile dimensions and tile assignment
 // reversed based on the specified dimension numbers. In case of a tile
 // maximal sharding returns the original sharding.

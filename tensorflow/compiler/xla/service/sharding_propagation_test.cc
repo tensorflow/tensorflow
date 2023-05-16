@@ -1359,6 +1359,39 @@ ENTRY %reshape {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, ReshapeForwardPassPartialMatch) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[14,32] parameter(0),
+    sharding={devices=[4,4]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 metadata={op_name="a"}}
+  %reshape = f32[7,2,2,16] reshape(%param0)
+  ROOT %copy = f32[7,2,2,16] copy(%reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "reshape");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction,
+              op::Sharding("{devices=[1,1,2,2,4]0,4,8,12,1,5,9,13,2,6,10,14,3,"
+                           "7,11,15 last_tile_dim_replicate}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, ReshapeBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module
