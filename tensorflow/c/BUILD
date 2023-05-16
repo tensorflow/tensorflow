@@ -806,6 +806,7 @@ tf_cuda_library(
         "//tensorflow/core/kernels/data:optional_ops_util",
         "//tensorflow/core/platform:abi",
     ]),
+    alwayslink = 1,
 )
 
 tf_cuda_library(
