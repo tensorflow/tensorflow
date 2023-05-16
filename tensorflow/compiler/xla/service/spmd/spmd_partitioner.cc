@@ -570,7 +570,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
         return *this;
       }
       LOG(ERROR)
-          << "[spmd] Involuntary full rematerialization. The compiled was "
+          << "[spmd] Involuntary full rematerialization. The compiler was "
              "not able to go from sharding "
           << sharding().ToString(/*include_metadata=*/true) << " to "
           << target.ToString(/*include_metadata=*/true)
