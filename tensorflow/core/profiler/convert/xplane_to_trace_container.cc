@@ -176,6 +176,8 @@ void ConvertXLineToTraceEventsContainer(uint32_t device_id,
       container->AddCompleteEvent(event_name, *resource_id, device_id, span,
                                   &raw_data, special_args.group_id);
     }
+    // Cleanup hoisted structure for next event.
+    if (raw_data.has_args()) raw_args->clear_arg();
   });
 }
 
