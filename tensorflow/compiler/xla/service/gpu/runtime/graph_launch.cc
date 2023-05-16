@@ -185,7 +185,11 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
         .status();
   });
 
-  if (!captured.ok()) return captured.status();
+  if (!captured.ok()) {
+    return InternalError("CaptureCudaGraph failed (%s): %s",
+                         error.empty() ? "<no details>" : error,
+                         captured.status().ToString());
+  }
   return std::move(*captured);
 }
 
@@ -227,8 +231,15 @@ static absl::Status RunGraphWithoutCapture(
     return absl::InvalidArgumentError("Unsupported argument type");
   }
 
-  return function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode())
-      .status();
+  auto status =
+      function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode())
+          .status();
+  if (!status.ok()) {
+    return InternalError("RunGraphWithoutCapture failed (%s): %s",
+                         error.empty() ? "<no details>" : error,
+                         status.ToString());
+  }
+  return absl::OkStatus();
 }
 
 #endif  // #if GOOGLE_CUDA
