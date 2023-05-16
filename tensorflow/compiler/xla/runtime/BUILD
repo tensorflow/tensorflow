@@ -108,6 +108,7 @@ cc_library(
         ":errors",
         ":logical_result",
         ":map_by_type",
+        ":memref_view",
         ":state",
         ":type_id",
         "//tensorflow/compiler/xla:shape_util",
@@ -379,6 +380,16 @@ cc_library(
         "memory_mapper",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
     ),
+)
+
+cc_library(
+    name = "memref_view",
+    hdrs = ["memref_view.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(

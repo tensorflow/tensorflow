@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_abi.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/map_by_type.h"
+#include "tensorflow/compiler/xla/runtime/memref_view.h"
 #include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
@@ -1097,32 +1098,6 @@ constexpr int64_t CustomCallHandler<checks, Fn, Ts...>::kNumRets;
 //===----------------------------------------------------------------------===//
 // Custom arguments decoding.
 //===----------------------------------------------------------------------===//
-
-// A view into the memref argument. Corresponds to the MemrefDesc, however it
-// doesn't own the sizes/strides vectors, and cheap to pass around. Memrefs with
-// non-identity layouts can be decoded only as a StridedMemrefView.
-struct StridedMemrefView {
-  PrimitiveType dtype;
-  void* data;
-  absl::Span<const int64_t> sizes;
-  absl::Span<const int64_t> strides;
-};
-
-// A view into the memref argument with an identity (row major) layout.
-struct MemrefView {
-  PrimitiveType dtype;
-  void* data;
-  absl::Span<const int64_t> sizes;
-};
-
-// A flat view into memref argument with an identity (row major) layout. If the
-// memref shape and strides are not required for the custom call, it's cheaper
-// to pass the flat view.
-struct FlatMemrefView {
-  PrimitiveType dtype;
-  void* data;
-  int64_t size_in_bytes;
-};
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const StridedMemrefView&);
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const MemrefView&);
