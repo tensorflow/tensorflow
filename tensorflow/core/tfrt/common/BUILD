@@ -184,10 +184,6 @@ cc_library(
     name = "pjrt_client_factory_options",
     hdrs = ["pjrt_client_factory_options.h"],
     visibility = [":friends"],
-    deps = [
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
-    ],
 )
 
 cc_library(
