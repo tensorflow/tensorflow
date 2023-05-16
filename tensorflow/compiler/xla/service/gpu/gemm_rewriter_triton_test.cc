@@ -416,6 +416,48 @@ ENTRY e {
             HloOpcode::kReduce);
 }
 
+TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
+  const std::string kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
+  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
+  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
+  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
+  parameter_1 = bf16[16,128]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{0,1} dot(convert.8, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  p1 = bf16[16,128]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{0,1} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  tensorflow::AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(4);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+
+  TF_EXPECT_OK(VerifyHloModule(module.get(), /*layout_sensitive=*/true,
+                               /*allow_mixed_precision=*/false));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kReduce);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
+            Layout({0, 1}));
+}
+
 TEST_F(SplitKTest, MakeSplitKWithExistingBatchDim) {
   const std::string hlo_text = R"(
 HloModule m
