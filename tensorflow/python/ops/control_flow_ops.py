@@ -722,7 +722,7 @@ class CondContext(ControlFlowContext):
   @property
   def back_prop(self):
     if self.GetWhileContext():
-      self.GetWhileContext().back_prop
+      return self.GetWhileContext().back_prop
     return False
 
   def GetControlPivot(self):
