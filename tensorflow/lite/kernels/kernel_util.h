@@ -204,7 +204,7 @@ inline bool IsConstantOrPersistentTensor(const TfLiteTensor* tensor) {
 inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteDynamic;
 }
-
+#ifndef TF_LITE_STATIC_MEMORY
 // Sets tensor to dynamic.
 inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
@@ -220,6 +220,7 @@ inline void SetTensorToPersistentRo(TfLiteTensor* tensor) {
     tensor->allocation_type = kTfLitePersistentRo;
   }
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Determines whether it is a hybrid op - one that has float inputs and
 // quantized weights.
