@@ -190,6 +190,7 @@ class RPCState : public GrpcClientCQTag {
       if (target_) {
         strings::StrAppend(&error_msg, " from remote target ", *target_);
       }
+      strings::StrAppend(&error_msg, " while calling ", method_);
       strings::StrAppend(&error_msg, ":\n:", context_->debug_error_string());
       s = errors::CreateWithUpdatedMessage(s, error_msg);
       // Always treat gRPC cancellation as a derived error. This ensures that

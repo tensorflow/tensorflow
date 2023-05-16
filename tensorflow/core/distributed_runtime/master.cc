@@ -637,7 +637,9 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
       if (worker) {
         worker->CleanupAllAsync(
             &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
-              TF_CHECK_OK(s);
+              if (!s.ok()) {
+                LOG(ERROR) << "Worker CleanupAll failed: " << s;
+              }
               env_->worker_cache->ReleaseWorker(worker_name, worker);
               n[c].Notify();
             });
