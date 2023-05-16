@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -7,7 +7,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "profiler",
     srcs = ["profiler.py"],
     srcs_version = "PY3",
@@ -21,29 +21,32 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:c_api_util",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":profiler_client",
+        ":profiler_v2",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "profiler_v2",
     srcs = ["profiler_v2.py"],
     srcs_version = "PY3",
@@ -56,7 +59,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "profiler_v2_test",
     srcs = ["profiler_v2_test.py"],
     python_version = "PY3",
@@ -65,14 +68,16 @@ cuda_py_test(
     ],
     deps = [
         ":profiler_v2",
+        ":trace",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/profiler:trace",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "profiler_wrapper_test",
     srcs = ["profiler_wrapper_test.py"],
     python_version = "PY3",
@@ -81,11 +86,12 @@ py_test(
     ],
     deps = [
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
     srcs_version = "PY3",
@@ -95,7 +101,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "model_analyzer",
     srcs = ["model_analyzer.py"],
     srcs_version = "PY3",
@@ -104,12 +110,14 @@ py_library(
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:errors",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
     python_version = "PY3",
@@ -121,20 +129,26 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":model_analyzer",
+        ":option_builder",
         ":profile_context",
-        "//tensorflow/python:client",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/profiler:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/client:session",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python/util:compat",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
     python_version = "PY3",
@@ -142,59 +156,64 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":model_analyzer",
-        "//tensorflow/python:client",
+        ":option_builder",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tfprof_logger",
     srcs = ["tfprof_logger.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler/internal:flops_registry",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "tfprof_logger_test",
     size = "small",
     srcs = ["tfprof_logger_test.py"],
     python_version = "PY3",
     deps = [
-        ":tfprof_logger",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/framework:constant_op",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "profile_context",
     srcs = ["profile_context.py"],
     srcs_version = "PY3",
     deps = [
         ":model_analyzer",
-        ":tfprof_logger",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:compat",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "profile_context_test",
     srcs = ["profile_context_test.py"],
     python_version = "PY3",
@@ -204,24 +223,26 @@ cuda_py_test(
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
+        ":option_builder",
         ":profile_context",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
     srcs_version = "PY3",
     deps = ["@com_google_pprof//:pprof_proto_py"],
 )
 
-py_test(
+py_strict_test(
     name = "pprof_profiler_test",
     size = "small",
     srcs = ["pprof_profiler_test.py"],
@@ -236,11 +257,12 @@ py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/framework:test_lib",
         "@com_google_pprof//:pprof_proto_py",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "trace",
     srcs = ["trace.py"],
     srcs_version = "PY3",
