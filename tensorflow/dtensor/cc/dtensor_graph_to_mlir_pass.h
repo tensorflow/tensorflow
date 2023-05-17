@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -35,7 +36,7 @@ class DTensorMlirPassRunner {
 
   // Imports Graph to MLIR module in tf_execute Dialect with DTensor attributes.
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportGraphToMlir(
-      const DeviceSet& device_set, bool is_func,
+      const DeviceSet& device_set, absl::string_view name, bool is_func,
       const dtensor::Mesh& default_mesh,
       const FunctionLibraryDefinition& flib_def, const Graph& graph,
       Fprint128 cache_key);

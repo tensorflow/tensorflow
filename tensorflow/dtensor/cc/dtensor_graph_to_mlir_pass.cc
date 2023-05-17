@@ -72,7 +72,7 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 DTensorMlirPassRunner::ImportGraphToMlir(
-    const DeviceSet& device_set, bool is_func,
+    const DeviceSet& device_set, absl::string_view name, bool is_func,
     const dtensor::Mesh& default_mesh,
     const FunctionLibraryDefinition& flib_def, const Graph& graph,
     Fprint128 cache_key) {
@@ -102,9 +102,11 @@ DTensorMlirPassRunner::ImportGraphToMlir(
                   mlir::StringAttr::get(&context_, default_mesh.ToString()));
 
   // Tag the module for logging or not depending on flag.
-  if (!is_func && !dtensor::LogOpByOp())
+  if (!is_func && !dtensor::LogOpByOp(name))
     module->setAttr(dtensor::kDoNotLog, mlir::UnitAttr::get(&context_));
 
+  module->setAttr(dtensor::kEagerOperationName,
+                  mlir::StringAttr::get(&context_, name));
   // Set the cache key for the module as an attribute. This attribute will be
   // used to rename all private functions in the module (by appending the
   // cache key) so they have unique names.

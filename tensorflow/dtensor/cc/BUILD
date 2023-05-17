@@ -262,6 +262,7 @@ cc_library(
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
