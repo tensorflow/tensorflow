@@ -280,6 +280,9 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
     llvm::ModuleAnalysisManager mam;
 
     llvm::PipelineTuningOptions tuningOptions;
+    // LLVM's loop unrolling isn't well tuned for the loops we emit. Turn it off
+    // as it consumes compile time with little benefit.
+    tuningOptions.LoopUnrolling = false;
     // Vectorization happens at the MLIR level.
     tuningOptions.LoopVectorization = false;
     llvm::PassBuilder pb(targetMachine, tuningOptions);
