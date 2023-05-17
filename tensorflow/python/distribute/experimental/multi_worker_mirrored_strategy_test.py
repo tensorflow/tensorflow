@@ -21,11 +21,13 @@ from absl import flags
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.dtensor.python import api as d_api
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python.tests import multi_client_test_util
 from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
@@ -34,8 +36,11 @@ from tensorflow.python.distribute.experimental import multi_worker_mirrored_stra
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as tf_test
 
@@ -476,6 +481,128 @@ class MultiWorkerMirroredStrategyTest(tf_test.TestCase, parameterized.TestCase):
               'b': constant_op.constant([18.0, 20.0]),
           },
       )
+
+
+class StrategyDatasetTest(tf_test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.num_client = flags.FLAGS.num_clients
+    self.num_local_devices = flags.FLAGS.num_local_devices
+
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    self.client_id = int(tf_config['task']['index'])
+
+    self.images = stateless_random_ops.stateless_random_uniform(
+        [8, 8, 3], seed=(1, 2), minval=0, maxval=255)
+    self.labels = stateless_random_ops.stateless_random_uniform(
+        [1], seed=(1, 2), minval=0, maxval=10)
+
+    self.dataset = dataset_ops.Dataset.from_tensors(
+        (self.images, self.labels)).repeat()
+
+  def test_create_batched_dataset(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    global_batch_size = self.num_client * self.num_local_devices * 2
+    dataset = self.dataset.batch(global_batch_size).prefetch(2)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    element = next(iter(distributed_dataset))
+    batched_image, batched_label = element
+    self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
+    self.assertEqual(batched_label.shape, [global_batch_size, 1])
+
+    # After unpack, it should only get the local shards.
+    self.assertLen(d_api.unpack(batched_image), self.num_local_devices)
+    self.assertLen(d_api.unpack(batched_label), self.num_local_devices)
+
+  def test_uneven_batched_dataset(self):
+    elements = [[1, 2, 3], [1, 2], [1, 2, 3, 4]]
+    dataset = dataset_ops.Dataset.from_generator(
+        lambda: elements, dtypes.int64).repeat()
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    with self.assertRaisesRegex(ValueError, 'requires a static batch size'):
+      strategy.experimental_distribute_dataset(dataset)
+
+  def test_deprecated_strategy_methods(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    with self.assertRaisesRegex(
+        NotImplementedError, 'only available in the V1 API'):
+      strategy.make_dataset_iterator(self.dataset)
+
+    with self.assertRaisesRegex(
+        NotImplementedError, 'only available in the V1 API'):
+      strategy.make_input_fn_iterator(lambda _: self.dataset)
+
+  def test_distribute_dataset_from_fn(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    local_batch_size = 4
+    global_batch_size = local_batch_size * strategy.num_replicas_in_sync
+
+    def dataset_fn(option):
+      del option
+      return dataset_ops.Dataset.from_tensors(
+          (self.images, self.labels)).repeat().batch(
+              local_batch_size, drop_remainder=True).prefetch(2)
+
+    distributed_dataset = strategy.distribute_datasets_from_function(
+        dataset_fn, None)
+    iterator = iter(distributed_dataset)
+
+    self.assertEqual(distributed_dataset.element_spec,
+                     (tensor_spec.TensorSpec(shape=(global_batch_size, 8, 8, 3),
+                                             dtype=dtypes.float32, name=None),
+                      tensor_spec.TensorSpec(shape=(global_batch_size, 1),
+                                             dtype=dtypes.float32, name=None)))
+    self.assertEqual(distributed_dataset.element_spec, iterator.element_spec)
+
+    batched_image, batched_label = next(iterator)
+    self.assertEqual(batched_image.shape, [global_batch_size, 8, 8, 3])
+    self.assertEqual(batched_label.shape, [global_batch_size, 1])
+
+    # After unpack, it should only get the local shards.
+    unpacked_images = d_api.unpack(batched_image)
+    self.assertLen(unpacked_images, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertEqual(unpacked_images[i].shape, [local_batch_size, 8, 8, 3])
+
+  def test_distribute_values_from_function(self):
+    array_value = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+    def value_fn(ctx):
+      return array_value[ctx.replica_id_in_sync_group]
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+
+    self.assertEqual(d_api.fetch_layout(distributed_values),
+                     layout.Layout.batch_sharded(
+                         strategy._mesh, batch_dim='batch', rank=1))
+    unpacked_value = d_api.unpack(distributed_values)
+    self.assertLen(unpacked_value, self.num_local_devices)
+    start = 1.0 + self.num_local_devices * self.client_id
+    for i in range(self.num_local_devices):
+      self.assertEqual(unpacked_value[i], start + i)
+
+  def test_distribute_dataset_in_tf_function(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    local_batch_size = 4
+    global_batch_size = local_batch_size * strategy.num_replicas_in_sync
+    dataset = self.dataset.batch(global_batch_size).prefetch(2)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(iterator):
+      images, labels = next(iterator)
+      del labels
+      return images
+
+    result = strategy.run(step_fn, args=(iter(distributed_dataset),))
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result.values, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertEqual(result.values[i].shape, [local_batch_size, 8, 8, 3])
 
 
 def client_config_function(config_params):
