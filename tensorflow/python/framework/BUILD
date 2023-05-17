@@ -298,7 +298,6 @@ py_library(
         ":_pywrap_python_op_gen",
         ":composite_tensor",
         ":config",
-        ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
         ":fast_tensor_util",
@@ -379,10 +378,12 @@ py_library(
         ":dtypes",
         ":ops",
         ":tensor_shape",
+        ":tensor_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/profiler:trace",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -419,6 +420,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_dtypes",
+        # copybara:uncomment_begin(google-only)
+        # ":cpp_shape_inference_proto_py",
+        # copybara:uncomment_end
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
@@ -563,10 +567,11 @@ py_library(
         ":ops",
         ":tensor_util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
     ],
@@ -1570,7 +1575,6 @@ py_library(
     srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
-        ":constant_op",
         ":dtypes",
         ":tensor_shape",
         ":tensor_util",
@@ -1768,6 +1772,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_python_memory_checker_helper",
+        # copybara:uncomment "//tensorflow/python/platform:cpp_memory_checker",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util:tf_decorator",
@@ -2384,6 +2389,7 @@ tf_py_test(
         "no_windows",
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
+        "not_run:arm",
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [

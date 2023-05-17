@@ -146,7 +146,7 @@ TEST(FourBitTest, BytesRequiredEven) {
   size_t dims_size = 4;
   size_t required_bytes_four_bit;
   tflite::BytesRequired(kTfLiteInt4, dims_ptr, dims_size,
-                        &required_bytes_four_bit, context);
+                        &required_bytes_four_bit, &context);
 
   ASSERT_EQ(required_bytes_four_bit, 15);
 }
@@ -159,7 +159,7 @@ TEST(FourBitTest, BytesRequiredOdd) {
   size_t dims_size = 2;
   size_t required_bytes_four_bit;
   tflite::BytesRequired(kTfLiteInt4, dims_ptr, dims_size,
-                        &required_bytes_four_bit, context);
+                        &required_bytes_four_bit, &context);
 
   ASSERT_EQ(required_bytes_four_bit, 3);
 }

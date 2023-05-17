@@ -86,7 +86,8 @@ TEST(MMAPAllocation, TestInvalidSizeAndOffset) {
                                            &error_reporter);
   EXPECT_FALSE(allocation_invalid_length.valid());
 
-  MMAPAllocation allocation_excessive_length(fd, /*offset=*/0, /*length=*/0,
+  MMAPAllocation allocation_excessive_length(fd, /*offset=*/0,
+                                             /*length=*/file_size + 1,
                                              &error_reporter);
   EXPECT_FALSE(allocation_excessive_length.valid());
 

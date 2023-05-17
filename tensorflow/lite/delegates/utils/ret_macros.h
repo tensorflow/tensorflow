@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdlib>
 
-#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 // Evaluate an expression whose type is std::optional<T>. If it returns an

@@ -605,11 +605,11 @@ def custom_call_v2(
 
 
 def call_module(args, *, version=4, module, Tout, Sout,
-                dim_args_spec=(), platforms=()):
+                dim_args_spec=(), platforms=(), function_list=()):
   # See documentation for the XlaCallModule op.
   return gen_xla_ops.xla_call_module(
       args, version=version, module=module, dim_args_spec=dim_args_spec,
-      Tout=Tout, Sout=Sout, platforms=platforms)
+      Tout=Tout, Sout=Sout, platforms=platforms, function_list=function_list)
 
 
 def gather(operand,

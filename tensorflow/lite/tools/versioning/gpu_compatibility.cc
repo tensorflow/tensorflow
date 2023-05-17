@@ -860,11 +860,6 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
                            "Pad operation. But node has ",
                            tf_options->mode));
         }
-      } else if (opcode == kTfLiteBuiltinPadv2 && op_sig.inputs.size() == 3) {
-        if (op_sig.inputs.at(2).type != kTfLiteFloat32) {
-          return absl::InvalidArgumentError(
-              "constant_values must be a scalar float");
-        }
       }
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
                                          /*required_runtime_inputs=*/1,

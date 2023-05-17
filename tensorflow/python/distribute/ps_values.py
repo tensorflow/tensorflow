@@ -16,6 +16,7 @@
 
 import contextlib
 import copy
+import functools
 import threading
 import weakref
 
@@ -30,6 +31,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -39,6 +41,7 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util.lazy_loader import LazyLoader
+
 
 load_context = LazyLoader(
     "load_context", globals(),
@@ -546,6 +549,90 @@ tensor_conversion_registry.register_tensor_conversion_function(
     CachingVariable, _tensor_conversion_caching)
 
 CachingVariable._overload_overloadable_operators()  # pylint: disable=protected-access
+
+
+class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
+  """A wrapper around unsynced variables created on workers.
+
+  Overrides the Variable's handle to use the appropriate worker's variable
+  handle at call time. In doing so this class can support the built-in
+  `Variable` methods, but it is experimental.
+
+  All per-worker values can be read and retrieved as a list via
+  `PerWorkerVariable.read_all()`.
+  """
+
+  def __init__(self, strategy, next_creator, **kwargs):
+    self._coordinator = strategy._cluster_coordinator
+    self._per_worker_vars = None
+    self._next_creator = functools.partial(next_creator, **kwargs)
+
+    self._coordinator_instance = next_creator(**kwargs)
+
+    # Set ResourceVariable attributes based on kwargs
+    if kwargs.get("in_graph_mode") is None:
+      with ops.init_scope():
+        self._in_graph_mode = not context.executing_eagerly()
+    else:
+      self._in_graph_mode = kwargs["in_graph_mode"]
+
+    self._cached_value = None
+    self._shape = (
+        tensor_shape.as_shape(kwargs["shape"]) if kwargs.get("shape") else None
+    )
+    self._dtype = (
+        dtypes.as_dtype(kwargs["dtype"]) if kwargs.get("dtype") else None
+    )
+    self._trainable = False  # not supported
+    self._unique_id = kwargs.get("unique_id")
+    if kwargs.get("handle_name") is None:
+      self._handle_name = "Variable:0"
+    else:
+      self._handle_name = kwargs["handle_name"] + ":0"
+
+  @classmethod
+  def _variable_call(cls, *args, **kwargs):
+    """Override to be a no-op to avoid metaclass creating ResourceVariables."""
+    return None
+
+  @property
+  def handle(self):
+    self._maybe_create_per_worker_vars()
+    closure, spec = self.handle_call_time_value()
+    return ops.get_default_graph().capture_call_time_value(
+        closure,
+        spec)
+
+  def handle_call_time_value(self):
+    """Returns a closure to run for a handle at call time and its spec.
+
+    This function is called in self.handle to create a placeholder
+    which returns a handle on some worker or on the coordinator.
+    """
+
+    def closure():
+      dispatch_context = coordinator_context.get_current_dispatch_context()
+      if dispatch_context:
+        remote_value = self._per_worker_vars._values[  # pylint: disable=protected-access
+            dispatch_context.worker_index]
+        ret = dispatch_context.maybe_get_remote_value(remote_value)
+        return ret.handle
+      else:
+        # Only needed for tracing
+        return self._coordinator_instance.handle
+
+    return closure, tensor_spec.TensorSpec(
+        shape=self.shape, dtype=dtypes.resource)
+
+  def _maybe_create_per_worker_vars(self):
+    """Create variable on each worker if it hasn't been created."""
+    if not self._per_worker_vars:
+      self._per_worker_vars = (
+          self._coordinator._create_per_worker_resources(self._next_creator))  # pylint: disable=protected-access
+
+  def read_all(self):
+    """Synchronously read variables from all workers into a list of Tensors."""
+    return [wv.get() for wv in self._per_worker_vars._values]  # pylint: disable=protected-access
 
 
 class DistributedTable(lookup_ops.StaticHashTable):

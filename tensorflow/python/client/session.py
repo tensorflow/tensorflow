@@ -1389,7 +1389,7 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
-      message = error_interpolation.interpolate(message, self._graph)
+      message = error_interpolation.interpolate_graph(message, self._graph)
       if 'only supports NHWC tensor format' in message:
         message += ('\nA possible workaround: Try disabling Grappler optimizer'
                     '\nby modifying the config for creating the session eg.'

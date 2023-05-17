@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -545,7 +546,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       Env::Default()->SleepForMicroseconds(500000);
       call_opts.StartCancel();
       n.WaitForNotification();
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       n.WaitForNotification();
       TF_ASSERT_OK(status);
@@ -638,7 +639,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     }
     n.WaitForNotification();
     if (test_cancel) {
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       TF_ASSERT_OK(status);
       // Retrieve the output.
@@ -1246,9 +1247,9 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   auto remote_mgr =
       std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
   TF_ASSERT_OK(ctx->InitializeRemoteWorker(
-      /*worker_env=*/nullptr, /*worker_session=*/nullptr,
       /*remote_eager_workers=*/nullptr, /*remote_device_mgr=*/nullptr,
       /*remote_contexts=*/{}, context_id, /*context_view_id=*/0,
+      /*rendezvous_creator=*/nullptr,
       /*cluster_flr=*/nullptr, std::move(remote_mgr),
       /*resource_deallocator=*/nullptr));
 

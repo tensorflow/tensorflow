@@ -119,13 +119,12 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
     const Eigen::DenseIndex batch_size = Tindices.dimension(0);
 
     Index batch_strides[IXDIM];
-    for (int dim = IXDIM - 1; dim >= 0; --dim) {
-      if (dim == IXDIM - 1) {
-        batch_strides[dim] = 1;
-      } else {
-        batch_strides[dim] =
-            batch_strides[dim + 1] * output_shape_prefix[dim + 1];
-      }
+    if (IXDIM > 0) {
+      batch_strides[IXDIM - 1] = 1;
+    }
+    for (int dim = IXDIM - 2; dim >= 0; --dim) {
+      batch_strides[dim] =
+          batch_strides[dim + 1] * output_shape_prefix[dim + 1];
     }
 
     for (Eigen::DenseIndex loc = 0; loc < batch_size; ++loc) {

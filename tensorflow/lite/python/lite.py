@@ -786,6 +786,14 @@ class TFLiteConverterBase:
           "saved_model_exported_names": self._saved_model_exported_names,
       })
 
+    if self._experimental_quantization_options:
+      logging.warning(
+          "Configs from custom methods in experimental_quantization_options"
+          " may not produce a valid tflite model. Note that currently this"
+          " option only supports StableHLO path. Setting this option in TFLite"
+          " path will be a no-op."
+      )
+
     return args
 
   def _contains_function_with_implements_attr(self, saved_model_proto):
@@ -2016,9 +2024,19 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       raise ValueError("Only support at least one signature key.")
 
-    # Default `serve` endpoint for `model.export`
-    if len(signature_keys) > 1 and hasattr(saved_model, "serve"):
-      signature_keys = ["serve"]
+    # Distinguishes SavedModel artifacts created by `model.export`
+    # from SavedModel created by `model.save`/`tf.saved_model.save`.
+    if (
+        len(signature_keys) > 1
+        and hasattr(saved_model, "serve")  # `model.export` default endpoint
+        and not hasattr(saved_model, "_default_save_signature")
+        # `_default_save_signature` does not exist for `model.export` artifacts.
+    ):
+      # Default `serve` endpoint for `model.export` should be copied
+      # to `serving_default` to prevent issues in TF Lite serving.
+      saved_model.serving_default = saved_model.serve
+      delattr(saved_model, "serve")
+      signature_keys = ["serving_default"]
 
     funcs = []
     for key in signature_keys:

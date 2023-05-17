@@ -18,6 +18,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+char CompileOptions::ID = 0;
 char Compiler::ID = 0;
 
 }  // namespace ifrt

@@ -930,6 +930,19 @@ cc_library(
 )
 
 cc_library(
+    name = "string_util",
+    srcs = ["utils/string_util.cc"],
+    hdrs = ["utils/string_util.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "fake_session",
     srcs = ["utils/fake_session.cc"],
     hdrs = ["utils/fake_session.h"],
@@ -1272,6 +1285,7 @@ cc_library(
         "transforms/tpu_cluster_cleanup_attributes.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_colocate_composite_resource_ops.cc",
+        "transforms/tpu_colocate_splits.cc",
         "transforms/tpu_device_propagation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_host_computation_expansion.cc",
@@ -1332,6 +1346,7 @@ cc_library(
         ":parallel_execute_util",
         ":serialize_mlir_module_utils",
         ":shape_inference_pass",
+        ":string_util",
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_ops",
@@ -2355,6 +2370,7 @@ cc_library(
     srcs = ["utils/tpu_rewrite_device_util.cc"],
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
+        ":device_util",
         ":tensorflow",
         ":tensorflow_types",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
@@ -2377,6 +2393,8 @@ tf_cc_test(
     srcs = ["utils/tpu_rewrite_device_util_test.cc"],
     deps = [
         ":device_util",
+        ":serialize_mlir_module_utils",
+        ":tensorflow",
         ":tpu_rewrite_device_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",

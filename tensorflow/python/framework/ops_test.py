@@ -133,12 +133,15 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32]
     )
     t = op.outputs[0]
-    with self.assertRaisesRegex(TypeError, "Iterating.*not allowed in Graph"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*not allowed.*Graph mode"):
       next(iter(t))
-    with self.assertRaisesRegex(TypeError, "Iterating.*AutoGraph did convert"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*AutoGraph.*unsupported feature"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         next(iter(t))
-    with self.assertRaisesRegex(TypeError, "Iterating.*AutoGraph is disabled"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*AutoGraph.*not be visible"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
         next(iter(t))
 
@@ -147,15 +150,15 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool]
     )
     t = op.outputs[0]
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*not allowed in Graph"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*not allowed.*Graph mode"):
       bool(t)
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*AutoGraph did convert"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*AutoGraph.*unsupported feature"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         bool(t)
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*AutoGraph is disabled"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*AutoGraph.*not be visible"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
         bool(t)
 

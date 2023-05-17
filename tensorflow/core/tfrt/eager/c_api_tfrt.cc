@@ -449,8 +449,7 @@ tensorflow::Status TensorHandleInterface::Shape(
     tensorflow::PartialTensorShape* shape) const {
   auto metadata = Metadata();
   if (!metadata.has_value()) {
-    return tensorflow::FromAbslStatus(
-        value_.get<TensorHandle>().GetAsyncMetadata().GetError());
+    return value_.get<TensorHandle>().GetAsyncMetadata().GetError();
   }
   int num_dims = metadata.value()->shape.GetRank();
   if (num_dims == -1) {
@@ -465,8 +464,7 @@ tensorflow::Status TensorHandleInterface::Shape(
 tensorflow::Status TensorHandleInterface::NumDims(int* num_dims) const {
   auto metadata = Metadata();
   if (!metadata.has_value()) {
-    return tensorflow::FromAbslStatus(
-        value_.get<TensorHandle>().GetAsyncMetadata().GetError());
+    return value_.get<TensorHandle>().GetAsyncMetadata().GetError();
   }
   *num_dims = metadata.value()->shape.GetRank();
 
@@ -477,8 +475,7 @@ tensorflow::Status TensorHandleInterface::NumElements(
     int64_t* num_elements) const {
   auto metadata = Metadata();
   if (!metadata.has_value()) {
-    return tensorflow::FromAbslStatus(
-        value_.get<TensorHandle>().GetAsyncMetadata().GetError());
+    return value_.get<TensorHandle>().GetAsyncMetadata().GetError();
   }
   *num_elements = metadata.value()->shape.GetNumElements();
 
@@ -489,8 +486,7 @@ tensorflow::Status TensorHandleInterface::Dim(int dim_index,
                                               int64_t* dim) const {
   auto metadata = Metadata();
   if (!metadata.has_value()) {
-    return tensorflow::FromAbslStatus(
-        value_.get<TensorHandle>().GetAsyncMetadata().GetError());
+    return value_.get<TensorHandle>().GetAsyncMetadata().GetError();
   }
   *dim = metadata.value()->shape.GetDimensionSize(dim_index);
 
@@ -504,7 +500,7 @@ const char* TensorHandleInterface::DeviceName(
     context_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
   }
   if (th.IsDeviceError()) {
-    *status = tensorflow::FromAbslStatus(th.GetAsyncDevice().GetError());
+    *status = th.GetAsyncDevice().GetError();
     return nullptr;
   }
   return th.GetAvailableDevice()->name().data();
@@ -522,7 +518,7 @@ const char* TensorHandleInterface::DeviceType(
     context_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
   }
   if (th.IsDeviceError()) {
-    *status = tensorflow::FromAbslStatus(th.GetAsyncDevice().GetError());
+    *status = th.GetAsyncDevice().GetError();
     return nullptr;
   }
   return th.GetAvailableDevice()->type().name().data();
@@ -539,7 +535,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
     host_ctx->Await(FormRef(tensor_av));
   }
   if (auto* error = tensor_av->GetErrorIfPresent()) {
-    *status = tensorflow::FromAbslStatus(*error);
+    *status = *error;
     return nullptr;
   }
   assert(th.IsMetadataAvailable());
@@ -1431,7 +1427,7 @@ tensorflow::Status OperationInterface::Execute(
     host->Await({chain->CopyRCRef()});
 
   if (TF_PREDICT_FALSE(chain->IsError())) {
-    s = tensorflow::FromAbslStatus(chain->GetError());
+    s = chain->GetError();
     // TODO(tfrt-devs): Assess if we need a explicit API to clear error.
     *chain = GetReadyChain();
   }
@@ -1449,7 +1445,7 @@ tensorflow::Status OperationInterface::Execute(
     // mode.
     if (TF_PREDICT_FALSE(!this->context_->IsAsync() &&
                          th_ref.GetAsyncTensor()->IsError() && s.ok()))
-      s = tensorflow::FromAbslStatus(th_ref.GetAsyncTensor()->GetError());
+      s = th_ref.GetAsyncTensor()->GetError();
 
     if (function_state_ && context_->IsAsync()) {
       retvals[i] = new TensorHandleInterface(function_state_->GetRetTypes()[i],

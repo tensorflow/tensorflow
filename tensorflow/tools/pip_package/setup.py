@@ -47,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.13.0'
+_VERSION = '2.14.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -114,12 +114,12 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.12, < 2.13',
-                        'tb-nightly ~= 2.13.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.12.0rc0, < 2.13',
-                        'tf-estimator-nightly ~= 2.13.0.dev'),
-    standard_or_nightly('keras >= 2.12.0rc0, < 2.13',
-                        'keras-nightly ~= 2.13.0.dev'),
+    standard_or_nightly('tensorboard >= 2.13, < 2.14',
+                        'tb-nightly ~= 2.14.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.13.0rc0, < 2.14',
+                        'tf-estimator-nightly ~= 2.14.0.dev'),
+    standard_or_nightly('keras >= 2.13.1rc0, < 2.14',
+                        'keras-nightly ~= 2.14.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 

@@ -30,10 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-// Normalize profiled costs to the scale of costs inferred from input sizes.
-constexpr uint32_t kCostNormalizationRatio = 1800;
-
-void CostRecorder::RecordCostCpuCycle(int64_t op_key, uint64_t execution_time) {
+void CostRecorder::RecordCost(int64_t op_key, uint64_t execution_time) {
   mutex_lock l(op_cost_map_mutex_);
   op_cost_map_[op_key].first += execution_time;
   op_cost_map_[op_key].second += 1;
@@ -50,7 +47,7 @@ uint64_t CostRecorder::GetCost(int64_t op_key) const {
 
   return std::max(
       static_cast<uint64_t>(1),
-      static_cast<uint64_t>(total_cost / num_ops / kCostNormalizationRatio));
+      static_cast<uint64_t>(total_cost / num_ops / normalize_ratio_));
 }
 
 Status CostRecorder::WriteToFile() const {

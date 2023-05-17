@@ -232,6 +232,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
         return user_index.size() == 1 && user_index[0] == 0;
       }
       return false;
+    case HloOpcode::kFusion:
+      return GpuCompiler::FusionCanShareBufferHint(user, operand, user_index);
     default:
       return std::nullopt;
   }

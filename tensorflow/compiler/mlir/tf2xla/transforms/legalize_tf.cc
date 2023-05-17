@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/tsl/platform/bfloat16.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace mlir {
 namespace mhlo {
@@ -148,6 +149,21 @@ static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
     axis += rank;
   }
   return b->getI64IntegerAttr(axis);
+}
+
+// Returns a PrecisionConfig as an array attribute based on whether TF32
+// execution is enabled
+static ArrayAttr GetPrecisionConfig(Builder *builder) {
+  mlir::mhlo::Precision precision = tsl::tensor_float_32_execution_enabled()
+                                        ? mhlo::Precision::DEFAULT
+                                        : mlir::mhlo::Precision::HIGHEST;
+  llvm::SmallVector<mlir::Attribute, 2> attr_vec;
+  const int num_inputs = 2;
+  for (int i = 0; i < num_inputs; i++) {
+    attr_vec.push_back(
+        mlir::mhlo::PrecisionAttr::get(builder->getContext(), precision));
+  }
+  return builder->getArrayAttr(attr_vec);
 }
 
 // If `value` is an IntegerAttr, returns the integer value for the HLO axis
@@ -1082,6 +1098,9 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     auto batch_group_count_attr = rewriter.getNamedAttr(
         "batch_group_count", rewriter.getI64IntegerAttr(1));
 
+    auto precision_config_attr = rewriter.getNamedAttr(
+        "precision_config", GetPrecisionConfig(&rewriter));
+
     Value paddings_op = rewriter.create<tensor::FromElementsOp>(
         op.getLoc(),
         tensorflow::GetTypeFromTFTensorShape(2 * num_spatial_dims,
@@ -1105,9 +1124,9 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
                                                filter_ty.getElementType()),
           operands[1]);
     }
-    NamedAttribute attrs[] = {rhs_dilations_attr, window_strides_attr,
+    NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
-                              batch_group_count_attr};
+                              batch_group_count_attr, precision_config_attr};
     rewriter.replaceOpWithNewOp<mhlo::DynamicConvOp>(op, op.getType(), operands,
                                                      llvm::ArrayRef(attrs));
     return success();
@@ -1246,6 +1265,9 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
     auto paddings_attr = rewriter.getNamedAttr(
         "padding", DenseElementsAttr::get<int64_t>(paddings_ty, paddings));
 
+    auto precision_config_attr = rewriter.getNamedAttr(
+        "precision_config", GetPrecisionConfig(&rewriter));
+
     SmallVector<Value, 2> operands(op.getOperands());
     // Reshape the filter to {spatial_dims...., 1,in_channels *
     // channel_multiplier}
@@ -1264,7 +1286,8 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
     }
     NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
-                              batch_group_count_attr, paddings_attr};
+                              batch_group_count_attr, paddings_attr,
+                              precision_config_attr};
     rewriter.replaceOpWithNewOp<ConvolutionOp>(op, op.getType(), operands,
                                                llvm::ArrayRef(attrs));
     return success();
@@ -3160,9 +3183,9 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
         /*rhs_contracting_dimensions=*/rhs_contracting_dimensions);
     // TODO(silvasean): Emit shape checks for contracting dimensions.
     // (The batch dimensions are checked by the broadcasting logic)
-    rewriter.replaceOpWithNewOp<DotGeneralOp>(op, op.getType(), lhs, rhs,
-                                              dimension_numbers,
-                                              /*precision_config=*/nullptr);
+    rewriter.replaceOpWithNewOp<DotGeneralOp>(
+        op, op.getType(), lhs, rhs, dimension_numbers,
+        /*precision_config=*/GetPrecisionConfig(&rewriter));
     return success();
   }
 };
@@ -4958,7 +4981,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
             /*outputSpatialDimensions=*/spatial_dims),
         rewriter.getI64IntegerAttr(feature_group_count),
         /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
-        /*precision_config=*/ArrayAttr());
+        /*precision_config=*/GetPrecisionConfig(&rewriter));
 
     rewriter.replaceOp(op, {result});
 
@@ -5165,7 +5188,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
             /*outputSpatialDimensions=*/output_spatial_dimensions),
         /*feature_group_count=*/rewriter.getI64IntegerAttr(1),
         rewriter.getI64IntegerAttr(batch_group_count),
-        /*precision_config=*/ArrayAttr());
+        /*precision_config=*/GetPrecisionConfig(&rewriter));
 
     rewriter.replaceOp(op, {result});
 

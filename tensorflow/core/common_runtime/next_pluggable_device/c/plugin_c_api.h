@@ -155,7 +155,8 @@ typedef struct TFNPD_PluginParams {
   int32_t priority;                     // output, set by plugin
   // Certain devices may set this one to false to avoid using device copy logic
   // implemented for legacy PluggableDevice.
-  bool is_pluggable_device;  // output, set by plugin
+  bool is_pluggable_device;         // output, set by plugin
+  bool use_pjrt_on_demand_compile;  // output, set by plugin
 } TFNPD_PluginParams;
 const size_t TFNPD_PLUGIN_PARAMS_STRUCT_SIZE =
     TF_OFFSET_OF_END(TFNPD_PluginParams, is_pluggable_device);

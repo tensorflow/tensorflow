@@ -12,6 +12,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_buffer_internal",
@@ -23,6 +24,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device:plugin_resource",
         "//tensorflow/core/platform:status",
@@ -31,6 +33,8 @@ cc_library(
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -41,6 +45,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",

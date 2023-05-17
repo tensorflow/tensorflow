@@ -234,7 +234,7 @@ class AsyncCheckpointHelper:
     # Initiate the underlying Checkpoint instance with the copied items.
     self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
     # Initiate the underlying Checkpoint instance's save_counter.
-    save_counter = self._checkpoint.save_counter
+    save_counter = self._checkpoint.save_counter.numpy()
     logging.info("Initializing async checkpoint's save_counter: %d",
                  save_counter)
 
@@ -401,9 +401,11 @@ class AsyncCheckpointHelper:
     # pylint: disable=protected-access
     new_embedding = tpu_embedding._create_copy_for_async_checkpoint(
         feature_config=tpu_embedding._feature_config,
-        optimizer=tpu_embedding._table_config[0].optimizer,
-        pipeline_execution_with_tensor_core=tpu_embedding
-        ._pipeline_execution_with_tensor_core)
+        optimizer=tpu_embedding._table_config[0]
+        if tpu_embedding._table_config
+        else None,
+        pipeline_execution_with_tensor_core=tpu_embedding._pipeline_execution_with_tensor_core,
+    )
     self._object_map[tpu_embedding] = new_embedding
     # pylint: enable=protected-access
 

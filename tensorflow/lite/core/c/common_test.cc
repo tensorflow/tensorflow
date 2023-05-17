@@ -426,4 +426,121 @@ TEST(TestTfLiteOpaqueDelegate, GetData_NoDataSetViaOpaqueDelegateBuilder) {
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
+struct Foo {
+  int data;
+  bool copied;
+};
+
+class VariantFoo : public AbstractVariantData<VariantFoo> {
+ public:
+  explicit VariantFoo(int number) : foo_data_(Foo{number, false}) {}
+  VariantFoo(const VariantFoo& other) {
+    foo_data_ = other.foo_data_;
+    foo_data_.copied = true;
+  }
+  int GetFooInt() { return foo_data_.data; }
+  bool GetFooCopied() { return foo_data_.copied; }
+
+ private:
+  Foo foo_data_;
+};
+
+TEST(TestTfLiteReallocWithObject, SimpleConstruction) {
+  TfLiteTensor t = {};
+  t.type = kTfLiteVariant;
+  ASSERT_EQ((TfLiteTensorVariantRealloc<VariantFoo, int>(&t, 3)), kTfLiteOk);
+  ASSERT_EQ(reinterpret_cast<VariantFoo*>(t.data.data)->GetFooInt(), 3);
+  ASSERT_EQ(t.type, kTfLiteVariant);
+  ASSERT_EQ(t.allocation_type, kTfLiteVariantObject);
+  TfLiteTensorFree(&t);
+}
+
+TEST(TestTfLiteReallocWithObject, ConstructWithAlreadyAllocated) {
+  TfLiteTensor t = {};
+  t.type = kTfLiteVariant;
+  ASSERT_EQ((TfLiteTensorVariantRealloc<VariantFoo, int>(&t, 3)), kTfLiteOk);
+  void* before_address = t.data.data;
+  ASSERT_EQ((TfLiteTensorVariantRealloc<VariantFoo, int>(&t, 5)), kTfLiteOk);
+  EXPECT_EQ(t.data.data, before_address);
+  EXPECT_EQ(reinterpret_cast<VariantFoo*>(t.data.data)->GetFooInt(), 5);
+  EXPECT_EQ(t.type, kTfLiteVariant);
+  EXPECT_EQ(t.allocation_type, kTfLiteVariantObject);
+  TfLiteTensorFree(&t);
+}
+
+TEST(TestTfLiteReallocWithObject, NonVariantTypeError) {
+  TfLiteTensor t = {};
+  t.type = kTfLiteInt32;
+  ASSERT_EQ((TfLiteTensorVariantRealloc<VariantFoo, int>(&t, 3)), kTfLiteError);
+}
+
+TEST(TestVariantData, CopyVariantTensorCallsDerivedCopyCstor) {
+  // Basic setup for tensors.
+  TfLiteTensor src_variant_tensor = {};
+  TfLiteTensor dst_variant_tensor = {};
+  for (auto* tensor : {&src_variant_tensor, &dst_variant_tensor}) {
+    tensor->dims = ConvertVectorToTfLiteIntArray({0});
+    tensor->allocation_type = kTfLiteVariantObject;
+    tensor->type = kTfLiteVariant;
+  }
+  // Initialize variant data object. `src_variant_tensor` takes ownership
+  // of any arguments passed to `TfLiteTensorRealloc` should it succeed.
+  ASSERT_EQ(
+      (TfLiteTensorVariantRealloc<VariantFoo, int>(&src_variant_tensor, 1)),
+      kTfLiteOk);
+  auto* src_variant_data =
+      reinterpret_cast<VariantFoo*>(src_variant_tensor.data.data);
+  EXPECT_EQ(src_variant_data->GetFooInt(), 1);
+  EXPECT_EQ(src_variant_data->GetFooCopied(), false);
+
+  // Copy one variant tensor to another as usual.
+  ASSERT_EQ(TfLiteTensorCopy(&src_variant_tensor, &dst_variant_tensor),
+            kTfLiteOk);
+
+  // The destination tensor's data.data member will point to the result
+  // of calling the copy constructor of the source tensors underlying object.
+  auto* dst_variant_data =
+      reinterpret_cast<VariantFoo*>(dst_variant_tensor.data.data);
+  EXPECT_EQ(dst_variant_data->GetFooInt(), 1);
+  EXPECT_EQ(dst_variant_data->GetFooCopied(), true);
+
+  TfLiteTensorFree(&src_variant_tensor);
+  TfLiteTensorFree(&dst_variant_tensor);
+}
+
+TEST(TestVariantData, CopyVariantTensorCallsDerivedCopyCstorWithAllocation) {
+  // Basic setup for tensors.
+  TfLiteTensor src_variant_tensor = {};
+  TfLiteTensor dst_variant_tensor = {};
+  for (auto* tensor : {&src_variant_tensor, &dst_variant_tensor}) {
+    tensor->dims = ConvertVectorToTfLiteIntArray({0});
+    tensor->allocation_type = kTfLiteVariantObject;
+    tensor->type = kTfLiteVariant;
+  }
+  // Initialize variant data objects.
+  ASSERT_EQ(
+      (TfLiteTensorVariantRealloc<VariantFoo, int>(&src_variant_tensor, 1)),
+      kTfLiteOk);
+  ASSERT_EQ(
+      (TfLiteTensorVariantRealloc<VariantFoo, int>(&dst_variant_tensor, 2)),
+      kTfLiteOk);
+
+  void* before_address = dst_variant_tensor.data.data;
+
+  // Copy one variant tensor to another as usual.
+  ASSERT_EQ(TfLiteTensorCopy(&src_variant_tensor, &dst_variant_tensor),
+            kTfLiteOk);
+
+  auto* dst_variant_data =
+      reinterpret_cast<VariantFoo*>(dst_variant_tensor.data.data);
+  EXPECT_EQ(dst_variant_data->GetFooInt(), 1);
+
+  // If the destination tensor is already populated, the dstor will be called
+  // and the buffer reused.
+  EXPECT_EQ(dst_variant_tensor.data.data, before_address);
+
+  TfLiteTensorFree(&src_variant_tensor);
+  TfLiteTensorFree(&dst_variant_tensor);
+}
+
 }  // namespace tflite

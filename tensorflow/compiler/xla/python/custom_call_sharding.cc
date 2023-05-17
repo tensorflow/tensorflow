@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "pybind11/pybind11.h"  // from @pybind11
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
+#include "tensorflow/compiler/xla/python/inspect_sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
@@ -200,6 +202,23 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
   bool can_side_effecting_have_replicated_sharding_;
 };
 
+namespace {
+
+void CallInspectSharding(void* obj, JAX_InspectSharding_Callback_Args* args) {
+  std::optional<xla::HloSharding> arg = jax::InspectShardingReadArgs(args);
+  if (!arg.has_value()) {
+    return;
+  }
+  try {
+    py::gil_scoped_acquire gil;
+    py::handle(reinterpret_cast<PyObject*>(obj))(*std::move(arg));
+  } catch (const pybind11::error_already_set& e) {
+    jax::InspectShardingSetError(args, std::string(e.what()));
+  }
+}
+
+}  // namespace
+
 void BuildCustomCallShardingPybindAPI(pybind11::module& m) {
   m.def(
       "register_custom_call_partitioner",
@@ -229,6 +248,15 @@ Args:
       py::arg("name"), py::arg("prop_user_sharding"), py::arg("partition"),
       py::arg("infer_sharding_from_operands"),
       py::arg("can_side_effecting_have_replicated_sharding") = false);
+  m.def("encode_inspect_sharding_callback",
+        [](py::object handler) -> py::bytes {
+          JAX_InspectSharding_Callback cb;
+          cb.call = &CallInspectSharding;
+          cb.data = handler.ptr();
+          char bytes[sizeof(JAX_InspectSharding_Callback)];
+          memcpy(&bytes, &cb, sizeof(JAX_InspectSharding_Callback));
+          return py::bytes(bytes, sizeof(JAX_InspectSharding_Callback));
+        });
 
   py::module hlo_sharding_util_m = m.def_submodule(
       "hlo_sharding_util", "Utilities for manipulating HloSharding.");

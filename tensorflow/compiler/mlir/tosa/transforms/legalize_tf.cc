@@ -258,7 +258,7 @@ LogicalResult ConvertTFSignOp::matchAndRewrite(
   RankedTensorType output_type =
       tf_sign_op.getResult().getType().cast<RankedTensorType>();
 
-  llvm::Optional<Value> result =
+  std::optional<Value> result =
       convertSignOp(rewriter, op, tf_sign_op.getX(), output_type);
   if (!result) return failure();
 
@@ -632,8 +632,14 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
       return failure();
   }
 
-  CreateReplaceOpAndInfer<tosa::AvgPool2dOp>(
-      rewriter, op, output_type, tf_avgpool_op.getValue(), kernel, stride, pad);
+  // Tosa supports FP16 and FP32 accumulator type for FP16 input. When the time
+  // FP16 is supported, the accumulator type can be selected based on trade-off
+  // between performance and accuracy. Set to FP32 by default.
+  auto acc_attr = mlir::TypeAttr::get(rewriter.getF32Type());
+
+  CreateReplaceOpAndInfer<tosa::AvgPool2dOp>(rewriter, op, output_type,
+                                             tf_avgpool_op.getValue(), kernel,
+                                             stride, pad, acc_attr);
   return success();
 }
 
@@ -764,8 +770,8 @@ LogicalResult ConvertTFRankOp::matchAndRewrite(
   RankedTensorType rank_type =
       tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getIntegerType(32));
   auto rank_attr = DenseI32ArrayAttr::get(rewriter.getContext(), {rank});
-  auto rank_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                    rank_type, rank_attr);
+  auto rank_const = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, op->getLoc(), rank_type, cast<mlir::ElementsAttr>(rank_attr));
 
   rewriter.replaceOp(op, {rank_const.getResult()});
 
@@ -796,8 +802,8 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
   auto shape_attr =
       DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(shape_arr));
-  auto shape_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                     shape_type, shape_attr);
+  auto shape_const = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, op->getLoc(), shape_type, cast<mlir::ElementsAttr>(shape_attr));
 
   rewriter.replaceOp(op, {shape_const.getResult()});
 
@@ -883,8 +889,8 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
     fill_attr =
         DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(fill_arr));
   }
-  auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                       fill_type, fill_attr);
+  auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, op->getLoc(), fill_type, fill_attr.cast<ElementsAttr>());
   rewriter.replaceOp(op, {fill_const_op.getResult()});
 
   return success();

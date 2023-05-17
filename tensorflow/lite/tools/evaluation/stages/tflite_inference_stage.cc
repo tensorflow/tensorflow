@@ -20,11 +20,20 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
+
+void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
+
+// Version with Weak linker attribute doing nothing: if someone links this
+// library with another definition of this function (presumably to actually
+// register custom ops), that version will be used instead.
+void ABSL_ATTRIBUTE_WEAK
+RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 
 namespace tflite {
 namespace evaluation {
@@ -131,6 +140,7 @@ TfLiteStatus TfliteInferenceStage::Init(
     resolver_ = std::make_unique<
         ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
   }
+  RegisterSelectedOps(resolver_.get());
   InterpreterBuilder(*model_, *resolver_)(&interpreter_);
   if (!interpreter_) {
     LOG(ERROR) << "Could not build interpreter";

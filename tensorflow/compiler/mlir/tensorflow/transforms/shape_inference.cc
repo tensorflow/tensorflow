@@ -530,7 +530,7 @@ struct ValuePortHasher {
 };
 
 using ValuePortResultMap =
-    std::unordered_map<ValuePort, Attribute, ValuePortHasher>;
+    absl::flat_hash_map<ValuePort, Attribute, ValuePortHasher>;
 using ComputedQueryFn = function_ref<bool(ValuePort)>;
 using ValueQueryFn = function_ref<Attribute(const ValuePort&)>;
 using ValuePortInputs = SmallVectorImpl<ValuePort>;
@@ -2145,7 +2145,8 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   SmallVector<Type, 4> inferred;
   LogicalResult res = infer_ti.inferReturnTypes(
       op->getContext(), op->getLoc(), op->getOperands(),
-      op->getAttrDictionary(), op->getRegions(), inferred);
+      op->getAttrDictionary(), op->getPropertiesStorage(), op->getRegions(),
+      inferred);
   if (failed(res)) {
     op->emitOpError("failed to refine type as inference failed");
     return false;

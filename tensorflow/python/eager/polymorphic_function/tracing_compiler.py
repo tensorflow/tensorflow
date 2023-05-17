@@ -25,14 +25,13 @@ from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
-from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.impl import api
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import concrete_function as concrete_function_lib
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tf_method_target
+from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -40,6 +39,7 @@ from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import tf_decorator
+
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -51,45 +51,6 @@ ag_ctx = lazy_loader.LazyLoader(
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
     "Time for tf.function to build a graph (us).")
-
-
-def _py_func_from_autograph(
-    python_func,
-    autograph_options=None,
-):
-  """Compile a python function using autograph, for use with FuncGraph.
-
-  Args:
-    python_func: the Python function to compile.
-    autograph_options: additional knobs to control when `autograph=True`.
-      See https://www.tensorflow.org/guide/autograph for more information.
-  Returns:
-    python_func, converted using autograph.
-  """
-  _, original_func = tf_decorator.unwrap(python_func)
-
-  def autograph_handler(*args, **kwargs):
-    """Calls a converted version of original_func."""
-    try:
-      return api.converted_call(
-          original_func,
-          args,
-          kwargs,
-          options=converter.ConversionOptions(
-              recursive=True,
-              optional_features=autograph_options,
-              user_requested=True,
-          ))
-    except Exception as e:  # pylint:disable=broad-except
-      if hasattr(e, "ag_error_metadata"):
-        raise e.ag_error_metadata.to_exception(e)
-      else:
-        raise
-
-  # Wrapping around a decorator allows checks like tf_inspect.getargspec
-  # to be accurate.
-  converted_func = tf_decorator.make_decorator(original_func, autograph_handler)
-  return tf_decorator.rewrap(python_func, original_func, converted_func)
 
 
 # TODO(fmuham): Revamp the API of this class to be 100% compiler-focused.
@@ -281,7 +242,7 @@ class TracingCompiler:
     return concrete_function
 
   def _list_all_concrete_functions(
-      self) -> List[monomorphic_function.ConcreteFunction]:
+      self) -> List[concrete_function_lib.ConcreteFunction]:
     return self._function_cache.values()
 
   def __get__(self, instance, owner):
@@ -342,21 +303,22 @@ class TracingCompiler:
     else:
       arg_names = base_arg_names
 
-    if self._autograph:
-      self._python_function = _py_func_from_autograph(
-          self._python_function, self._autograph_options)
+    traced_func_graph = func_graph_module.func_graph_from_py_func(
+        self._name,
+        self._python_function,
+        args,
+        kwargs,
+        None,
+        func_graph=func_graph,
+        arg_names=arg_names,
+        capture_by_value=self._capture_by_value,
+        create_placeholders=False,
+    )
 
-    concrete_function = monomorphic_function.ConcreteFunction(
-        func_graph_module.func_graph_from_py_func(
-            self._name,
-            self._python_function,
-            args,
-            kwargs,
-            None,
-            func_graph=func_graph,
-            arg_names=arg_names,
-            capture_by_value=self._capture_by_value,
-            create_placeholders=False),
+    transform.apply_func_graph_transforms(traced_func_graph)
+
+    concrete_function = concrete_function_lib.ConcreteFunction(
+        traced_func_graph,
         self._function_attributes,
         spec=self.function_spec,
         # Tell the ConcreteFunction to clean up its graph once it goes out of
@@ -364,6 +326,9 @@ class TracingCompiler:
         # places (like Keras) where the FuncGraph lives longer than the
         # ConcreteFunction.
         shared_func_graph=False)
+
+    transform.call_concrete_function_callbacks(concrete_function)
+
     return concrete_function
 
   def _maybe_define_function(self, args, kwargs):
@@ -431,10 +396,9 @@ class TracingCompiler:
                 current_func_context, lookup_func_type)
           else:
             target_func_type = lookup_func_type
-          handledata_mapping = lookup_func_context.get_handledata_mapping()
           placeholder_mapping = lookup_func_context.get_placeholder_mapping()
           placeholder_context = trace_type.InternalPlaceholderContext(
-              func_graph, placeholder_mapping, handledata_mapping)
+              func_graph, placeholder_mapping)
           with func_graph.as_default():
             placeholder_bound_args = target_func_type.placeholder_arguments(
                 placeholder_context)

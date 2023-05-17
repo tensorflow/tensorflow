@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallSet.h"
@@ -120,6 +122,63 @@ mlir::LogicalResult VerifyDevicePlacement(
   return mlir::success();
 }
 
+struct IoAlias {
+  int input_index;
+  int output_index;
+};
+
+mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
+                                  llvm::ArrayRef<IfrtArrayType> inputs,
+                                  llvm::ArrayRef<IfrtArrayType> outputs) {
+  if (io_alias.input_index < 0 || io_alias.input_index >= inputs.size()) {
+    return op->emitOpError()
+           << "can't alias input #" << io_alias.input_index << " to output #"
+           << io_alias.output_index << " as only having " << inputs.size()
+           << " inputs";
+  }
+  if (io_alias.output_index < 0 || io_alias.output_index >= outputs.size()) {
+    return op->emitOpError()
+           << "can't alias input #" << io_alias.input_index << " to output #"
+           << io_alias.output_index << " as only having " << outputs.size()
+           << " outputs";
+  }
+  if (inputs[io_alias.input_index] != outputs[io_alias.output_index]) {
+    return op->emitOpError()
+           << "can't alias input #" << io_alias.input_index << " to output #"
+           << io_alias.output_index
+           << " with different types: " << inputs[io_alias.input_index]
+           << " vs " << outputs[io_alias.output_index];
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult VerifyIoAliases(mlir::Operation* op,
+                                    mlir::ArrayAttr io_aliases,
+                                    llvm::ArrayRef<IfrtArrayType> inputs,
+                                    llvm::ArrayRef<IfrtArrayType> outputs) {
+  llvm::SmallSet<int, 4> aliased_inputs;
+  llvm::SmallSet<int, 4> aliased_outputs;
+  for (const auto& raw_io_alias :
+       io_aliases.getAsRange<mlir::DenseI32ArrayAttr>()) {
+    llvm::ArrayRef<int> io_alias_as_array = raw_io_alias.asArrayRef();
+    int aliased_input = io_alias_as_array[0];
+    int aliased_output = io_alias_as_array[1];
+    if (mlir::failed(VerifyIoAlias(op, IoAlias{aliased_input, aliased_output},
+                                   inputs, outputs))) {
+      return mlir::failure();
+    }
+    if (!aliased_inputs.insert(aliased_input).second) {
+      return op->emitOpError()
+             << "can't alias input #" << aliased_input << " more than once";
+    }
+    if (!aliased_outputs.insert(aliased_output).second) {
+      return op->emitOpError()
+             << "can't alias output #" << aliased_outputs << " more than once";
+    }
+  }
+  return mlir::success();
+}
+
 }  // namespace
 
 mlir::LogicalResult ReshardOp::verify() {
@@ -171,6 +230,14 @@ mlir::LogicalResult DisassembleOp::verify() {
 
 mlir::CallInterfaceCallable CallOp::getCallableForCallee() {
   return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+}
+void CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+  // Direct call
+  if ((*this)->getAttrOfType<mlir::SymbolRefAttr>("callee")) {
+    (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<mlir::Value>());
 }
 
 mlir::Operation::operand_range CallOp::getArgOperands() { return getInputs(); }
@@ -234,12 +301,26 @@ mlir::LogicalResult CallOp::verify() {
     output_arrays.push_back(output.getType().cast<IfrtArrayType>());
   }
 
-  return VerifyDevicePlacement(*this, getDevices(), input_arrays,
-                               output_arrays);
+  if (mlir::failed(VerifyDevicePlacement(*this, getDevices(), input_arrays,
+                                         output_arrays)) ||
+      mlir::failed(VerifyIoAliases(*this, getIoAliases(), input_arrays,
+                                   output_arrays))) {
+    return mlir::failure();
+  }
+  return mlir::success();
 }
 
 mlir::CallInterfaceCallable CallLoadedExecutableOp::getCallableForCallee() {
   return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+}
+void CallLoadedExecutableOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  // Direct call
+  if ((*this)->getAttrOfType<mlir::SymbolRefAttr>("callee")) {
+    (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<mlir::Value>());
 }
 
 mlir::Operation::operand_range CallLoadedExecutableOp::getArgOperands() {
@@ -277,6 +358,22 @@ mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
                          << ". Actual " << callee.getFunctionType();
   }
   return mlir::success();
+}
+
+mlir::LogicalResult CallLoadedExecutableOp::verify() {
+  llvm::SmallVector<IfrtArrayType, 4> input_arrays;
+  input_arrays.reserve(getInputs().size());
+  for (const mlir::Value input : getInputs()) {
+    input_arrays.push_back(input.getType().cast<IfrtArrayType>());
+  }
+
+  llvm::SmallVector<IfrtArrayType, 4> output_arrays;
+  output_arrays.reserve(getOutputs().size());
+  for (const mlir::Value output : getOutputs()) {
+    output_arrays.push_back(output.getType().cast<IfrtArrayType>());
+  }
+
+  return VerifyIoAliases(*this, getIoAliases(), input_arrays, output_arrays);
 }
 
 mlir::LogicalResult LoadedExecutableOp::verify() {

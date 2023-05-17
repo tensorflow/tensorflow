@@ -18,6 +18,7 @@ from tensorflow.python.distribute import shared_variable_creator
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 
 
 class CanonicalizeVariableNameTest(test.TestCase):
@@ -53,13 +54,13 @@ class SharedVariableCreatorTest(test.TestCase):
       creator_fns.append(creator_fn)
 
     with variable_scope.variable_creator_scope(creator_fns[0]):
-      v0 = variable_scope.variable(1.0, name="foo")
+      v0 = variable_v1.VariableV1(1.0, name="foo")
 
     with variable_scope.variable_creator_scope(creator_fns[1]):
-      v1 = variable_scope.variable(1.0, name="foo")
+      v1 = variable_v1.VariableV1(1.0, name="foo")
 
     with variable_scope.variable_creator_scope(creator_fns[2]):
-      v2 = variable_scope.variable(1.0, name="foo")
+      v2 = variable_v1.VariableV1(1.0, name="foo")
 
     # v1 and v2 should be same as v0
     self.assertIs(v1, v0)

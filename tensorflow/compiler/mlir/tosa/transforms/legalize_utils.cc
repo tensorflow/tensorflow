@@ -717,6 +717,9 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
+    if (op.getType().getElementType().isa<QuantizedType>()) {
+      return;
+    }
     auto ety = op.getValue().getShapedType().getElementType();
     auto new_ty = op.getType().cast<TensorType>().clone(ety);
     op.getResult().setType(new_ty);

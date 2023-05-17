@@ -232,37 +232,6 @@ Status NcclAllReduceThunkBase::RunAllReduce(const ExecuteParams& params,
                                   stream, comm);
 }
 
-NcclAllReduceThunk::NcclAllReduceThunk(ThunkInfo thunk_info,
-                                       mlir::lmhlo::AllReduceOp op,
-                                       std::vector<Buffer> buffers)
-    : NcclAllReduceThunkBase(Thunk::kNcclAllReduce, thunk_info,
-                             impl::GetNcclAllReduceConfig(op),
-                             std::move(buffers)) {}
-
-Status NcclAllReduceThunk::CheckImplementable(mlir::lmhlo::AllReduceOp op,
-                                              int64_t replica_count,
-                                              int64_t partition_count) {
-  return AddOpDescription<NcclAllReduceThunk>(
-      impl::CheckImplementable(op, Thunk::kNcclAllReduce), op, replica_count,
-      partition_count);
-}
-
-bool NcclAllReduceThunk::IsDegenerate(mlir::lmhlo::AllReduceOp op,
-                                      int64_t replica_count,
-                                      int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
-}
-
-CollectiveOpGroupMode NcclAllReduceThunk::GetGroupMode(
-    mlir::lmhlo::AllReduceOp op) {
-  return impl::GetGroupMode(op);
-}
-
-Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
-                                             ncclComm_t comm) {
-  return RunAllReduce(params, *params.stream, comm);
-}
-
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     ThunkInfo thunk_info, mlir::lmhlo_gpu::AllReduceStartOp op,
     std::vector<Buffer> buffers)
@@ -309,40 +278,9 @@ Status NcclReduceScatterThunkBase::RunReduceScatter(const ExecuteParams& params,
                                       stream, comm);
 }
 
-NcclReduceScatterThunk::NcclReduceScatterThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
-    std::vector<NcclAllReduceThunk::Buffer> buffers)
-    : NcclReduceScatterThunkBase(Thunk::kNcclReduceScatter, thunk_info,
-                                 impl::GetNcclAllReduceConfig(op),
-                                 std::move(buffers)) {}
-
-/*static*/ Status NcclReduceScatterThunk::CheckImplementable(
-    mlir::lmhlo::ReduceScatterOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return AddOpDescription<NcclReduceScatterThunk>(
-      impl::CheckImplementable(op, Thunk::kNcclReduceScatter), op,
-      replica_count, partition_count);
-}
-
-/*static*/ bool NcclReduceScatterThunk::IsDegenerate(
-    mlir::lmhlo::ReduceScatterOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclReduceScatterThunk::GetGroupMode(
-    mlir::lmhlo::ReduceScatterOp op) {
-  return impl::GetGroupMode(op);
-}
-
-Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
-                                                 ncclComm_t comm) {
-  return RunReduceScatter(params, *params.stream, comm);
-}
-
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     ThunkInfo thunk_info, mlir::lmhlo_gpu::ReduceScatterStartOp op,
-    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclReduceScatterThunkBase(Thunk::kNcclReduceScatterStart, thunk_info,
                                  impl::GetNcclAllReduceConfig(op),
                                  std::move(buffers)) {}

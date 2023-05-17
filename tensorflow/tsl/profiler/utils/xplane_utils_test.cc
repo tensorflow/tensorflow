@@ -615,8 +615,8 @@ TEST(XplaneutilsTest, TestIsHostPlane) {
   EXPECT_TRUE(IsHostPlane(*xplane_metadata));
   EXPECT_TRUE(IsHostPlane(*xplane_syscalls));
   EXPECT_TRUE(IsHostPlane(*xplane_python_tracer));
-  EXPECT_TRUE(IsHostPlane(*xplane_custom_prefix));
-  EXPECT_TRUE(IsHostPlane(*xplane_legacy_custom));
+  EXPECT_FALSE(IsHostPlane(*xplane_custom_prefix));
+  EXPECT_FALSE(IsHostPlane(*xplane_legacy_custom));
   EXPECT_TRUE(IsHostPlane(*xplane_cupti));
 }
 
@@ -625,8 +625,17 @@ TEST(XplaneutilsTest, TestIsDevicePlane) {
   auto xplane_host_thread = FindOrAddMutablePlaneWithName(&xspace, "/host:CPU");
   auto xplane_device_thread =
       FindOrAddMutablePlaneWithName(&xspace, "/device:TPU");
+  auto xplane_task_env_thread =
+      FindOrAddMutablePlaneWithName(&xspace, "Task Environment");
+  auto xplane_custom_prefix =
+      FindOrAddMutablePlaneWithName(&xspace, "/device:CUSTOM:123");
+  auto xplane_legacy_custom =
+      FindOrAddMutablePlaneWithName(&xspace, "/custom:456");
   EXPECT_FALSE(IsDevicePlane(*xplane_host_thread));
+  EXPECT_FALSE(IsDevicePlane(*xplane_task_env_thread));
   EXPECT_TRUE(IsDevicePlane(*xplane_device_thread));
+  EXPECT_TRUE(IsDevicePlane(*xplane_custom_prefix));
+  EXPECT_TRUE(IsDevicePlane(*xplane_legacy_custom));
 }
 
 }  // namespace

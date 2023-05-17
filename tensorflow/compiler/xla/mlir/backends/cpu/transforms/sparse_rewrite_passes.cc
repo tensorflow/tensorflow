@@ -69,14 +69,16 @@ void getIntegersFromDenseElements(Value v, SmallVectorImpl<int64_t>& values) {
   values.append(range.begin(), range.end());
 }
 
-struct SparsePackCallRewriter {
+struct SparseBatchedPackCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 2 && "Need two arrays (data/indices)");
+    assert(op.getInputs().size() == 3 && "Need two arrays (data/indices)");
     assert(op.getResults().size() == 1 && "Must be packing into one tensor");
+    llvm::APInt batchedLvls =
+        *getDenseIntAttrFromConstant(op.getInputs()[2]).begin();
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
         op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1],
-        nullptr);
+        IntegerAttr::get(rewriter.getIndexType(), batchedLvls));
     return success();
   }
 };
@@ -203,6 +205,19 @@ struct SparseUnaryChloCallRewriter {
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<unaryChlo>(op, ret_sp_tensor.getType(),
                                            op.getInputs()[0]);
+    return success();
+  }
+};
+
+template <typename BinaryMhlo>
+struct SparseBinaryCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need two argument");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    // Reconstruct the binary mhlo operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<BinaryMhlo>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1]);
     return success();
   }
 };
@@ -341,13 +356,54 @@ struct SparseConvertCallRewriter {
   }
 };
 
+struct SparseReduceSumCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need one input tensor and axes");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    SmallVector<int64_t> axes;
+    getIntegersFromDenseElements(op.getInputs()[1], axes);
+    Value result = op.getResults()[0];
+    auto resultType = result.getType().dyn_cast<RankedTensorType>();
+    auto elementType = resultType.getElementType();
+
+    Location loc = op.getLoc();
+    RankedTensorType blockArgumentType = RankedTensorType::get({}, elementType);
+    Value zero = rewriter.create<mhlo::ConstantOp>(
+        loc, DenseElementsAttr::get(blockArgumentType,
+                                    rewriter.getZeroAttr(elementType)));
+
+    mhlo::ReduceOp reduce = rewriter.create<mhlo::ReduceOp>(
+        loc, result.getType(), op.getInputs()[0], zero,
+        rewriter.getI64TensorAttr(axes));
+
+    // Setup the body for mhlo.reduce.
+    Region& region = reduce.getBody();
+    Block& block = region.emplaceBlock();
+    block.addArgument(blockArgumentType, loc);
+    block.addArgument(blockArgumentType, loc);
+    auto* firstArgument = block.args_begin();
+    auto secondArgument = block.args_rbegin();
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(&block);
+      Value addResult =
+          rewriter.create<mhlo::AddOp>(loc, *firstArgument, *secondArgument);
+      rewriter.create<mhlo::ReturnOp>(loc, addResult);
+    }
+
+    rewriter.replaceOp(op, reduce.getResults());
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
       mhlo::CustomCallOp op, PatternRewriter& rewriter)>;
 
   const llvm::StringMap<SparseCustomTargetRewriter> rewriter_map_{
-      std::make_pair("sparse_tensor_sparse_pack", SparsePackCallRewriter()),
+      std::make_pair("sparse_tensor_sparse_pack",
+                     SparseBatchedPackCallRewriter()),
       std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
       std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
       std::make_pair("sparse_tensor_dot_general", SparseDotCallRewriter()),
@@ -374,6 +430,12 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
                      SparseDynSliceCallRewriter()),
       std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
       std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
+      std::make_pair("sparse_tensor_add",
+                     SparseBinaryCallRewriter<mhlo::AddOp>()),
+      std::make_pair("sparse_tensor_sub",
+                     SparseBinaryCallRewriter<mhlo::SubtractOp>()),
+      std::make_pair("sparse_tensor_mul",
+                     SparseBinaryCallRewriter<mhlo::MulOp>()),
   };
 
   // Rewrites a CustomCallOp to corresponding sparse_tensor operation.

@@ -354,7 +354,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* input_quantized;
     TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/0,
                                                 &input_quantized));
-    input_quantized->type = filter->type;
+    input_quantized->type = kTfLiteInt8;
     input_quantized->allocation_type = kTfLiteArenaRw;
 
     TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);

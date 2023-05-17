@@ -567,7 +567,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           : lib_def_->FindOptimizedFunctionGraph(function_name);
   if (optimized_graph_proto != nullptr) {
     LOG(INFO) << "Found AOT'd graph for function: " << function_name;
+    metrics::UpdateFunctionGraphOptimizationSavingTime(
+        optimized_graph_proto->optimization_time_usecs(),
+        metrics::GraphOptimizationSource::kAot);
+    metrics::IncrementFunctionGraphOptimizationCacheHitCount(
+        1, metrics::GraphOptimizationSource::kAot);
   }
+
   StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       optimized_graph_proto == nullptr
           ? OptimizeFunctionGraphOrReadFromFileCache(

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -1215,6 +1216,37 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
     return errors::Internal("Retval[", index, "] has already been set.");
   }
   return OkStatus();
+}
+
+tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
+    const tensorflow::StackTracesMap& map) {
+  tensorflow::GraphDebugInfo debug_info;
+  for (const auto& [node_name, stack_trace] : map) {
+    if (stack_trace == nullptr) continue;
+
+    tensorflow::GraphDebugInfo::StackTrace stack_trace_proto;
+    absl::flat_hash_map<string, int> file_name_to_index;
+    int new_name_index = 0;
+
+    for (const auto& stack_frame : stack_trace->GetUserFrames(-1)) {
+      auto* file_line_col = stack_trace_proto.add_file_line_cols();
+      if (file_name_to_index.contains(stack_frame.file_name)) {
+        file_line_col->set_file_index(
+            file_name_to_index[stack_frame.file_name]);
+      } else {
+        *debug_info.add_files() = stack_frame.file_name;
+        file_line_col->set_file_index(new_name_index);
+        file_name_to_index[stack_frame.file_name] = new_name_index;
+        new_name_index++;
+      }
+      file_line_col->set_line(stack_frame.line_number);
+      file_line_col->set_func(stack_frame.function_name);
+    }
+
+    (*debug_info.mutable_traces())[node_name] = std::move(stack_trace_proto);
+  }
+
+  return debug_info;
 }
 
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,

@@ -14,15 +14,25 @@
 # ==============================================================================
 """Utilities for strategies that are backed by DTensor."""
 
+from tensorflow.dtensor.python import accelerator_util
 from tensorflow.dtensor.python import api as d_api
+from tensorflow.dtensor.python import input_util
+from tensorflow.dtensor.python import layout
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import values
+from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 
 
-class DTensorDistributedValue(values.DistributedValues):
+# Default dimension name used for the mesh created when user provide a list
+# of devices. For mirrored strategy, it should be a 1D mesh with batch dim only.
+DEFAULT_BATCH_MESH_DIM_NAME = "batch"
+
+
+class DTensorDistributedValue(values_lib.DistributedValues):
   """DistributedValue backed by a DTensor instance.
 
   This class is useful to align the interface between DTensor and tf.distribute.
@@ -129,3 +139,95 @@ class DTensorReplicaContext(distribute_lib.ReplicaContext):
 
   def _update(self, var, fn, args=(), kwargs=None, group=True):
     raise NotImplementedError(self._UNSUPPORTED_ERROR_MSG)
+
+
+def initialize_accelerator_system_once(device_type):
+  # Initialize the GPU/TPU before creating the mesh.
+  # Note that this method will also trigger the creation of the pairing
+  # virtual host CPUs, which is needed by dataset and checkpoint.
+  if not accelerator_util.is_initialized():
+    # TODO(feyu): Add a method in accelerator_util to check the initialized
+    # mesh device types.
+    accelerator_util.initialize_accelerator_system(
+        device_type,
+        experimental_reset_context=True)
+
+
+def convert_inputs_to_dtensor(inputs, mesh):
+  """Convert any input types to DTensor instance."""
+  if isinstance(inputs, DTensorDistributedValue):
+    return inputs.get_dtensor()
+  elif isinstance(inputs, values_lib.DistributedValues):
+    return convert_per_replica_to_dtensor(inputs, mesh)
+  elif isinstance(inputs, input_util._DTensorIterator):   # pylint: disable=protected-access
+    return inputs
+  elif tensor_util.is_tensor(inputs):
+    if context.executing_eagerly():
+      if d_api.is_dtensor(inputs):
+        return inputs
+      else:
+        # For a non-dtensor input in eager context, we could choose to replica
+        # them into per-replica and then pack them into dtensor. However, this
+        # will cause an eager/graph discrepancy since we can't do this check in
+        # the graph context. For now, we will ask user to provide a distributed
+        # value for inputs.
+        _raise_unsupported_input_type_error(inputs)
+    else:
+      # For graph context, since we can't check if they are dtensor or not. We
+      # will assume the value is already distributed. This is a critical use
+      # case for keras, where all the inputs are pre-distributed via strategy,
+      # and the train function execute within graph context.
+      return inputs
+  else:
+    # For any other types.
+    _raise_unsupported_input_type_error(inputs)
+
+
+def _raise_unsupported_input_type_error(inputs):
+  raise ValueError("Unsupported input types for MirroredStrategy. "
+                   "Please use `strategy.distribute_dataset` or "
+                   "`strategy.distribute_values_from_function` to "
+                   f"distribute inputs. Received input type: {type(inputs)}")
+
+
+def is_distributed_value(value):
+  return isinstance(
+      value, values_lib.DistributedValues) or d_api.is_dtensor(value)
+
+
+def convert_per_replica_to_dtensor(per_replica_value, mesh):
+  """Convert a PerReplica result to a DTensor instance.
+
+  Args:
+    per_replica_value: A PerReplica instance whose value will be converted
+      to DTensor.
+    mesh: The mesh used for layout creation.
+
+  Returns:
+    A DTensor instance that packed from per_replica_value with batch sharded
+      layout.
+  """
+  values = per_replica_value.values
+  if isinstance(values[0], (float, int)):
+    rank = 0
+  else:
+    rank = len(values[0].shape)
+
+  if rank == 0:
+    result = []
+    # dtensor.pack requires each component to have same rank as the packed
+    # result. When the individual value is scalar, it needs to be expanded into
+    # 1D tensor.
+    for v in values:
+      result.append(array_ops.expand_dims_v2(v, axis=0))
+    rank += 1
+  else:
+    result = list(values)   # dtensor.pack requires a list as input.
+
+  # TODO(scottzhu): Note that the result tensor could be a partial value and
+  # not always batch shard or fully replicaed. See
+  # http://screenshot/6ERkXyX95KqftCw as an example.
+  batch_layout = layout.Layout.batch_sharded(
+      mesh, batch_dim=DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+
+  return d_api.pack(result, batch_layout)

@@ -12,7 +12,10 @@ load(
     "tf_cc_test",
 )
 
-package_group(name = "data_transfer_visibility")
+package_group(
+    name = "data_transfer_visibility",
+    packages = ["//learning/brain/google/data/service/data_transfer_protocols/..."],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -376,6 +379,7 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
@@ -592,6 +596,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -621,6 +626,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -797,6 +803,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

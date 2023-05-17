@@ -1,4 +1,5 @@
-# TODO(aselle): describe this package.
+#include "third_party/absl/strings/str_cat.h"
+#TODO(aselle) : describe this package.
 
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -42,6 +43,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

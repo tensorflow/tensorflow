@@ -95,8 +95,7 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
     //   and easeier. In future, we might do certain optimization to save FLops.
     //   For example, if all operands are 'x,y' and output is '*,*', relayouting
     //   output could be the choice (saving communications).
-    TF_ASSIGN_OR_RETURN(auto truncated_layout,
-                        output_layout->Truncate(rank_offset, /*end=*/true));
+    auto truncated_layout = output_layout->Truncate(rank_offset, /*end=*/true);
     mlir::Value output;
     TF_ASSIGN_OR_RETURN(const auto& shape, ExtractGlobalInputShape(operand));
     absl::flat_hash_set<int> size_one_dims;
@@ -165,11 +164,9 @@ ElementwiseSPMDExpander::ComputeLayoutBackward(
     auto operand = operand_and_index.value();
 
     TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(operand));
-    TF_ASSIGN_OR_RETURN(
-        Layout output_layout_truncated,
-        output_layout.Truncate(
-            output_layout.sharding_specs().size() - operand_shape.size(),
-            /*end=*/true));
+    Layout output_layout_truncated = output_layout.Truncate(
+        output_layout.sharding_specs().size() - operand_shape.size(),
+        /*end=*/true);
     auto inferred_operand_layout_strs =
         output_layout_truncated.sharding_spec_strs();
 

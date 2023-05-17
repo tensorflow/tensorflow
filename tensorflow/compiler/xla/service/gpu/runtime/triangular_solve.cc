@@ -61,7 +61,7 @@ absl::Status TriangularSolve::run(
       std::string(backend_config.data(), backend_config.length());
 
   auto st = tsl::HumanReadableJsonToProto(backend_config_str, &opts);
-  if (!st.ok()) return ToAbslStatus(st);
+  if (!st.ok()) return st;
 
   return handler(run_options, debug_options, *a, *b, *result, *temp,
                  opts.left_side(), opts.lower(), opts.unit_diagonal(),
@@ -129,7 +129,7 @@ absl::Status TriangularSolve::operator()(
       a_data, result_data, temp_data, PtxOptsFromDebugOptions(*debug_options),
       uplo, side, diagonal, *transpose, elem_type, batch_size, m, n,
       a_batch_stride, b_batch_stride, stream);
-  if (!st.ok()) return ToAbslStatus(st);
+  if (!st.ok()) return st;
 
   return absl::OkStatus();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

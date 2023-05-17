@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
@@ -831,6 +832,30 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_llvm_disable_expensive_passes",
                     &DebugOptions::xla_llvm_disable_expensive_passes,
                     &DebugOptions::set_xla_llvm_disable_expensive_passes)
+      .def_property(
+          "xla_disable_hlo_passes",
+          [](DebugOptions* self) {
+            return absl::StrJoin(self->xla_disable_hlo_passes(), ",");
+          },
+          [](DebugOptions* self, std::string value) {
+            self->clear_xla_disable_hlo_passes();
+            for (const auto& passname :
+                 std::vector<std::string>(absl::StrSplit(value, ','))) {
+              self->add_xla_disable_hlo_passes(passname);
+            }
+          })
+      .def_property(
+          "xla_enable_hlo_passes_only",
+          [](DebugOptions* self) {
+            return absl::StrJoin(self->xla_enable_hlo_passes_only(), ",");
+          },
+          [](DebugOptions* self, std::string value) {
+            self->clear_xla_enable_hlo_passes_only();
+            for (const auto& passname :
+                 std::vector<std::string>(absl::StrSplit(value, ','))) {
+              self->add_xla_enable_hlo_passes_only(passname);
+            }
+          })
       .def_property("xla_test_all_input_layouts",
                     &DebugOptions::xla_test_all_input_layouts,
                     &DebugOptions::set_xla_test_all_input_layouts);

@@ -1563,29 +1563,40 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
     int64_t operandRank = operandType.getRank();
     int64_t lastDimIndex = operandRank - 1;
     int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
+    int64_t lastDimResultSize =
+        std::min(static_cast<int64_t>(op.getK()), lastDimSize);
     int64_t isDynamic = !operandType.hasStaticShape();
-    Value shape;
+    auto i32Type = rewriter.getIntegerType(32);
+    Value opShapeValue, resultShapeValue;
     if (isDynamic) {
       SmallVector<Value> sizesI32x1;
       for (auto i = 0; i < operandType.getRank(); ++i) {
         auto sizeI32 = rewriter.create<mhlo::GetDimensionSizeOp>(
             op.getLoc(), op.getOperand(), i);
         auto sizeI32x1 = rewriter.create<mhlo::ReshapeOp>(
-            op.getLoc(), RankedTensorType::get({1}, rewriter.getI32Type()),
-            sizeI32);
+            op.getLoc(), RankedTensorType::get({1}, i32Type), sizeI32);
         sizesI32x1.push_back(sizeI32x1);
       }
-      shape = rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), sizesI32x1,
-                                                   /*dimension=*/0);
+      opShapeValue =
+          rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), sizesI32x1,
+                                               /*dimension=*/0);
+      auto lastDimI32 = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(),
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(lastDimResultSize)));
+      auto lastDimI32x1 = rewriter.create<mhlo::ReshapeOp>(
+          op.getLoc(), RankedTensorType::get({1}, i32Type), lastDimI32);
+      sizesI32x1.back() = lastDimI32x1;
+      resultShapeValue =
+          rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), sizesI32x1,
+                                               /*dimension=*/0);
     }
 
     // Create an Iota op for indices.
-    auto i32Type = rewriter.getIntegerType(32);
     Type iotaType = RankedTensorType::get(operandType.getShape(), i32Type);
     Value iotaOp;
     if (isDynamic) {
       iotaOp = rewriter.create<mhlo::DynamicIotaOp>(
-          op.getLoc(), iotaType, shape,
+          op.getLoc(), iotaType, opShapeValue,
           rewriter.getI64IntegerAttr(lastDimIndex));
     } else {
       iotaOp = rewriter.create<mhlo::IotaOp>(
@@ -1608,7 +1619,7 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
 
     SmallVector<int64_t, 4> beginIndices(operandRank, 0);
     auto endIndices = llvm::to_vector<4>(operandType.getShape());
-    endIndices.back() = std::min(static_cast<int64_t>(op.getK()), lastDimSize);
+    endIndices.back() = lastDimResultSize;
     SmallVector<int64_t, 4> strides(operandRank, 1);
 
     // Get the slice for the top K elements.
@@ -1618,14 +1629,13 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
       Value startIndices = rewriter.create<mhlo::ConstantOp>(
           op.getLoc(), DenseIntElementsAttr::get(indicesTy, beginIndices));
       Value lastIndices = rewriter.create<mhlo::ConvertOp>(
-          op.getLoc(), shape, rewriter.getI64Type());
+          op.getLoc(), resultShapeValue, rewriter.getI64Type());
       Value stridesOp = rewriter.create<mhlo::ConstantOp>(
           op.getLoc(), DenseIntElementsAttr::get(indicesTy, strides));
 
       SmallVector<int64_t, 4> resultShape =
           llvm::to_vector<4>(operandType.getShape());
-      resultShape.back() =
-          std::min(static_cast<int64_t>(op.getK()), lastDimSize);
+      resultShape.back() = lastDimResultSize;
       RankedTensorType resultType = RankedTensorType::get(
           resultShape, elementType, operandType.getEncoding());
       RankedTensorType indexResultType =

@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -1702,6 +1705,791 @@ TEST_F(IntervalTreeTest, ThreeLevelsRightLeftChunkDifferent) {
   EXPECT_EQ(tree.GetRoot()->chunk.size, 4);
   EXPECT_TRUE(tree.Remove(22, 40, chunk3));
   ASSERT_EQ(tree.GetRoot(), nullptr);
+}
+
+class SlicedAllocationFinderTest : public ::testing::Test {
+ public:
+  using HeapTy = GlobalDecreasingSizeBestFitHeap<HloValue>;
+  using FreeChunks = typename HeapTy::FreeChunks;
+  using Chunk = HeapSimulator::Chunk;
+  using Finder = typename HeapTy::SlicedAllocationFinder;
+};
+
+TEST_F(SlicedAllocationFinderTest, NoSlices) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t0 |xxxxx  xxx                              xxxxx000xxxxxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+
+The full buffer goes in the smallest chunk that fits.
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {45, 48},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(Chunk::FromOffsetSize(45, 3),
+                                     Chunk::FromOffsetSize(48, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, NoSlicesLargerMaxColloc) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t0 |xxxxx  xxx                              xxxxx   xxxxxxxxxxxx000       x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+
+The max colocation size does not fit in the smallest free chunk.
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {45, 48},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3};
+  int64_t max_colocation_size = 6;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(Chunk::FromOffsetSize(60, 3),
+                                     Chunk::FromOffsetSize(63, 3)));
+}
+
+TEST_F(SlicedAllocationFinderTest, NoSlicesSmallestTie) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t0 |xxxxx  xxx000xx                         xxxxx   xxxxxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+
+Multiple free chunks have size 3. We pick the one with the smallest offset.
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 13},
+          {15, 40},
+          {45, 48},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(Chunk::FromOffsetSize(10, 3),
+                                     Chunk::FromOffsetSize(13, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, LeftHole) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx000111222xxxxxx          x
+t1 |xxxxx  xxx                              xxxxx000111xxxxxxxxx          x
+t0 |xxxxx  xxx                              xxxxx000xxxxxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {45, 48},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {45, 51},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(45, 3), Chunk::FromOffsetSize(48, 3),
+                  Chunk::FromOffsetSize(51, 3), Chunk::FromOffsetSize(54, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, RightHole) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx000111222xxxxxx          x
+t1 |xxxxx  xxx                              xxxxxxxx111222xxxxxx          x
+t0 |xxxxx  xxx                              xxxxxxxxxxx222xxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {51, 54},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {48, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(51, 3), Chunk::FromOffsetSize(48, 3),
+                  Chunk::FromOffsetSize(45, 3), Chunk::FromOffsetSize(54, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, MiddleHole) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx000111222xxxxxx          x
+t1 |xxxxx  xxx                              xxxxxxxx111222xxxxxx          x
+t0 |xxxxx  xxx                              xxxxxxxx111xxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {48, 51},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {48, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(48, 3), Chunk::FromOffsetSize(51, 3),
+                  Chunk::FromOffsetSize(45, 3), Chunk::FromOffsetSize(54, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, ManyHoles) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx                          xxxxx    000111222              xx  xxxxxxx
+t1 |xxxxx                          xxxxxxx  000 xx222  xxx     xxx  xxxxxxx
+t0 |xxxxx                          xxxxxxxx   xxxx222  xxx     xxx  xxxxxxx
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+
+Note, the free chunk @t1 offset 38 is not aligned with the free chunk @t0
+offset 39 in a way that would fit any offset of the slices. (A slice can't be
+subsliced by MSA.)
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 31},
+          {39, 42},
+          {46, 51},
+          {54, 60},
+          {62, 64},
+      },
+      // Slice time 1
+      {
+          {5, 31},
+          {38, 44},
+          {46, 51},
+          {54, 59},
+          {62, 64},
+      },
+      // Slice time 2
+      {
+          {5, 31},
+          {36, 59},
+          {62, 64},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(46, 3), Chunk::FromOffsetSize(40, 3),
+                  Chunk::FromOffsetSize(43, 3), Chunk::FromOffsetSize(49, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, EarlySliceTimesHaveLargeFreeChunks) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx000111222xxxxxx          x
+t1 |xxxxx                    xxx            xxxxxxxx111222xxxxxx          x
+t0 |xxxxxx                                          111                 xxx
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {6, 68},
+      },
+      // Slice time 1
+      {
+          {5, 25},
+          {28, 40},
+          {48, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(48, 3), Chunk::FromOffsetSize(51, 3),
+                  Chunk::FromOffsetSize(45, 3), Chunk::FromOffsetSize(54, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, DifferentSliceSizes1) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xx000001112222xxxxxx          x
+t1 |xxxxx  xxx                              xxxxxx 1112222xxxxxx          x
+t0 |xxxxx  xxx                              xxxxxx 111 xxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {46, 51},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {46, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {42, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {5, 3, 4};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(47, 3), Chunk::FromOffsetSize(50, 4),
+                  Chunk::FromOffsetSize(42, 5), Chunk::FromOffsetSize(54, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, DifferentSliceSizes2) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx000001112222                  xx            xxxxxx          x
+t1 |xxxxx  xxx00000111                      xxxxxx        xxxxxx          x
+t0 |xxxxx  xxx00000                         xxxxxx   xxxxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {46, 49},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {46, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {42, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {5, 3, 4};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(10, 5), Chunk::FromOffsetSize(15, 3),
+                  Chunk::FromOffsetSize(18, 4), Chunk::FromOffsetSize(22, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, LargerMaxColloc) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx         xxxxxx000111222 x
+t1 |xxxxx  xxx                              xxxxxxxx      xxxxxx000111    x
+t0 |xxxxx  xxx                              xxxxxxxx   xxxxxxxxx000       x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+  */
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {48, 51},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {48, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = 10;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(60, 3), Chunk::FromOffsetSize(63, 3),
+                  Chunk::FromOffsetSize(66, 3), Chunk::FromOffsetSize(69, 1)));
+}
+
+TEST_F(SlicedAllocationFinderTest, PreferredOffsetFit) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx          000111222           xxxxx         xxxxxx          x
+t1 |xxxxx  xxx          000111              xxxxxxxx      xxxxxx          x
+t0 |xxxxx  xxx          000                 xxxxxxxx   xxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {48, 51},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {48, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = 20;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(20, 3), Chunk::FromOffsetSize(23, 3),
+                  Chunk::FromOffsetSize(26, 3), Chunk::FromOffsetSize(29, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, PreferredOffsetNoFit) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxxxx000111222xxxxxx          x
+t1 |xxxxx  xxx                              xxxxxxxx111222xxxxxx          x
+t0 |xxxxx  xxx                              xxxxxxxx111xxxxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+
+The sliced allocation does not fit at the preferred offset.
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {48, 51},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {48, 54},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 54},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = 35;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(48, 3), Chunk::FromOffsetSize(51, 3),
+                  Chunk::FromOffsetSize(45, 3), Chunk::FromOffsetSize(54, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, Misaligned) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxx 000011112222 xxx          x
+t1 |xxxxx  xxx                              xxxxxxx 11112222 xxx          x
+t0 |xxxxx  xxx                              xxxxxxx 1111 xxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+
+The IsSliceOffsetAllowedFn is set such that we are only allowed to start slices
+on spatial boundaries of 2.
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {47, 53},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {47, 57},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {43, 57},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {4, 4, 4};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 2;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(48, 4), Chunk::FromOffsetSize(52, 4),
+                  Chunk::FromOffsetSize(44, 4), Chunk::FromOffsetSize(56, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, PreferredOffsetMisaligned) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxx  xxx                              xxx 000011112222 xxx          x
+t1 |xxxxx  xxx                              xxxxxxx 11112222 xxx          x
+t0 |xxxxx  xxx                              xxxxxxx 1111 xxxxxxx          x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+
+The IsSliceOffsetAllowedFn is set such that we are only allowed to start slices
+on spatial boundaries of 2.
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 7},
+          {10, 40},
+          {47, 53},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {47, 57},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {43, 57},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {4, 4, 4};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = 21;
+  int64_t alignment = 2;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(48, 4), Chunk::FromOffsetSize(52, 4),
+                  Chunk::FromOffsetSize(44, 4), Chunk::FromOffsetSize(56, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, CorrectInitialization1) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t1 |xxxxx000111xxxxxxxxxxxxxx      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+t0 |xxxxx000   xxxx      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 11},
+          {15, 21},
+      },
+      // Slice time 1
+      {
+          {5, 11},
+          {25, 31},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(Chunk::FromOffsetSize(5, 3),
+                                     Chunk::FromOffsetSize(8, 3),
+                                     Chunk::FromOffsetSize(11, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, CorrectInitialization2) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t1 |xxxxx000111     xxxxxxxxxx      xxxxxxxxxx   xxxxxxxxxxxxxxxxxxxxxxxxxx
+t0 |xxxxx000        xxxx      xxxxxxxxxxxxxx   xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 16},
+          {20, 26},
+          {40, 43},
+      },
+      // Slice time 1
+      {
+          {5, 16},
+          {26, 32},
+          {42, 45},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(Chunk::FromOffsetSize(5, 3),
+                                     Chunk::FromOffsetSize(8, 3),
+                                     Chunk::FromOffsetSize(11, 0)));
 }
 
 }  // namespace

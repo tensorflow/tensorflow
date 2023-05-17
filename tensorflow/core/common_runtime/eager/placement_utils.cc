@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
@@ -68,7 +69,7 @@ bool IsFunction(StringPiece op_name) {
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(string(op_name), &op_def);
   if (!s.ok()) {
-    if (!errors::IsNotFound(s)) {
+    if (!absl::IsNotFound(s)) {
       LOG(WARNING) << "Looking up OpDef failed with error: " << s.ToString();
     }
     // Cannot find OpDef, it is a function.

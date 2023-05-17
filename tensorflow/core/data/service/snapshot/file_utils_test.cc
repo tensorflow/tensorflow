@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
@@ -38,6 +38,7 @@ namespace data {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
@@ -127,6 +128,40 @@ TEST(FileUtilsTest, GetChildrenEmptyDirectory) {
 
 TEST(FileUtilsTest, GetChildrenDirectoryNotFound) {
   EXPECT_THAT(GetChildren("Not exist", tsl::Env::Default()),
+              StatusIs(tsl::error::NOT_FOUND));
+}
+
+TEST(FileUtilsTest, ValidateSnapshotSuccess) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string done_file = tsl::io::JoinPath(directory, "DONE");
+  TF_ASSERT_OK(AtomicallyWriteStringToFile(done_file, "", tsl::Env::Default()));
+  TF_EXPECT_OK(ValidateSnapshot(directory, tsl::Env::Default()));
+}
+
+TEST(FileUtilsTest, ValidateSnapshotError) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string error_file = tsl::io::JoinPath(directory, "ERROR");
+  TF_ASSERT_OK(AtomicallyWriteTextProto(
+      error_file,
+      tsl::StatusToProto(
+          errors::FailedPrecondition("Failed precondition test")),
+      tsl::Env::Default()));
+  EXPECT_THAT(ValidateSnapshot(directory, tsl::Env::Default()),
+              StatusIs(tsl::error::FAILED_PRECONDITION,
+                       HasSubstr("Failed precondition test")));
+}
+
+TEST(FileUtilsTest, ValidateSnapshotNotFinished) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  EXPECT_THAT(
+      ValidateSnapshot(directory, tsl::Env::Default()),
+      StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("The save job has not finished writing the snapshot.")));
+}
+
+TEST(FileUtilsTest, ValidateSnapshotNotFound) {
+  EXPECT_THAT(ValidateSnapshot("Not found", tsl::Env::Default()),
               StatusIs(tsl::error::NOT_FOUND));
 }
 

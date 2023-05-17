@@ -2411,6 +2411,31 @@ def TPUDevicePropagationPass : Pass<"tf-tpu-device-propagation", "mlir::func::Fu
   let constructor = "TFTPU::CreateTPUDevicePropagationPass()";
 }
 
+def TPUColocateSplitsPass : Pass<"tf-tpu-colocate-splits", "mlir::func::FuncOp"> {
+  let summary = "Colocates each Split op with its predecessor";
+  let constructor = "TFTPU::CreateTPUColocateSplitsPass()";
+  let description = [{
+    It is beneficial for performance to assign a `Split` op to the same device
+    as its predecessor. This is because the weight of cut edges is always
+    minimized when the `Split` is with its predecessor. This colocation
+    constraint will be used by the placer graph optimization to assign a device
+    to the op.
+
+    This pass should run in the export pipeline after tf-replicate-to-island so
+    each replica has its own distinct (predecessor, Split) pair.
+
+    The colocation class (`_class`) of the `Split` is set to the same class as
+    its predecessor:
+
+    ```mlir
+    %outputs1:2, %control1 = tf_executor.island wraps "tf.IteratorGetNext"(%arg)
+      {_class = ["loc:@dataset_iterator_1"]}
+    %outputs2:2, %control2 = tf_executor.island wraps "tf.Split"(%outputs0, %outputs1#1)
+      {_class = ["loc:@dataset_iterator_1", num_split = 2 : i32}
+    ```
+  }];
+}
+
 def TPUIdentityPruningPass : Pass<"tf-tpu-identity-pruning", "ModuleOp"> {
   let summary = "Removes Identity/IdentityN ops from the TPU computation";
   let constructor = "TFTPU::CreateTPUIdentityPruningPass()";

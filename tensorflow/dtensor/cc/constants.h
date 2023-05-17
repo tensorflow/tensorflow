@@ -94,6 +94,10 @@ static constexpr char kMeshCoordinatesAttr[] = "_mesh_coordinates";
 // such as IR dumps etc.
 static constexpr char kDoNotLog[] = "dtensor.do_not_log";
 
+// Attribute used to record the name of the eager operation triggered the
+// DTensor rewrites.
+static constexpr char kEagerOperationName[] = "dtensor.eager_operation_name";
+
 // The number of TPU cores in a donut.
 static constexpr int kTpuDonutSize = 8;
 

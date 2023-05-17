@@ -7,9 +7,6 @@ cc_library(
     name = "pjrt_c_api_hdrs",
     hdrs = ["pjrt_c_api.h"],
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",  # TODO(b/238999986): Remove this.
-    ],
 )
 
 cc_library(
@@ -56,7 +53,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/synchronization",
     ],

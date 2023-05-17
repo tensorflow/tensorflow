@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
@@ -138,8 +139,9 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   if (VLOG_IS_ON(3)) {
     module.dump();
   }
-  VLOG(3) << options.ToProto()->DebugString();
-  const auto& build_options = options.executable_build_options;
+  const xla::CompileOptions& xla_options = options.xla_options;
+  VLOG(3) << xla_options.ToProto()->DebugString();
+  const auto& build_options = xla_options.executable_build_options;
   const bool auto_spmd_partitioning =
       build_options.use_spmd_partitioning() &&
       build_options.num_partitions() > 1 &&
@@ -147,7 +149,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
        build_options.any_allow_spmd_sharding_propagation_to_output());
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
-      client->pjrt_client()->Compile(module, std::move(options)));
+      client->pjrt_client()->Compile(module, std::move(options).xla_options));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): We should request output shapes and shardings instead of
@@ -207,16 +209,17 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     CompileOptions options) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
   VLOG(3) << computation.proto().DebugString();
-  VLOG(3) << options.ToProto()->DebugString();
-  const auto& build_options = options.executable_build_options;
+  const xla::CompileOptions& xla_options = options.xla_options;
+  VLOG(3) << xla_options.ToProto()->DebugString();
+  const auto& build_options = xla_options.executable_build_options;
   const bool auto_spmd_partitioning =
       build_options.use_spmd_partitioning() &&
       build_options.num_partitions() > 1 &&
       (build_options.use_auto_spmd_partitioning() ||
        build_options.any_allow_spmd_sharding_propagation_to_output());
-  TF_ASSIGN_OR_RETURN(
-      auto pjrt_loaded_executable,
-      client->pjrt_client()->Compile(computation, std::move(options)));
+  TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
+                      client->pjrt_client()->Compile(
+                          computation, std::move(options).xla_options));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): We should request output shapes and shardings instead of

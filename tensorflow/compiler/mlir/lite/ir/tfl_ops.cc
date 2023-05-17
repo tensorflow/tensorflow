@@ -968,9 +968,9 @@ mlir::LogicalResult CustomOp::verify() {
 
 LogicalResult CustomTfOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, RegionRange ranges,
+    DictionaryAttr attr, OpaqueProperties, RegionRange ranges,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  CustomTfOpAdaptor op(operands, attr, ranges);
+  CustomTfOpAdaptor op(operands, attr, {}, ranges);
 
   if (op.getRegions().empty()) return success();
   auto* real_op = &op.getBody().front().front();
@@ -1233,7 +1233,7 @@ static LogicalResult ComputeConvWindowedOutputSize(
 
 LogicalResult Conv2DOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, RegionRange,
+    DictionaryAttr attr, OpaqueProperties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Conv2DOpAdaptor op(operands, attr);
 
@@ -1914,7 +1914,7 @@ mlir::LogicalResult ReshapeOp::verify() {
 
 LogicalResult ReshapeOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, RegionRange,
+    DictionaryAttr attr, OpaqueProperties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ReshapeOpAdaptor op(operands, attr);
   const Value input = op.getInput();
@@ -2291,7 +2291,7 @@ void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult UnpackOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   UnpackOpAdaptor op(operands, attributes);
   // TODO(jpienaar): Refactor verify
@@ -2652,7 +2652,7 @@ mlir::LogicalResult UnidirectionalSequenceLSTMOp::verify() {
 
 LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
     MLIRContext*, std::optional<Location>, ValueRange operands,
-    DictionaryAttr attr, RegionRange,
+    DictionaryAttr attr, OpaqueProperties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Value input = operands[0];
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
@@ -3713,9 +3713,9 @@ struct WhileResultOperandsMatchAndImplicitCapture
 
     // Replace with new While with matching operands and results.
     Operation* op = while_op.getOperation();
-    Operation* new_op = rewriter.insert(
-        Operation::create(op->getLoc(), op->getName(), types, new_operands,
-                          op->getAttrs(), {}, /*numRegions=*/2));
+    Operation* new_op = rewriter.insert(Operation::create(
+        op->getLoc(), op->getName(), types, new_operands, op->getAttrs(),
+        op->getPropertiesStorage(), {}, /*numRegions=*/2));
 
     for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
     int new_index = 0;
@@ -4067,7 +4067,7 @@ OpFoldResult EmbeddingLookupOp::fold(FoldAdaptor adaptor) {
 
   std::vector<int64_t> new_shape = value_attr.getType().getShape().vec();
   new_shape[0] = lookup_attr.getType().getShape()[0];
-  Type new_type = value_attr.getType().clone(new_shape);
+  auto new_type = value_attr.getType().clone(new_shape);
 
   return DenseElementsAttr::get(new_type, new_values);
 }
@@ -4096,7 +4096,15 @@ Attribute ConstBytesAttr::parse(AsmParser& parser, Type type) {
 
 void ConstBytesAttr::print(mlir::AsmPrinter& printer) const {
   StringRef bytes_str = getValue();
-  printer << " : \"0x" << llvm::toHex(bytes_str) << "\"";
+  // Elide the attribute if flag is set.
+  std::optional<int64_t> limit = OpPrintingFlags().getLargeElementsAttrLimit();
+  printer << " : \"";
+  if (limit && limit.value() < bytes_str.size()) {
+    printer << "__elided__";
+  } else {
+    printer << "0x" << llvm::toHex(bytes_str);
+  }
+  printer << "\"";
 }
 
 //===----------------------------------------------------------------------===//
@@ -4224,7 +4232,7 @@ Operation* TFLDialect::materializeConstant(OpBuilder& builder, Attribute value,
        value.cast<ElementsAttr>().getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
   if (arith::ConstantOp::isBuildableWith(value, type))
-    return builder.create<arith::ConstantOp>(loc, type, value);
+    return builder.create<arith::ConstantOp>(loc, type, cast<TypedAttr>(value));
   if (NoValueOp::isBuildableWith(value, type))
     return builder.create<NoValueOp>(loc, type, value.cast<UnitAttr>());
   return nullptr;

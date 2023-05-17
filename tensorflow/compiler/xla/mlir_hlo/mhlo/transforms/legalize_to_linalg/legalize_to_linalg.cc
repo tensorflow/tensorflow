@@ -715,7 +715,7 @@ class BroadcastOpToBroadcastConverter
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     rewriter.replaceOpWithNewOp<linalg::BroadcastOp>(
-        op, op.getOperand(), emptyTensor, dimensions,
+        op, adaptor.getOperand(), emptyTensor, dimensions,
         linalg::getPrunedAttributeList(op));
     return success();
   }
@@ -1073,7 +1073,8 @@ class DynamicBroadcastInDimOpToBroadcastConverter
     auto operandShape = operand.getType().cast<RankedTensorType>().getShape();
     auto broadcastResultShape = llvm::to_vector(resultTy.getShape());
 
-    for (auto [operandIndex, resultIndex] : llvm::enumerate(dimensions)) {
+    for (const auto& [operandIndex, resultIndex] :
+         llvm::enumerate(dimensions)) {
       if (isExpandingDim(operandIndex)) continue;
       broadcastResultShape[resultIndex] = operandShape[operandIndex];
     }
@@ -1412,6 +1413,10 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
       for (int i = 0; i < n; ++i) exprs.push_back(rewriter.getAffineDimExpr(i));
       return exprs;
     };
+
+    int64_t totalElems = resultType.getNumElements();
+    auto collapsedType = RankedTensorType::get({totalElems}, elemType);
+
     // Otherwise, we need to first reduce all source dimensions into one and
     // then expand to the destination dimensions. If there is only a single
     // source dimension, the reduce step can be skipped. TensorCollapseShape
@@ -1422,12 +1427,23 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
           // dimensions.
           getIdentityExprs(operandType.getRank())};
 
-      collapsedOp =
-          rewriter.create<tensor::CollapseShapeOp>(loc, operand, collapsingMap);
+      // If the operand has a sparse encoding, then the collapsed type should
+      // have a sparse encoding.
+      if (sparse_tensor::getSparseTensorEncoding(operandType)) {
+        SmallVector<int64_t, 1> collapsedShape = {totalElems};
+        auto identityMap =
+            AffineMap::getMultiDimIdentityMap(1, rewriter.getContext());
+        auto oneDimensionType = RankedTensorType::get(collapsedShape, elemType);
+        collapsedType = sparse_tensor::getCOOFromTypeWithOrdering(
+            oneDimensionType, identityMap, true);
+        collapsedOp = rewriter.create<tensor::CollapseShapeOp>(
+            loc, collapsedType, operand, collapsingMap);
+      } else {
+        collapsedOp = rewriter.create<tensor::CollapseShapeOp>(loc, operand,
+                                                               collapsingMap);
+      }
     }
     // Cast to a known static type if the input has dynamic dimensions.
-    int64_t totalElems = resultType.getNumElements();
-    auto collapsedType = RankedTensorType::get({totalElems}, elemType);
     collapsedOp =
         rewriter.create<tensor::CastOp>(loc, collapsedType, collapsedOp);
     if (resultType.getRank() == 1) {
@@ -1726,8 +1742,9 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
       // By mhlo.DynamicSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - size_indices[i])`
-      Value startIndex = extractIndexFromTensor(
-          rewriter, loc, std::get<0>(en.value()), originalStartIndexType);
+      Value startIndex =
+          extractIndexFromTensor(rewriter, loc, std::get<0>(en.value()),
+                                 cast<ShapedType>(originalStartIndexType));
 
       Value mn = rewriter.create<arith::ConstantIndexOp>(loc, 0);
 
@@ -1792,9 +1809,9 @@ class DynamicUpdateSliceConverter
       // By mhlo.DynamicUpdateSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - update.dimension_size[i])`
-      Value startIndex =
-          extractIndexFromTensor(rewriter, loc, en.value(),
-                                 op.getStartIndices()[en.index()].getType());
+      Value startIndex = extractIndexFromTensor(
+          rewriter, loc, en.value(),
+          cast<ShapedType>(op.getStartIndices()[en.index()].getType()));
       Value ub = rewriter.create<arith::ConstantIndexOp>(
           loc, operandType.getDimSize(en.index()) -
                    updateType.getDimSize(en.index()));
@@ -2030,7 +2047,7 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
     for (Value operand : llvm::drop_begin(adaptor.getOperands(), 1)) {
       coercedOperands.push_back(coerceTensorShape(
           rewriter, loc, cast<TypedValue<ShapedType>>(operand),
-          operand0.getType()));
+          cast<ShapedType>(operand0.getType())));
     }
     Value output = rewriter.create<tensor::EmptyOp>(
         loc, tensor::getMixedSizes(rewriter, loc, operand0),
@@ -2135,8 +2152,9 @@ class ReduceOpToGenericConverter : public OpConversionPattern<mhlo::ReduceOp> {
       initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
 
       SmallVector<Value, 8> dynShape = getReduceOpEmptyTensorDynSizes(
-          rewriter, loc, operand, resultType, reductionDims);
-      auto emptyTensor = getEmptyTensor(rewriter, loc, resultType, dynShape);
+          rewriter, loc, operand, cast<ShapedType>(resultType), reductionDims);
+      auto emptyTensor =
+          getEmptyTensor(rewriter, loc, cast<ShapedType>(resultType), dynShape);
       Value filledTensor =
           rewriter.create<linalg::FillOp>(loc, initValue, emptyTensor).result();
       outputs.push_back(filledTensor);
@@ -2242,7 +2260,7 @@ struct ReduceOpToReduceConverter : public OpConversionPattern<mhlo::ReduceOp> {
       // dynamic ones.
       SmallVector<int64_t> resultShape;
       SmallVector<Value, 8> dynShape;
-      for (auto [index, dim] :
+      for (const auto& [index, dim] :
            llvm::enumerate(operand.getType().cast<ShapedType>().getShape())) {
         if (!llvm::is_contained(reductionDims, index)) {
           resultShape.push_back(dim);
@@ -2782,8 +2800,8 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
 
     // We have interior padding, which can be lowered to tensor.insert_slice.
     // Start by filling a result-sized tensor with the pad value.
-    auto emptyTensor =
-        getEmptyTensorFor(rewriter, loc, resultType, op, adaptor.getOperands());
+    auto emptyTensor = getEmptyTensorFor(
+        rewriter, loc, cast<ShapedType>(resultType), op, adaptor.getOperands());
     auto fill =
         rewriter.create<linalg::FillOp>(loc, paddingVal, emptyTensor).result();
 
@@ -2868,7 +2886,7 @@ Value applyConvolutionReversal(Location loc, OpBuilder& b, ConvolutionOp op,
     return filter;
   }
   llvm::SmallVector<int64_t> reversedDims;
-  for (auto [idx, reversed] :
+  for (const auto& [idx, reversed] :
        llvm::enumerate(reversals.value().getValues<bool>())) {
     if (reversed) {
       reversedDims.push_back(
@@ -4300,7 +4318,7 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
       if (getRank(input) == maxRank) {
         mappedInputs.push_back(coerceTensorShape(
             rewriter, loc, cast<TypedValue<ShapedType>>(input),
-            emptyTensor.getType()));
+            cast<ShapedType>(emptyTensor.getType())));
         scalarInputs.push_back(nullptr);
       } else {
         scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));

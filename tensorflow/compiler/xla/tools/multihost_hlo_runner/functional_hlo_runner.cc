@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -73,79 +74,21 @@ StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape, int value) {
   }
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
-  Literal literal(new_shape);
-  switch (new_shape.element_type()) {
-    case BF16:
-      PopulateWithSameValue(&literal, bfloat16(static_cast<float>(value)));
-      break;
-    case F16:
-      PopulateWithSameValue(&literal, static_cast<half>(value));
-      break;
-    case F32:
-      PopulateWithSameValue(&literal, static_cast<float>(value));
-      break;
-    case F64:
-      PopulateWithSameValue(&literal, static_cast<double>(value));
-      break;
-    case S8:
-      PopulateWithSameValue(&literal, static_cast<int8_t>(value));
-      break;
-    case U8:
-      PopulateWithSameValue(&literal, static_cast<uint8_t>(value));
-      break;
-    case S16:
-      PopulateWithSameValue(&literal, static_cast<int16_t>(value));
-      break;
-    case U16:
-      PopulateWithSameValue(&literal, static_cast<uint16_t>(value));
-      break;
-    case S32:
-      PopulateWithSameValue(&literal, static_cast<int32_t>(value));
-      break;
-    case U32:
-      PopulateWithSameValue(&literal, static_cast<uint32_t>(value));
-      break;
-    case S64:
-      PopulateWithSameValue(&literal, static_cast<int64_t>(value));
-      break;
-    case U64:
-      PopulateWithSameValue(&literal, static_cast<uint64_t>(value));
-      break;
-    case C64:
-      PopulateWithSameValue(&literal,
-                            static_cast<complex64>(complex64(value, 0.0)));
-      break;
-    case C128:
-      PopulateWithSameValue(&literal,
-                            static_cast<complex128>(complex128(value, 0.0)));
-      break;
-    case PRED:
-      PopulateWithSameValue(&literal, (value % 2) == 0);
-      break;
-    default:
-      return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape));
-  }
-  return literal;
-}
+  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+      [&](auto type) -> StatusOr<Literal> {
+        if constexpr (primitive_util::IsArrayType(type)) {
+          using NativeT = primitive_util::NativeTypeOf<type>;
 
-void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
-  auto set_manual_sharding = [](HloInstruction* hlo) {
-    if (!hlo->has_sharding()) {
-      hlo->set_sharding(
-          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
-    }
-  };
-  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
-       ++i) {
-    HloInstruction* param =
-        hlo_module->entry_computation()->parameter_instruction(i);
-    set_manual_sharding(param);
-  }
-
-  HloInstruction* entry_root =
-      hlo_module->entry_computation()->root_instruction();
-  set_manual_sharding(entry_root);
+          Literal literal(new_shape);
+          PopulateWithSameValue(
+              &literal,
+              static_cast<NativeT>(type == PRED ? (value % 2) == 0 : value));
+          return literal;
+        }
+        return Unimplemented("Unsupported type for fake literal generation: %s",
+                             ShapeUtil::HumanString(shape));
+      },
+      new_shape.element_type());
 }
 
 }  // namespace
@@ -270,6 +213,25 @@ std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode) {
     default:
       LOG(FATAL) << "Unexpected output mode.";
   }
+}
+
+void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
+  auto set_manual_sharding = [](HloInstruction* hlo) {
+    if (!hlo->has_sharding()) {
+      hlo->set_sharding(
+          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
+    }
+  };
+  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
+       ++i) {
+    HloInstruction* param =
+        hlo_module->entry_computation()->parameter_instruction(i);
+    set_manual_sharding(param);
+  }
+
+  HloInstruction* entry_root =
+      hlo_module->entry_computation()->root_instruction();
+  set_manual_sharding(entry_root);
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
@@ -1074,14 +1036,14 @@ FunctionalHloRunner::RunInternal(
       }
     }
   }
-  if (running_options.profiler != nullptr) {
-    running_options.profiler->UploadSession();
-  }
 
   TF_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
                                         running_options.log_input_output()));
+  if (running_options.profiler != nullptr) {
+    running_options.profiler->UploadSession();
+  }
   return results;
 }
 

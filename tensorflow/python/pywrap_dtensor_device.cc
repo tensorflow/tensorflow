@@ -65,6 +65,15 @@ void CallDelete_DeviceInfo(PyObject* capsule) {
   destructor(PyCapsule_GetPointer(capsule, "TFE_CustomDevice_DeviceInfo"));
 }
 
+bool CheckResourceVariable(PyObject* item) {
+  if (tensorflow::swig::IsResourceVariable(item)) {
+    tensorflow::Safe_PyObjectPtr handle(
+        PyObject_GetAttrString(item, "_handle"));
+    return EagerTensor_CheckExact(handle.get());
+  }
+
+  return false;
+}
 // Supports 2 cases:
 //  i) input is an EagerTensor.
 //  ii) input is an arbitrary python list/tuple.
@@ -76,6 +85,11 @@ void ConvertToTensor(TFE_Context* ctx, PyObject* input,
     // caller will use it through output_handle.
     Py_INCREF(input);
     output_handle->reset(input);
+    return;
+  }
+  if (CheckResourceVariable(input)) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Variable input is not supported.");
     return;
   }
   TFE_TensorHandle* handle =

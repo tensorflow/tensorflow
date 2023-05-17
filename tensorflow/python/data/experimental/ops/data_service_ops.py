@@ -34,19 +34,13 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.util import lazy_loader
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
 COMPRESSION_NONE = None
 _PARALLEL_EPOCHS = "parallel_epochs"
 _DISTRIBUTED_EPOCH = "distributed_epoch"
-
-# TODO(b/176933539): Use the regular import.
-# TODO(b/238903802): Use TypeSpec serialization methods directly.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("data.experimental.service.ShardingPolicy")
@@ -527,7 +521,6 @@ def _distribute(processing_mode,
         max_outstanding_requests=max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         data_transfer_protocol=data_transfer_protocol,
-        compression=compression,
         cross_trainer_cache=cross_trainer_cache,
         target_workers=target_workers)
 
@@ -906,7 +899,6 @@ def _from_dataset_id(processing_mode,
                      max_outstanding_requests=None,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
-                     compression="AUTO",
                      cross_trainer_cache=None,
                      target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
@@ -956,8 +948,6 @@ def _from_dataset_id(processing_mode,
       dispatcher for task changes.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
       data with the tf.data service. By default, data is transferred using gRPC.
-    compression: An indication of how the dataset's elements were compressed, so
-      that `from_dataset_id` can uncompress them if necessary.
     cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
       provided, dataset iteration will be shared across concurrently running
       trainers. See
@@ -1013,7 +1003,6 @@ def _from_dataset_id(processing_mode,
     protocol, address = service
   else:
     protocol, address = _parse_service(service)
-  _validate_compression(compression)
   if job_name is not None:
     if not isinstance(job_name, str) and not isinstance(job_name, ops.Tensor):
       raise ValueError(

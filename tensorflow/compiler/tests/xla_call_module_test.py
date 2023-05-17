@@ -18,7 +18,9 @@ import unittest
 
 import numpy as np
 
+from tensorflow.compiler.mlir.stablehlo import stablehlo
 from tensorflow.compiler.tests import xla_test
+from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
 
 from tensorflow.python.eager import def_function
@@ -30,11 +32,9 @@ from tensorflow.python.platform import googletest
 
 
 def serialize(module_str: str) -> Tuple[str, int]:
-  # TODO(b/274838200): error importing xla_extension in OSS
-  # target_version = '0.9.0'  # TODO(gleasonk): use APIs to get this
-  # return xla_extension.mlir.serialize_portable_artifact(
-  #     module_str, target_version), 4
-  return module_str, 3
+  target = stablehlo.get_minimum_version()
+  byte_str = stablehlo.serialize_portable_artifact(module_str, target)
+  return byte_str, 4
 
 
 class XlaCallModuleOpTest(xla_test.XLATestCase):
@@ -611,10 +611,10 @@ module @jit_fun{
     %0 = stablehlo.constant dense<0> : tensor<i32>
     %1 = stablehlo.reduce(%arg1 init: %0) across dimensions = [0] : (tensor<?xi32>, tensor<i32>) -> tensor<i32>
      reducer(%arg2: tensor<i32>, %arg3: tensor<i32>)  {
-      %4 = mhlo.add %arg2, %arg3 : tensor<i32>
-      "mhlo.return"(%4) : (tensor<i32>) -> ()
+      %4 = stablehlo.add %arg2, %arg3 : tensor<i32>
+      "stablehlo.return"(%4) : (tensor<i32>) -> ()
     }
-    %2 = mhlo.multiply %1, %arg0 : tensor<i32>
+    %2 = stablehlo.multiply %1, %arg0 : tensor<i32>
     return %2 : tensor<i32>
   }
 }
@@ -743,6 +743,34 @@ module @jit_fun_flat_jax {
                              dim_args_spec=['0.0'])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res0, res1))
+
+  def test_op_backward_compatibility(self):
+    """Test for ensuring XlaCallModuleOp backward compatiblity."""
+    x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+    def f(x):
+      # sin(cos(x))
+      module, version = serialize("""
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+    %0 = stablehlo.cosine %arg0 : tensor<3xf32>
+    %1 = stablehlo.sine %0 : tensor<3xf32>
+    return %1 : tensor<3xf32>
+  }
+}
+""")
+      # Create the raw XlaCallModule op directly instead of calling
+      # `xla.call_module`, which handles default values for unpresent
+      # attributes.
+      return gen_xla_ops.xla_call_module(
+          [x],
+          version=version,
+          module=module,
+          Tout=[x.dtype],
+          Sout=[x.shape],
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
 
 
 if __name__ == '__main__':

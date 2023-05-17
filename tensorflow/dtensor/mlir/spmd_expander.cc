@@ -51,14 +51,14 @@ SPMDExpanderRegistry* SPMDExpanderRegistry::Global() {
   return registry;
 }
 
-SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
-    mlir::Operation* op) {
-  auto key = OpName(op);
+SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForFullOpName(
+    const std::string& full_op_name) {
+  auto key = full_op_name;
   auto fn = op_to_propagate_fn_map_.find(key);
   if (fn == op_to_propagate_fn_map_.end()) {
     if (EnableReplicatedSpmdAsDefault(key)) {
       LOG(WARNING)
-          << key << " is defaulting to ReplicatedOpSPMDExpander. This "
+          << full_op_name << " is defaulting to ReplicatedOpSPMDExpander. This "
           << " has performance implications as all inputs and outputs "
           << " will be replicated if they are not already. Please file a "
           << " feature request to TF DTensor to implement an efficient "
@@ -71,6 +71,11 @@ SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
     }
   }
   return fn->second.get();
+}
+
+SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
+    mlir::Operation* op) {
+  return GetPropagateFnForFullOpName(OpName(op));
 }
 
 InitOnStartupMarker SPMDExpanderRegistry::RegisterPropagateFn(

@@ -165,21 +165,21 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
       /*allocator=*/nullptr);
 }
 
-void SchedClosure(std::function<void()> closure) {
+void SchedClosure(absl::AnyInvocable<void()> closure) {
   if (!tracing::EventCollector::IsEnabled()) {
     return Env::Default()->SchedClosure(std::move(closure));
   }
   uint64 id = tracing::GetUniqueArg();
   tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
 
-  Env::Default()->SchedClosure([id, closure = std::move(closure)]() {
+  Env::Default()->SchedClosure([id, closure = std::move(closure)]() mutable {
     tracing::ScopedRegion region(tracing::EventCategory::kRunClosure, id);
     closure();
   });
 }
 
 void SchedNonBlockingClosureAfter(int64_t micros,
-                                  std::function<void()> closure) {
+                                  absl::AnyInvocable<void()> closure) {
   Env::Default()->SchedClosureAfter(micros, std::move(closure));
 }
 

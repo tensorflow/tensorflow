@@ -39,6 +39,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         ":graph_execution_options",
+        ":sync_resource_state",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:import_model",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:context",
         "//learning/brain/experimental/tfrt/native_lowering/kernels:sync_context",
@@ -64,6 +65,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_utils",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
@@ -130,6 +132,7 @@ cc_library(
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
         "//learning/brain/experimental/tfrt/native_lowering/kernels",
         "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
+        "//learning/brain/tfrt/mlrt/application/vrooml:kernel",
         "//learning/infra/mira/mlrt/interpreter:context",
         "//learning/infra/mira/mlrt/interpreter:value",
         "//tensorflow/core/framework:graph_proto_cc",
@@ -193,5 +196,14 @@ tf_cc_test(
         ":config_proto_cc",
         ":test_config_proto_cc",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "sync_resource_state",
+    hdrs = ["sync_resource_state.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@tf_runtime//:tensor",
     ],
 )

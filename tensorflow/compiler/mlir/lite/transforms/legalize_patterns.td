@@ -21,6 +21,7 @@ include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/lite/utils/utils.td"
 
 def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
 
@@ -64,11 +65,6 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
 // Converts tensor with int64 to int32.
 def CreateTFCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
-
-// Checks whether the given operation has static shapes and same shapes of all inputs.
-def HasSameStaticShapesPred : CPred<"HasSameStaticShapes($0.getDefiningOp())">;
-def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have static same input shapes">;
-def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
 
 def CreateNoneValue : NativeCodeCall<
   "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
@@ -234,11 +230,11 @@ def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),
     (TFL_SelectOp $cond, $x, $y),
-    [(HasSameStaticShapes $src_op)]>;
+    [(OpHasSameStaticShapes $src_op)]>;
 def LegalizeSelectV2NotSameStaticShape : Pat<
   (TF_SelectV2Op:$src_op $cond, $x, $y),
   (TFL_SelectV2Op $cond, $x, $y),
-  [(HasNotSameStaticShapes $src_op)]>;
+  [(OpHasNotSameStaticShapes $src_op)]>;
 def LegalizeShape : Pat<(TF_ShapeOp $arg), (TFL_ShapeOp $arg)>;
 def LegalizeSigmoid : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
 def LegalizeSin : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;

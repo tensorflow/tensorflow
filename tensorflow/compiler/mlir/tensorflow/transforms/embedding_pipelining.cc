@@ -511,7 +511,7 @@ LogicalResult FindForwardPassOps(OpBuilder& builder,
         new_value = annotate_op->getResult(0);
       }
       for (auto [operation, index] : out_of_region_use)
-        operation->setOperand(index, input.getOutput());
+        operation->setOperand(index, new_value);
     }
   }
 

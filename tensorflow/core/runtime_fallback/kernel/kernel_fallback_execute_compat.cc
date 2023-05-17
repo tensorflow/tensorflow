@@ -97,7 +97,7 @@ void KernelFallbackEmitError(
   auto error = EmitErrorAsync(
       exec_ctx,
       absl::Status(
-          ToAbslStatus(status).code(),
+          status.code(),
           tfrt::StrCat(model_info, "error running kernel fallback kernel ",
                        op_name, ": ", status.message())));
   std::fill(results.begin(), results.end(), error);
@@ -205,7 +205,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
     if (!context.status().ok()) {
       auto diag = tfrt::EmitError(
           exec_ctx,
-          absl::Status(ToAbslStatus(context.status()).code(),
+          absl::Status(context.status().code(),
                        tfrt::StrCat("error running kernel fallback kernel ",
                                     context.op_kernel().name(), ": ",
                                     context.status().message())));
@@ -509,7 +509,9 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   uint64_t run_start_time = 0;
   tfrt::AsyncValueRef<tfrt::Chain> cost_chain;
   if (cost_recorder != nullptr) {
-    run_start_time = tfrt::GetCpuClockCycle();
+    run_start_time = cost_recorder->RecordInCpuCycles()
+                         ? tfrt::GetCpuClockCycle()
+                         : Env::Default()->NowNanos();
     if (op_chain == nullptr) op_chain = &cost_chain;
   }
 
@@ -536,8 +538,10 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   if (cost_recorder != nullptr) {
     op_chain->AndThen(
         [cost_recorder, run_start_time, op_key = frame.op_key().GetValue()] {
-          cost_recorder->RecordCostCpuCycle(
-              op_key, tfrt::GetCpuClockCycle() - run_start_time);
+          const uint64_t run_finish_time = cost_recorder->RecordInCpuCycles()
+                                               ? tfrt::GetCpuClockCycle()
+                                               : Env::Default()->NowNanos();
+          cost_recorder->RecordCost(op_key, run_finish_time - run_start_time);
         });
   }
 }
@@ -573,8 +577,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackCreateOp(
       attr_builder, fallback_request_state->device_manager(),
       fallback_request_state->process_function_library_runtime());
   if (!statusor_runner.ok())
-    return tfrt::EmitErrorAsync(exec_ctx,
-                                ToAbslStatus(statusor_runner.status()));
+    return tfrt::EmitErrorAsync(exec_ctx, statusor_runner.status());
 
   if (!runner_table->Insert(op_key.GetValue(),
                             std::move(statusor_runner).value())) {

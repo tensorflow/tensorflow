@@ -52,6 +52,7 @@ class PrimitiveType(enum.IntEnum):
   U32: PrimitiveType
   U64: PrimitiveType
   F8_E4M3FN: PrimitiveType
+  F8_E4M3B11FNUZ: PrimitiveType
   F8_E5M2: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
@@ -232,6 +233,7 @@ def register_custom_call_target(fn_name: str, capsule: Any, platform: str) -> _S
 def register_custom_call_partitioner(name: str, prop_user_sharding: Callable,
                                      partition: Callable, infer_sharding_from_operands: Callable,
                                      can_side_effecting_have_replicated_sharding: bool) -> None: ...
+def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 
 class DebugOptions:
   def __repr__(self) -> str: ...
@@ -245,6 +247,8 @@ class DebugOptions:
   xla_cpu_enable_xprof_traceme: bool
   xla_llvm_disable_expensive_passes: bool
   xla_test_all_input_layouts: bool
+  xla_disable_hlo_passes: str
+  xla_enable_hlo_passes_only: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -403,12 +407,7 @@ class Client:
   def serialize_executable(self, executable: LoadedExecutable) -> bytes: ...
   def deserialize_executable(
       self, serialized: bytes,
-      options: CompileOptions, host_callbacks: Sequence[Any] = ...) -> LoadedExecutable: ...
-  # TODO(skyewm): remove when jax stop providing hlo_module
-  def deserialize_executable(
-      self, serialized: bytes,
-      hlo_module: HloModule,
-      options: CompileOptions, host_callbacks: Sequence[Any] = ...) -> LoadedExecutable: ...
+      options: Optional[CompileOptions], host_callbacks: Sequence[Any] = ...) -> LoadedExecutable: ...
   def heap_profile(self) -> bytes: ...
   def defragment(self) -> _Status: ...
   def get_emit_python_callback_descriptor(
@@ -440,6 +439,7 @@ def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
 def get_c_api_client(platform_name: str, options: Dict[str, Union[str, int, List[int], float]]) -> Client: ...
 def get_default_c_api_topology(platform_name: str) -> DeviceTopology: ...
 def load_pjrt_plugin(platform_name: str, library_path: str) -> _Status: ...
+def pjrt_plugin_loaded(plugin_name: str) -> bool: ...
 
 ArrayImpl = Any
 

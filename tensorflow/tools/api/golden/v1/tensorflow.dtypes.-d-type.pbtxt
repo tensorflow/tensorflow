@@ -69,6 +69,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
+    argspec: "args=[\'self\', \'type_enum\', \'handle_data\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "experimental_as_proto"

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -85,6 +86,10 @@ struct CompileOptions {
   // overriding if appropriate.
   using OptionOverride = std::variant<std::string, bool>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+
+  // Used to indicate the precision configuration.
+  PrecisionConfig::Precision matrix_unit_operand_precision =
+      PrecisionConfig::DEFAULT;
 
   // Applies env_option_overrides to executable_build_options.debug_options().
   Status ApplyAllOptionOverrides();

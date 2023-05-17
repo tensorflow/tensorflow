@@ -48,3 +48,30 @@ func.func @collapse_shape_no_common_stride()
 
 // CHECK-LABEL: @collapse_shape_no_common_stride
 // CHECK-NEXT: cannot collapse dimensions without a common stride
+
+func.func @double_free() {
+  %a = memref.alloc() : memref<i32>
+  memref.dealloc %a : memref<i32>
+  memref.dealloc %a : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @double_free
+// CHECK-NEXT: Interpreter failure: double-free
+// CHECK-NEXT: Note: allocated by %alloc = memref.alloc() : memref<i32>
+// CHECK-NEXT: Note: previously freed by memref.dealloc %alloc : memref<i32>
+// CHECK-NEXT{2}: Encountered failure while executing memref.dealloc %alloc : memref<i32>
+
+func.func @use_after_free() {
+  %a = memref.alloc() : memref<i32>
+  memref.dealloc %a : memref<i32>
+  %b = arith.constant 1 : i32
+  memref.store %b, %a[] : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @use_after_free
+// CHECK-NEXT: Interpreter failure: use-after-free
+// CHECK-NEXT: Note: allocated by %alloc = memref.alloc() : memref<i32>
+// CHECK-NEXT: Note: previously freed by memref.dealloc %alloc : memref<i32>
+// CHECK-NEXT{2}: Encountered failure while executing memref.store %c1_i32, %alloc[] : memref<i32>

@@ -212,6 +212,11 @@ class TraceType(metaclass=abc.ABCMeta):
     return []
 
   @doc_controls.do_not_doc_inheritable
+  def _flatten(self) -> List["TraceType"]:
+    """Returns a list of TensorSpecs corresponding to `_to_tensors` values."""
+    return []
+
+  @doc_controls.do_not_doc_inheritable
   def _cast(self, value, casting_context) -> Any:  # pylint:disable=unused-argument
     """Cast value to this type.
 

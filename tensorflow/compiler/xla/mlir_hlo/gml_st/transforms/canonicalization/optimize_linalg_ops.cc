@@ -58,7 +58,7 @@ std::optional<Value> getSplatValue(PatternRewriter& rewriter, Location loc,
       return rewriter.create<complex::ConstantOp>(loc, splatType,
                                                   splatAttr.cast<ArrayAttr>());
 
-    return rewriter.create<arith::ConstantOp>(loc, splatAttr);
+    return rewriter.create<arith::ConstantOp>(loc, cast<TypedAttr>(splatAttr));
   }
 
   if (auto fillOp = dyn_cast_or_null<linalg::FillOp>(definingOp))

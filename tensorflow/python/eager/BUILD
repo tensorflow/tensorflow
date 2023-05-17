@@ -384,7 +384,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:concrete_function",
     ],
 )
 
@@ -564,10 +564,10 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:quarantine",
+        "//tensorflow/python/eager/polymorphic_function:concrete_function",
         "//tensorflow/python/eager/polymorphic_function:tf_method_target",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:transform",
     ],
 )
 
@@ -870,13 +870,12 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":function",
         ":lift_to_graph",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:nested_structure_coder",
+        "//tensorflow/python/trackable:data_structures",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],

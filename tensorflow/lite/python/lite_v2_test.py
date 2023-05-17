@@ -2244,6 +2244,39 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value, actual_value)
 
   @test_util.run_v2_only
+  def testKerasSequentialModelExport(self):
+    """Test a simple sequential tf.Keras model with `model.export` usage."""
+    input_data = tf.constant(1., shape=[1, 1])
+
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
+
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(1),
+    ])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+
+    export_dir = os.path.join(self.get_temp_dir(), 'exported_model')
+    model.export(export_dir)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(export_dir)
+    tflite_model = converter.convert()
+
+    # Validate endpoints following `.export` to TFLite conversion.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    self.assertLen(signature_defs, 1)
+    self.assertEqual(next(iter(signature_defs)), 'serving_default')
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value, actual_value)
+
+  @test_util.run_v2_only
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
     input_data = tf.constant(1., shape=[1])
@@ -2659,9 +2692,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testMlirStableHLOPresetQuantizationMethod(
       self, preset_quantization_method
   ):
-    k_num_filters = 38
+    num_filters = 38
     model = tf.keras.models.Sequential(
-        [tf.keras.layers.Conv2D(k_num_filters, (3, 3), activation='relu')]
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
     )
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
@@ -2671,6 +2704,45 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             preset_quantization_method=quant_opts_pb2.PresetQuantizationMethod(
                 preset_method=preset_quantization_method
+            )
+        )
+    )
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter._experimental_quantization_options = quantization_options
+
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS
+    ]
+    converter.exclude_conversion_metadata = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_stablehlo_model = converter.convert()
+    self.assertIsNotNone(quantized_stablehlo_model)
+
+  @test_util.run_v2_only
+  def testMlirStableHLOCustomQuantizationMethod(self):
+    num_filters = 38
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
+    )
+    model.build(input_shape=(1, 5, 5, 3))
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
+    save(model, saved_model_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            custom_quantization_method=quant_opts_pb2.CustomQuantizationMethod(
+                quantization_component_spec=[
+                    quant_opts_pb2.QuantizationComponentSpec(
+                        quantization_component=quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent.COMPONENT_WEIGHT,
+                        bit_width=quant_opts_pb2.QuantizationComponentSpec.BitWidth.BIT_WIDTH_16,
+                        bit_type=quant_opts_pb2.QuantizationComponentSpec.BitType.BIT_TYPE_FLOAT,
+                    ),
+                    quant_opts_pb2.QuantizationComponentSpec(
+                        quantization_component=quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent.COMPONENT_BIAS,
+                        bit_width=quant_opts_pb2.QuantizationComponentSpec.BitWidth.BIT_WIDTH_16,
+                    ),
+                ]
             )
         )
     )

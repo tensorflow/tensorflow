@@ -84,6 +84,7 @@ from tensorflow.lite.testing.op_tests.eye import make_eye_tests
 from tensorflow.lite.testing.op_tests.fill import make_fill_tests, make_fill_16_tests
 from tensorflow.lite.testing.op_tests.floor import make_floor_tests
 from tensorflow.lite.testing.op_tests.fully_connected import make_fully_connected_tests
+from tensorflow.lite.testing.op_tests.fully_connected_4bit_hybrid import make_fully_connected_4bit_hybrid_tests
 from tensorflow.lite.testing.op_tests.fused_batch_norm import make_fused_batch_norm_tests
 from tensorflow.lite.testing.op_tests.gather import make_gather_tests
 from tensorflow.lite.testing.op_tests.gather_nd import make_gather_nd_tests
@@ -281,6 +282,8 @@ class Options:
     self.enable_dynamic_update_slice = False
     # Whether to disable unrolling batch matmul.
     self.disable_batchmatmul_unfold = False
+    # Experimental low bit options
+    self.experimental_low_bit_qat = False
 
 
 def _prepare_dir(options):

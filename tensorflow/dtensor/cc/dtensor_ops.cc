@@ -40,10 +40,10 @@ REGISTER_OP("Relayout")
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);
 
-// Gradient of Relayout.
-REGISTER_OP("RelayoutGrad")
+// Relayout the input according to the layout of layout_input.
+REGISTER_OP("RelayoutLike")
     .Input("input: T")
-    .Input("forward_input: T")  // To infer the output mesh.
+    .Input("layout_input: T")  // To infer the output mesh.
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);

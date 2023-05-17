@@ -203,22 +203,22 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
 }
 
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
-                           size_t* bytes, TfLiteContext context_) {
-  TF_LITE_ENSURE(&context_, bytes != nullptr);
+                           size_t* bytes, TfLiteContext* context_) {
+  TF_LITE_ENSURE(context_, bytes != nullptr);
   // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
   // 'count' as 1.
   size_t count = 1;
   for (int k = 0; k < dims_size; k++) {
     size_t old_count = count;
     TF_LITE_ENSURE_MSG(
-        &context_,
+        context_,
         MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
         "BytesRequired number of elements overflowed.\n");
   }
   size_t type_size = 0;
-  TF_LITE_ENSURE_OK(&context_, GetSizeOfType(&context_, type, &type_size));
+  TF_LITE_ENSURE_OK(context_, GetSizeOfType(context_, type, &type_size));
   TF_LITE_ENSURE_MSG(
-      &context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
+      context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
       "BytesRequired number of bytes overflowed.\n");
 
   // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed

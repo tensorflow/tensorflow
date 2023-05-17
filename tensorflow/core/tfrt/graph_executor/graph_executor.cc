@@ -60,9 +60,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -104,7 +106,8 @@ tensorflow::Status RunMlrtFunction(
     const tsl::RCReference<tfrt::RequestContext>& request_context,
     tfrt::ConcurrentWorkQueue& work_queue,
     absl::Span<const tensorflow::Tensor> inputs,
-    std::vector<tensorflow::Tensor>* outputs) {
+    std::vector<tensorflow::Tensor>* outputs,
+    SyncResourceState* sync_resource_state) {
   DCHECK(function);
   const auto* fallback_request_state =
       request_context->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
@@ -117,8 +120,8 @@ tensorflow::Status RunMlrtFunction(
   //
   // TODO(chky, rohitju): Unify tfrt::SyncContext with tf_mlrt::Context.
   tfrt::ExecutionContext exec_ctx(request_context);
-  execution_context.AddUserContext(
-      std::make_unique<tfrt::SyncContext>(&exec_ctx));
+  execution_context.AddUserContext(std::make_unique<tfrt::SyncContext>(
+      *request_context->host(), sync_resource_state));
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
@@ -144,8 +147,8 @@ tensorflow::Status RunMlrtFunction(
   execution_context.set_exit_handler(
       [chain = chain.get()]() { chain->SetStateConcrete(); });
 
-  execution_context.Call(function, absl::MakeSpan(mlrt_inputs),
-                         absl::MakeSpan(mlrt_outputs));
+  execution_context.CallByMove(function, absl::MakeSpan(mlrt_inputs),
+                               absl::MakeSpan(mlrt_outputs));
 
   // TODO(chky): Set up cancellation.
 
@@ -156,7 +159,7 @@ tensorflow::Status RunMlrtFunction(
 
   if (!execution_context.status().ok()) {
     outputs->resize(mlrt_outputs.size(), tensorflow::Tensor());
-    return tsl::FromAbslStatus(execution_context.status());
+    return execution_context.status();
   }
 
   for (auto& mlrt_output : mlrt_outputs) {
@@ -304,7 +307,8 @@ tensorflow::Status GraphExecutionRunOnFunction(
 
     return RunMlrtFunction(function, *loaded_executable,
                            request_info->tfrt_request_context,
-                           *request_info->request_queue, inputs, outputs);
+                           *request_info->request_queue, inputs, outputs,
+                           /*sync_resource_state=*/nullptr);
   }
 
   DCHECK(func);
@@ -362,14 +366,14 @@ tensorflow::Status GraphExecutionRunOnFunction(
   tensorflow::StatusGroup status_group;
 
   if (chain->IsError()) {
-    status_group.Update(FromAbslStatus(chain->GetError()));
+    status_group.Update(chain->GetError());
   }
 
   for (tfrt::RCReference<tfrt::AsyncValue>& result : results) {
     DCHECK(result->IsAvailable());
 
     if (result->IsError()) {
-      status_group.Update(FromAbslStatus(result->GetError()));
+      status_group.Update(result->GetError());
       outputs->push_back(tensorflow::Tensor());
       continue;
     }
@@ -533,7 +537,8 @@ tensorflow::Status GraphExecutor::Run(
   // Conduct cost analysis for the first request on this `loaded_client_graph`.
   std::unique_ptr<CostRecorder> cost_recorder;
   if (options_.enable_online_cost_analysis) {
-    cost_recorder = loaded_client_graph.MaybeCreateCostRecorder();
+    cost_recorder = loaded_client_graph.MaybeCreateCostRecorder(
+        options_.online_cost_analysis_normalize_ratio);
   }
 
   std::vector<tensorflow::Tensor> flat_outputs;
@@ -755,13 +760,15 @@ tensorflow::Status GraphExecutor::InitBytecode(
   if (auto function = loaded_executable->GetFunction(kFallbackInitFunction)) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, *loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        &loaded_graph->sync_resource_state()));
   }
 
   if (auto function = loaded_executable->GetFunction(kResourceInitFunction)) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, *loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        &loaded_graph->sync_resource_state()));
   }
 
   return OkStatus();
@@ -843,45 +850,43 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
           /*work_queue=*/nullptr,
           graph_name.empty() ? output_tensor_names[0] : graph_name));
 
-  TF_ASSIGN_OR_RETURN(
-      auto request_info,
-      CreateRequestInfo(options_, /*run_options=*/{},
-                        options_.runtime->work_queue(), &resource_context_,
-                        /*client_graph_resource_context=*/nullptr,
-                        &loaded_client_graph.runner_table(),
-                        &loaded_client_graph.resource_array(),
-                        fallback_state_));
-  tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
-
   // Get a shared_ptr of the executable so that during the current request the
   // executable to use is guaranteed to be alive.
   auto executable_context = loaded_client_graph.executable_context();
   mlrt::ExecutionContext execution_context(
       executable_context->bytecode_executable.get());
 
-  auto sync_context = std::make_unique<tfrt::SyncContext>(&exec_ctx);
+  auto sync_context = std::make_unique<tfrt::SyncContext>(
+      *options_.runtime->core_runtime()->GetHostContext(),
+      &loaded_client_graph.sync_resource_state());
   execution_context.AddUserContext(std::move(sync_context));
 
+  tensorflow::tfd::KernelFallbackCompatRequestState kernel_fallback_state(
+      tfd::GetDefaultRunner(), &fallback_state_.get().device_manager(),
+      /*step_id=*/0, &loaded_client_graph.runner_table(),
+      &loaded_client_graph.resource_array(),
+      /*user_intra_op_threadpool=*/nullptr, /*model_metadata=*/std::nullopt,
+      &fallback_state_.get().process_function_library_runtime());
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
-      &request_info->tfrt_request_context
-           ->GetData<tensorflow::tfd::KernelFallbackCompatRequestState>(),
-      request_info->tfrt_request_context->resource_context());
+      &kernel_fallback_state, &resource_context_);
   execution_context.AddUserContext(std::move(tf_context));
 
   auto serving_function = executable_context->bytecode_executable->GetFunction(
       loaded_client_graph.name());
   DCHECK(serving_function);
 
-  execution_context.Call(serving_function, input_values, outputs);
+  execution_context.CallByMove(serving_function, input_values, outputs);
   mlrt::Execute(execution_context);
-  return tsl::FromAbslStatus(execution_context.status());
+  return execution_context.status();
 }
 
 std::unique_ptr<CostRecorder>
-GraphExecutor::LoadedClientGraph::MaybeCreateCostRecorder() const {
+GraphExecutor::LoadedClientGraph::MaybeCreateCostRecorder(
+    uint64_t normalize_ratio) const {
   std::unique_ptr<CostRecorder> cost_recorder;
-  absl::call_once(create_cost_recorder_once_,
-                  [&]() { cost_recorder = std::make_unique<CostRecorder>(); });
+  absl::call_once(create_cost_recorder_once_, [&]() {
+    cost_recorder = std::make_unique<CostRecorder>(normalize_ratio);
+  });
   return cost_recorder;
 }
 
