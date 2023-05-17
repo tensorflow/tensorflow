@@ -37,6 +37,8 @@ class DTensorStrategyExtended(distribute_lib.StrategyExtendedV2):
   def __init__(self, container_strategy, mesh):
     super().__init__(container_strategy)
     self._mesh = mesh
+    self._num_clients = d_config.num_clients()
+    self._client_id = d_config.client_id()
 
   def _create_variable(self, next_creator, **kwargs):
     # Make sure the pop the `use_resource` which is not supported by the
@@ -165,11 +167,9 @@ class DTensorStrategyExtended(distribute_lib.StrategyExtendedV2):
   def _distribute_datasets_from_function(self, dataset_fn, options):
     # TODO(scottzhu): Implement the logic for options in future
     del options
-    # Single worker for now, this will change when deal with different input
-    # options or multiple workers.
     input_context = distribute_lib.InputContext(
-        num_input_pipelines=1,
-        input_pipeline_id=0,
+        num_input_pipelines=self._num_clients,
+        input_pipeline_id=self._client_id,
         num_replicas_in_sync=self._num_replicas_in_sync
     )
     dataset = dataset_fn(input_context)
@@ -206,7 +206,13 @@ class DTensorStrategyExtended(distribute_lib.StrategyExtendedV2):
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []
-    for replica_id in range(self._num_replicas_in_sync):
+    # Note that in the multi-worker setting, this function only return the
+    # slide of DistributedValue for the current worker.
+    for i in range(self._mesh.num_local_devices()):
+      # In the case of 2 worker with 2 local devices on each worker,
+      # worker 0 will get 0 and 1 for replica_id.
+      # worker 1 will get 2 and 3 for replica_id.
+      replica_id = d_config.client_id() * self._mesh.num_local_devices() + i
       per_replica_values.append(value_fn(
           distribute_lib.ValueContext(replica_id,
                                       self._num_replicas_in_sync)))

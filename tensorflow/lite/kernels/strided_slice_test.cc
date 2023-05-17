@@ -111,7 +111,8 @@ class StridedSliceOpModel : public SingleOpModel {
 template <typename T>
 class StridedSliceOpTest : public ::testing::Test {};
 
-using DataTypes = ::testing::Types<float, uint8_t, int8_t, int16_t, int32_t>;
+using DataTypes =
+    ::testing::Types<float, uint8_t, uint32_t, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(StridedSliceOpTest, DataTypes);
 
 #if GTEST_HAS_DEATH_TEST

@@ -210,10 +210,6 @@ static Status CreateHloXlaPipeline(
     mlir::gml_st::GmlStCPUTilingOptions opts =
         mlir::gml_st::getDefaultCPUPipelineOptions(options.cpu_name);
     opts.matmulTileSizes = options.matmul_tile_sizes;
-    if (options.enable_fusion_outlining) {
-      opts.enableFusionClusters = true;
-      opts.enableFusionClusterOutlining = true;
-    }
     opts.inlineFusionClusters = false;
     mlir::gml_st::addCPUTilingPipeline(pm, opts);
 
@@ -258,8 +254,11 @@ static Status CreateHloXlaPipeline(
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
   }
   pm.addNestedPass<mlir::func::FuncOp>(createRewriteReallocToAllocPass());
-  pm.addPass(mlir::gml_st::createFusionOutliningPass());
-  pm.addPass(mlir::func::createDuplicateFunctionEliminationPass());
+
+  if (options.enable_fusion_outlining) {
+    pm.addPass(mlir::gml_st::createFusionOutliningPass());
+    pm.addPass(mlir::func::createDuplicateFunctionEliminationPass());
+  }
   pm.addNestedPass<FuncOp>(mlir::gml_st::createInlineFusionClustersPass());
 
   if (options.enable_tiling_and_fusion) {

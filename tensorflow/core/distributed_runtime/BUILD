@@ -194,6 +194,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -391,6 +392,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -416,6 +418,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -477,6 +480,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -488,6 +492,7 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -617,6 +622,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 

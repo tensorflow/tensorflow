@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/jit/flags.h"
@@ -24,6 +25,11 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
+namespace {
+constexpr const char* kPjRtDeviceCompilerResourceName = "pjrt_device_compiler";
+constexpr const char* kPjRtDeviceCompilationProfilerResourceName =
+    "pjrt_device_compilation_profiler";
+}  // namespace
 
 StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
     const NodeDef& node_def, absl::Span<const XlaArgument> args,
@@ -72,4 +78,14 @@ bool UsePjRtForSingleDeviceCompilation(const DeviceType& device_type) {
          rollout_config.IsEnabledInXlaCompileOnDemandForDevice(device_type);
 }
 
+std::string GetPjRtDeviceCompilerResourceName(const DeviceType& device_type) {
+  return absl::StrCat(kPjRtDeviceCompilerResourceName, "_",
+                      device_type.type_string());
+}
+
+std::string GetPjRtDeviceCompilationProfilerResourceName(
+    const DeviceType& device_type) {
+  return absl::StrCat(kPjRtDeviceCompilationProfilerResourceName, "_",
+                      device_type.type_string());
+}
 }  // namespace tensorflow

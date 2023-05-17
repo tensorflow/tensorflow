@@ -20,10 +20,8 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <cstdlib>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -881,6 +879,27 @@ class Subgraph {
   // sits inside the associated TFLite interpreter instance.
   TfLiteExternalContext** external_contexts_;
 
+  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
+  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
+  // pointers are deleted in the 'Subgraph' destructor.
+  //
+  // The intended usage of this container is to provide (friend) classes
+  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
+  // and then tie the lifetime of these objects to a subgraph.
+  //
+  // WARNING: This field needs to precede 'nodes_and_registration_', to ensure
+  // that it outlives that field, since that field might contain references to
+  // the TfLiteRegistrationExternal objects contained in this fielld.
+  //
+  // LINT.IfChange
+  // Ideally we could include c_api.h and use
+  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
+  // dependency cycle.
+  std::unordered_set<  // NOLINT
+      std::unique_ptr<const TfLiteRegistrationExternal>>
+      registration_externals_;
+  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
+
   // Node inputs/outputs are stored in TfLiteNode and TfLiteRegistration stores
   // function pointers to actual implementation.
   // Nodes should appear in the order in which they are instantiated at runtime.
@@ -1022,23 +1041,6 @@ class Subgraph {
   // Mapping between tensor index to the last index of the execution plan that
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
-
-  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
-  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
-  // pointers are deleted in the 'Subgraph' destructor.
-  //
-  // The intended usage of this container is to provide (friend) classes
-  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
-  // and then tie the lifetime of these objects to a subgraph.
-  //
-  // LINT.IfChange
-  // Ideally we could include c_api.h and use
-  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
-  // dependency cycle.
-  std::unordered_set<  // NOLINT
-      std::unique_ptr<const TfLiteRegistrationExternal>>
-      registration_externals_;
-  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
 
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;

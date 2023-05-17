@@ -259,6 +259,13 @@ void IncrementFunctionGraphOptimizationCacheMissCount(
 int64_t GetFunctionGraphOptimizationCacheMissCount(
     GraphOptimizationSource source);
 
+// Increments the number of restoring function graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheLoadCount(
+    int count, GraphOptimizationSource source);
+
+int64_t GetFunctionGraphOptimizationCacheLoadCount(
+    GraphOptimizationSource source);
+
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.
 // device_type: tpu, cpu, gpu, etc.

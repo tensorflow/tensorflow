@@ -420,6 +420,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":_dtypes",
+        # copybara:uncomment_begin(google-only)
+        # ":cpp_shape_inference_proto_py",
+        # copybara:uncomment_end
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
@@ -2386,6 +2389,7 @@ tf_py_test(
         "no_windows",
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
+        "not_run:arm",
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [

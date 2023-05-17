@@ -77,6 +77,8 @@ from tensorflow.python.types import core as types_core
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
+# Placeholder for protosplitter import.
+
 
 _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
 
@@ -1074,18 +1076,16 @@ def _export_debug_info(exported_graph, export_dir):
     exported_graph: A Graph that has been created by tracing a saveable view.
     export_dir: SavedModel directory in which to write the debug info.
   """
-  exported_operations = []
+  per_fn_info = []
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
     fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
     if not isinstance(fn, defun.AtomicFunction):  # pylint: disable=protected-access
       continue
 
-    fn_graph = fn.graph
-    for fn_op in fn_graph.get_operations():
-      exported_operations.append((fn_name, fn_op))
+    per_fn_info.append((fn_name, fn.graph_debug_info))
 
-  graph_debug_info = error_interpolation.create_graph_debug_info_def(
-      exported_operations)
+  graph_debug_info = error_interpolation.merge_graph_debug_info_def(
+      per_fn_info)
   file_io.atomic_write_string_to_file(
       file_io.join(
           path_helpers.get_or_create_debug_dir(export_dir),
@@ -1343,14 +1343,19 @@ def save_and_return_nodes(obj,
   # as we build up the C++ API.
   pywrap_saved_model.Save(export_dir)
 
-  saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+  if options.experimental_image_format:
+    prefix = file_io.join(
+        compat.as_str(export_dir),
+        "saved_model")
+    proto_splitter.SavedModelSplitter(saved_model).write(prefix)
+  else:
+    saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+    fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
 
-  fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
-
-  path = file_io.join(
-      compat.as_str(export_dir),
-      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
-  file_io.atomic_write_string_to_file(path, saved_model_serialized)
+    path = file_io.join(
+        compat.as_str(export_dir),
+        compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
+    file_io.atomic_write_string_to_file(path, saved_model_serialized)
 
   # Save debug info, if requested.
   if options.save_debug_info:

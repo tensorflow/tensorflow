@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -71,6 +72,18 @@ const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
 const int VERSION_SUPPORT_CUSTOM_CALL = 5;
 const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
 const int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
+
+// Pretty-prints a module, optionally with debug information.
+std::string ModuleToString(mlir::ModuleOp mlir_module, bool with_debugging) {
+  std::string str;
+  llvm::raw_string_ostream stream(str);
+  mlir::OpPrintingFlags flags;
+  if (with_debugging) {
+    flags.enableDebugInfo();
+  }
+  mlir_module.print(stream, flags);
+  return str;
+}
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
@@ -268,8 +281,8 @@ tsl::Status XlaCallModuleLoader::AddMainWrapper() {
   mlir::func::CallOp call_op = op_builder.create<mlir::func::CallOp>(
       loc, orig_main.getResultTypes(), orig_main.getSymName(), call_args);
   op_builder.create<mlir::func::ReturnOp>(loc, call_op.getResults());
-  VLOG(3) << "XlaCallModule module with wrapper: "
-          << mlir::debugString(*module_);
+  XLA_VLOG_LINES(5, absl::StrCat("XlaCallModule module with wrapper: ",
+                                 ModuleToString(*module_, VLOG_IS_ON(4))));
 
   return tsl::OkStatus();
 }
@@ -323,10 +336,13 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   mlir::PassManager pm_inline(module_->getContext());
   pm_inline.addPass(mlir::createInlinerPass());
   if (!mlir::succeeded(pm_inline.run(*module_))) {
+    XLA_VLOG_LINES(3,
+                   absl::StrCat("XlaCallModule module with verification failed",
+                                ModuleToString(*module_, VLOG_IS_ON(4))));
     return tsl::errors::InvalidArgument("Module inlining failed");
   }
-  VLOG(3) << "XlaCallModule module after inlining: "
-          << mlir::debugString(*module_);
+  XLA_VLOG_LINES(5, absl::StrCat("XlaCallModule module after inlining: ",
+                                 ModuleToString(*module_, VLOG_IS_ON(4))));
 
   auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
@@ -351,12 +367,13 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   // If the module doesn't pass verification, all sorts of weirdness might
   // happen if we run the pass manager.
   if (failed(verify(*module_))) {
-    VLOG(3) << "XlaCallModule module with verification failed: "
-            << mlir::debugString(*module_);
+    XLA_VLOG_LINES(
+        3, absl::StrCat("XlaCallModule module with verification failed: ",
+                        ModuleToString(*module_, VLOG_IS_ON(4))));
     return tsl::errors::InvalidArgument("Module verification failed");
   }
   mlir::PassManager pm(module_->getContext());
-  if (VLOG_IS_ON(3)) {
+  if (VLOG_IS_ON(5)) {
     auto print_before = [](mlir::Pass *, mlir::Operation *) { return true; };
     auto print_after = [](mlir::Pass *, mlir::Operation *) { return true; };
     pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
@@ -367,11 +384,14 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloCanonicalizeDynamismPass());
   if (!mlir::succeeded(pm.run(*module_))) {
+    XLA_VLOG_LINES(
+        3, absl::StrCat("XlaCallModule module with verification failed: ",
+                        ModuleToString(*module_, VLOG_IS_ON(4))));
     return tsl::errors::InvalidArgument("Module shape refinement failed");
   }
 
-  VLOG(3) << "XlaCallModule module with refined shapes: "
-          << mlir::debugString(*module_);
+  XLA_VLOG_LINES(3, absl::StrCat("XlaCallModule module with refined shapes: ",
+                                 ModuleToString(*module_, VLOG_IS_ON(4))));
   return tsl::OkStatus();
 }
 
@@ -401,14 +421,16 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   if (!module_) {
     return tsl::errors::InvalidArgument("Cannot deserialize computation");
   }
-  VLOG(3) << "Parsed serialized module (version " << version
-          << ", platform_index = " << platform_index_ << ", dim_args_spec = ["
-          << absl::StrJoin(dim_args_spec_, ", ") << "])\n"
-          << mlir::debugString(*module_);
+  XLA_VLOG_LINES(3, absl::StrCat("Parsed serialized module (version ", version,
+                                 ", platform_index = ", platform_index_,
+                                 ", dim_args_spec = [",
+                                 absl::StrJoin(dim_args_spec_, ", "), "])\n",
+                                 ModuleToString(*module_, VLOG_IS_ON(4))));
 
   if (failed(module_->verifyInvariants())) {
-    VLOG(1) << "MLIR verification failed.";
-    module_->dump();
+    XLA_VLOG_LINES(
+        3, absl::StrCat("XlaCallModule module with verification failed: ",
+                        ModuleToString(*module_, VLOG_IS_ON(4))));
     return tsl::errors::InvalidArgument("Error verifying module");
   }
   main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");

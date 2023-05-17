@@ -209,6 +209,19 @@ struct SparseUnaryChloCallRewriter {
   }
 };
 
+template <typename BinaryMhlo>
+struct SparseBinaryCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need two argument");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    // Reconstruct the binary mhlo operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<BinaryMhlo>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1]);
+    return success();
+  }
+};
+
 struct SparseSliceCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getInputs().size() == 4 &&
@@ -417,7 +430,12 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
                      SparseDynSliceCallRewriter()),
       std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
       std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
-      std::make_pair("sparse_tensor_reduce_sum", SparseReduceSumCallRewriter()),
+      std::make_pair("sparse_tensor_add",
+                     SparseBinaryCallRewriter<mhlo::AddOp>()),
+      std::make_pair("sparse_tensor_sub",
+                     SparseBinaryCallRewriter<mhlo::SubtractOp>()),
+      std::make_pair("sparse_tensor_mul",
+                     SparseBinaryCallRewriter<mhlo::MulOp>()),
   };
 
   // Rewrites a CustomCallOp to corresponding sparse_tensor operation.

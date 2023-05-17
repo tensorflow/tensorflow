@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -40,7 +42,7 @@ static Status InitDeviceModule(void* dso_handle) {
   Status status =
       env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol);
 
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     VLOG(1) << "Device module not found.";
     return OkStatus();
   } else if (status != OkStatus()) {
@@ -73,7 +75,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   // Loads the next pluggable device.
   Status status =
       env->GetSymbolFromLibrary(dso_handle, "TFNPD_InitPlugin", &dso_symbol);
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     VLOG(1) << "Next pluggable device module not found.";
     return OkStatus();
   } else if (status != OkStatus()) {
@@ -90,7 +92,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   // Loads the PJRT plugin.
   // TODO(b/265301627): use LoadPjrtPlugin when it supports windows.
   status = env->GetSymbolFromLibrary(dso_handle, "GetPjrtApi", &dso_symbol);
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     VLOG(1) << "Loading PJRT plugin failed for " << device_type << ": "
             << status.message();
     return OkStatus();
@@ -104,6 +106,12 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
                           std::make_unique<NextPluggableDeviceFactory>(
                               device_type, compilation_device_name),
                           priority, is_pluggable_device);
+  if (init_params.use_pjrt_on_demand_compile) {
+    // PjRtCompileOnDemand op compiles a TensorFlow op to a PjRtExecutable and
+    // runs it.
+    RegisterPjRtCompileOnDemand(device_type.c_str(),
+                                compilation_device_name.c_str());
+  }
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
   return OkStatus();
@@ -115,7 +123,7 @@ static Status InitGraphModule(void* dso_handle) {
   Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitGraph", &dso_symbol);
 
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     VLOG(1) << "Graph module not found.";
     return OkStatus();
   } else if (status != OkStatus()) {
@@ -135,7 +143,7 @@ static Status InitKernelModule(void* dso_handle) {
   Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitKernel", &dso_symbol);
 
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     VLOG(1) << "Kernel module not found.";
     return OkStatus();
   } else if (status != OkStatus()) {
@@ -156,7 +164,7 @@ static Status InitProfilerModule(void* dso_handle) {
   Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitProfiler", &dso_symbol);
 
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     VLOG(1) << "Profiler module not found.";
     return OkStatus();
   } else if (status != OkStatus()) {

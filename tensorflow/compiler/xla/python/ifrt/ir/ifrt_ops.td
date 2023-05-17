@@ -39,7 +39,7 @@ def Ifrt_ReshardOp : Ifrt_Op<"Reshard"> {
 
   let arguments = (ins
     Ifrt_ArrayType:$input,
-    Variadic<Ifrt_ControlType>:$controlInputs);
+    Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Ifrt_ArrayType:$output);
 
@@ -60,7 +60,7 @@ def Ifrt_AssembleOp : Ifrt_Op<"Assemble", [AttrSizedOperandSegments]> {
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
-    Variadic<Ifrt_ControlType>:$controlInputs);
+    Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Ifrt_ArrayType:$output);
 
@@ -88,6 +88,10 @@ def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble"> {
   let hasVerifier = 1;
 }
 
+def IoAliasesAttr : TypedArrayAttrBase<
+    ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<2>]>,
+    "Array of pairs of aliased input/output indices">;
+
 def Ifrt_CallOp : Ifrt_Op<"Call",
     [AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<CallOpInterface>,
@@ -106,20 +110,26 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     The callee doesn't specify the device placement. It's specified at the
     `devices` attribute of this CallOp. Every input/output must be placed on
     a subset of these devices.
+
+    `io_aliases` represents pairs of inputs and outputs, where the input buffer
+    may be donated and used as the output buffer. The aliased pair must have the
+    same Ifrt_ArrayType. It's up to IFRT implementations whether to respect this
+    hint or not.
   }];
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
-    Variadic<Ifrt_ControlType>:$controlInputs,
+    Variadic<Ifrt_ControlType>:$control_inputs,
 
     SymbolRefAttr:$callee,
-    DenseI64ArrayAttr:$devices);
+    DenseI64ArrayAttr:$devices,
+    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
-    Ifrt_ControlType:$controlOutput);
+    Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    $callee `(` $inputs `)` oilist(`after` $controlInputs) attr-dict `:` functional-type($inputs, $outputs)
+    $callee `(` $inputs `)` oilist(`after` $control_inputs) attr-dict `:` functional-type($inputs, $outputs)
   }];
   let hasVerifier = 1;
 }
@@ -136,20 +146,27 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
 
     The callee is placed on devices because it's loaded. Every input/output must
     be placed on a subset of these devices.
+
+    `io_aliases` represents pairs of inputs and outputs, where the input buffer
+    may be donated and used as the output buffer. The aliased pair must have the
+    same Ifrt_ArrayType. It's up to IFRT implementations whether to respect this
+    hint or not.
   }];
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
-    Variadic<Ifrt_ControlType>:$controlInputs,
+    Variadic<Ifrt_ControlType>:$control_inputs,
 
-    SymbolRefAttr:$callee);
+    SymbolRefAttr:$callee,
+    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
-    Ifrt_ControlType:$controlOutput);
+    Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    $callee `(` $inputs `)` oilist(`after` $controlInputs) attr-dict `:` functional-type($inputs, $outputs)
+    $callee `(` $inputs `)` oilist(`after` $control_inputs) attr-dict `:` functional-type($inputs, $outputs)
   }];
+  let hasVerifier = 1;
 }
 
 def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
@@ -173,7 +190,7 @@ def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
 def Ifrt_AfterOp : Ifrt_Op<"After"> {
   let summary = "Get a control handle for array materialization.";
   let description = [{
-    When depending on the `controlOutput`, the op will be not be scheduled until
+    When depending on the `control_output`, the op will be not be scheduled until
     all `inputs` are materialized. For example, this could mean the data
     transfer is completed from a `Reshard` op.
 
@@ -187,7 +204,7 @@ def Ifrt_AfterOp : Ifrt_Op<"After"> {
   }];
 
   let arguments = (ins Variadic<Ifrt_ArrayType>:$inputs);
-  let results = (outs Ifrt_ControlType:$controlOutput);
+  let results = (outs Ifrt_ControlType:$control_output);
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_OPS_TD_

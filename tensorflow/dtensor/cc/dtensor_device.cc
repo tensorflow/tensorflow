@@ -1595,8 +1595,9 @@ DTensorDevice::DTensorOperationToModule(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
       pass_runner_.ImportGraphToMlir(
-          device_set, doperation.is_func(), doperation.default_mesh, *flib_def,
-          *result.graph, result.doperation_cache_key));
+          device_set, absl::string_view{doperation.name}, doperation.is_func(),
+          doperation.default_mesh, *flib_def, *result.graph,
+          result.doperation_cache_key));
 
   tsl::core::WeakPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
       manager{module_manager_.get()};
@@ -2437,7 +2438,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
         && (operation_name != std::string("CopyToMesh") &&
             operation_name != std::string("CopyToMeshGrad") &&
             operation_name != std::string("Relayout") &&
-            operation_name != std::string("RelayoutGrad")) &&
+            operation_name != std::string("RelayoutLike")) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       StatusOr<std::vector<int64_t>> shape = GetTensorShapeAsVector(input);
       if (!shape.ok()) {

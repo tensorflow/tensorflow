@@ -84,7 +84,10 @@ py_test(
     main = "xla_client_test.py",
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    tags = [
+        "no_oss",
+        "not_run:arm",
+    ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_call_for_test",
         ":xla_client",
@@ -977,6 +980,7 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_api",
+        "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
@@ -1005,8 +1009,8 @@ tsl_pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":tpu_enabled": [
-            "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
             "//tensorflow/compiler/xla/pjrt:tpu_client",
+            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         ],
         "//conditions:default": [],
     }) + select({

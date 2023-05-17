@@ -1731,7 +1731,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined()
 
     with self.assertRaisesRegex(
-        TypeError, '.*was expected to be of type.* but is.*'
+        TypeError, r'Can not cast .*shape=\(3,\).* to .*shape=\(2,\).*'
     ):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))

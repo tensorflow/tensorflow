@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -463,6 +464,76 @@ llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
   return b->CreateBitCast(f16_as_int, b->getHalfTy());
 }
 
+llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
+                                    llvm::IRBuilder<>* b) {
+  using llvm::APInt;
+  using llvm::Value;
+
+  llvm::IntegerType* i8_type = b->getInt8Ty();
+  auto i8_const = [i8_type](int val) {
+    return llvm::ConstantInt::get(i8_type, val);
+  };
+  auto type = f16_value->getType();
+  auto f16_abs_value = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                    {f16_value}, {type}, b);
+  auto f16_zero = llvm::ConstantFP::getZero(type);
+  auto is_zero = b->CreateFCmpOEQ(f16_abs_value, f16_zero);
+  auto f8_overflow_threshold = llvm::ConstantFP::get(type, 0x1.fp+4);
+  auto no_overflow = b->CreateFCmpOLT(f16_abs_value, f8_overflow_threshold);
+
+  // Re-scale the f16, then convert as-if it were e4m3fn.
+  f16_value = b->CreateFMul(
+      f16_value, llvm::ConstantFP::get(f16_value->getType(), 1 << (11 - 7)));
+  auto* f8_value = EmitF16ToF8e4m3fn(f16_value, b);
+
+  // e4m3b11 overflows to NaN.
+  f8_value = b->CreateSelect(no_overflow, f8_value, i8_const(0x80));
+  // e4m3b11 has no negative zero.
+  f8_value = b->CreateSelect(is_zero, i8_const(0x00), f8_value);
+  return f8_value;
+}
+
+llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value,
+                                    llvm::IRBuilder<>* b) {
+  using llvm::APInt;
+  using llvm::Value;
+
+  llvm::IntegerType* i8_type = b->getInt8Ty();
+  llvm::IntegerType* i16_type = b->getInt16Ty();
+  auto i8_const = [i8_type](int val) {
+    return llvm::ConstantInt::get(i8_type, val);
+  };
+
+  Value* f8_as_int = b->CreateBitCast(f8_value, i8_type);
+  Value* is_nan = b->CreateICmpEQ(f8_as_int, i8_const(0x80));
+
+  Value* f8_abs_bits = b->CreateAnd(f8_as_int, i8_const(0x7F));
+  Value* is_max = b->CreateICmpEQ(f8_abs_bits, i8_const(0x7F));
+  Value* f8_sign_bit = b->CreateAnd(f8_as_int, i8_const(0x80));
+  Value* f16_sign_bit =
+      b->CreateShl(b->CreateZExt(f8_sign_bit, i16_type), 16 - 8);
+
+  auto* f16_value = EmitF8e4m3fnToF16(f8_value, b);
+  f16_value = b->CreateFMul(
+      f16_value,
+      llvm::ConstantFP::get(f16_value->getType(), 1.0 / (1 << (11 - 7))));
+  f16_value = b->CreateSelect(
+      is_nan,
+      llvm::ConstantFP::get(f16_value->getType(),
+                            std::numeric_limits<double>::quiet_NaN()),
+      f16_value);
+
+  llvm::Value* max_like_sign = llvm::ConstantFP::get(
+      f16_value->getType(),
+      static_cast<float>(std::numeric_limits<tsl::float8_e4m3b11>::max()));
+  max_like_sign = b->CreateBitCast(max_like_sign, f16_sign_bit->getType());
+  max_like_sign = b->CreateOr(max_like_sign, f16_sign_bit);
+  max_like_sign = b->CreateBitCast(max_like_sign, f16_value->getType());
+  f16_value = b->CreateSelect(is_max, max_like_sign, f16_value);
+
+  return f16_value;
+}
+
 llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
                                     PrimitiveType from_type,
                                     PrimitiveType to_type, llvm::Module* module,
@@ -544,6 +615,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
         }
         if (to_type == F8E4M3FN) {
           return EmitF16ToF8e4m3fn(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
+        }
+        if (to_type == F8E4M3B11FNUZ) {
+          return EmitF16ToF8e4m3b11fnuz(
               EmitIntegralToFloating(operand_value, from_type, F16, module_,
                                      b_),
               b_);
@@ -674,6 +751,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           return operand_value;
         }
       }
+      if (from_type == F8E4M3B11FNUZ) {
+        TF_RET_CHECK(to_type != F8E4M3B11FNUZ);
+        operand_value = EmitF8e4m3b11fnuzToF16(operand_value, b_);
+        from_type = F16;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
       if (primitive_util::IsComplexType(to_type)) {
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
@@ -710,6 +795,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               operand_value, llvm_ir::PrimitiveTypeToIrType(F16, module_));
         }
         return EmitF16ToF8e4m3fn(operand_value, b_);
+      }
+      if (to_type == F8E4M3B11FNUZ) {
+        // Cast to F16 first. Casts to F8E4M3B11FNUZ must be from F16.
+        if (from_type != F16) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F16, module_));
+        }
+        return EmitF16ToF8e4m3b11fnuz(operand_value, b_);
       }
       if (to_type == PRED) {
         return b_->CreateZExt(

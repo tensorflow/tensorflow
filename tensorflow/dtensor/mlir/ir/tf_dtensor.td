@@ -137,13 +137,13 @@ def TF_RelayoutOp : TF_Op<"Relayout", [Pure, TF_AllTypesMatch<["input", "output"
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RelayoutGradOp : TF_Op<"RelayoutGrad", [Pure, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
+def TF_RelayoutLikeOp : TF_Op<"RelayoutLike", [Pure, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
   let summary = "Change layout of the gradients to match the layout of the forward pass Relayout's input.";
 
   let arguments = (ins
     TF_Tensor:$input,
 
-    TF_Tensor:$forward_input
+    TF_Tensor:$layout_input
   );
 
   let results = (outs

@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -51,6 +52,17 @@ T GetParamWithDefault(const ToolOptions& options, const std::string& key,
     return *param;
   }
   return default_param;
+}
+
+inline std::string DebugString(const ToolOptions& options) {
+  std::string output;
+  for (const auto& [k, v] : options) {
+    absl::StrAppend(
+        &output, k, ":",
+        std::visit([](const auto& value) { return absl::StrCat(value); }, v),
+        ";");
+  }
+  return absl::StrCat("{", output, "}");
 }
 
 }  // namespace profiler

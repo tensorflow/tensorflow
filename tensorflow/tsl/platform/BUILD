@@ -1506,6 +1506,7 @@ tsl_cc_test(
         ":errors",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

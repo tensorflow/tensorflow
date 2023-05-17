@@ -159,18 +159,12 @@ bool EnableNonTpuBridge(const Graph& graph) {
 //
 // The config_proto param is a required input for all TF1 graphs but it is
 // redundant for TF2 graphs.
-MlirOptimizationPassState MlirBridgePass::GetPassState(
-    const DeviceSet* device_set, const ConfigProto& config_proto,
-    const Graph& graph,
-    const FunctionLibraryDefinition& function_library) const {
+MlirOptimizationPassState GetPassStateImpl(
+    bool run_tpu_bridge, const ConfigProto& config_proto, const Graph& graph,
+    const FunctionLibraryDefinition& function_library) {
   // Skip MLIR TF/XLA Bridge if no TPU devices and no qualified CPU/GPU
   // graphs are found.
-  bool has_tpu_device = device_set ? HasTPUDevice(*device_set) : false;
-  // GetPassState is called once before MlirBridgePass starts, and the pass
-  // gets skipped if it is disabled. Log such cases in this function. The cases
-  // where the pass is enabled will only be logged during their execution to
-  // prevent them from being counted twice.
-  if (device_set && !has_tpu_device && !EnableNonTpuBridge(graph)) {
+  if (!run_tpu_bridge && !EnableNonTpuBridge(graph)) {
     // Only record CPU/GPU graphs that are qualified but filtered out
     if (HasQualifiedNonTPUOp(graph)) {
       metrics::UpdateTfMlirBridgeFirstPhaseCounter(
@@ -184,11 +178,17 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
+  // GetMlirBridgeRolloutPolicy will analyze a TPU graph if users have not
+  // explicltly requested a policy.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      graph, &function_library, config_proto, /*is_tpu_graph*/ has_tpu_device,
+      graph, &function_library, config_proto, /*run_tpu_bridge*/ run_tpu_bridge,
       /*uses_uninitialized_resource_args=*/false,
       /*is_v1_compat=*/false, /*record_stats=*/false);
-  if (has_tpu_device) {
+  // GetPassState is called once before MlirBridgePass starts, and the pass
+  // gets skipped if it is disabled. Log such cases in this function. The cases
+  // where the pass is enabled will only be logged during their execution to
+  // prevent them from being counted twice.
+  if (run_tpu_bridge) {
     switch (policy) {
       case MlirBridgeRolloutPolicy::kEnabledByUser:
         return MlirOptimizationPassState::Enabled;
@@ -236,6 +236,20 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
   }
 }
 
+MlirOptimizationPassState MlirBridgePass::GetPassState(
+    const DeviceSet* device_set, const ConfigProto& config_proto,
+    const Graph& graph,
+    const FunctionLibraryDefinition& function_library) const {
+  if (!device_set) {
+    // This is not expected in practice.
+    VLOG(1) << "Device set is empty!";
+    return MlirOptimizationPassState::Disabled;
+  }
+
+  return GetPassStateImpl(/*run_tpu_bridge*/ HasTPUDevice(*device_set),
+                          config_proto, graph, function_library);
+}
+
 // This runs the first phase of the "bridge", transforming the graph in a form
 // that can be executed with delegation of some computations to an accelerator.
 // This builds on the model of XLA where a subset of the graph is encapsulated
@@ -252,22 +266,17 @@ Status MlirBridgePass::Run(const std::string& function_name,
   // Check if there are TPU devices or TPU ops. If not, then check if the
   // non TPU graph is qualified to run TF2XLA Bridge.
   // This check needs to precede GetPassState for instrumentation purposes.
-  bool is_qualified_for_tpu_bridge = HasTPUDevicesAndOps(module),
-       is_qualified_for_non_tpu_bridge = false;
-  if (!is_qualified_for_tpu_bridge)
-    is_qualified_for_non_tpu_bridge = EnableNonTpuBridge(graph);
-  if (!is_qualified_for_tpu_bridge && !is_qualified_for_non_tpu_bridge) {
+  bool run_tpu_bridge = HasTPUDevicesAndOps(module);
+  if (!run_tpu_bridge && !HasQualifiedNonTPUOp(graph)) {
     VLOG(1)
         << "Skipping MLIR TF2XLA Bridge, no qualified devices or ops found.";
     return OkStatus();
   }
 
-  // Set device_set to nullptr here as the device specific checks are performed
-  // based on the devices in the module.
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
   // related to graph analysis from here.
-  auto pass_state = GetPassState(/*device_set=*/nullptr, config_proto, graph,
-                                 function_library);
+  auto pass_state =
+      GetPassStateImpl(run_tpu_bridge, config_proto, graph, function_library);
 
   if (pass_state == MlirOptimizationPassState::Disabled) {
     // GetPassState is called before run() and run() will only be called if the
@@ -278,7 +287,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     return OkStatus();
   }
 
-  if (is_qualified_for_tpu_bridge) {
+  if (run_tpu_bridge) {
     bool fallback_enabled = false;
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       // We set `uses_uninitialized_resource_args` to false here because the
@@ -310,7 +319,7 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
-      /*is_tpu_graph*/ true,
+      /*run_tpu_bridge*/ true,
       /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
       /*record_stats=*/false);
   switch (policy) {

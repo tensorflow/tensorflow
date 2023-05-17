@@ -181,7 +181,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
 
     def value_fn(value_context):
-      return value_context.num_replicas_in_sync
+      return value_context.replica_id_in_sync_group
     distributed_values = (
         strategy.experimental_distribute_values_from_function(
             value_fn))
@@ -196,9 +196,9 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     # Note that the scalar value from
     # experimental_distribute_values_from_function will be up rank to 1D since
     # batched shared dtensor need at least be 1D. So the result from the
-    # strategy.run is [4], instead of just 4.
-    self.assertAllClose(result.values[0], constant_op.constant([4]))
-    self.assertAllClose(result.values[1], constant_op.constant([4]))
+    # strategy.run is [0], instead of just 0.
+    self.assertAllClose(result.values[0], constant_op.constant([0]))
+    self.assertAllClose(result.values[1], constant_op.constant([2]))
 
   def test_nested_structure_output(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)

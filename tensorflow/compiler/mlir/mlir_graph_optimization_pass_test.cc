@@ -40,45 +40,43 @@ constexpr char kFailure[] = "kFailure";
 
 class MockMlirOptimizationPass : public MlirOptimizationPass {
  public:
-  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
-  // instead.
-  MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD4(GetPassState,
-                     MlirOptimizationPassState(
-                         const DeviceSet* device_set,
-                         const ConfigProto& config_proto, const Graph& graph,
-                         const FunctionLibraryDefinition& function_library));
-  MOCK_METHOD5(Run, Status(const std::string& function_name,
-                           const ConfigProto& config_proto,
-                           mlir::ModuleOp module, const Graph& graph,
-                           const FunctionLibraryDefinition& function_library));
+  MOCK_METHOD(llvm::StringRef, name, (), (const, override));
+  MOCK_METHOD(MlirOptimizationPassState, GetPassState,
+              (const DeviceSet* device_set, const ConfigProto& config_proto,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (const, override));
+  MOCK_METHOD(Status, Run,
+              (const std::string& function_name,
+               const ConfigProto& config_proto, mlir::ModuleOp module,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (override));
 };
 
 class MockMlirV1CompatOptimizationPass : public MlirV1CompatOptimizationPass {
  public:
-  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
-  // instead.
-  MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD4(GetPassState,
-                     MlirOptimizationPassState(
-                         const DeviceSet* device_set,
-                         const ConfigProto& config_proto, const Graph& graph,
-                         const FunctionLibraryDefinition& function_library));
-  MOCK_METHOD2(Run, Status(const GraphOptimizationPassOptions& options,
-                           mlir::ModuleOp module));
+  MOCK_METHOD(llvm::StringRef, name, (), (const, override));
+  MOCK_METHOD(MlirOptimizationPassState, GetPassState,
+              (const DeviceSet* device_set, const ConfigProto& config_proto,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (const, override));
+  MOCK_METHOD(Status, Run,
+              (const GraphOptimizationPassOptions& options,
+               mlir::ModuleOp module),
+              (override));
 };
 
 class ModifyMlirModulePass : public MlirOptimizationPass {
  public:
   explicit ModifyMlirModulePass(Status run_status) : run_status_(run_status) {}
-  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
-  // instead.
-  MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD4(GetPassState,
-                     MlirOptimizationPassState(
-                         const DeviceSet* device_set,
-                         const ConfigProto& config_proto, const Graph& graph,
-                         const FunctionLibraryDefinition& function_library));
+  MOCK_METHOD(llvm::StringRef, name, (), (const, override));
+  MOCK_METHOD(MlirOptimizationPassState, GetPassState,
+              (const DeviceSet* device_set, const ConfigProto& config_proto,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (const, override));
 
   // Just modify MLIR module so that we can check whether original TF graph
   // has changed or not.

@@ -93,7 +93,7 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<absl::Span<const float>>>("__type_id_array_float");
   r.Register<Tagged<absl::Span<const double>>>("__type_id_array_double");
 
-  r.Register<Tagged<TensorRef<int32_t>>>("__type_id__tensor_int32_t");
+  r.Register<Tagged<TensorRef<int32_t>>>("__type_id_tensor_int32_t");
   r.Register<Tagged<TensorRef<int64_t>>>("__type_id_tensor_int64_t");
   r.Register<Tagged<TensorRef<float>>>("__type_id_tensor_float");
   r.Register<Tagged<TensorRef<double>>>("__type_id_tensor_double");

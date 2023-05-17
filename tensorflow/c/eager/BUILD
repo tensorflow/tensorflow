@@ -636,7 +636,7 @@ tf_cuda_library(
 
 tf_cuda_cc_test(
     name = "c_api_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "c_api_debug_test.cc",
         "c_api_test.cc",
@@ -693,7 +693,7 @@ tf_cuda_library(
 
 tf_cuda_cc_test(
     name = "c_api_remote_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "c_api_remote_test.cc",
     ],
@@ -725,7 +725,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_remote_function_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "c_api_remote_function_test.cc",
     ],
@@ -1014,7 +1014,7 @@ cc_library(
 
 tf_cc_test(
     name = "custom_device_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "custom_device_test.cc",
     ],

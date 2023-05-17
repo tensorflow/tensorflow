@@ -1725,6 +1725,11 @@ def tf_cc_tests(
             tags = tags,
         )
 
+register_extension_info(
+    extension = tf_cc_tests,
+    label_regex_for_dep = "{extension_name}",
+)
+
 def tf_cc_test_mkl(
         srcs,
         deps,

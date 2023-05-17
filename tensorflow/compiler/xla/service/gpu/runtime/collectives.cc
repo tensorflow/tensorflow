@@ -161,10 +161,10 @@ absl::Status CollectivePermuteImplCommon(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (!comm.ok()) return ToAbslStatus(comm.status());
+  if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
+  if (!device_buffers.ok()) return device_buffers.status();
 
   if (device_buffers->size() != 1) {
     return absl::InternalError(absl::StrFormat(
@@ -172,12 +172,11 @@ absl::Status CollectivePermuteImplCommon(
   }
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
+  if (!global_device_id.ok()) return global_device_id.status();
 
   StatusOr<DeviceAssignment::LogicalID> current_logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!current_logical_id.ok())
-    return ToAbslStatus(current_logical_id.status());
+  if (!current_logical_id.ok()) return current_logical_id.status();
 
   const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
                                      CollectiveOpGroupMode::kCrossReplica
@@ -194,11 +193,11 @@ absl::Status CollectivePermuteImplCommon(
       NcclCollectivePermuteConfig::GetSourceTarget(id_to_source_target,
                                                    current_id);
 
-  return ToAbslStatus(
-      RunRepeated(debug_options->xla_gpu_collective_inflation_factor(), [&]() {
+  return RunRepeated(
+      debug_options->xla_gpu_collective_inflation_factor(), [&]() {
         return RunCollectivePermute(source_target, (*device_buffers)[0],
                                     *stream, **comm, device_string, current_id);
-      }));
+      });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -257,14 +256,14 @@ absl::Status AllGatherImplCommon(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (!comm.ok()) return ToAbslStatus(comm.status());
+  if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
+  if (!device_buffers.ok()) return device_buffers.status();
 
-  return ToAbslStatus(RunRepeated(
+  return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(),
-      [&]() { return RunAllGather(*device_buffers, *stream, **comm); }));
+      [&]() { return RunAllGather(*device_buffers, *stream, **comm); });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -320,16 +319,16 @@ absl::Status AllReduceImplCommon(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (!comm.ok()) return ToAbslStatus(comm.status());
+  if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
+  if (!device_buffers.ok()) return device_buffers.status();
 
-  return ToAbslStatus(
-      RunRepeated(debug_options->xla_gpu_collective_inflation_factor(), [&]() {
+  return RunRepeated(
+      debug_options->xla_gpu_collective_inflation_factor(), [&]() {
         return RunAllReduce(static_cast<ReductionKind>(reduction_kind),
                             *device_buffers, *stream, **comm);
-      }));
+      });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -389,16 +388,16 @@ absl::Status AllToAllImplCommon(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (!comm.ok()) return ToAbslStatus(comm.status());
+  if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
+  if (!device_buffers.ok()) return device_buffers.status();
 
-  return ToAbslStatus(
-      RunRepeated(debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunAllToAll(has_split_dimension, *device_buffers, *stream,
-                           **comm);
-      }));
+  return RunRepeated(debug_options->xla_gpu_collective_inflation_factor(),
+                     [&]() {
+                       return RunAllToAll(has_split_dimension, *device_buffers,
+                                          *stream, **comm);
+                     });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -456,16 +455,16 @@ absl::Status ReduceScatterImplCommon(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (!comm.ok()) return ToAbslStatus(comm.status());
+  if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
+  if (!device_buffers.ok()) return device_buffers.status();
 
-  return ToAbslStatus(
-      RunRepeated(debug_options->xla_gpu_collective_inflation_factor(), [&]() {
+  return RunRepeated(
+      debug_options->xla_gpu_collective_inflation_factor(), [&]() {
         return RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
                                 *device_buffers, *stream, **comm);
-      }));
+      });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -533,11 +532,11 @@ absl::Status ReplicaPartitionIdImpl(
   NcclExecuteParams params(*run_options, stream->parent());
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
+  if (!global_device_id.ok()) return global_device_id.status();
 
   StatusOr<DeviceAssignment::LogicalID> logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
+  if (!logical_id.ok()) return logical_id.status();
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   const uint32_t id =
@@ -591,7 +590,7 @@ absl::Status CollectivesSupport::MaybeBlockAfterFirstRun(int32_t uid,
     absl::MutexLock lock(&mutex_);
     return executed_.insert(Key(uid, device_ordinal)).second;
   }();
-  return block ? ToAbslStatus(stream->BlockHostUntilDone()) : absl::OkStatus();
+  return block ? stream->BlockHostUntilDone() : absl::OkStatus();
 }
 
 AsyncCollectivesSupport::AsyncCollectivesSupport(se::Stream* async_comm_stream)

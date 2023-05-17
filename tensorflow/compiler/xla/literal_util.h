@@ -248,9 +248,7 @@ class LiteralUtil {
   // Creates a literal with the supplied shape, and uses the provided value
   // generator to populate the literal's values.
   // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
       absl::FunctionRef<T(absl::Span<const int64_t>)> generator);
@@ -259,9 +257,8 @@ class LiteralUtil {
   // values using a normal distribution with given mean and stddev standard
   // deviation, and using the engine as entropy generator.
   // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type, typename E,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  template <PrimitiveType type, typename E,
+            typename T = primitive_util::NativeTypeOf<type>>
   static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, E* engine,
                                                T mean, T stddev);
 
@@ -269,9 +266,7 @@ class LiteralUtil {
   // values using a normal distribution with given mean and stddev standard
   // deviation.
   // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
                                                T stddev);
 
@@ -522,7 +517,7 @@ template <PrimitiveType type, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
     absl::FunctionRef<T(absl::Span<const int64_t>)> generator) {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
+  using NativeT = primitive_util::NativeTypeOf<type>;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
   TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
@@ -533,7 +528,7 @@ template <PrimitiveType type, typename T>
 template <PrimitiveType type, typename E, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, E* engine, T mean, T stddev) {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
+  using NativeT = primitive_util::NativeTypeOf<type>;
   std::normal_distribution<NativeT> generator(mean, stddev);
   return CreateLiteralWithGenerator<type, NativeT>(
       shape, [&](absl::Span<const int64_t> /*indexes*/) {

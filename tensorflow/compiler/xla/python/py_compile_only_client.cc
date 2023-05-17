@@ -62,12 +62,14 @@ class InvalidIfrtCompiler final
     : public llvm::RTTIExtends<InvalidIfrtCompiler, ifrt::Compiler> {
  public:
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options) override {
+      mlir::ModuleOp mlir_module,
+      std::unique_ptr<ifrt::CompileOptions> options) override {
     return Unimplemented("Compile not implemented.");
   }
 
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> DeserializeLoadedExecutable(
-      absl::string_view serialized, CompileOptions options) override {
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override {
     return Unimplemented("DeserializeLoadedExecutable not implemented.");
   }
 

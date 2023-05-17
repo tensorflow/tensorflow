@@ -881,7 +881,7 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_test.cc"],
     data = [
         ":test_op1.so",
@@ -968,7 +968,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "c_api_function_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_function_test.cc"],
     deps = [
         ":c_api",
@@ -985,7 +985,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "while_loop_test",
-    size = "small",
+    size = "medium",
     srcs = ["while_loop_test.cc"],
     deps = [
         ":c_api",

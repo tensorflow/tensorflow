@@ -513,6 +513,29 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
                 type_constraint[2])
         ]))
 
+  def test_spec_summary(self):
+    input_signature = (
+        tensor_spec.TensorSpec(shape=None),
+        tensor_spec.TensorSpec(shape=None),
+    )
+
+    @dummy_tf_decorator
+    def foo(x=2, y=3):  # pylint: disable=unused-argument
+      pass
+
+    spec = function_spec.FunctionSpec.from_function_and_signature(
+        foo, input_signature
+    )
+    self.assertEqual(
+        spec.signature_summary(True),
+        'FunctionType(parameters=[Parameter(name=x, kind=POSITIONAL_OR_KEYWORD,'
+        ' optional=True, type_constraint=TensorSpec(shape=<unknown>,'
+        ' dtype=tf.float32, name=None)), Parameter(name=y,'
+        ' kind=POSITIONAL_OR_KEYWORD, optional=True,'
+        ' type_constraint=TensorSpec(shape=<unknown>, dtype=tf.float32,'
+        " name=None))], captures=OrderedDict()), defaults: {'x': 2, 'y': 3}",
+    )
+
 
 # TODO(fmuham): Remove when is_same_structure is removed.
 class SameStructureTest(test.TestCase):

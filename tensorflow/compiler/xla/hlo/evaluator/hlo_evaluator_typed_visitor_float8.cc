@@ -19,4 +19,5 @@ limitations under the License.
 namespace xla {
 template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
 template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
+template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>;
 }  // namespace xla

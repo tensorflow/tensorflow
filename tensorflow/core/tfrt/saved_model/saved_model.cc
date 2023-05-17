@@ -30,6 +30,7 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/infra/mira/mlrt/bytecode/bytecode.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -597,6 +597,9 @@ void UpdateCompileOptions(SavedModel::Options& options) {
     LOG(INFO) << "lazy_loading_use_graph_executor is updated to be the same as "
                  "enable_lazy_loading: "
               << options.enable_lazy_loading;
+    options.graph_execution_options.compile_options
+        .enable_while_parallel_iterations = true;
+    LOG(INFO) << "enable_while_parallel_iterations is always true for MLRT";
   }
 }
 
@@ -787,7 +790,7 @@ SavedModelImpl::SavedModelImpl(
       bytecode_(std::move(bytecode)),
       loaded_executable_(std::move(loaded_executable)),
       req_deadline_tracker_(
-          options.graph_execution_options.runtime->core_runtime()
+          options_.graph_execution_options.runtime->core_runtime()
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),
@@ -1140,6 +1143,13 @@ SavedModelImpl::GetOrCreateLoadingResult(const RunOptions& run_options,
   TF_ASSIGN_OR_RETURN(
       const auto joined_signature,
       JoinSignatures(names, signatures_, meta_graph_def_.signature_def()));
+
+  LOG(INFO) << "TFRT loading joined signature " << joined_signature.name;
+  absl::Cleanup log_finish([&joined_signature, start_time = absl::Now()]() {
+    LOG(INFO) << "TFRT finished loading joined signature "
+              << joined_signature.name << ". Took "
+              << absl::ToInt64Milliseconds(absl::Now() - start_time) << " ms.";
+  });
 
   return LoadJoinedSignature(joined_signature);
 }

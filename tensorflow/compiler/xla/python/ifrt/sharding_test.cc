@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -84,7 +83,8 @@ TEST(OpaqueShardingTest, Disassemble) {
 
 TEST(ShardingParamShardingTest, FailToCreateWhenDeviceCountNotMatch) {
   DeviceList device_list = CreateDummyDevices(2);
-  ShardingParam param{{2, 3}, {{1, 0}, {3, 2}}};
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
 
   EXPECT_THAT(ShardingParamSharding::Create(param, device_list),
               StatusIs(tsl::error::FAILED_PRECONDITION,
@@ -94,9 +94,11 @@ TEST(ShardingParamShardingTest, FailToCreateWhenDeviceCountNotMatch) {
 
 TEST(ShardingParamShardingTest, Disassemble) {
   DeviceList device_list = CreateDummyDevices(6);
-  ShardingParam param{{2, 3}, {{1, 0}, {3, 2}}};
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Sharding> param_sharding,
-                          ShardingParamSharding::Create(param, device_list));
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> param_sharding,
+      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto exploded,
                           param_sharding->Disassemble(Shape({6, 6})));
@@ -111,10 +113,11 @@ TEST(ShardingParamShardingTest, Disassemble) {
 }
 
 TEST(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
-  DeviceList device_list = CreateDummyDevices(6);
-  ShardingParam param{{2, 3}, {{1, 0}, {3, 2}}};
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Sharding> param_sharding,
-                          ShardingParamSharding::Create(param, device_list));
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> param_sharding,
+      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
 
   EXPECT_THAT(
       param_sharding->Disassemble(Shape({6, 6, 6})),
@@ -124,16 +127,71 @@ TEST(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
 }
 
 TEST(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {
-  DeviceList device_list = CreateDummyDevices(6);
-  ShardingParam param{{2, 3}, {{1, 0}, {3, 2}}};
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Sharding> param_sharding,
-                          ShardingParamSharding::Create(param, device_list));
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> param_sharding,
+      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
 
   EXPECT_THAT(
       param_sharding->Disassemble(Shape({7, 6})),
       StatusIs(
           tsl::error::FAILED_PRECONDITION,
           HasSubstr("Uneven shard is not supported. dim: 7, dim_shards: 2")));
+}
+
+TEST(ShardingParamShardingTest, IndexDomain) {
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> param_sharding,
+      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
+                          param_sharding->IndexDomains(Shape({6, 6})));
+  EXPECT_THAT(index_domains,
+              ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                          IndexDomain(Index({0, 2}), Shape({3, 2})),
+                          IndexDomain(Index({0, 4}), Shape({3, 2})),
+                          IndexDomain(Index({3, 0}), Shape({3, 2})),
+                          IndexDomain(Index({3, 2}), Shape({3, 2})),
+                          IndexDomain(Index({3, 4}), Shape({3, 2}))));
+}
+
+TEST(ShardingParamShardingTest, IndexDomainWithPermutation) {
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> param_sharding,
+      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
+                          param_sharding->IndexDomains(Shape({6, 6})));
+  EXPECT_THAT(index_domains,
+              ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                          IndexDomain(Index({0, 4}), Shape({3, 2})),
+                          IndexDomain(Index({3, 2}), Shape({3, 2})),
+                          IndexDomain(Index({0, 2}), Shape({3, 2})),
+                          IndexDomain(Index({3, 0}), Shape({3, 2})),
+                          IndexDomain(Index({3, 4}), Shape({3, 2}))));
+}
+
+TEST(ShardingParamShardingTest, IndexDomainWithReplication) {
+  ShardingParam param{/*dim_shards=*/{2, 1},
+                      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> param_sharding,
+      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
+                          param_sharding->IndexDomains(Shape({6, 6})));
+  EXPECT_THAT(index_domains,
+              ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
+                          IndexDomain(Index({0, 0}), Shape({3, 6})),
+                          IndexDomain(Index({0, 0}), Shape({3, 6})),
+                          IndexDomain(Index({3, 0}), Shape({3, 6})),
+                          IndexDomain(Index({3, 0}), Shape({3, 6})),
+                          IndexDomain(Index({3, 0}), Shape({3, 6}))));
 }
 
 }  // namespace

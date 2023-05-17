@@ -2327,18 +2327,17 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   std::shared_ptr<Node> node_4 = GetNode(4);
   std::shared_ptr<Node> node_5 = GetNode(5);
   std::shared_ptr<Node> node_6 = GetNode(6);
-  // Set node 1 low watermark to 1 and high watermark to 2. Expect that it is
+  // Set node 1 low watermark to 3 and high watermark to 3. Expect that it is
   // downsized to 2.
-  node_1->record_buffer_event(100, 1);
-  node_1->record_buffer_event(100, 1);
-  EXPECT_EQ(1, node_1->buffered_elements_low());
-  EXPECT_EQ(2, node_1->buffered_elements_high());
-  // Set node 3 low watermark to 1 and high watermark to 5. Expect that it is
-  // not changed.
-  node_3->record_buffer_event(100, 1);
-  node_3->record_buffer_event(400, 4);
+  node_1->record_buffer_event(100, 3);
+  EXPECT_EQ(3, node_1->buffered_elements_low());
+  EXPECT_EQ(3, node_1->buffered_elements_high());
+  // Set node 3 low watermark to 3 and high watermark to 5. Expect that it is
+  // downsized to 4.
+  node_3->record_buffer_event(100, 3);
+  node_3->record_buffer_event(400, 2);
   node_3->record_buffer_event(-100, -1);
-  EXPECT_EQ(1, node_3->buffered_elements_low());
+  EXPECT_EQ(3, node_3->buffered_elements_low());
   EXPECT_EQ(5, node_3->buffered_elements_high());
   // Set node 4 low watermark to 0 and high watermark to 5. Expect that it is
   // upsized to 10.
@@ -2367,12 +2366,12 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   model_->OptimizeBuffers(node_1->Snapshot(), 10000);
 
   EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
-  EXPECT_EQ(5, node_3->parameter_value(kBufferSize));
+  EXPECT_EQ(4, node_3->parameter_value(kBufferSize));
   EXPECT_EQ(10, node_4->parameter_value(kBufferSize));
   EXPECT_EQ(8, node_5->parameter_value(kBufferSize));
   EXPECT_EQ(7, node_6->parameter_value(kBufferSize));
-  EXPECT_EQ(2, node_1->buffered_elements_low());
-  EXPECT_EQ(2, node_1->buffered_elements_high());
+  EXPECT_EQ(3, node_1->buffered_elements_low());
+  EXPECT_EQ(3, node_1->buffered_elements_high());
   EXPECT_EQ(4, node_3->buffered_elements_low());
   EXPECT_EQ(4, node_3->buffered_elements_high());
   EXPECT_EQ(4, node_4->buffered_elements_low());

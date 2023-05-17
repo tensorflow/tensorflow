@@ -1,4 +1,5 @@
-# DTensor C++ runtime and libraries.
+#include "third_party/absl/strings/str_cat.h"
+#DTensor C++ runtime and libraries.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -132,6 +133,7 @@ cc_library(
         "//tensorflow/tsl/platform:refcount",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -260,6 +262,7 @@ cc_library(
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

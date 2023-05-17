@@ -1676,6 +1676,19 @@ xla_test(
 )
 
 xla_test(
+    name = "topk_test",
+    srcs = ["topk_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "token_hlo_test",
     srcs = ["token_hlo_test.cc"],
     deps = [

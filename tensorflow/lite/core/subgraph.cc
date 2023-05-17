@@ -500,6 +500,12 @@ TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // Annotate the registration as DELEGATE op.
+  registration.builtin_code = BuiltinOperator_DELEGATE;
+  if (registration.registration_external) {
+    registration.registration_external->builtin_code = BuiltinOperator_DELEGATE;
+  }
+
   // The subgraph is taking ownership of the external registration, in case the
   // user has supplied an opaque delegate.
   if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
@@ -511,9 +517,6 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   if (!nodes_to_replace->size) {
     return kTfLiteOk;
   }
-
-  // Annotate the registration as DELEGATE op.
-  registration.builtin_code = BuiltinOperator_DELEGATE;
 
   // Analyze the graph to find all independent node_subsets that are either
   // fully not-this-delegate or this-delegate computation.
@@ -1650,8 +1653,10 @@ TfLiteStatus Subgraph::ResizeTensor(TfLiteContext* context,
                                   new_size->data)) {
     // A number of clients assume |new_size| remains valid upon success, so
     // swap it in as the new (but logically identical) tensor dims.
-    TfLiteIntArrayFree(tensor->dims);
-    tensor->dims = new_size;
+    if (new_size != tensor->dims) {
+      TfLiteIntArrayFree(tensor->dims);
+      tensor->dims = new_size;
+    }
     return kTfLiteOk;
   }
 
@@ -1756,7 +1761,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     size_t required_bytes;
     TF_LITE_ENSURE_OK(
         &context_,
-        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, &context_));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
 
@@ -1811,7 +1816,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     // they will require.
     TF_LITE_ENSURE_OK(
         &context_,
-        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, &context_));
   }
 
   TfLiteAllocationType allocation_type = kTfLiteArenaRw;
@@ -1863,7 +1868,7 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       size_t bytesRequired;
       TfLiteStatus status =
           tflite::BytesRequired(tensor->type, new_size->data, new_size->size,
-                                &bytesRequired, context_);
+                                &bytesRequired, &context_);
       if (status != kTfLiteOk) {
         TfLiteIntArrayFree(new_size);
         return kTfLiteError;
@@ -1873,7 +1878,9 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       TfLiteTensorResizeMaybeCopy(bytesRequired, tensor, false);
       tensor->bytes = bytesRequired;
     }
-    if (tensor->dims) TfLiteIntArrayFree(tensor->dims);
+    if (tensor->dims && tensor->dims != new_size) {
+      TfLiteIntArrayFree(tensor->dims);
+    }
     tensor->dims = new_size;
 
     // Reset arena-allocated tensors; they will be allocated later.

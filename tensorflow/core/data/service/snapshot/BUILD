@@ -37,6 +37,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
@@ -185,6 +186,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
     ],
 )
@@ -336,6 +338,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

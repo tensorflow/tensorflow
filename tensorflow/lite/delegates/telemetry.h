@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 // This file implements utilities for delegate telemetry. These enable
 // representation and reporting of hardware-specific configurations, status

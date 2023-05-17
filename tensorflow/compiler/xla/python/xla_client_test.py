@@ -37,6 +37,7 @@ except ImportError:
 
 bfloat16 = xla_client.bfloat16
 float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
 float8_e5m2 = xla_client.float8_e5m2
 ops = xla_client.ops
 xla_computation_to_mlir_module = (
@@ -89,7 +90,7 @@ def TestFactory(xla_backend,
   # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
   # standard_dtypes is only used for BufferProtocolTest so we only test fp8
   # round trip tests.
-  standard_dtypes += [float8_e4m3fn, float8_e5m2]
+  standard_dtypes += [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -728,6 +729,13 @@ def TestFactory(xla_backend,
       for dtype in standard_dtypes:
         if dtype == np.complex128:
           continue
+        # float8_e4m3b11fnuz not supported on some TPU backends.
+        if (
+            dtype in [float8_e4m3b11fnuz]
+            and self.backend.platform == "tpu"
+        ):
+          if self.backend.platform_version.find("TPU") == -1:
+            continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
         arr = np.asarray(arr)
         self.assertEqual(dtype, type(arr[0]))
@@ -2545,9 +2553,7 @@ def TestFactory(xla_backend,
       self.assertLen(executable.hlo_modules(), 1)
 
       serialized = self.backend.serialize_executable(executable)
-      deserialized = self.backend.deserialize_executable(
-          serialized,
-          executable.hlo_modules()[0], options)
+      deserialized = self.backend.deserialize_executable(serialized, options)
 
       expected, = xla_client.execute_with_python_values(executable, (),
                                                         self.backend)

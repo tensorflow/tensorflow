@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

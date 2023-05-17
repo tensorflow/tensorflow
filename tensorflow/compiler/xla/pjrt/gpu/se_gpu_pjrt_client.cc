@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <fstream>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -25,8 +26,11 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
+#include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/tsl/framework/bfc_allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -56,6 +60,316 @@ limitations under the License.
 #include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
+class AsyncHostToDeviceTransferManager
+    : public xla::PjRtClient::AsyncHostToDeviceTransferManager {
+ public:
+  static StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>> Create(
+      absl::Span<const Shape> shapes, PjRtStreamExecutorDevice* device,
+      PjRtStreamExecutorClient* client) {
+    absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers;
+    absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs;
+    absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
+        definition_events;
+    buffers.reserve(shapes.size());
+    buffer_ptrs.reserve(shapes.size());
+    definition_events.reserve(shapes.size());
+    for (const auto& shape : shapes) {
+      if (shape.IsTuple()) {
+        return Unimplemented(
+            "Async buffer transfer of tuples not implemented.");
+      }
+      // Initialize a definition event for each async buffer. The definition
+      // event will block the buffer usage until the transfer is done.
+      definition_events.push_back(std::make_shared<BufferSequencingEvent>());
+      TF_ASSIGN_OR_RETURN(auto buffer,
+                          client->CreateUninitializedBuffer(
+                              shape, device, definition_events.back()));
+      // Get a temporary hold just so we can fish out a shared_ptr to the
+      // TrackedDeviceBuffer. It's ok to drop the hold before return the
+      // buffers, because the invariants of this class ensure that the buffer
+      // definition event will not fire until after all of this class' uses of
+      // the TrackedDeviceBuffer have completed.
+      auto* se_buffer =
+          tensorflow::down_cast<PjRtStreamExecutorBuffer*>(buffer.get());
+      DCHECK(se_buffer);
+      auto hold = se_buffer->GetBufferWithUsageHold();
+      buffer_ptrs.push_back(hold.buffer());
+      buffers.push_back(std::move(buffer));
+    }
+
+    return std::make_unique<AsyncHostToDeviceTransferManager>(
+        std::move(buffers), std::move(buffer_ptrs),
+        std::move(definition_events), device);
+  }
+
+  AsyncHostToDeviceTransferManager(
+      absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers,
+      absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs,
+      absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
+          definition_events,
+      PjRtStreamExecutorDevice* device)
+      : buffers_(std::move(buffers)),
+        buffer_ptrs_(std::move(buffer_ptrs)),
+        definition_events_(std::move(definition_events)),
+        remaining_buffer_count_(buffer_ptrs_.size()),
+        transfers_in_flight_(0),
+        device_(device) {
+    buffer_sizes_.reserve(buffer_ptrs_.size());
+    for (const auto& ptr : buffer_ptrs_) {
+      DCHECK_EQ(ptr->device_memory().size(), 1);
+      buffer_sizes_.push_back(ptr->device_memory()[0].size());
+    }
+    last_transfer_started_.resize(buffer_ptrs_.size(), false);
+  }
+
+  ~AsyncHostToDeviceTransferManager() override {
+    auto transfers_finished = [this]() {
+      mu_.AssertHeld();
+      return transfers_in_flight_ == 0;
+    };
+    {
+      absl::MutexLock l(&mu_);
+      // Make sure we don't leave dangling pointers in cleanup routines even
+      // if the client lets the object go out of scope.
+      mu_.Await(absl::Condition(&transfers_finished));
+    }
+  }
+
+  size_t buffer_count() const override { return buffers_.size(); };
+
+  size_t buffer_size(int buffer_index) const override {
+    DCHECK_LT(buffer_index, buffer_sizes_.size());
+    return buffer_sizes_[buffer_index];
+  }
+
+  PjRtDevice* device() const override { return device_; }
+
+  std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
+    DCHECK_LT(buffer_index, buffers_.size());
+    return std::move(buffers_[buffer_index]);
+  };
+
+  Status TransferLiteralToBuffer(
+      int buffer_index, const LiteralSlice& literal,
+      absl::AnyInvocable<void() &&> on_done) override {
+    tsl::profiler::TraceMe traceme(
+        "AsyncHostToDeviceTransferManager::TransferLiteralToBuffer");
+    auto* stream = device_->local_device_state()->host_to_device_stream();
+    auto* se_client =
+        tensorflow::down_cast<PjRtStreamExecutorClient*>(device_->client());
+    DCHECK(se_client);
+
+    TransferManager* transfer_manager =
+        se_client->client()->backend().transfer_manager();
+    TF_ASSIGN_OR_RETURN(
+        Shape compact_shape,
+        transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
+
+    std::shared_ptr<TrackedDeviceBuffer> buffer;
+    {
+      absl::MutexLock l(&mu_);
+
+      DCHECK_LT(buffer_index, buffer_ptrs_.size());
+      if (last_transfer_started_[buffer_index]) {
+        return InvalidArgument(
+            "TransferLiteralToBuffer requested for buffer index %d which has "
+            "already been fully transferred",
+            buffer_index);
+      }
+      last_transfer_started_[buffer_index] = true;
+      buffer = buffer_ptrs_[buffer_index];
+      DCHECK(buffer);
+      if (buffer->device_memory().empty()) {
+        return InvalidArgument(
+            "TransferLiteralToBuffer requested for buffer index %d which has "
+            "been donated. Async transfer of donated buffers is not supported "
+            "in SE:GPU",
+            buffer_index);
+      }
+      DCHECK_EQ(buffer->device_memory().size(), 1);
+
+      auto& buffer_memory = buffer->device_memory()[0];
+      if (transfer_manager->GetByteSizeRequirement(compact_shape) !=
+          buffer_memory.size()) {
+        return InvalidArgument(
+            "TransferLiteralToBuffer shape %s has size %lld "
+            "but buffer has size %lld",
+            ShapeUtil::HumanStringWithLayout(compact_shape),
+            transfer_manager->GetByteSizeRequirement(compact_shape),
+            buffer_memory.size());
+      }
+      ++transfers_in_flight_;
+    }
+
+    // The host to device transfer is performed on a thread pool, mostly because
+    // it includes linearization that may be slow.
+    // TODO(misard) assess if it would be preferable to introduce a heuristic to
+    // put the transfer into the calling thread for small literals.
+    auto transfer_h2d = [this, buffer_index, stream, transfer_manager, literal,
+                         device_buffer = buffer.get(), compact_shape,
+                         local_device =
+                             std::move(device_->local_device_state()),
+                         on_done = std::move(on_done)]() mutable {
+      tsl::profiler::TraceMe traceme(
+          "AsyncHostToDeviceTransferManager::TransferLiteralToBuffer::transfer_"
+          "h2d");
+
+      auto event = local_device->event_pool().AllocateEvent(stream->parent());
+
+      // Initiate linearization and transfer of the buffer on the stream.
+      ShapedBuffer buffer = device_buffer->AsShapedBuffer(compact_shape);
+      TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+          stream, literal, buffer));
+      local_device->event_pool().ThenRecordEvent(stream, event.value());
+
+      // Call cleanup once the transfer has finished on the stream.
+      auto cleanup = [this, buffer_index, stream, on_done = std::move(on_done),
+                      event = std::move(event).value()]() mutable {
+        CleanUp(buffer_index, std::move(event), stream,
+                /*is_last_transfer=*/true, std::move(on_done));
+      };
+      stream->ThenDoHostCallback(std::move(cleanup));
+    };
+    se_client->thread_pool()->Schedule(
+        ([ptr = new absl::AnyInvocable<void()>(std::move(transfer_h2d))]() {
+          (*ptr)();
+          delete ptr;
+        }));
+    return OkStatus();
+  }
+
+  Status TransferRawDataToBuffer(
+      int buffer_index, absl::string_view data,
+      absl::AnyInvocable<void() &&> on_done) override {
+    return TransferRawDataToSubBuffer(buffer_index, data.data(),
+                                      /*offset=*/0, data.size(),
+                                      /*is_last_transfer=*/true,
+                                      std::move(on_done));
+  }
+
+  Status TransferRawDataToSubBuffer(
+      int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
+      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override {
+    auto* stream = device_->local_device_state()->host_to_device_stream();
+
+    absl::ReleasableMutexLock l(&mu_);
+    DCHECK_LT(buffer_index, buffer_ptrs_.size());
+    if (last_transfer_started_[buffer_index]) {
+      return InvalidArgument(
+          "TransferRawData requested for buffer index %d which has "
+          "already been fully transferred",
+          buffer_index);
+    }
+    if (is_last_transfer) {
+      last_transfer_started_[buffer_index] = true;
+    }
+    DCHECK(buffer_ptrs_[buffer_index]);
+    if (buffer_ptrs_[buffer_index]->device_memory().empty()) {
+      return InvalidArgument(
+          "TransferRawDataToSubBuffer requested for buffer index %d which has "
+          "been donated. Async transfer of donated buffers is not supported "
+          "in SE:GPU",
+          buffer_index);
+    }
+    DCHECK_EQ(buffer_ptrs_[buffer_index]->device_memory().size(), 1);
+    auto& buffer_memory = buffer_ptrs_[buffer_index]->device_memory()[0];
+    se::DeviceMemoryBase sub_buffer;
+    CHECK_LE(offset, buffer_memory.size());
+    CHECK_LE(transfer_size, buffer_memory.size() - offset);
+    if (transfer_size < buffer_memory.size()) {
+      sub_buffer = se::DeviceMemoryBase(
+          reinterpret_cast<char*>(buffer_memory.opaque()) + offset,
+          transfer_size);
+    } else {
+      sub_buffer = buffer_memory;
+    }
+
+    ++transfers_in_flight_;
+    auto event = device_->local_device_state()->event_pool().AllocateEvent(
+        stream->parent());
+    if (transfer_size != 0) {
+      stream->ThenMemcpy(&sub_buffer, data, transfer_size);
+    }
+    device_->local_device_state()->event_pool().ThenRecordEvent(stream,
+                                                                event.value());
+    // Release the lock before calling ThenDoHostCallback in case cleanup
+    // could be called on this thread, to avoid deadlock.
+    l.Release();
+
+    auto cleanup = [this, buffer_index, event = std::move(event).value(),
+                    stream, is_last_transfer,
+                    on_done = std::move(on_done)]() mutable {
+      CleanUp(buffer_index, std::move(event), stream, is_last_transfer,
+              std::move(on_done));
+    };
+    stream->ThenDoHostCallback(std::move(cleanup));
+    return OkStatus();
+  }
+
+  void SetBufferError(int buffer_index, Status error) override {
+    // We don't have a good way to "poison" StreamExecutor buffers to make
+    // errors propagate, so for now we just kill the process if the transfers
+    // are never going to complete.
+    LOG(FATAL)
+        << "Killing process because of failed AsyncTransfer to PjRt buffers: "
+        << error;
+  }
+  void AddTransferMetadata(const TransferMetadata& meta) override {}
+
+  void CleanUp(int buffer_index, EventPool::Handle event, se::Stream* stream,
+               bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
+    {
+      absl::MutexLock l(&mu_);
+
+      CHECK_GT(transfers_in_flight_, 0);
+      --transfers_in_flight_;
+      if (is_last_transfer) {
+        // Drop our reference to the TrackedDeviceBuffer for this buffer.
+        CHECK(buffer_ptrs_[buffer_index]);
+        buffer_ptrs_[buffer_index] = nullptr;
+        CHECK_GT(remaining_buffer_count_, 0);
+        --remaining_buffer_count_;
+        definition_events_[buffer_index]->SetSequencingEvent(std::move(event),
+                                                             stream);
+        if (remaining_buffer_count_ == 0) {
+          VLOG(3) << "TransferLiteralToBuffer for all buffers is done.";
+        }
+      }
+    }
+
+    // Call on_done after finishing all housekeeping and releasing the lock.
+    std::move(on_done)();
+  }
+
+ private:
+  absl::Mutex mu_;
+  // The newly created buffers, which will be returned to the caller via
+  // Retrieve.
+  absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers_;
+  // Cached versions of the sizes of all the buffers, so we can return them
+  // without acquiring mu_.
+  absl::InlinedVector<size_t, 4> buffer_sizes_;
+  // References to the underlying storage for all the buffers, which ensures
+  // that the buffers can't be freed before all transfers complete.
+  absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs_
+      ABSL_GUARDED_BY(mu_);
+  // True if the last transfer for a buffer has been initiated. Used to prevent
+  // a client initiating another transfer after the last transfer has already
+  // been initiated.
+  absl::InlinedVector<bool, 4> last_transfer_started_ ABSL_GUARDED_BY(mu_);
+  // The buffer definition events on all the buffers, unblocked once the
+  // corresponding buffer transfer has completed.
+  absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
+      definition_events_ ABSL_GUARDED_BY(mu_);
+  // Count of buffers that have not yet been fully transferred.
+  size_t remaining_buffer_count_ ABSL_GUARDED_BY(mu_);
+  // Count of transfers that have been started but have not yet called cleanup.
+  // Used to block in the destructor to avoid dangling pointers in cleanup.
+  int transfers_in_flight_ ABSL_GUARDED_BY(mu_);
+
+  PjRtStreamExecutorDevice* device_;  // not owned.
+};
+
 namespace {
 
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
@@ -136,6 +450,15 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 #else
     return "<unknown>";
 #endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
+  }
+
+  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) override {
+    auto* stream_executor_device =
+        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
+    return xla::AsyncHostToDeviceTransferManager::Create(
+        shapes, stream_executor_device, this);
   }
 };
 
@@ -340,13 +663,13 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
-  attributes_ = {
+  description().SetAttributes({
       {"device_vendor", device_vendor_},
       {"slice_index", static_cast<int64_t>(slice_index)},
-  };
-  to_string_ = absl::StrFormat(
+  });
+  description().SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(id=%i, process_index=%i, slice_index=%i)", id,
-      process_index(), slice_index);
+      process_index(), slice_index));
 }
 
 int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
@@ -355,15 +678,12 @@ absl::string_view StreamExecutorGpuDevice::device_vendor() const {
   return device_vendor_;
 }
 
-absl::string_view StreamExecutorGpuDevice::ToString() const {
-  return to_string_;
-}
-
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
     const std::optional<std::set<int>>& allowed_devices,
-    std::optional<std::string> platform_name) {
+    std::optional<std::string> platform_name,
+    bool should_stage_host_to_device_transfers) {
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
                       GetGpuXlaClient(platform_name, allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
@@ -389,8 +709,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       GpuName(), xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
-      std::move(host_memory_allocator),
-      /*should_stage_host_to_device_transfers=*/true,
+      std::move(host_memory_allocator), should_stage_host_to_device_transfers,
       /*gpu_run_options=*/std::move(gpu_run_options)));
 }
 

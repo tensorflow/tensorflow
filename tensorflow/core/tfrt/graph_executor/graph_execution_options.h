@@ -63,6 +63,12 @@ struct GraphExecutionOptions {
   // TODO(b/266251216): Maybe flip the default value or remote it.
   bool enable_online_cost_analysis = false;
 
+  // Normalize the op costs recorded during online cost analysis by dividing by
+  // this. Also, if greater than 1, record in CPU cycles (vs. wall time).
+  //
+  // TODO(b/278298965): Record in CPU cycles by default.
+  uint64_t online_cost_analysis_normalize_ratio = 1;
+
   // If true, the MLRT interpreter will be used instead of the BEF executor.
   // This option is experimental.
   bool enable_mlrt = false;

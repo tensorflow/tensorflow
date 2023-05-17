@@ -212,6 +212,17 @@ ENTRY %IsFiniteR1F32s.v2 () -> f8e4m3fn[3] {
 
 )"
 },
+// NaN constants for F8E4M3B11
+{
+"ConstantNonFiniteE4M3B11",
+R"(HloModule ConstantR1F8E4M3B11_module, entry_computation_layout={()->f8e4m3b11fnuz[2]{0}}
+
+ENTRY %IsFiniteR1F32s.v2 () -> f8e4m3b11fnuz[2] {
+  ROOT %constant = f8e4m3b11fnuz[2]{0} constant({-nan, 7})
+}
+
+)"
+},
 // constant f16
 {
 "ConstantF16",
@@ -1591,6 +1602,23 @@ ENTRY Sort {
 
 )"
 },
+{
+"TopK",
+R"(HloModule topk, entry_computation_layout={(f32[10,10]{0,1})->(f32[10,2]{0,1}, s32[10,2]{0,1})}
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY TopK {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+
+)"
+},
 // Indexed Conditional
 {
 "IndexedConditional",
@@ -2924,6 +2952,19 @@ ENTRY %NanPayload () -> f8e4m3fn[1] {
                   "tries to set NaN payload 0x1");
 }
 
+TEST_F(HloParserTest, InvalidNanPayloadF8e4m3b11fnuz) {
+  const std::string original =
+      R"(HloModule InvalidNanPayloadF8e4m3b11fnuz_module, entry_computation_layout={()->f8e4m3b11fnuz[1]{0}}
+
+ENTRY %NanPayload () -> f8e4m3b11fnuz[1] {
+  ROOT %constant = f8e4m3b11fnuz[1]{0} constant({nan(0x1)})
+}
+
+)";
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "tries to set NaN payload 0x1");
+}
+
 TEST_F(HloParserTest, AttributesAnyOrder) {
   const std::string original = R"(HloModule any_order_module
 
@@ -3941,12 +3982,23 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
                   "Dimensions size is 3, but minor to major size is 1.");
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithElementSizeInBits) {
+  // Tile, element size, and memory space.
+  std::string shape_string = "s4[123,456]{1,0:T(2,128)E(4)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(S4, {123, 456}, {1, 0},
+                                                       {Tile({2, 128})}, 4);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
   std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
   Shape expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0},
-                                                       {Tile({2, 128})}, 3);
+                                                       {Tile({2, 128})}, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3955,7 +4007,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3964,7 +4016,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
