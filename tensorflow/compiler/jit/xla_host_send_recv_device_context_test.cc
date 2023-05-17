@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/jit/xla_host_recv_device_context.h"
-
 #include <memory>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/jit/xla_host_recv_device_context.h"
+#include "tensorflow/compiler/jit/xla_host_send_device_context.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -32,7 +32,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-class XlaHostRecvDeviceContextTest : public ::testing::Test {
+class XlaHostSendRecvDeviceContextTest : public ::testing::Test {
  public:
   void SetDevice(const string& device_type) {
     auto device_factory = DeviceFactory::GetFactory(device_type);
@@ -57,7 +57,7 @@ class XlaHostRecvDeviceContextTest : public ::testing::Test {
   Allocator* device_allocator_;
 };
 
-TEST_F(XlaHostRecvDeviceContextTest, CopyDeviceTensorToCPU) {
+TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
   SetDevice("GPU");
   Tensor origin_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
   test::FillValues<float>(&origin_cpu_tensor, {1.2, 2.3, 3.4, 4.5});
@@ -90,6 +90,81 @@ TEST_F(XlaHostRecvDeviceContextTest, CopyDeviceTensorToCPU) {
 
   tensorflow::test::ExpectClose(origin_cpu_tensor, dest_cpu_tensor);
   device_context->Unref();
+}
+
+TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
+  SetDevice("GPU");
+  Tensor origin_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&origin_cpu_tensor, {1.2, 2.3, 3.4, 4.5});
+  Tensor device_tensor(device_allocator_, DT_FLOAT, TensorShape({2, 2}));
+  Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
+
+  stream_executor::Platform* platform =
+      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+  stream_executor::StreamExecutor* executor =
+      platform->ExecutorForDevice(0).value();
+  stream_executor::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  se::DeviceMemoryBase gpu_dst{device_tensor.data(), 4 * sizeof(float)};
+  xla::Shape shape;
+  TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
+
+  tsl::AsyncValueRef<se::Event> done_event =
+      tsl::MakeConstructedAsyncValueRef<se::Event>(stream.parent());
+  done_event->Init();
+  XlaHostSendDeviceContext* device_context =
+      new XlaHostSendDeviceContext(&stream, &gpu_dst, shape, done_event);
+  TF_ASSERT_OK(device_context->CopyCPUTensorToDeviceSync(
+      &origin_cpu_tensor, device_.get(), &device_tensor));
+
+  // Copy the GPU tensor back to CPU to check that copy worked.
+  stream.ThenMemcpy(dest_cpu_tensor.data(), gpu_dst, gpu_dst.size());
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  tensorflow::test::ExpectClose(origin_cpu_tensor, dest_cpu_tensor);
+  device_context->Unref();
+}
+
+TEST_F(XlaHostSendRecvDeviceContextTest, RoundTrip) {
+  SetDevice("GPU");
+  Tensor origin_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&origin_cpu_tensor, {1.2, 2.3, 3.4, 4.5});
+  Tensor device_tensor(device_allocator_, DT_FLOAT, TensorShape({2, 2}));
+  Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
+
+  stream_executor::Platform* platform =
+      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+  stream_executor::StreamExecutor* executor =
+      platform->ExecutorForDevice(0).value();
+  stream_executor::Stream stream(executor);
+  stream.Init();
+  ASSERT_TRUE(stream.ok());
+
+  se::DeviceMemoryBase gpu_dst{device_tensor.data(), 4 * sizeof(float)};
+  xla::Shape shape;
+  TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
+
+  tsl::AsyncValueRef<se::Event> send_done_event =
+      tsl::MakeConstructedAsyncValueRef<se::Event>(stream.parent());
+  send_done_event->Init();
+  XlaHostSendDeviceContext* send_device_context =
+      new XlaHostSendDeviceContext(&stream, &gpu_dst, shape, send_done_event);
+  TF_ASSERT_OK(send_device_context->CopyCPUTensorToDeviceSync(
+      &origin_cpu_tensor, device_.get(), &device_tensor));
+
+  tsl::AsyncValueRef<se::Event> recv_done_event =
+      tsl::MakeConstructedAsyncValueRef<se::Event>(stream.parent());
+  recv_done_event->Init();
+  XlaHostRecvDeviceContext* recv_device_context =
+      new XlaHostRecvDeviceContext(&stream, gpu_dst, shape, recv_done_event);
+  TF_ASSERT_OK(recv_device_context->CopyDeviceTensorToCPUSync(
+      &device_tensor, "", device_.get(), &dest_cpu_tensor));
+
+  tensorflow::test::ExpectClose(origin_cpu_tensor, dest_cpu_tensor);
+  send_device_context->Unref();
+  recv_device_context->Unref();
 }
 
 }  // namespace

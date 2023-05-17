@@ -1532,9 +1532,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_host_send_device_context",
+    srcs = [
+        "xla_host_send_device_context.cc",
+    ],
+    hdrs = [
+        "xla_host_send_device_context.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/core:framework",
+        "@tf_runtime//:async_value",
+    ],
+)
+
 tf_cuda_only_cc_test(
-    name = "xla_host_recv_device_context_test",
-    srcs = ["xla_host_recv_device_context_test.cc"],
+    name = "xla_host_send_recv_device_context_test",
+    srcs = ["xla_host_send_recv_device_context_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "config-cuda-only",
         "no_oss",  # Temporarily disable OSS.
@@ -1544,6 +1563,7 @@ tf_cuda_only_cc_test(
         ":xla_device",
         ":xla_gpu_device",
         ":xla_host_recv_device_context",
+        ":xla_host_send_device_context",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:shape_util",
