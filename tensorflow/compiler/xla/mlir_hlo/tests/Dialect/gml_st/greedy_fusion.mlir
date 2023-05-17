@@ -18,10 +18,10 @@ func.func @fuse_broadcast_map(%arg0: tensor<16xf32>, %arg1: tensor<16x32xf32>)
   func.return %result : tensor<16x32xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %forall_op, %tiled_op = transform.structured.tile_to_forall_op %0 num_threads [10, 20]
+      : (!transform.any_op) -> !transform.any_op
+    %forall_op, %tiled_op = transform.structured.tile_to_forall_op %0 num_threads [10, 20] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
@@ -62,10 +62,10 @@ func.func @do_not_fuse_multiple_uses(%arg0: tensor<?xf32>,
   func.return %result, %bcast : tensor<?x?xf32>, tensor<?x?xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [0, 2]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [0, 2] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK: tensor.empty
@@ -93,10 +93,10 @@ func.func @do_not_fuse_map_reduce(%arg0: tensor<16x32xf32>, %arg1: tensor<16xf32
   func.return %result : tensor<16xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [2]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [2] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
@@ -175,11 +175,11 @@ func.func @fuse_fibonacci(%init : tensor<?xi64>) -> tensor<?xi64> {
   func.return %39 : tensor<?xi64>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // -----
@@ -206,11 +206,11 @@ func.func @fuse_reshape_middle_unit_dim_map(%arg0: tensor<10x16xf32>,
   return %add : tensor<10x16xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_middle_unit_dim_map
@@ -250,11 +250,11 @@ func.func @fuse_reshape_trailing_unit_dim_map(%arg0: tensor<10x16xf32>,
   return %add : tensor<10x16xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_trailing_unit_dim_map
@@ -294,11 +294,11 @@ func.func @fuse_reshape_leading_unit_dim_map(%arg0: tensor<10x16xf32>,
   return %add : tensor<10x16xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_leading_unit_dim_map
@@ -338,11 +338,11 @@ func.func @fuse_reshape_multiple_unit_dims_map(%arg0: tensor<10x16xf32>,
   return %add : tensor<10x16xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_multiple_unit_dims_map
@@ -382,11 +382,11 @@ func.func @fuse_reshape_reassoc_only_unit_dims_map(%arg0: tensor<10x16xf32>)
   return %neg : tensor<10x16x1xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @fuse_reshape_reassoc_only_unit_dims_map
@@ -426,11 +426,11 @@ func.func @do_not_fuse_collapse_shape(%arg0: tensor<10x16xf32>,
   return %add : tensor<10x16xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @do_not_fuse_collapse_shape
@@ -471,11 +471,11 @@ func.func @do_not_fuse_expand_shape(%arg0: tensor<10x16xf32>,
   return %add : tensor<10x16xf32>
 }
 transform.sequence failures(propagate) {
-  ^bb0(%arg1: !pdl.operation):
+  ^bb0(%arg1: !transform.any_op):
     %0 = transform.structured.match ops{["linalg.map"]}
                                     attributes{op_label="root"} in %arg1
-      : (!pdl.operation) -> !pdl.operation
-    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+      : (!transform.any_op) -> !transform.any_op
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 }
 
 // CHECK-LABEL: func @do_not_fuse_expand_shape
