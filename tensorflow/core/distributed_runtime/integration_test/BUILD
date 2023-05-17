@@ -145,7 +145,7 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_recoverable_jobs_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_recoverable_jobs_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
