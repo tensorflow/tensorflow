@@ -6439,6 +6439,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "collective_transformation_reorderer",
+    srcs = ["collective_transformation_reorderer.cc"],
+    hdrs = ["collective_transformation_reorderer.h"],
+    deps = [
+        ":hlo_dce",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_transformation_reorderer_test",
+    srcs = ["collective_transformation_reorderer_test.cc"],
+    deps = [
+        ":collective_transformation_reorderer",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "collective_ops_utils_test",
     srcs = ["collective_ops_utils_test.cc"],
