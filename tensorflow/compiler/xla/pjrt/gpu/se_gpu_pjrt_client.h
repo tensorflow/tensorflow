@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
@@ -26,6 +28,47 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
+
+class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
+ public:
+  // `gpu_device_ids` is the list of logical device ids for the GPU devices and
+  // will be used to initialize the GPU topology.
+  StreamExecutorGpuTopologyDescription(const PjRtPlatformId platform_id,
+                                       const absl::string_view platform_name,
+                                       const absl::string_view platform_version,
+                                       const std::vector<int>& gpu_device_ids)
+      : platform_id_(platform_id),
+        platform_name_(platform_name),
+        platform_version_(platform_version),
+        gpu_topology_(gpu_device_ids) {}
+
+  PjRtPlatformId platform_id() const override { return platform_id_; }
+
+  absl::string_view platform_name() const override { return platform_name_; }
+
+  absl::string_view platform_version() const override {
+    return platform_version_;
+  }
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const override {
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
+    devices.reserve(gpu_topology_.size());
+    for (const int device_id : gpu_topology_) {
+      devices.push_back(std::make_unique<PjRtStreamExecutorDeviceDescription>(
+          device_id, platform_version_));
+    }
+    return devices;
+  }
+
+  const std::vector<int>& gpu_topology() const { return gpu_topology_; }
+
+ private:
+  const PjRtPlatformId platform_id_;
+  const std::string platform_name_;
+  const std::string platform_version_;
+  const std::vector<int> gpu_topology_;
+};
 
 class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
  public:
