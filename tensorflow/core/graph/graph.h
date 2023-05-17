@@ -64,8 +64,9 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
-class GraphTest;
+class GraphDebugInfo;
 class GraphDef;
+class GraphTest;
 class Node;
 struct OutputTensor;
 class VersionDef;
@@ -814,6 +815,12 @@ class Graph {
   // name: type and simply iterates through the graph once and stores all the
   // information in the map.
   void NodeType(StringPiece name, const FullTypeDef** result);
+
+  // Builds a GraphDebugInfo from the functions and nodes in this graph. Stack
+  // traces associated with function definitions will have a key of the form
+  // <node_name> '@' <function_name>. Stack traces associated with other Nodes
+  // will use the node name as the key.
+  GraphDebugInfo BuildDebugInfo() const;
 
   // TODO(josh11b): uint64 hash() const;
 

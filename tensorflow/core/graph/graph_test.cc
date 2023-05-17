@@ -20,10 +20,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+
+using ::testing::UnorderedElementsAre;
 
 REGISTER_OP("OneInput").Input("x: float");
 
@@ -826,6 +830,78 @@ TEST_F(GraphTest, NodeShrinkTypeInput) {
   EXPECT_EQ(ft->args(2).args(0).type_id(), TFT_INT64);
   ASSERT_EQ(ft->args(3).args_size(), 1);
   EXPECT_EQ(ft->args(3).args(0).type_id(), TFT_STRING);
+}
+
+TEST_F(GraphTest, BuildDebugInfo) {
+  class TestStackTrace : public AbstractStackTrace {
+   public:
+    explicit TestStackTrace(const std::vector<StackFrame> frames)
+        : frames_(std::move(frames)) {}
+
+    absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+
+    std::vector<StackFrame> GetUserFrames(int limit) const override {
+      return frames_;
+    }
+
+    StackFrame LastUserFrame() const override { return frames_.back(); }
+
+    string ToString(const TracePrintingOptions& opts) const override {
+      StackFrame frame = LastUserFrame();
+      return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
+                          frame.function_name);
+    }
+
+    std::vector<StackFrame> frames_;
+  };
+
+  FunctionDef func = test::function::XTimesTwo();
+
+  // Hard-code the node names "two", "scale", and "y" from XTimesTwo.
+  StackTracesMap stack_traces;
+  stack_traces["two"] = std::make_shared<TestStackTrace>(
+      std::vector<StackFrame>{{"dummy_file_alpha.cc", 20, "function_bar"},
+                              {"dummy_file_beta.cc", 30, "function_sop"}});
+  stack_traces["scale"] =
+      std::make_shared<TestStackTrace>(std::vector<StackFrame>{
+          {"dummy_file_alpha.cc", 10, "function_foo"},
+          {"dummy_file_beta.cc", 30, "function_sop"},
+      });
+  stack_traces["y"] = std::make_shared<TestStackTrace>(std::vector<StackFrame>{
+      {"dummy_file_alpha.cc", 15, "function_flex"},
+      {"dummy_file_alpha.cc", 20, "function_bar"},
+      {"dummy_file_beta.cc", 30, "function_sop"},
+  });
+
+  TF_CHECK_OK(graph_.AddFunctionDef(func, stack_traces));
+
+  GraphDebugInfo debug_info = graph_.BuildDebugInfo();
+
+  EXPECT_THAT(debug_info.files(), UnorderedElementsAre("dummy_file_alpha.cc",
+                                                       "dummy_file_beta.cc"));
+  EXPECT_EQ(debug_info.traces_size(), 3);
+
+  // Examine one of the three stack traces in detail.
+  EXPECT_NE(debug_info.traces().find("scale@XTimesTwo"),
+            debug_info.traces().end());
+  GraphDebugInfo::StackTrace stack_trace =
+      debug_info.traces().find("scale@XTimesTwo")->second;
+  EXPECT_EQ(stack_trace.file_line_cols_size(), 2);
+
+  // `FileLineCol.file_index` is non-deterministic because the GraphDebugInfo is
+  // built by accumulating all file names into a set, and then storing that in
+  // the `files` field in an arbitrary order.
+  const GraphDebugInfo::FileLineCol& file_line_col_0 =
+      stack_trace.file_line_cols(0);
+  const GraphDebugInfo::FileLineCol& file_line_col_1 =
+      stack_trace.file_line_cols(1);
+  EXPECT_THAT(std::vector<int>(
+                  {file_line_col_0.file_index(), file_line_col_1.file_index()}),
+              UnorderedElementsAre(0, 1));
+  EXPECT_EQ(file_line_col_0.line(), 10);
+  EXPECT_EQ(file_line_col_0.func(), "function_foo");
+  EXPECT_EQ(file_line_col_1.line(), 30);
+  EXPECT_EQ(file_line_col_1.func(), "function_sop");
 }
 
 void BM_InEdgeIteration(::testing::benchmark::State& state) {
