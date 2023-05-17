@@ -27,12 +27,15 @@ from tensorflow.dtensor.python.tests import multi_client_test_util
 from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import multi_worker_mirrored_strategy as mwms
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as tf_test
 
@@ -267,6 +270,212 @@ class MultiWorkerMirroredStrategyTest(tf_test.TestCase, parameterized.TestCase):
       self.assertAllClose(
           result.values[i],
           constant_op.constant([3 * strategy.num_replicas_in_sync]))
+
+  def test_gather_non_dtensor_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    tensor_input = constant_op.constant(3.0)
+
+    result = strategy.gather(tensor_input, axis=0)
+    self.assertAllClose(result, tensor_input)
+
+  def test_gather_dtensor_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    stride = self.num_client * self.num_local_devices
+
+    def value_fn(value_context):
+      start = value_context.replica_id_in_sync_group * stride
+      return array_ops.reshape(
+          math_ops.range(start=start, limit=start + stride), shape=(1, stride)
+      )
+    distribute_result = strategy.experimental_distribute_values_from_function(
+        value_fn
+    )
+    # distribute_result is a DTensorDistributedValue.
+    # The shape of the global tensor is [stride, stride],
+    # and each worker gets [stride/2, stride].
+    result = strategy.gather(distribute_result, axis=0)
+
+    start = stride * self.num_local_devices * self.client_id
+    end = start + stride * self.num_local_devices
+    self.assertEqual(result.shape, [self.num_local_devices, stride])
+    self.assertAllClose(
+        result,
+        array_ops.reshape(
+            math_ops.range(start=start, limit=end),
+            shape=(self.num_local_devices, -1),
+        ),
+    )
+
+    result = strategy.gather(distribute_result, axis=1)
+    self.assertEqual(result.shape, [1, self.num_local_devices * stride])
+    self.assertAllClose(
+        result,
+        array_ops.reshape(
+            math_ops.range(start=start, limit=end), shape=(1, -1)
+        ),
+    )
+
+  def test_reduce_mean_non_dtensor_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'
+    ):
+      strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=0)
+
+  def test_reduce_sum_non_dtensor_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+
+    with self.assertRaisesRegex(
+        ValueError, 'Unsupported input types for MirroredStrategy.'
+    ):
+      strategy.reduce(reduce_util.ReduceOp.SUM, tensor_input, axis=0)
+
+  def test_reduce_mean_distribute_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+
+    @def_function.function
+    def value_fn(value_context):
+      i = value_context.replica_id_in_sync_group
+      return constant_op.constant([[0.0, 1.0], [2.0, 3.0]]) + i * 4.0
+
+    distribute_value = strategy.experimental_distribute_values_from_function(
+        value_fn
+    )
+    # replica 0 has [[0.0, 1.0],[2.0, 3.0]] and
+    # replica 1 has [[4.0, 5.0],[6.0, 7.0]]. Each worker has 4 replicas.
+    # For worker 2, it has replica 4 ~ 7.
+
+    result = strategy.reduce(
+        reduce_util.ReduceOp.MEAN, distribute_value, axis=None
+    )
+    # This should be a global reduce and each worker should have same value.
+    # [[14.0, 15.0],[16.0, 17.0]]
+    final = (self.num_local_devices * self.num_client - 1) * 2.0
+    self.assertAllClose(
+        result, constant_op.constant([[0.0, 1.0], [2.0, 3.0]]) + final
+    )
+
+    result = strategy.reduce(
+        reduce_util.ReduceOp.MEAN, distribute_value, axis=0
+    )
+    # [15.0, 16.0]
+    self.assertAllClose(result, constant_op.constant([0.0, 1.0]) + final + 1)
+
+    result = strategy.reduce(
+        reduce_util.ReduceOp.MEAN, distribute_value, axis=1
+    )
+
+    self.assertAllClose(result, constant_op.constant([0.5, 2.5]) + final)
+
+  def test_reduce_sum_distribute_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+
+    @def_function.function
+    def value_fn(value_context):
+      i = value_context.replica_id_in_sync_group
+      return constant_op.constant([[0.0, 1.0], [2.0, 3.0]]) + i * 4.0
+
+    distribute_value = strategy.experimental_distribute_values_from_function(
+        value_fn
+    )
+    # replica 0 has [[0.0, 1.0],[2.0, 3.0]] and
+    # replica 1 has [[4.0, 5.0],[6.0, 7.0]]. Each worker has 4 replicas.
+    # For worker 2, it has replica 4 ~ 7.
+    # The shape of the global tensor is [16, 2], and each worker gets [8, 2].
+
+    result = strategy.reduce(
+        reduce_util.ReduceOp.SUM, distribute_value, axis=None
+    )
+    self.assertAllClose(result, [[112.0, 120.0], [128.0, 136.0]])
+
+    result = strategy.reduce(reduce_util.ReduceOp.SUM, distribute_value, axis=0)
+    self.assertAllClose(result, constant_op.constant([240.0, 256.0]))
+
+    result = strategy.reduce(reduce_util.ReduceOp.SUM, distribute_value, axis=1)
+    self.assertAllClose(result, constant_op.constant([232.0, 264.0]))
+
+  def test_reduce_mean_mirrored_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+
+    with strategy.scope():
+      v = variables.Variable(constant_op.constant([[1.0, 2.0], [3.0, 4.0]]))
+    self.assertIsInstance(v, d_variable.DVariable)
+
+    result = strategy.reduce(reduce_util.ReduceOp.MEAN, v, axis=None)
+    self.assertAllClose(result, constant_op.constant([[1.0, 2.0], [3.0, 4.0]]))
+    result = strategy.reduce(reduce_util.ReduceOp.MEAN, v, axis=0)
+    self.assertAllClose(result, constant_op.constant([2.0, 3.0]))
+    result = strategy.reduce(reduce_util.ReduceOp.MEAN, v, axis=1)
+    self.assertAllClose(result, constant_op.constant([1.5, 3.5]))
+
+  def test_reduce_sum_mirrored_value(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+
+    with strategy.scope():
+      v = variables.Variable(constant_op.constant([[1.0, 2.0], [3.0, 4.0]]))
+    self.assertIsInstance(v, d_variable.DVariable)
+
+    result = strategy.reduce(reduce_util.ReduceOp.SUM, v, axis=None)
+    self.assertAllClose(result, constant_op.constant([[1.0, 2.0], [3.0, 4.0]]))
+    result = strategy.reduce(reduce_util.ReduceOp.SUM, v, axis=0)
+    self.assertAllClose(result, constant_op.constant([4.0, 6.0]))
+    result = strategy.reduce(reduce_util.ReduceOp.SUM, v, axis=1)
+    self.assertAllClose(result, constant_op.constant([3.0, 7.0]))
+
+  def test_reduce_value_device(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    tensor_input = constant_op.constant([[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+
+    result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=None)
+    self.assertIn('CPU:0', result.device)
+
+  def test_experimental_local_results(self):
+    @def_function.function
+    def replica_fn():
+      return constant_op.constant([3.0])
+
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    result = strategy.run(replica_fn)
+    local_result = strategy.experimental_local_results(result)
+
+    self.assertIsInstance(local_result, tuple)
+    self.assertLen(local_result, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertEqual(local_result[i], constant_op.constant([3.0]))
+
+  def test_experimental_local_results_with_inputs(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+
+    def value_fn(ctx):
+      value = float(ctx.num_replicas_in_sync)
+      return {'a': value, 'b': constant_op.constant([value + 1.0, value + 2.0])}
+
+    distributed_values = strategy.experimental_distribute_values_from_function(
+        value_fn
+    )
+
+    @def_function.function
+    def replica_fn(inputs):
+      result = {}
+      for key in inputs:
+        result[key] = inputs[key] * 2.0
+      return result
+
+    result = strategy.run(replica_fn, args=(distributed_values,))
+    local_result = strategy.experimental_local_results(result)
+    self.assertIsInstance(local_result, tuple)
+    self.assertLen(local_result, self.num_local_devices)
+    for i in range(self.num_local_devices):
+      self.assertDictEqual(
+          local_result[i],
+          {
+              'a': constant_op.constant([16.0]),
+              'b': constant_op.constant([18.0, 20.0]),
+          },
+      )
 
 
 def client_config_function(config_params):
