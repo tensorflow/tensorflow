@@ -18,7 +18,6 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/transforms:utils",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
