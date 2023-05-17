@@ -730,6 +730,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
   // clang-format off
   static const llvm::DenseSet<mlir::TypeID>* ops =
       new llvm::DenseSet<mlir::TypeID>{
+    // Ops that should always use the MLIR legalization.
+    TypeID::get<TF::FusedBatchNormV3Op>(),
+
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
     TypeID::get<TF::AbsOp>(),
     TypeID::get<TF::AtanOp>(),
