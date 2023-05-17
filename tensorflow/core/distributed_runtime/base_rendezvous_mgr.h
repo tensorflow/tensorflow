@@ -206,6 +206,8 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   struct DeferredCall {
     const ParsedKey parsed;
     DoneCallback done;
+
+    // Keeps a reference to the rendezvous, to keep it alive.
     tsl::core::RefCountPtr<Rendezvous> rendezvous;
 
     DeferredCall(const ParsedKey& parsed, DoneCallback done,
@@ -220,11 +222,18 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   };
 
   struct PendingCalls {
-    PendingCalls(CancellationToken token, int num_calls, int num_buckets)
-        : token(token), num_calls(num_calls), buckets(num_buckets) {}
+    PendingCalls(CancellationToken token, int num_calls, int num_buckets,
+                 tsl::core::RefCountPtr<Rendezvous> rendez)
+        : token(token),
+          num_calls(num_calls),
+          buckets(num_buckets),
+          rendezvous(std::move(rendez)) {}
     CancellationToken token = CancellationManager::kInvalidToken;
     std::atomic<int> num_calls = 0;
     std::vector<CallBucket> buckets;
+
+    // Keeps a reference to the rendezvous, to keep it alive.
+    tsl::core::RefCountPtr<Rendezvous> rendezvous;
   };
 
   // "CancellationToken" is stored here so that when there's no active
