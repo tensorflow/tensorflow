@@ -837,11 +837,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
       debug_options->xla_gpu_enable_cudnn_frontend(),
       "Use the cuDNN frontend API for convolutions when possible."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_cudnn_fmha",
-                bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_fmha),
-                debug_options->xla_gpu_enable_cudnn_fmha(),
-                "Use the cuDNN Fused MHA runtime fusion when possible."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_cudnn_fmha",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_fmha),
+      debug_options->xla_gpu_enable_cudnn_fmha(),
+      "Use the cuDNN Fused Attention runtime fusion when possible. Note "
+      "that dropout support and the developement of this feature as a whole is "
+      "in progress. Attention with dropout may cause results to diverge with "
+      "and without this  flag turned on."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_cublaslt",
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
