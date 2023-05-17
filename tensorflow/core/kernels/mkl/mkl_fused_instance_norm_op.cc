@@ -102,18 +102,26 @@ class MklFusedInstanceNormOp : public OpKernel {
       void* src_buf =
           static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
+#ifndef ENABLE_ONEDNN_V3
+#define NUM_DUPLICATE 2
+#else
+#define NUM_DUPLICATE 1
+#endif  // !ENABLE_ONEDNN_V3
       memory::dims scale_shift_dims = {
-          2, static_cast<dnnl_dim_t>(num_elements_scale)};
+          static_cast<dnnl_dim_t>(NUM_DUPLICATE * num_elements_scale)};
       auto scale_shift_md = memory::desc(scale_shift_dims, MklDnnType<float>(),
-                                         memory::format_tag::nc);
-      Tensor scale_shift_tensor;
+                                         memory::format_tag::x);
       int64_t tensor_shape = scale_shift_md.get_size() / sizeof(float);
+#undef NUM_DUPLICATE
+
+#ifndef ENABLE_ONEDNN_V3
+      Tensor scale_shift_tensor;
       OP_REQUIRES_OK(
           ctx, ctx->allocate_temp(DataTypeToEnum<float>::v(), {tensor_shape},
                                   &scale_shift_tensor));
       void* scale_shift_buf =
           static_cast<void*>(scale_shift_tensor.flat<float>().data());
-      SetupScaleShiftBuffer(scale_tensor, shift_tensor, engine_stream_ptr,
+      SetupScaleShiftBuffer(ctx, scale_tensor, shift_tensor, engine_stream_ptr,
                             num_elements_scale, scale_shift_buf);
       auto scale_shift_mem =
           memory(scale_shift_md, cpu_engine_, scale_shift_buf);
@@ -122,18 +130,53 @@ class MklFusedInstanceNormOp : public OpKernel {
       auto bnorm_desc = batch_normalization_forward::desc(
           prop_kind::forward_inference, src_md, epsilon_,
           normalization_flags::use_scale_shift);
+#else
+      Tensor scale_fp32_tensor;
+      Tensor shift_fp32_tensor;
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<float>::v(), {tensor_shape},
+                                  &scale_fp32_tensor));
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<float>::v(), {tensor_shape},
+                                  &shift_fp32_tensor));
+      void* scale_fp32_buf =
+          static_cast<void*>(scale_fp32_tensor.flat<float>().data());
+      void* shift_fp32_buf =
+          static_cast<void*>(shift_fp32_tensor.flat<float>().data());
+
+      SetupScaleShiftBuffer(ctx, scale_tensor, shift_tensor, engine_stream_ptr,
+                            num_elements_scale, scale_fp32_buf, shift_fp32_buf);
+      auto scale_mem = memory(scale_shift_md, cpu_engine_, scale_fp32_buf);
+      auto shift_mem = memory(scale_shift_md, cpu_engine_, shift_fp32_buf);
+#endif  // !ENABLE_ONEDNN_V3
       batch_normalization_forward::primitive_desc bnorm_pd;
       if (fuse_activation_) {
         dnnl::post_ops post_ops;
         dnnl::primitive_attr post_ops_attr;
+#ifndef ENABLE_ONEDNN_V3
         post_ops.append_eltwise(1.0, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha_, 0.0);
         post_ops_attr.set_post_ops(post_ops);
         bnorm_pd = batch_normalization_forward::primitive_desc(
             bnorm_desc, post_ops_attr, cpu_engine_);
+#else
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_relu, leakyrelu_alpha_,
+                                0.0);
+        post_ops_attr.set_post_ops(post_ops);
+        bnorm_pd = batch_normalization_forward::primitive_desc(
+            cpu_engine_, prop_kind::forward_inference, src_md, src_md, epsilon_,
+            normalization_flags::use_scale | normalization_flags::use_shift,
+            post_ops_attr);
+#endif  // !ENABLE_ONEDNN_V3
       } else {
+#ifndef ENABLE_ONEDNN_V3
         bnorm_pd = batch_normalization_forward::primitive_desc(bnorm_desc,
                                                                cpu_engine_);
+#else
+        bnorm_pd = batch_normalization_forward::primitive_desc(
+            cpu_engine_, prop_kind::forward_inference, src_md, src_md, epsilon_,
+            normalization_flags::use_scale | normalization_flags::use_shift);
+#endif  // !ENABLE_ONEDNN_V3
       }
       auto bnorm_prim = batch_normalization_forward(bnorm_pd);
 
@@ -154,8 +197,13 @@ class MklFusedInstanceNormOp : public OpKernel {
 
       std::unordered_map<int, memory> bnorm_args;
       bnorm_args.insert({DNNL_ARG_SRC, *src_mem_ptr});
-      bnorm_args.insert({DNNL_ARG_SCALE_SHIFT, scale_shift_mem});
       bnorm_args.insert({DNNL_ARG_DST, *dst_mem_ptr});
+#ifndef ENABLE_ONEDNN_V3
+      bnorm_args.insert({DNNL_ARG_SCALE_SHIFT, scale_shift_mem});
+#else
+      bnorm_args.insert({DNNL_ARG_SCALE, scale_mem});
+      bnorm_args.insert({DNNL_ARG_SHIFT, shift_mem});
+#endif  // !ENABLE_ONEDNN_V3
 
       // Perform batchnorm computation for each batch in input
       for (int i = 0; i < batch_size; i++) {
@@ -221,23 +269,35 @@ class MklFusedInstanceNormOp : public OpKernel {
     return valid;
   }
 
-  // Helper function to add scale and shift data into same buffer in float
-  // type as requested by oneDNN
-  void SetupScaleShiftBuffer(const Tensor& scale_tensor,
+  // Helper function to prepare scale and shift data in float type as
+  // required by oneDNN library. Prior to oneDNN 3.x version, the library
+  // requires the final scale and shift data to be passed in the same buffer
+  // wherase the 3.x version requires separate buffers for scale and shift
+  // data.
+  void SetupScaleShiftBuffer(OpKernelContext* ctx, const Tensor& scale_tensor,
                              const Tensor& shift_tensor,
                              std::shared_ptr<stream> engine_stream_ptr,
-                             int num_elements, void* scale_shift_buf) {
+                             int num_elements, void* fp32_scale_or_combine_buf,
+                             void* fp32_shift_buf = nullptr) {
     void* scale_buf_src =
         static_cast<void*>(const_cast<T*>(scale_tensor.flat<T>().data()));
     void* shift_buf_src =
         static_cast<void*>(const_cast<T*>(shift_tensor.flat<T>().data()));
-    auto scale_offset = sizeof(float) * num_elements;
-    void* scale_buf_dst = scale_shift_buf;
-    void* shift_buf_dst = static_cast<char*>(scale_shift_buf) + scale_offset;
+    auto data_size = sizeof(float) * num_elements;
+    void* scale_buf_dst = fp32_scale_or_combine_buf;
+    void* shift_buf_dst = nullptr;
+#ifndef ENABLE_ONEDNN_V3
+    shift_buf_dst = static_cast<char*>(fp32_scale_or_combine_buf) + data_size;
+    (void)fp32_shift_buf;
+#else
+    OP_REQUIRES(ctx, (fp32_shift_buf != nullptr),
+                errors::InvalidArgument("Invalid shift buffer"));
+    shift_buf_dst = fp32_shift_buf;
+#endif  // !ENABLE_ONEDNN_V3
 
     if (std::is_same<T, float>::value) {
-      memcpy(scale_buf_dst, scale_buf_src, scale_offset);
-      memcpy(shift_buf_dst, shift_buf_src, scale_offset);
+      memcpy(scale_buf_dst, scale_buf_src, data_size);
+      memcpy(shift_buf_dst, shift_buf_src, data_size);
     } else {
       // oneDNN requires float type for scale_shift, need to convert to float
       // type
