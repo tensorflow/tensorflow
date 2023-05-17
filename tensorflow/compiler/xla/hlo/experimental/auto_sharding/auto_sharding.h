@@ -372,10 +372,14 @@ class AutoSharding : public HloModulePass {
     return solver_optimal_objective_value_;
   }
 
+  std::vector<int64_t> GetChosenDeviceMeshShape() { return chosen_mesh_shape_; }
+
  private:
   AutoShardingOption option_;
   // Stores the optimal value of the objective the solver found.
   double solver_optimal_objective_value_ = -1.0;
+  // Stores the optimal mesh shape found.
+  std::vector<int64_t> chosen_mesh_shape_;
 };
 
 namespace spmd {
