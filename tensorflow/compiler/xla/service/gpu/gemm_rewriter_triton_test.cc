@@ -37,7 +37,12 @@ using ::testing::FieldsAre;
 
 namespace m = ::xla::match;
 
-using GemmRewriterTritonTest = HloTestBase;
+class GemmRewriterTritonTest : public HloTestBase {
+ public:
+  GemmRewriterTritonTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+};
 
 TEST_F(GemmRewriterTritonTest, TransposeSubdimensionGroup) {
   // This HLO is artificial because unnecessary reshapes get optimized
@@ -113,7 +118,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -160,7 +165,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -206,7 +211,7 @@ ENTRY e {
     custom_call_target="__triton",
     called_computations={triton_dot}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
@@ -252,7 +257,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -301,7 +306,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -347,7 +352,7 @@ ENTRY e {
     custom_call_target="__triton", called_computations={triton_dot}
   ROOT bitcast.2 = bf16[3,8,1,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -398,7 +403,7 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
@@ -409,9 +414,6 @@ ENTRY e {
   key.set_num_warps(4);
   TF_EXPECT_OK(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-  EXPECT_TRUE(VerifyHloModule(module.get(), /*layout_sensitive=*/true,
-                              /*allow_mixed_precision=*/false)
-                  .ok());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
 }
@@ -437,7 +439,7 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{0,1} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
@@ -450,8 +452,6 @@ ENTRY e {
   TF_EXPECT_OK(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
 
-  TF_EXPECT_OK(VerifyHloModule(module.get(), /*layout_sensitive=*/true,
-                               /*allow_mixed_precision=*/false));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
   EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
@@ -480,7 +480,7 @@ ENTRY e {
     kind=kCustom, calls=triton_gemm_dot.24,
     backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(32);
@@ -491,9 +491,6 @@ ENTRY e {
   key.set_num_warps(4);
   TF_EXPECT_OK(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-  EXPECT_TRUE(VerifyHloModule(module.get(), /*layout_sensitive=*/true,
-                              /*allow_mixed_precision=*/false)
-                  .ok());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
 }
@@ -519,7 +516,7 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
@@ -555,7 +552,7 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
@@ -590,7 +587,7 @@ ENTRY e {
   ROOT fusion = f16[7,5] fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
   tensorflow::AutotuneResult::TritonGemmKey key;
@@ -611,8 +608,6 @@ ENTRY e {
   key.set_split_k(8);
   TF_EXPECT_OK(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-  TF_EXPECT_OK(VerifyHloModule(module.get(), /*layout_sensitive=*/true,
-                               /*allow_mixed_precision=*/false));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
   DotFusionAnalysis analysis(root->operand(0)->fused_expression_root(),
@@ -643,7 +638,7 @@ ENTRY e {
   ROOT fusion = f32[77,25] fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
   tensorflow::AutotuneResult::TritonGemmKey key;
