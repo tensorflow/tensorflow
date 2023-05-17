@@ -307,16 +307,18 @@ cc_library(
     name = "c_api_opaque_internal",
     srcs = ["c_api_opaque_internal.cc"],
     hdrs = ["c_api_opaque_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external",
     ],
 )
 
@@ -332,10 +334,11 @@ cc_library(
     ],
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver_without_alwayslink",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external_without_alwayslink",
     ],
 )
 
