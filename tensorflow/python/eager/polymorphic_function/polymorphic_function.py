@@ -79,6 +79,7 @@ from tensorflow.python.eager.polymorphic_function import autograph_util
 from tensorflow.python.eager.polymorphic_function import compiler_ir
 from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
+from tensorflow.python.eager.polymorphic_function import tf_method_target
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
@@ -101,6 +102,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
+
 
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
@@ -691,9 +693,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._variable_creation_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
     self._concrete_variable_creation_fn = (
-        self._variable_creation_fn    # pylint: disable=protected-access
-        ._get_concrete_function_internal_garbage_collected(
-            *args, **kwds))
+        self._variable_creation_fn.get_concrete_function(args, kwds)
+    )
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
@@ -1172,13 +1173,13 @@ class Function(core.GenericFunction, trackable.Trackable):
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # version which is guaranteed to never create variables.
-      return self._no_variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
-          *args, **kwargs)
+      return self._no_variable_creation_fn.get_concrete_function(
+          args, kwargs, bind_graph_to_function=True)
     elif self._variable_creation_fn is not None:
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      concrete = self._variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
-          *args, **kwargs)
+      concrete = self._variable_creation_fn.get_concrete_function(
+          args, kwargs, bind_graph_to_function=True)
       if self._created_variables:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
@@ -1231,7 +1232,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       # It's unclear whether we need the tf-decorator, or could just call
       # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
-          tracing_compiler.class_method_to_instance_method(self, instance))
+          class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
 
 
@@ -1618,3 +1619,61 @@ def function(
   #
   # use case, which is equivalent to `foo = tf.function(...)(foo)`
   return decorated
+
+
+def class_method_to_instance_method(original_function, instance):
+  """Constructs a new `TracingCompiler` with `self` bound."""
+  weak_instance = weakref.ref(instance)
+
+  # Note: while we could bind to a weakref proxy instead, that causes the
+  # bound method to be unhashable.
+  bound_method = types_lib.MethodType(
+      original_function.python_function,
+      tf_method_target.TfMethodTarget(weak_instance,
+                                      original_function.python_function))
+
+  # original_function is expected to be either `TracingCompiler` or
+  # def_function.Function
+  assert hasattr(original_function, "_name")
+  assert hasattr(original_function, "_autograph")
+  assert hasattr(original_function, "_function_spec")
+  assert hasattr(original_function, "python_function")
+
+  weak_bound_method_wrapper = None
+
+  def bound_method_wrapper(*args, **kwargs):
+    """Wraps either a dummy MethodType or a converted AutoGraph function."""
+    # __wrapped__ allows AutoGraph to swap in a converted function.
+    strong_bound_method_wrapper = weak_bound_method_wrapper()
+    wrapped_fn = strong_bound_method_wrapper.__wrapped__
+
+    if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
+      # If __wrapped__ was not replaced, then call original_function.
+      # TODO(mdan): For better consistency, use the wrapper's call().
+      wrapped_fn = original_function.python_function
+      return wrapped_fn(weak_instance(), *args, **kwargs)
+
+    # If __wrapped__ was replaced, then it is always an unbound function.
+    # However, the replacer is still responsible for attaching self properly.
+    # TODO(mdan): Is it possible to do it here instead?
+    return wrapped_fn(*args, **kwargs)
+
+  weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
+
+  # pylint: disable=protected-access
+  # We make a dummy MethodType object to generate the correct bound method
+  # signature. The actual call is to a function with a weak reference to
+  # `instance`.
+  instance_func = type(original_function)(
+      tf_decorator.make_decorator(bound_method, bound_method_wrapper),
+      name=original_function._name,
+      autograph=original_function._autograph,
+      input_signature=original_function.input_signature,
+      reduce_retracing=original_function._reduce_retracing,
+      jit_compile=original_function._jit_compile)
+  # pylint: enable=protected-access
+
+  # We wrap the bound method with tf_decorator so inspection works correctly
+  wrapped_instance_func = tf_decorator.make_decorator(bound_method,
+                                                      instance_func)
+  return wrapped_instance_func

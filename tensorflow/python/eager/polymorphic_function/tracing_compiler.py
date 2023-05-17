@@ -17,9 +17,7 @@
 import collections
 import contextlib
 import threading
-import types as types_lib
 from typing import List
-import weakref
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
@@ -30,7 +28,6 @@ from tensorflow.python.eager.polymorphic_function import attributes as attribute
 from tensorflow.python.eager.polymorphic_function import concrete_function as concrete_function_lib
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
-from tensorflow.python.eager.polymorphic_function import tf_method_target
 from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -38,7 +35,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import lazy_loader
-from tensorflow.python.util import tf_decorator
 
 
 # Loaded lazily due to a circular dependency (roughly
@@ -136,10 +132,6 @@ class TracingCompiler:
     # to get runtime values for all captures during ConcreteFunction dispatch,
     self._func_captures = capture_container.FunctionCaptures()
     self._lock = threading.RLock()
-    # _descriptor_cache is a of instance of a class to an instance-specific
-    # `TracingCompiler`, used to make sure tf.function-decorated methods
-    # create different functions for each instance.
-    self._descriptor_cache = weakref.WeakKeyDictionary()
     self._jit_compile = jit_compile
 
   def __call__(self, *args, **kwargs):
@@ -172,112 +164,38 @@ class TracingCompiler:
 
     return self._maybe_define_function(args, kwargs)
 
-  def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
-    """Returns a concrete function which cleans up its graph function."""
-    with self._lock:
-      concrete_function, _ = self._maybe_define_concrete_function(args, kwargs)
-    return concrete_function
-
-  def _get_concrete_function_internal(self, *args, **kwargs):
-    """Bypasses error checking when getting a graph function."""
-    concrete_function = self._get_concrete_function_internal_garbage_collected(
-        *args, **kwargs)
-    # We're returning this concrete function to someone, and they may keep a
-    # reference to the FuncGraph without keeping a reference to the
-    # ConcreteFunction object. So we won't clean up the reference cycles
-    # manually and instead will leave them to Python's garbage collector.
-    concrete_function._garbage_collector.release()  # pylint: disable=protected-access
-    return concrete_function
-
-  def _get_concrete_function_garbage_collected(self, *args, **kwargs):
+  def get_concrete_function(
+      self, args=None, kwargs=None, bind_graph_to_function=False
+  ):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
 
-    Unlike `get_concrete_function(...)`, the graph will be deleted when the
-    returned function is deleted.  It's useful to avoid creating a reference
-    cycle when you know for sure that the graph will be no longer used without
-    the returned function.
-
     Args:
-      *args: inputs to specialize on.
-      **kwargs: inputs to specialize on.
+      args: inputs to specialize on. Can be concrete values (e.g. 1) or
+        `tf.Tensor` or `tf.TensorSpec`.
+      kwargs: keyword inputs to specialize on. Concrete values (e.g. 1) or
+        `tf.Tensor` or `tf.TensorSpec`.
+      bind_graph_to_function: Sets up FuncGraph to be deleted alongside 
+         ConcreteFunction.
     """
+    args = args if args else ()
+    kwargs = kwargs if kwargs else {}
+
     if self.input_signature and (args or kwargs):
       # Check to see if a valid type can be generated from the args, kwargs
-      self._function_spec.make_canonicalized_monomorphic_type(args, kwargs)
+      args, kwargs = self._function_spec.bind_function_inputs(args, kwargs)
 
     with self._lock:
       concrete_function, _ = self._maybe_define_concrete_function(args, kwargs)
-      seen_names = set()
-      concrete_function._arg_keywords = []  # pylint: disable=protected-access
-      prefix_counts = {}
-      graph = concrete_function.graph
-      num_captures = len(
-          graph.internal_captures + graph.deferred_internal_captures)
-      num_positional = len(graph.inputs) - num_captures
-      for arg in concrete_function.graph.inputs[:num_positional]:
-        user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
-        proposal = user_arg_name
-        while proposal in seen_names:
-          index = prefix_counts.get(user_arg_name, 1)
-          proposal = "{}_{}".format(user_arg_name, index)
-          prefix_counts[user_arg_name] = index + 1
-        seen_names.add(proposal)
-        concrete_function._arg_keywords.append(proposal)  # pylint: disable=protected-access
-      # Anything can be a positional argument, in the same order as .inputs
-      concrete_function._num_positional_args = num_positional  # pylint: disable=protected-access
-      return concrete_function
+      _set_arg_keywords(concrete_function)
 
-  def get_concrete_function(self, *args, **kwargs):
-    """Returns a `ConcreteFunction` specialized to inputs and execution context.
+    if not bind_graph_to_function:
+      concrete_function._garbage_collector.release()  # pylint: disable=protected-access
 
-    Args:
-      *args: inputs to specialize on. Can be concrete values (e.g. 1) or
-        `tf.Tensor` or `tf.TensorSpec`.
-      **kwargs: keyword inputs to specialize on. Concrete values (e.g. 1) or
-        `tf.Tensor` or `tf.TensorSpec`.
-    """
-    concrete_function = self._get_concrete_function_garbage_collected(
-        *args, **kwargs)
-    concrete_function._garbage_collector.release()  # pylint: disable=protected-access
     return concrete_function
 
   def _list_all_concrete_functions(
       self) -> List[concrete_function_lib.ConcreteFunction]:
     return self._function_cache.values()
-
-  def __get__(self, instance, owner):
-    """Makes it possible to decorate instance methods."""
-    del owner
-    # `instance` here is the instance that this `TracingCompiler` was
-    # accessed through e.g., for
-    #
-    #   class Foo:
-    #
-    #     @tf.function
-    #     def bar(self):
-    #       ...
-    #
-    #   foo = Foo()
-    #   foo.bar()  # `foo.bar` is a `tf.function` instance
-    #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of `TracingCompiler` here to allow different instances
-    # to create variables once, thereby allowing methods to be decorated with
-    # tf.function. Keeps a cache to avoid retracing the function every time the
-    # descriptor is accessed.
-    if instance not in self._descriptor_cache:
-      if instance is None:
-        return self
-      # If there is no instance-specific `TracingCompiler` in the cache, we
-      # construct an instance-specific `TracingCompiler` that uses a weak
-      # reference to the instance (so that the instance will be correctly gc'd).
-
-      # And finally add the wrapped function to the description cache
-      self._descriptor_cache[instance] = class_method_to_instance_method(
-          self, instance)
-
-    # Return the cached `TracingCompiler` for the instance
-    return self._descriptor_cache[instance]
 
   def _create_concrete_function(self, args, kwargs, func_graph):
     """Create a `ConcreteFunction` from `args`, `kwargs`, and `func_graph`."""
@@ -425,67 +343,34 @@ class TracingCompiler:
           return concrete_function, filtered_flat_args
 
 
-def class_method_to_instance_method(original_function, instance):
-  """Constructs a new `TracingCompiler` with `self` bound."""
-  weak_instance = weakref.ref(instance)
-
-  # Note: while we could bind to a weakref proxy instead, that causes the
-  # bound method to be unhashable.
-  bound_method = types_lib.MethodType(
-      original_function.python_function,
-      tf_method_target.TfMethodTarget(weak_instance,
-                                      original_function.python_function))
-
-  # original_function is expected to be either `TracingCompiler` or
-  # def_function.Function
-  assert hasattr(original_function, "_name")
-  assert hasattr(original_function, "_autograph")
-  assert hasattr(original_function, "_function_spec")
-  assert hasattr(original_function, "python_function")
-
-  weak_bound_method_wrapper = None
-
-  def bound_method_wrapper(*args, **kwargs):
-    """Wraps either a dummy MethodType or a converted AutoGraph function."""
-    # __wrapped__ allows AutoGraph to swap in a converted function.
-    strong_bound_method_wrapper = weak_bound_method_wrapper()
-    wrapped_fn = strong_bound_method_wrapper.__wrapped__
-
-    if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
-      # If __wrapped__ was not replaced, then call original_function.
-      # TODO(mdan): For better consistency, use the wrapper's call().
-      wrapped_fn = original_function.python_function
-      return wrapped_fn(weak_instance(), *args, **kwargs)
-
-    # If __wrapped__ was replaced, then it is always an unbound function.
-    # However, the replacer is still responsible for attaching self properly.
-    # TODO(mdan): Is it possible to do it here instead?
-    return wrapped_fn(*args, **kwargs)
-
-  weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
-
-  # pylint: disable=protected-access
-  # We make a dummy MethodType object to generate the correct bound method
-  # signature. The actual call is to a function with a weak reference to
-  # `instance`.
-  instance_func = type(original_function)(
-      tf_decorator.make_decorator(bound_method, bound_method_wrapper),
-      name=original_function._name,
-      autograph=original_function._autograph,
-      input_signature=original_function.input_signature,
-      reduce_retracing=original_function._reduce_retracing,
-      jit_compile=original_function._jit_compile)
-  # pylint: enable=protected-access
-
-  # We wrap the bound method with tf_decorator so inspection works correctly
-  wrapped_instance_func = tf_decorator.make_decorator(bound_method,
-                                                      instance_func)
-  return wrapped_instance_func
-
-
 def _insert_capture_type(original_func_type, captures, type_context):
   capture_types = collections.OrderedDict()
   for name, value in captures.items():
     capture_types[name] = trace_type.from_value(value, type_context)
   return function_type_lib.FunctionType(
       original_func_type.parameters.values(), capture_types)
+
+
+def _set_arg_keywords(concrete_function):
+  """Sets arg keywords for ConcreteFunction."""
+  seen_names = set()
+  concrete_function._arg_keywords = []  # pylint: disable=protected-access
+  prefix_counts = {}
+  graph = concrete_function.graph
+  num_captures = len(
+      graph.internal_captures + graph.deferred_internal_captures)
+  num_positional = len(graph.inputs) - num_captures
+  for arg in concrete_function.graph.inputs[:num_positional]:
+    try:
+      user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
+    except ValueError:
+      user_arg_name = "tensor_arg"
+    proposal = user_arg_name
+    while proposal in seen_names:
+      index = prefix_counts.get(user_arg_name, 1)
+      proposal = "{}_{}".format(user_arg_name, index)
+      prefix_counts[user_arg_name] = index + 1
+    seen_names.add(proposal)
+    concrete_function._arg_keywords.append(proposal)  # pylint: disable=protected-access
+  # Anything can be a positional argument, in the same order as .inputs
+  concrete_function._num_positional_args = num_positional  # pylint: disable=protected-access

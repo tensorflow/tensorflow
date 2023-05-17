@@ -170,6 +170,7 @@ py_strict_library(
         ":compiler_ir",
         ":eager_function_run",
         ":function_spec",
+        ":tf_method_target",
         ":tracing_compiler",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
