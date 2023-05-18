@@ -90,7 +90,7 @@ struct GraphExecutionRunOptions {
   // will be raised upon mismatch.
   bool validate_input_specs = false;
 
-  // TODO(b/239749833) Remove after b/239749833 is fixed.
+  // TODO(b/279197040) Remove after b/279197040 is fixed.
   // If true, the input specs will be checked before running, and an error
   // will be logged upon mismatch.
   bool validate_input_specs_dry_run = false;

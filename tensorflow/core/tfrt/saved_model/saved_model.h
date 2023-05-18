@@ -125,7 +125,7 @@ class SavedModel {
 
     // If true, the lazy loading path will use tfrt_stub::GraphExecutor.
     //
-    // TODO(b/216379787): Remove this option once b/239749833 is unblocked.
+    // TODO(b/216379787): Remove this option once b/279197040 is unblocked.
     bool lazy_loading_use_graph_executor = false;
 
     GraphExecutionOptions graph_execution_options;
