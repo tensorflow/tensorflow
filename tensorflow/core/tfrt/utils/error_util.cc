@@ -25,7 +25,7 @@ tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
   auto tf_error_code = status.code();
   switch (tf_error_code) {
     default:
-      LOG(INFO) << "Unsupported TensorFlow error code: " << status.ToString();
+      LOG(INFO) << "Unsupported TensorFlow error code: " << status;
       return tfrt::ErrorCode::kUnknown;
 #define ERROR_TYPE(TFRT_ERROR, TF_ERROR) \
   case absl::StatusCode::TF_ERROR:       \
