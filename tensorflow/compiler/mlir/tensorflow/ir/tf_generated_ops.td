@@ -21184,7 +21184,7 @@ for binary operators.
   }];
 }
 
-def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [Pure]> {
+def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "Invokes a StableHLO module.";
 
   let description = [{

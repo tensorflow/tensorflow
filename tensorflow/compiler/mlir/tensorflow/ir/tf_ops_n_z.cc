@@ -2960,6 +2960,27 @@ void FusedBatchNormOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
+// XlaCallModuleOp
+//===----------------------------------------------------------------------===//
+
+void XlaCallModuleOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  if (!getFunctionList().empty()) {
+    // The StableHLO module embedded in XlaCallModule contains
+    // `stablehlo.custom_call` calling TF host callback functions.
+    // `stablehlo.custom_call` will be lowered to `stablehlo.send` and
+    // `stablehlo.recv`.
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Send::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Recv::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::XlaHostCompute::get());
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // XlaLaunchOp
 //===----------------------------------------------------------------------===//
 
