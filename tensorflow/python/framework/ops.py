@@ -2967,7 +2967,8 @@ class Graph(pywrap_tf_session.PyGraph):
         grad_def.gradient_func = f.grad_func_name
         graph_def.library.gradient.extend([grad_def])
 
-  def _as_graph_def(self, from_version=None, add_shapes=False):
+  def _as_graph_def(
+      self, from_version=None, add_shapes=False, use_pybind11_proto=False):
     # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
@@ -2983,6 +2984,8 @@ class Graph(pywrap_tf_session.PyGraph):
         property had the given value.
       add_shapes: If true, adds an "_output_shapes" list attr to each node with
         the inferred shapes of each of its outputs.
+      use_pybind11_proto: If true, uses the c++ pybind11_proto api to get the
+        GraphDef proto directly from c++, instead of through a TF buffer.
 
     Returns:
       A tuple containing a
@@ -2996,12 +2999,17 @@ class Graph(pywrap_tf_session.PyGraph):
     """
     # pylint: enable=line-too-long
     with self._lock:
-      with c_api_util.tf_buffer() as buf:
+      if use_pybind11_proto:
         with self._c_graph.get() as c_graph:
-          pywrap_tf_session.TF_GraphToGraphDef(c_graph, buf)
-          data = pywrap_tf_session.TF_GetBuffer(buf)
-      graph = graph_pb2.GraphDef()
-      graph.ParseFromString(compat.as_bytes(data))
+          graph = graph_pb2.GraphDef()
+          graph.CopyFrom(pywrap_tf_session.TF_GraphToGraphDefPybind(c_graph))
+      else:
+        with c_api_util.tf_buffer() as buf:
+          with self._c_graph.get() as c_graph:
+            pywrap_tf_session.TF_GraphToGraphDef(c_graph, buf)
+            data = pywrap_tf_session.TF_GetBuffer(buf)
+        graph = graph_pb2.GraphDef()
+        graph.ParseFromString(compat.as_bytes(data))
       # Strip the experimental library field iff it's empty.
       if not graph.library.function:
         graph.ClearField("library")

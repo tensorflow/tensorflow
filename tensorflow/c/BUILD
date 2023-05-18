@@ -129,6 +129,7 @@ cc_library(
         # TODO: Only include tf_tstring_hdrs. Don't expose the implementation of TF_TString to API
         # users.
         ":tf_tstring",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -171,6 +172,7 @@ tf_cuda_library(
         ":tf_buffer_internal",
         ":tf_status_internal",
         ":tf_tensor_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -238,6 +240,7 @@ tf_cuda_library(
         ":tf_status_internal",
         ":tf_tensor_internal",
         ":tf_tstring",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/tsl/c:tsl_status",
     ] + select({
