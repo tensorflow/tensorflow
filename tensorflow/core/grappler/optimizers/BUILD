@@ -625,6 +625,11 @@ cc_library(
         "meta_optimizer.h",
     ],
     copts = tf_copts(),
+    defines = select({
+        "//tensorflow:fuchsia": ["NO_LLVM_SUPPORT=1"],
+        "//tensorflow:ios_x86_64": ["NO_LLVM_SUPPORT=1"],
+        "//conditions:default": ["NO_LLVM_SUPPORT=0"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",
@@ -666,6 +671,8 @@ cc_library(
     ] + select({
         #TODO(b/200087693): LLVM does not build on Fuchsia.
         "//tensorflow:fuchsia": [],
+        # LLVM does not build on most apple platforms.
+        "//tensorflow:ios_x86_64": [],
         "//conditions:default": [":tfg_optimizer_hook"],
     }),
 )
