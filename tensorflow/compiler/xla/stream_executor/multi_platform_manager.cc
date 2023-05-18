@@ -98,6 +98,7 @@ tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
     LOG(WARNING)
         << "platform is already registered with name: \"" << platform->Name()
         << "\". Please check if you linked the platform more than once.";
+    return ::tsl::OkStatus();
   }
   Platform* platform_ptr = platform.get();
   CHECK(id_map_.emplace(platform->id(), platform_ptr).second);
