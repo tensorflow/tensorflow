@@ -121,6 +121,27 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                                  PjRtBuffers({std::move(pjrt_buffer)}));
 }
 
+StatusOr<tsl::RCReference<Array>> PjRtArray::FullyReplicatedShard(
+    ArrayCopySemantics semantics) {
+  return PjRtArray::Create(client(), GetPjRtBuffer(semantics, 0));
+}
+
+std::shared_ptr<PjRtBuffer> PjRtArray::GetPjRtBuffer(
+    ArrayCopySemantics semantics, int index) const {
+  switch (semantics) {
+    case ArrayCopySemantics::kAlwaysCopy:
+      // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
+      // API does not have efficient buffer cloning on the same device.
+      return pjrt_buffers_[index];
+    case ArrayCopySemantics::kReuseInput:
+      return pjrt_buffers_[index];
+    case ArrayCopySemantics::kDonateInput:
+      // TODO(hyeontaek): We may try std::move(pjrt_buffers_[i]), but this
+      // would be unsafe if there is a subsequent access to the buffer.
+      return pjrt_buffers_[index];
+  }
+}
+
 StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(
@@ -162,21 +183,7 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   for (int i = 0; i < sharding_->devices().size(); ++i) {
     PjRtBuffers buffers;
     buffers.reserve(1);
-    switch (semantics) {
-      case ArrayCopySemantics::kAlwaysCopy:
-        // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
-        // API does not have efficient buffer cloning on the same device.
-        buffers.push_back(pjrt_buffers_[i]);
-        break;
-      case ArrayCopySemantics::kReuseInput:
-        buffers.push_back(pjrt_buffers_[i]);
-        break;
-      case ArrayCopySemantics::kDonateInput:
-        // TODO(hyeontaek): We may try std::move(pjrt_buffers_[i]), but this
-        // would be unsafe if there is a subsequent access to the buffer.
-        buffers.push_back(pjrt_buffers_[i]);
-        break;
-    }
+    buffers.push_back(GetPjRtBuffer(semantics, i));
     TF_ASSIGN_OR_RETURN(
         auto array, PjRtArray::Create(client_, dtype_,
                                       std::move(shape_and_shardings[i].first),
