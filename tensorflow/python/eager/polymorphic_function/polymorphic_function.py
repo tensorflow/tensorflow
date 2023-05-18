@@ -78,7 +78,7 @@ from tensorflow.python.eager.polymorphic_function import attributes as attribute
 from tensorflow.python.eager.polymorphic_function import autograph_util
 from tensorflow.python.eager.polymorphic_function import compiler_ir
 from tensorflow.python.eager.polymorphic_function import eager_function_run
-from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.eager.polymorphic_function import tf_method_target
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
@@ -491,10 +491,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     """
     self._lock = threading.RLock()
     self._python_function = python_function
-    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
-        python_function,
-        input_signature,
-        jit_compile=jit_compile,
+    self._function_type, self._default_values = (
+        function_type_utils.make_function_type(python_function, input_signature)
     )
 
     self._attributes = {}
@@ -750,8 +748,11 @@ class Function(core.GenericFunction, trackable.Trackable):
           "Functions cannot be decorated after they have been traced.")
 
     self._python_function = decorator(self._python_function)
-    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
-        self._python_function, self.input_signature)
+    self._function_type, self._default_values = (
+        function_type_utils.make_function_type(
+            self._python_function, self.input_signature
+        )
+    )
 
   # TODO: Remove this private method after updating all its uses
   # A good moment to do this could be when the experimental label is removed
@@ -891,9 +892,14 @@ class Function(core.GenericFunction, trackable.Trackable):
         return self._no_variable_creation_fn(*args, **kwds)
     else:
       _, _, filtered_flat_args = (
-          self._variable_creation_fn._function_spec  # pylint: disable=protected-access
-          .canonicalize_function_inputs(
-              args, kwds))
+          function_type_utils.canonicalize_function_inputs(
+              args,
+              kwds,
+              self._variable_creation_fn._function_type,  # pylint: disable=protected-access
+              self._variable_creation_fn._default_values,  # pylint: disable=protected-access
+              self._variable_creation_fn._is_pure,  # pylint: disable=protected-access
+          )
+      )
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_variable_creation_fn._call_flat(   # pylint: disable=protected-access
           filtered_flat_args,
@@ -927,8 +933,14 @@ class Function(core.GenericFunction, trackable.Trackable):
           "so this tf.function cannot be run on XLA. A possible workaround is "
           "to move variable creation outside of the XLA compiled function.")
     canon_args, canon_kwds, filtered_flat_args = (
-        self._variable_creation_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-            args, kwds))
+        function_type_utils.canonicalize_function_inputs(
+            args,
+            kwds,
+            self._variable_creation_fn._function_type,  # pylint: disable=protected-access
+            self._variable_creation_fn._default_values,  # pylint: disable=protected-access
+            self._variable_creation_fn._is_pure,  # pylint: disable=protected-access
+        )
+    )
     return tracing_compiler.TracingCompiler(
         fn_with_cond, "fn_with_cond")(canon_args, canon_kwds,
                                       filtered_flat_args)
@@ -971,7 +983,14 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     # pylint: disable=protected-access
     _, _, filtered_flat_args = (
-        concrete_fn._function_spec.canonicalize_function_inputs(args, kwargs))
+        function_type_utils.canonicalize_function_inputs(
+            args,
+            kwargs,
+            concrete_fn._function_spec.function_type,
+            concrete_fn._function_spec.default_values,
+            concrete_fn._function_spec.is_pure,
+        )
+    )
 
     def compiler_ir_generator(stage="hlo", device_name=None):
       device_name = compiler_ir.maybe_get_device_name(device_name)
@@ -997,11 +1016,17 @@ class Function(core.GenericFunction, trackable.Trackable):
 
   @property
   def input_signature(self):
-    return self._function_spec.input_signature
+    return function_type_utils.to_input_signature(self._function_type)
 
   @property
   def function_spec(self):
-    return self._function_spec
+    return function_type_utils.FunctionSpec(
+        self._function_type,
+        self._default_values,
+        False,
+        self._name,
+        self._jit_compile,
+    )
 
   def pretty_printed_concrete_signatures(self, verbose=True):
     joiner = "\n\n" if verbose else "\n"
@@ -1124,7 +1149,7 @@ class Function(core.GenericFunction, trackable.Trackable):
                        signature)
           continue
         equal_to_signature = functools.partial(
-            function_spec_lib.is_same_structure, signature, check_values=True)
+            function_type_utils.is_same_structure, signature, check_values=True)
         if not any(equal_to_signature(s) for s in seen_signatures):
           seen_signatures.append(signature)
 
@@ -1632,11 +1657,10 @@ def class_method_to_instance_method(original_function, instance):
       tf_method_target.TfMethodTarget(weak_instance,
                                       original_function.python_function))
 
-  # original_function is expected to be either `TracingCompiler` or
-  # def_function.Function
+  # original_function is expected to be PolymorphicFunction
   assert hasattr(original_function, "_name")
   assert hasattr(original_function, "_autograph")
-  assert hasattr(original_function, "_function_spec")
+  assert hasattr(original_function, "_function_type")
   assert hasattr(original_function, "python_function")
 
   weak_bound_method_wrapper = None

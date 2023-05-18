@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Defines an input type specification for tf.function."""
+"""Utilities for using FunctionType with tf.function."""
 
 import functools
 import inspect
@@ -38,8 +38,10 @@ from tensorflow.python.util import nest
 BOUND_VALUE = object()
 
 
-def to_fullargspec(function_type: function_type_lib.FunctionType,
-                   default_values: Dict[str, Any]) -> inspect.FullArgSpec:
+def to_fullargspec(
+    function_type: function_type_lib.FunctionType,
+    default_values: Dict[str, Any],
+) -> inspect.FullArgSpec:
   """Generates backwards compatible FullArgSpec from FunctionType."""
   args = []
   varargs = None
@@ -51,7 +53,7 @@ def to_fullargspec(function_type: function_type_lib.FunctionType,
   for parameter in function_type.parameters.values():
     if parameter.kind in [
         inspect.Parameter.POSITIONAL_ONLY,
-        inspect.Parameter.POSITIONAL_OR_KEYWORD
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ]:
       args.append(parameter.name)
       if parameter.default is not inspect.Parameter.empty:
@@ -72,15 +74,18 @@ def to_fullargspec(function_type: function_type_lib.FunctionType,
       tuple(defaults) if defaults else None,
       kwonlyargs,
       kwonlydefaults if kwonlydefaults else None,
-      annotations={})
+      annotations={},
+  )
 
 
 def _to_default_values(fullargspec):
   """Returns default values from the function's inspected fullargspec."""
   if fullargspec.defaults is not None:
     defaults = {
-        name: value for name, value in zip(
-            fullargspec.args[-len(fullargspec.defaults):], fullargspec.defaults)
+        name: value
+        for name, value in zip(
+            fullargspec.args[-len(fullargspec.defaults) :], fullargspec.defaults
+        )
     }
   else:
     defaults = {}
@@ -105,27 +110,42 @@ def to_function_type(fullargspec):
     arg_name = function_type_lib.sanitize_arg_name(arg)
     parameters.append(
         function_type_lib.Parameter(
-            arg_name, function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
-            arg_name in default_values, None))
+            arg_name,
+            function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
+            arg_name in default_values,
+            None,
+        )
+    )
 
   if fullargspec.varargs is not None:
     parameters.append(
-        function_type_lib.Parameter(fullargspec.varargs,
-                                    function_type_lib.Parameter.VAR_POSITIONAL,
-                                    False, None))
+        function_type_lib.Parameter(
+            fullargspec.varargs,
+            function_type_lib.Parameter.VAR_POSITIONAL,
+            False,
+            None,
+        )
+    )
 
   for kwarg in fullargspec.kwonlyargs:
     parameters.append(
         function_type_lib.Parameter(
             function_type_lib.sanitize_arg_name(kwarg),
-            function_type_lib.Parameter.KEYWORD_ONLY, kwarg in default_values,
-            None))
+            function_type_lib.Parameter.KEYWORD_ONLY,
+            kwarg in default_values,
+            None,
+        )
+    )
 
   if fullargspec.varkw is not None:
     parameters.append(
-        function_type_lib.Parameter(fullargspec.varkw,
-                                    function_type_lib.Parameter.VAR_KEYWORD,
-                                    False, None))
+        function_type_lib.Parameter(
+            fullargspec.varkw,
+            function_type_lib.Parameter.VAR_KEYWORD,
+            False,
+            None,
+        )
+    )
 
   return function_type_lib.FunctionType(parameters), default_values
 
@@ -155,7 +175,8 @@ def to_input_signature(function_type):
       )
       if any(
           not isinstance(arg, tensor_spec.TensorSpec)
-          for arg in nest.flatten([constraint], expand_composites=True)):
+          for arg in nest.flatten([constraint], expand_composites=True)
+      ):
         # input_signature only supports contiguous TensorSpec composites
         is_auto_constrained = True
         break
@@ -170,16 +191,26 @@ def to_input_signature(function_type):
   return tuple(constraints) if constraints else None
 
 
+def to_arg_names(function_type):
+  """Generates a list of arg names from a FunctionType."""
+  arg_names = []
+  for p in function_type.parameters.values():
+    if p.kind in {
+        function_type_lib.Parameter.POSITIONAL_ONLY,
+        function_type_lib.Parameter.POSITIONAL_OR_KEYWORD,
+    }:
+      arg_names.append(p.name)
+  return arg_names
+
+
 # TODO(b/214462107): Clean up and migrate to core/function when unblocked.
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
   @classmethod
-  def from_function_and_signature(cls,
-                                  python_function,
-                                  input_signature,
-                                  is_pure=False,
-                                  jit_compile=None):
+  def from_function_and_signature(
+      cls, python_function, input_signature, is_pure=False, jit_compile=None
+  ):
     """Creates a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -192,18 +223,8 @@ class FunctionSpec(object):
     Returns:
       instance of FunctionSpec
     """
-    _validate_signature(input_signature)
-
-    function_type = function_type_lib.FunctionType.from_callable(
-        python_function)
-    default_values = function_type_lib.FunctionType.get_default_values(
-        python_function)
-
-    if input_signature is not None:
-      input_signature = tuple(input_signature)
-      function_type = function_type_lib.add_type_constraints(
-          function_type, input_signature, default_values)
-
+    function_type, default_values = make_function_type(
+        python_function, input_signature)
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
       python_function = python_function.func
@@ -214,32 +235,39 @@ class FunctionSpec(object):
         default_values,
         is_pure=is_pure,
         jit_compile=jit_compile,
-        name=name)
+        name=name,
+    )
 
   @classmethod
-  def from_fullargspec_and_signature(cls,
-                                     fullargspec,
-                                     input_signature,
-                                     is_pure=False,
-                                     name=None,
-                                     jit_compile=None):
+  def from_fullargspec_and_signature(
+      cls,
+      fullargspec,
+      input_signature,
+      is_pure=False,
+      name=None,
+      jit_compile=None,
+  ):
     """Construct FunctionSpec from legacy FullArgSpec format."""
     function_type, default_values = to_function_type(fullargspec)
     if input_signature:
       input_signature = tuple(input_signature)
       _validate_signature(input_signature)
       function_type = function_type_lib.add_type_constraints(
-          function_type, input_signature, default_values)
+          function_type, input_signature, default_values
+      )
 
-    return FunctionSpec(function_type, default_values, is_pure,
-                        name, jit_compile)
+    return FunctionSpec(
+        function_type, default_values, is_pure, name, jit_compile
+    )
 
-  def __init__(self,
-               function_type,
-               default_values,
-               is_pure=False,
-               name=None,
-               jit_compile=None):
+  def __init__(
+      self,
+      function_type,
+      default_values,
+      is_pure=False,
+      name=None,
+      jit_compile=None,
+  ):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
@@ -295,38 +323,7 @@ class FunctionSpec(object):
   # TODO(fmuham): Replace usages and remove.
   @property
   def arg_names(self):
-    return list(
-        p.name
-        for p in self.function_type.parameters.values()
-        if (
-            p.kind is function_type_lib.Parameter.POSITIONAL_ONLY
-            or p.kind is function_type_lib.Parameter.POSITIONAL_OR_KEYWORD
-        )
-    )
-
-  def make_canonicalized_monomorphic_type(
-      self,
-      args: Any,
-      kwargs: Any,
-      captures: Any = None,
-  ) -> Tuple[function_type_lib.FunctionType,
-             trace_type.InternalTracingContext]:
-    """Generates function type given the function arguments."""
-    if captures is None:
-      captures = dict()
-
-    kwargs = {
-        function_type_lib.sanitize_arg_name(name): value
-        for name, value in kwargs.items()
-    }
-
-    _, function_type, type_context = (
-        function_type_lib.canonicalize_to_monomorphic(
-            args, kwargs, self.default_values, captures, self.function_type
-        )
-    )
-
-    return function_type, type_context
+    return to_arg_names(self.function_type)
 
   def signature_summary(self, default_values=False):
     """Returns a string summarizing this function's signature.
@@ -342,66 +339,122 @@ class FunctionSpec(object):
       summary += f", defaults: {self.default_values!r}"
     return summary
 
-  def canonicalize_function_inputs(self, args, kwargs):
-    """Canonicalizes `args` and `kwargs`.
 
-    Canonicalize the inputs to the Python function using a `FunctionSpec`
-    instance. In particular, we parse the varargs and kwargs that the
-    original function was called with into a tuple corresponding to the
-    Python function's positional (named) arguments and a dictionary
-    corresponding to its kwargs.  Missing default arguments are added.
+def make_function_type(python_function, input_signature):
+  """Generates a FunctionType for python_function."""
+  _validate_signature(input_signature)
 
-    If this `FunctionSpec` has an input signature, then it is used to convert
-    arguments to tensors; otherwise, any inputs containing numpy arrays are
-    converted to tensors.
+  function_type = function_type_lib.FunctionType.from_callable(
+      python_function
+  )
+  default_values = function_type_lib.FunctionType.get_default_values(
+      python_function
+  )
 
-    Additionally, any inputs containing numpy arrays are converted to Tensors.
+  if input_signature is not None:
+    input_signature = tuple(input_signature)
+    function_type = function_type_lib.add_type_constraints(
+        function_type, input_signature, default_values
+    )
 
-    Args:
-      args: The varargs this object was called with.
-      kwargs: The keyword args this function was called with.
+  return function_type, default_values
 
-    Returns:
-      A canonicalized ordering of the inputs, as well as full and filtered
-      (Tensors and Variables only) versions of their concatenated flattened
-      representations, represented by a tuple in the form (args, kwargs,
-      flat_args, filtered_flat_args). Here: `args` is a full list of bound
-      arguments, and `kwargs` contains only true keyword arguments, as opposed
-      to named arguments called in a keyword-like fashion.
 
-    Raises:
-      ValueError: If a keyword in `kwargs` cannot be matched with a positional
-        argument when an input signature is specified, or when the inputs
-        do not conform to the input signature.
-    """
-    if self.is_pure:
-      args, kwargs = _convert_variables_to_tensors(args, kwargs)
-    args, kwargs = self.bind_function_inputs(args, kwargs)
-    filtered_flat_args = filter_function_inputs(args, kwargs)
+def make_canonicalized_monomorphic_type(
+    args: Any,
+    kwargs: Any,
+    captures: Any,
+    polymorphic_type,
+    default_values,
+) -> Tuple[function_type_lib.FunctionType, trace_type.InternalTracingContext]:
+  """Generates function type given the function arguments."""
+  if captures is None:
+    captures = dict()
 
-    return args, kwargs, filtered_flat_args
+  kwargs = {
+      function_type_lib.sanitize_arg_name(name): value
+      for name, value in kwargs.items()
+  }
 
-  def bind_function_inputs(self, args, kwargs):
-    """Bind `args` and `kwargs` into a canonicalized signature args, kwargs."""
-    sanitized_kwargs = {
-        function_type_lib.sanitize_arg_name(k): v for k, v in kwargs.items()
-    }
-    if len(kwargs) != len(sanitized_kwargs):
-      raise ValueError(f"Name collision after sanitization. Please rename "
-                       f"tf.function input parameters. Original: "
-                       f"{sorted(kwargs.keys())}, Sanitized: "
-                       f"{sorted(sanitized_kwargs.keys())}")
+  _, function_type, type_context = (
+      function_type_lib.canonicalize_to_monomorphic(
+          args, kwargs, default_values, captures, polymorphic_type
+      )
+  )
 
-    try:
-      bound_arguments = self.function_type.bind_with_defaults(
-          args, sanitized_kwargs, self.default_values)
-    except Exception as e:
-      raise TypeError(
-          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`. "
-          f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
-          f" {self.function_type}."
-      ) from e
-    return bound_arguments.args, bound_arguments.kwargs
+  return function_type, type_context
+
+
+def canonicalize_function_inputs(
+    args, kwargs, function_type, default_values, is_pure
+):
+  """Canonicalizes `args` and `kwargs`.
+
+  Canonicalize the inputs to the Python function using FunctionType.
+  In particular, we parse the varargs and kwargs that the
+  original function was called with into a tuple corresponding to the
+  Python function's positional (named) arguments and a dictionary
+  corresponding to its kwargs.  Missing default arguments are added.
+
+  If the FunctionType has an type constraints, then they are used to convert
+  arguments to tensors; otherwise, any inputs containing numpy arrays are
+  converted to tensors.
+
+
+  Args:
+    args: The varargs this object was called with.
+    kwargs: The keyword args this function was called with.
+    function_type: FunctionType to canonicalize against.
+    default_values: Default values to use.
+    is_pure: Force variable inputs to Tensors.
+
+  Returns:
+    A canonicalized ordering of the inputs, as well as full and filtered
+    (Tensors and Variables only) versions of their concatenated flattened
+    representations, represented by a tuple in the form (args, kwargs,
+    flat_args, filtered_flat_args). Here: `args` is a full list of bound
+    arguments, and `kwargs` contains only true keyword arguments, as opposed
+    to named arguments called in a keyword-like fashion.
+
+  Raises:
+    ValueError: If a keyword in `kwargs` cannot be matched with a positional
+      argument when an input signature is specified, or when the inputs
+      do not conform to the input signature.
+  """
+  if is_pure:
+    args, kwargs = _convert_variables_to_tensors(args, kwargs)
+  args, kwargs = bind_function_inputs(
+      args, kwargs, function_type, default_values
+  )
+  filtered_flat_args = filter_function_inputs(args, kwargs)
+
+  return args, kwargs, filtered_flat_args
+
+
+def bind_function_inputs(args, kwargs, function_type, default_values):
+  """Bind `args` and `kwargs` into a canonicalized signature args, kwargs."""
+  sanitized_kwargs = {
+      function_type_lib.sanitize_arg_name(k): v for k, v in kwargs.items()
+  }
+  if len(kwargs) != len(sanitized_kwargs):
+    raise ValueError(
+        "Name collision after sanitization. Please rename "
+        "tf.function input parameters. Original: "
+        f"{sorted(kwargs.keys())}, Sanitized: "
+        f"{sorted(sanitized_kwargs.keys())}"
+    )
+
+  try:
+    bound_arguments = function_type.bind_with_defaults(
+        args, sanitized_kwargs, default_values
+    )
+  except Exception as e:
+    raise TypeError(
+        f"Binding inputs to tf.function failed due to `{e}`. "
+        f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
+        f" {function_type}."
+    ) from e
+  return bound_arguments.args, bound_arguments.kwargs
 
 
 def _validate_signature(signature):
@@ -410,29 +463,40 @@ def _validate_signature(signature):
     return
 
   if not isinstance(signature, (tuple, list)):
-    raise TypeError("input_signature must be either a tuple or a list, got "
-                    f"{type(signature)}.")
+    raise TypeError(
+        "input_signature must be either a tuple or a list, got "
+        f"{type(signature)}."
+    )
 
   # TODO(xjun): Allow VariableSpec once we figure out API for de-aliasing.
   variable_specs = _get_variable_specs(signature)
   if variable_specs:
     raise TypeError(
-        f"input_signature doesn't support VariableSpec, got {variable_specs}")
+        f"input_signature doesn't support VariableSpec, got {variable_specs}"
+    )
 
-  if any(not isinstance(arg, tensor_spec.TensorSpec)
-         for arg in nest.flatten(signature, expand_composites=True)):
+  if any(
+      not isinstance(arg, tensor_spec.TensorSpec)
+      for arg in nest.flatten(signature, expand_composites=True)
+  ):
     bad_args = [
-        arg for arg in nest.flatten(signature, expand_composites=True)
+        arg
+        for arg in nest.flatten(signature, expand_composites=True)
         if not isinstance(arg, tensor_spec.TensorSpec)
     ]
-    raise TypeError("input_signature must be a possibly nested sequence of "
-                    f"TensorSpec objects, got invalid args {bad_args} with "
-                    f"types {list(six.moves.map(type, bad_args))}.")
+    raise TypeError(
+        "input_signature must be a possibly nested sequence of "
+        f"TensorSpec objects, got invalid args {bad_args} with "
+        f"types {list(six.moves.map(type, bad_args))}."
+    )
 
 
 def _to_tensor_or_tensor_spec(x):
-  return (x if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec)) else
-          ops.convert_to_tensor(x))
+  return (
+      x
+      if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec))
+      else ops.convert_to_tensor(x)
+  )
 
 
 def _convert_variables_to_tensors(args, kwargs):
@@ -445,7 +509,8 @@ def _convert_variables_to_tensors(args, kwargs):
 def filter_function_inputs(args, kwargs):
   """Filters and flattens args and kwargs."""
   flat_inputs = composite_tensor_utils.flatten_with_variables(
-      args) + composite_tensor_utils.flatten_with_variables(kwargs)
+      args
+  ) + composite_tensor_utils.flatten_with_variables(kwargs)
 
   for index, flat_input in enumerate(flat_inputs):
     if hasattr(flat_input, "__array__") and not (
@@ -463,12 +528,15 @@ def filter_function_inputs(args, kwargs):
     ):
       ndarray = flat_input.__array__()
       if not isinstance(ndarray, np.ndarray):
-        raise TypeError(f"The output of __array__ must be an np.ndarray, "
-                        f"got {type(ndarray)} from {flat_input}.")
+        raise TypeError(
+            "The output of __array__ must be an np.ndarray, "
+            f"got {type(ndarray)} from {flat_input}."
+        )
       flat_inputs[index] = constant_op.constant(ndarray)
 
   filtered_flat_inputs = [
-      t for t in flat_inputs
+      t
+      for t in flat_inputs
       if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
   ]
 

@@ -1285,7 +1285,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(restored_concrete_functions, 1)
 
     with self.assertRaisesRegex(
-        TypeError, "Binding inputs to tf.function `f` failed"
+        TypeError, "Binding inputs to tf.function failed"
     ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()

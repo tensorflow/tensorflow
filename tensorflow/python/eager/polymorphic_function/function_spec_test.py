@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for function_spec."""
+"""Tests for function_type_utils."""
 
 from absl.testing import parameterized
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
-from tensorflow.python.eager.polymorphic_function import function_spec
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_decorator
@@ -70,7 +70,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     def foo(x, y, z):  # pylint: disable=unused-argument
       pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
@@ -134,7 +134,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     def foo(x=1, y=2, z=3):  # pylint: disable=unused-argument
       pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
@@ -194,7 +194,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     def foo(x, y, z=3):  # pylint: disable=unused-argument
       pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
@@ -244,7 +244,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     def foo(*my_var_args):  # pylint: disable=unused-argument
       pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
@@ -304,7 +304,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     def foo(x, y, *, z=3):  # pylint: disable=unused-argument
       pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec), (['x', 'y'], None, None, None, ['z'], {
@@ -359,7 +359,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
   ):
 
     def testing_decorator(func):
-      spec = function_spec.FunctionSpec.from_function_and_signature(
+      spec = function_type_utils.FunctionSpec.from_function_and_signature(
           func, input_signature
       )
       self.assertEqual(
@@ -438,7 +438,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
       def foo(self, x, y=1):
         pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         MyClass().foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
@@ -492,7 +492,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
       def foo(self, x, y=1):
         pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         MyClass.foo, input_signature)
     self.assertEqual(
         tuple(spec.fullargspec),
@@ -523,7 +523,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     def foo(x=2, y=3):  # pylint: disable=unused-argument
       pass
 
-    spec = function_spec.FunctionSpec.from_function_and_signature(
+    spec = function_type_utils.FunctionSpec.from_function_and_signature(
         foo, input_signature
     )
     self.assertEqual(
@@ -541,16 +541,18 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
 class SameStructureTest(test.TestCase):
 
   def test_same_structure(self):
-    self.assertTrue(function_spec.is_same_structure([1, 2, 3], [1, 2, 3], True))
     self.assertTrue(
-        function_spec.is_same_structure([1, 2, 3], [1, 2, 4], False)
+        function_type_utils.is_same_structure([1, 2, 3], [1, 2, 3], True)
+    )
+    self.assertTrue(
+        function_type_utils.is_same_structure([1, 2, 3], [1, 2, 4], False)
     )
 
     self.assertFalse(
-        function_spec.is_same_structure([1, 2, 3], [1, 2, 4], True)
+        function_type_utils.is_same_structure([1, 2, 3], [1, 2, 4], True)
     )
     self.assertFalse(
-        function_spec.is_same_structure([1, 2, 3], [1, 2, 3, 4], False)
+        function_type_utils.is_same_structure([1, 2, 3], [1, 2, 3, 4], False)
     )
 
 
