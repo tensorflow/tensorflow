@@ -764,7 +764,7 @@ class Model(training_lib.Model):
             `keras.utils.Sequence` input only. If `True`, use process-based
             threading. If unspecified, `use_multiprocessing` will default to
             `False`. Note that because this implementation relies on
-            multiprocessing, you should not pass non-picklable arguments to
+            multiprocessing, you should not pass non-pickleable arguments to
             the generator as they can't be passed easily to children processes.
         **kwargs: Used for backwards compatibility.
 
@@ -887,7 +887,7 @@ class Model(training_lib.Model):
             `keras.utils.Sequence` input only. If `True`, use process-based
             threading. If unspecified, `use_multiprocessing` will default to
             `False`. Note that because this implementation relies on
-            multiprocessing, you should not pass non-picklable arguments to
+            multiprocessing, you should not pass non-pickleable arguments to
             the generator as they can't be passed easily to children processes.
 
     Returns:
@@ -965,7 +965,7 @@ class Model(training_lib.Model):
             `keras.utils.Sequence` input only. If `True`, use process-based
             threading. If unspecified, `use_multiprocessing` will default to
             `False`. Note that because this implementation relies on
-            multiprocessing, you should not pass non-picklable arguments to
+            multiprocessing, you should not pass non-pickleable arguments to
             the generator as they can't be passed easily to children processes.
 
 

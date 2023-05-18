@@ -94,7 +94,7 @@ def model_iteration(model,
       use_multiprocessing: Boolean. If `True`, use process-based threading. If
         unspecified, `use_multiprocessing` will default to `False`. Note that
         because this implementation relies on multiprocessing, you should not
-        pass non-picklable arguments to the generator as they can't be passed
+        pass non-pickleable arguments to the generator as they can't be passed
         easily to children processes.
       shuffle: Boolean. Whether to shuffle the order of the batches at the
         beginning of each epoch. Only used with instances of `Sequence`
@@ -375,7 +375,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
     use_multiprocessing: Boolean. If `True`, use process-based threading. If
       unspecified, `use_multiprocessing` will default to `False`. Note that
       because this implementation relies on multiprocessing, you should not pass
-      non-picklable arguments to the generator as they can't be passed easily to
+      non-pickleable arguments to the generator as they can't be passed easily to
       children processes.
     workers: Integer. Maximum number of processes to spin up when using
       process-based threading. If unspecified, `workers` will default to 1. If

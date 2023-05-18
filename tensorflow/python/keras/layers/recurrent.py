@@ -1127,7 +1127,7 @@ class DropoutRNNCellMixin(object):
     function will be invoked multiple times, and we want to ensure same mask
     is used every time.
 
-    Also the caches are created without tracking. Since they are not picklable
+    Also the caches are created without tracking. Since they are not pickleable
     by python when deepcopy, we don't want `layer._obj_reference_counts_dict`
     to track it by default.
     """
