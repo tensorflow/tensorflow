@@ -1,7 +1,7 @@
 # This Dockerfile creates an image that:
 # - Has the correct MTU setting for networking from inside the container to work.
 # - Has Visual Studio 2019 Build Tools installed.
-# - Has MSVC 14.29 and clang 14.0 installed
+# - Has MSVC 14.29 and clang 16.0.4 installed
 # - Has msys2 + git, curl, zip, unzip installed.
 # - Has Python 3.9 installed.
 # - Has Bazelisk v1.16.0 installed.
@@ -35,7 +35,7 @@ RUN (New-Object Net.WebClient).DownloadFile( \
     [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
 # Install clang.
 RUN (New-Object Net.WebClient).DownloadFile( \
-         'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/LLVM-14.0.0-win64.exe', \
+         'https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.4/LLVM-16.0.4-win64.exe', \
          'LLVM.exe'); \
     Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x LLVM.exe -oC:\tools\llvm' -Wait; \
     $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\llvm\bin'; \
