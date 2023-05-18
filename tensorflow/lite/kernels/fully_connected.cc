@@ -123,13 +123,9 @@ struct OpData {
   bool compute_row_sums = false;
   // Only used for sparse hybrid fully connected kernels.
   bool ledger_initialized;
-<<<<<<< HEAD
-
-  TfLiteType quantized_bias_type = kTfLiteNoType;
-=======
   // Used for 4bit hybrid
   std::unique_ptr<optimized_4bit::OpData4Bit> op_data_4bit = nullptr;
->>>>>>> origin/master
+  TfLiteType quantized_bias_type = kTfLiteNoType;
 };
 
 constexpr int kInputTensor = 0;
