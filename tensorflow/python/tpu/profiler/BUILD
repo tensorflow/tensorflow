@@ -1,3 +1,5 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -6,7 +8,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "profiler",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
@@ -17,7 +19,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "profiler_analysis_pb2_grpc",
     srcs = ["profiler_analysis_pb2_grpc.py"],
     srcs_version = "PY3",
@@ -25,7 +27,7 @@ py_library(
     deps = ["//tensorflow/core/profiler:profiler_analysis_proto_py"],
 )
 
-py_library(
+py_strict_library(
     name = "capture_tpu_profile_lib",
     srcs = [
         "capture_tpu_profile.py",
@@ -33,10 +35,9 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client",
         "//tensorflow/python:errors",
         "//tensorflow/python:versions",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
@@ -46,7 +47,7 @@ py_library(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "capture_tpu_profile_bin",
     srcs = ["capture_tpu_profile.py"],
     main = "capture_tpu_profile.py",
