@@ -41,6 +41,28 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_ops.cc.inc"
 
+namespace mlir {
+namespace OpTrait {
+namespace xla {
+namespace ifrt {
+namespace impl {
+
+LogicalResult verifyNestedInIfrtFunc(Operation* op) {
+  auto func_op = op->getParentOfType<func::FuncOp>();
+  if (func_op != nullptr &&
+      !func_op->hasAttr(::xla::ifrt::kIfrtFunctionAttrName)) {
+    return op->emitOpError() << "must be in a FuncOp with attr `"
+                             << ::xla::ifrt::kIfrtFunctionAttrName << "`";
+  }
+  return success();
+}
+
+}  // namespace impl
+}  // namespace ifrt
+}  // namespace xla
+}  // namespace OpTrait
+}  // namespace mlir
+
 namespace xla {
 namespace ifrt {
 

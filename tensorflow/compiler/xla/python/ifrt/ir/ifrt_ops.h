@@ -16,13 +16,43 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_OPS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/python/ifrt/ir/constants.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.h"
+
+namespace mlir {
+namespace OpTrait {
+namespace xla {
+namespace ifrt {
+
+namespace impl {
+
+// Verifies `op` used in a FuncOp with `ifrt.function` attr.
+LogicalResult verifyNestedInIfrtFunc(Operation* op);
+
+}  // namespace impl
+
+template <typename ConcreteType>
+class NestedInIfrtFuncTrait
+    : public TraitBase<ConcreteType, NestedInIfrtFuncTrait> {
+ public:
+  static LogicalResult verifyTrait(Operation* op) {
+    return impl::verifyNestedInIfrtFunc(op);
+  }
+};
+
+}  // namespace ifrt
+}  // namespace xla
+}  // namespace OpTrait
+}  // namespace mlir
 
 // Generated definitions.
 #define GET_OP_CLASSES
