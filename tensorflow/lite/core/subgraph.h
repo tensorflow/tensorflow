@@ -396,7 +396,7 @@ class Subgraph {
   // the TfLite library and allow users to plug-in their own memory planner
   // debugger, we have utilized weak symbols to meet these two requirements. By
   // default, there is no debugging info dumped. However, if the TfLite-provided
-  // lite:simple_memory_arena_debug_dump (i.e. containing the strong defintion)
+  // lite:simple_memory_arena_debug_dump (i.e. containing the strong definition)
   // is linked to the program, calling this function will output memory usage
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
@@ -661,6 +661,10 @@ class Subgraph {
 
   // WARNING: This is an experimental API and subject to change.
   // Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
+  // If the delegate has the 'opaque_delegate_builder' field set,
+  // then the 'registration.registration_external' must be non-null,
+  // and the subgraph takes ownership of the registration_external.
+  // Ownership of 'nodes_to_replace' and 'delegate' remains with the caller.
   static TfLiteStatus ReplaceNodeSubsetsWithDelegateKernels(
       TfLiteContext* context, TfLiteRegistration registration,
       const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
@@ -668,6 +672,9 @@ class Subgraph {
   // Update the execution graph to replace some of the nodes with stub
   // nodes. Specifically any node index that has `nodes[index]==1` will be
   // slated for replacement with a delegate kernel specified by registration.
+  // If the delegate has the 'opaque_delegate_builder' field set,
+  // then the 'registration.registration_external' must be non-null,
+  // and the subgraph takes ownership of the registration_external.
   // Ownership of 'nodes_to_replace' and 'delegate' remains with the caller.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus ReplaceNodeSubsetsWithDelegateKernels(
