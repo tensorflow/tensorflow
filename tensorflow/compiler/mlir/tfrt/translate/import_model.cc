@@ -92,6 +92,14 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
         }
       }
     });
+
+    // Remove the function from the module, as it will be handled by XLA.
+    // It is safe to remove the function, i.e., the function won't be invoked on
+    // CPU. This is because bridge guarantees that each function has only one
+    // use. We don't replace the uses of the function, because we iterate from
+    // the root caller and hence its uses should have been removed.
+    func_op->erase();
+
     visited.insert(func_name);
   }
   return xla_func_defs;
