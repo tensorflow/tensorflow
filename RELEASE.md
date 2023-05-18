@@ -16,6 +16,11 @@
       2.13 may be used when it is necessary to determine if a value is
       specifically a symbolic tensor.
 
+*   `tf.compat.v1.Session`
+    * `tf.compat.v1.Session.partial_run` and
+      `tf.compat.v1.Session.partial_run_setup` will be deprecated in the
+      next release.
+
 # Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
