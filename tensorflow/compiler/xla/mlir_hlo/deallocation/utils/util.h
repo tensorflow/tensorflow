@@ -56,6 +56,10 @@ struct RegionEdge {
     return successorOpOrRegion.get<Region*>()->getArguments().drop_front(
         successorValueIndex);
   }
+
+  Value getSuccessorValue(unsigned predecessorIndex) const {
+    return getSuccessorValues()[predecessorIndex - predecessorOperandIndex];
+  }
 };
 
 // Returns predecessors of the given region. Includes nullopt if the region is

@@ -766,5 +766,78 @@ class SerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(function_type.FunctionType.from_proto(expected), original)
 
 
+class FromStructuredSignatureTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      {
+          "signature": ((1, 2, 3), {}),
+          "expected_types": (
+              trace_type.from_value(1),
+              trace_type.from_value(2),
+              trace_type.from_value(3),
+          ),
+      },
+      {
+          "signature": (([1, 2, 3],), {}),
+          "expected_types": (
+              trace_type.from_value([1, 2, 3]),
+          ),
+      },
+      {
+          "signature": ((), {}),
+          "expected_types": (),
+      },
+  )
+  def testArgs(self, signature, expected_types):
+    generated_type = function_type.from_structured_signature(signature)
+    self.assertIsNone(generated_type.output)
+    for i, p in enumerate(generated_type.parameters.values()):
+      self.assertEqual(p.kind, function_type.Parameter.POSITIONAL_ONLY)
+      self.assertEqual(p.type_constraint, expected_types[i])
+
+  @parameterized.parameters(
+      {
+          "signature": ((), {"a": 1, "b": 2, "c": 3}),
+          "expected_types": {
+              "a": trace_type.from_value(1),
+              "b": trace_type.from_value(2),
+              "c": trace_type.from_value(3),
+          },
+      },
+      {
+          "signature": ((), {"a": [1, 2, 3]}),
+          "expected_types": {
+              "a": trace_type.from_value([1, 2, 3]),
+          },
+      },
+      {
+          "signature": ((), {}),
+          "expected_types": {},
+      },
+  )
+  def testKwargs(self, signature, expected_types):
+    generated_type = function_type.from_structured_signature(signature)
+    self.assertIsNone(generated_type.output)
+    for p in generated_type.parameters.values():
+      self.assertEqual(p.kind, function_type.Parameter.KEYWORD_ONLY)
+      self.assertEqual(p.type_constraint, expected_types[p.name])
+
+  @parameterized.parameters(
+      {"output_signature": 1},
+      {"output_signature": [1, 2, 3]},
+      {"output_signature": ()},
+  )
+  def testOutput(self, output_signature):
+    generated_type = function_type.from_structured_signature(
+        ((), {}), output_signature
+    )
+    self.assertEqual(
+        generated_type.output,
+        trace_type.from_value(
+            output_signature,
+            trace_type.InternalTracingContext(is_legacy_signature=True),
+        )
+    )
+
 if __name__ == "__main__":
   test.main()

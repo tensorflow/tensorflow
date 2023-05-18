@@ -51,5 +51,5 @@ TSL_Code TSL_GetCode(const TSL_Status* s) {
 }
 
 const char* TSL_Message(const TSL_Status* s) {
-  return s->status.error_message().c_str();
+  return tsl::NullTerminatedMessage(s->status);
 }

@@ -18,10 +18,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -48,34 +46,17 @@ class NcclAllGatherThunkBase : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
-class NcclAllGatherThunk : public NcclAllGatherThunkBase {
- public:
-  NcclAllGatherThunk(ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op,
-                     std::vector<Buffer> buffers);
-
-  // Returns whether the given instruction can be lowered to a nccl all-gather
-  // call.
-  static bool CanImplement(mlir::lmhlo::AllGatherOp op);
-  static const char* GetName() { return "AllGather"; }
-  static bool IsDegenerate(mlir::lmhlo::AllGatherOp op, int64_t replica_count,
-                           int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllGatherOp op);
-  static constexpr bool IsAsync() { return false; }
-
- protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
-};
-
 class NcclAllGatherStartThunk : public NcclAllGatherThunkBase {
  public:
   NcclAllGatherStartThunk(ThunkInfo thunk_info,
                           mlir::lmhlo_gpu::AllGatherStartOp op,
                           std::vector<Buffer> buffers);
 
-  static const char* GetName() { return "AllGatherStart"; }
+  static const char* GetHloOpName() { return "all-gather-start"; }
 
-  static bool CanImplement(mlir::lmhlo_gpu::AllGatherStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo_gpu::AllGatherStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(

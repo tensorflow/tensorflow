@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -20,19 +22,37 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -130,8 +150,12 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
       is_supported_affine_op = data_format.getValue().equals("NHWC") ||
                                data_format.getValue().equals("NDHWC");
     }
-  } else if (llvm::isa<TF::MatMulOp, TF::BatchMatMulV2Op>(op)) {
+  } else if (llvm::isa<TF::BatchMatMulV2Op>(op)) {
     if (const auto adj_y = op->getAttrOfType<BoolAttr>("adj_y")) {
+      is_supported_affine_op = !adj_y.getValue();
+    }
+  } else if (llvm::isa<TF::MatMulOp>(op)) {
+    if (const auto adj_y = op->getAttrOfType<BoolAttr>("transpose_b")) {
       is_supported_affine_op = !adj_y.getValue();
     }
   }
@@ -155,7 +179,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
   }
 
   int64_t num_elements = value_shape.getNumElements();
-  llvm::SmallVector<int64_t> new_shape;
+  SmallVector<int64_t> new_shape;
   for (auto idx : llvm::reverse(llvm::seq<int32_t>(0, rhs_shape.getRank()))) {
     const int64_t rhs_dim = rhs_shape.getDimSize(idx);
     if (num_elements % rhs_dim != 0) {
@@ -367,6 +391,142 @@ Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
 
   return builder.create<TF::EinsumOp>(loc, output.getType(), input_arguments,
                                       builder.getStringAttr(einsum_equation));
+}
+
+// Restores the collapsed dimensions to the `tensor_type`. `collapsed_dims`
+// designate the dimension indices that were collapsed to produce `tensor_type`.
+// The restored dimensions' sizes are 1, according to the semantics of
+// `XlaGatherOp (https://www.tensorflow.org/xla/operation_semantics#gather). The
+// resulting type's shape has `tensor_type.size() + collapsed_dims.size()`
+// dimensions.
+RankedTensorType RestoreCollapsedDimensions(
+    const RankedTensorType tensor_type,
+    const absl::flat_hash_set<int64_t>& collapsed_dims) {
+  ArrayRef<int64_t> original_tensor_shape = tensor_type.getShape();
+  const int output_tensor_rank =
+      original_tensor_shape.size() + collapsed_dims.size();
+  auto shape_itr = tensor_type.getShape().begin();
+
+  // Populate the dimensions of the output shape, including the restored
+  // dimensions.
+  SmallVector<int64_t> output_shape(output_tensor_rank);
+  for (int i = 0; i < output_tensor_rank; i++) {
+    if (collapsed_dims.contains(i)) {
+      // The collapsed dimension's size should have been 1, so it restores the
+      // dimension with size 1.
+      output_shape[i] = 1;
+    } else {
+      output_shape[i] = *shape_itr;
+      shape_itr++;
+    }
+  }
+
+  return RankedTensorType::get(output_shape, tensor_type.getElementType());
+}
+
+// Determines the output type of the `SliceOp` when it is being inserted in
+// place of a `XlaGatherOp`. When the dimensions of `xla_gather_op_output_type`
+// is known, the `collapsed_dims` are restored. `xla_gather_op_output_type` is
+// the result of collapsing the `collapsed_dims`, but the `SliceOp`'s output
+// should not have the dimensions collapsed already. Returns
+// `xla_gather_op_output_type` unchanged if the rank is unknown.
+//
+// Examples:
+//   * If `xla_gather_op_output_type` == tensor<*xf32>, then it returns:
+//     tensor<*xf32>.
+//   * If `xla_gather_op_output_type` == tensor<3x5xi32> and `collapsed_dims` ==
+//     {0}, then it returns: tensor<1x3x5xi32>.
+//   * If `xla_gather_op_output_type` == tensor<3x5xf32> and `collapsed_dims` ==
+//     {1, 3}, then it returns: tensor<3x1x5x1xf32>.
+Type GetSliceOpOutputType(Type xla_gather_op_output_type,
+                          const absl::flat_hash_set<int64_t>& collapsed_dims) {
+  if (auto ranked_output_type =
+          xla_gather_op_output_type.dyn_cast<RankedTensorType>();
+      ranked_output_type) {
+    return RestoreCollapsedDimensions(ranked_output_type, collapsed_dims);
+  }
+
+  return xla_gather_op_output_type;
+}
+
+// TODO (b/275225582): Supports Xla Gather op in general case.
+bool IsXlaGatherWithoutBatch(Value operand, Value start_indices) {
+  auto operand_type = operand.getType().dyn_cast_or_null<ShapedType>();
+  auto start_indices_type =
+      start_indices.getType().dyn_cast_or_null<ShapedType>();
+  if (start_indices_type == nullptr || operand_type == nullptr) return false;
+  return start_indices_type.getShape().size() == 1;
+}
+
+Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
+    OpBuilder& builder, const Location loc, Value operand, Value start_indices,
+    Value slice_sizes, Value output, StringAttr dimension_numbers_str) {
+  // Reads dimension numbers.
+  xla::GatherDimensionNumbers dimension_numbers;
+  dimension_numbers.ParseFromString(dimension_numbers_str.str());
+
+  // Construct full start_indices with given start_indices and
+  // start_index_map.
+  const ArrayRef<int64_t> operand_shape =
+      operand.getType().cast<ShapedType>().getShape();
+  const int64_t operand_rank = operand_shape.size();
+
+  // Fills zeros if start_index is not given in start_indices.
+  Value empty_start_indices = builder.create<TF::FillOp>(
+      loc, RankedTensorType::get({operand_rank}, builder.getI64Type()),
+      /*shape=*/Create1DConstValue<int64_t>(builder, loc, {operand_rank}),
+      /*value=*/CreateScalarConstValue<int64_t>(builder, loc, 0));
+
+  // Converts start_index_map proto to tensor.
+  const int64_t index_map_size = dimension_numbers.start_index_map().size();
+  SmallVector<int64_t> indices(index_map_size);
+  for (int64_t i = 0; i < index_map_size; i++) {
+    indices[i] = dimension_numbers.start_index_map()[i];
+  }
+
+  // Fill elements from start_indices with start_index_map
+  Value scattered_start_indices = builder.create<TF::TensorScatterUpdateOp>(
+      loc, empty_start_indices,
+      /*indices=*/
+      builder.create<TF::ReshapeOp>(
+          loc, RankedTensorType::get({index_map_size, 1}, builder.getI64Type()),
+          Create1DConstValue<int64_t>(builder, loc, indices),
+          Create1DConstValue<int64_t>(builder, loc, {index_map_size, 1})),
+      /*value=*/
+      builder.create<TF::CastOp>(
+          loc,
+          RankedTensorType::get(
+              start_indices.getType().template cast<ShapedType>().getShape(),
+              builder.getI64Type()),
+          start_indices));
+
+  absl::flat_hash_set<int64_t> collapsed_dims;
+  collapsed_dims.insert(dimension_numbers.collapsed_slice_dims().begin(),
+                        dimension_numbers.collapsed_slice_dims().end());
+
+  // Slice operand by constructed start_indices and slice_sizes.
+  auto slice_op = builder.create<TF::SliceOp>(
+      loc, GetSliceOpOutputType(output.getType(), collapsed_dims), operand,
+      /*start_indices=*/scattered_start_indices,
+      /*slice_sizes=*/
+      builder.create<TF::CastOp>(
+          loc,
+          RankedTensorType::get(
+              slice_sizes.getType().template cast<ShapedType>().getShape(),
+              builder.getI64Type()),
+          slice_sizes));
+
+  // Collapses dimensions by reshaping.
+  SmallVector<int64_t> new_shape(operand_rank - collapsed_dims.size());
+  for (int64_t i = 0, j = 0; i < operand_rank; i++) {
+    if (!collapsed_dims.contains(i)) {
+      new_shape[j++] = operand_shape[i];
+    }
+  }
+  if (!new_shape.empty()) new_shape[0] = -1;
+  return builder.create<TF::ReshapeOp>(
+      loc, output.getType(), slice_op,
+      Create1DConstValue(builder, loc, new_shape));
 }
 
 bool IsPrecisionEmpty(StringAttr prec_str) {

@@ -89,7 +89,7 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   if (!reduce_layout.ok())
     return reduce_op.emitOpError(llvm::formatv(
         "Malformed layout specification for DTensor reduce op found: {0}",
-        reduce_layout.status().error_message()));
+        reduce_layout.status().message()));
 
   // The original output tensor type that would have been used by all users of
   // the reduce op.

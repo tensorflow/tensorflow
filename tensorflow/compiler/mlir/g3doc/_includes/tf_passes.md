@@ -178,6 +178,11 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
+
+#### Options
+```
+-globally-unique-func-names : If true, the pass adds extra identifiers to make function names globally unique within a process, not just within a module.
+```
 ### `-tf-device-constant-sinking`: Sinks constants implicitly captured in a tf_device.cluster region.
 This pass sinks implicitly captured constants (`tf.Const` ops) used by and into
 a `tf_device.cluster` region. Performing this prior to outlining will reduce the
@@ -244,6 +249,11 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
+
+#### Options
+```
+-globally-unique-func-names : If true, the pass adds extra identifiers to make function names globally unique within a process, not just within a module.
+```
 ### `-tf-device-mark-input-output-aliases`: Marks device cluster inputs-output pairs that read/write to the same variable as aliases
 This pass analyzes the inputs and outputs to device cluster and marks those
 input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
@@ -259,6 +269,9 @@ inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
 ### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
+### `-tf-embedding-pipelining`: Rewrite graph for embedding pipelining
+For architectures that support accelerated embedding lookups, this pass will
+rewrite the graph to use pipelining for better device utilization.
 ### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-executor-check-control-dependencies`: Checks control dependencies
 This pass analyzes control dependencies between islands and warns about
@@ -1012,7 +1025,7 @@ Would become the following ops (unimportant attribute, type are omitted):
     "tf_device.launch"() {
       "tf.B"() {_xla_outside_compilation = "cluster1"}
       tf_device.return
-    } {device = "TPU_REPLICATED_HOST"} : () -> ()
+    } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     "tf.C"()
     tf_device.return
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
@@ -1165,6 +1178,12 @@ This pass looks for replicate invariant ops in a `tf_device.replicate` op
 region and hoists them out. It also makes `tf.Shape` ops replicate invariant
 if possible. This currently updates or replaces `tf.Shape` ops of replicated
 arguments, either tensors or resources.
+
+The primary benefit of the pass is to hoist `num_replicas` `_TPUCompile`s
+into a single `_TPUCompile`.
+
+This pass assumes that when a `tf.Shape` directly inputs from `replicate`
+params, then it is the same shape across replicas.
 
 For example, the following
 
@@ -1517,6 +1536,25 @@ Then said `ReadVariableOp` is going to get replaced by:
     tf_device.return %2 : tensor<4xf32>
   }) {...} : () -> tensor<4xf32>
 ```
+### `-tf-tpu-colocate-splits`: Colocates each Split op with its predecessor
+It is beneficial for performance to assign a `Split` op to the same device
+as its predecessor. This is because the weight of cut edges is always
+minimized when the `Split` is with its predecessor. This colocation
+constraint will be used by the placer graph optimization to assign a device
+to the op.
+
+This pass should run in the export pipeline after tf-replicate-to-island so
+each replica has its own distinct (predecessor, Split) pair.
+
+The colocation class (`_class`) of the `Split` is set to the same class as
+its predecessor:
+
+```mlir
+%outputs1:2, %control1 = tf_executor.island wraps "tf.IteratorGetNext"(%arg)
+  {_class = ["loc:@dataset_iterator_1"]}
+%outputs2:2, %control2 = tf_executor.island wraps "tf.Split"(%outputs0, %outputs1#1)
+  {_class = ["loc:@dataset_iterator_1", num_split = 2 : i32}
+```
 ### `-tf-tpu-device-propagation`: Propagates TPU devices from ops to users
 ### `-tf-tpu-dynamic-layout-pass`: Inserts TPU layout ops to determine layout at run time.
 A pass that allows TPU input layout to be determined after JIT compilation.
@@ -1749,7 +1787,7 @@ will be rewritten as:
 
 ```mlir
 func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
-  %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
+  %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST_0 = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
     %1:2 = "tf_device.launch"() ( {
       %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
       tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>

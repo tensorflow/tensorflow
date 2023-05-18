@@ -73,8 +73,8 @@ Status ReadSavedModelProto(const string& export_dir,
 
   Status err;
   if (found_pb.code() == found_pbtxt.code()) {
-    err = Status(found_pb.code(), StrCat(found_pb.error_message(), "\n",
-                                         found_pbtxt.error_message()));
+    err = Status(found_pb.code(),
+                 StrCat(found_pb.message(), "\n", found_pbtxt.message()));
   } else if (found_pb.code() == NOT_FOUND) {
     err = found_pbtxt;
   } else if (found_pbtxt.code() == NOT_FOUND) {

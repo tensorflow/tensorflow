@@ -63,7 +63,6 @@ tf_kernel_library(
     ],
     deps = [
         ":sparse_matrix",
-        "//third_party/eigen3",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:framework",
@@ -86,6 +85,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:scatter_nd_op",
         "//tensorflow/core/kernels:slice_op",
         "//tensorflow/core/kernels:transpose_functor",
+        "//third_party/eigen3",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/util:cuda_solvers",
         "//tensorflow/core/util:cuda_sparse",

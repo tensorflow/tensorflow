@@ -21,7 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
@@ -42,7 +44,7 @@ namespace {
 tsl::StatusOr<std::string> CreateTmpDirectory() {
   std::string snapshot_path;
   if (!Env::Default()->LocalTempFilename(&snapshot_path)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Failed to create local temp file for snapshot.");
   }
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
@@ -53,8 +55,8 @@ tsl::StatusOr<std::string> CreateTmpDirectory() {
 tsl::StatusOr<int64_t> CommittedChunkIndex(const std::string& chunk_file) {
   std::vector<std::string> tokens = absl::StrSplit(chunk_file, '_');
   int64_t result = 0;
-  if (tokens.size() != 3 || !absl::SimpleAtoi(tokens[2], &result)) {
-    return errors::Internal("Invalid");
+  if (tokens.size() != 4 || !absl::SimpleAtoi(tokens[2], &result)) {
+    return absl::InternalError("Invalid");
   }
   return result;
 }
@@ -62,8 +64,8 @@ tsl::StatusOr<int64_t> CommittedChunkIndex(const std::string& chunk_file) {
 tsl::StatusOr<int64_t> CheckpointIndex(const std::string& checkpoint_file) {
   std::vector<std::string> tokens = absl::StrSplit(checkpoint_file, '_');
   int64_t result = 0;
-  if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &result)) {
-    return errors::Internal("Invalid");
+  if (tokens.size() != 3 || !absl::SimpleAtoi(tokens[1], &result)) {
+    return absl::InternalError("Invalid");
   }
   return result;
 }

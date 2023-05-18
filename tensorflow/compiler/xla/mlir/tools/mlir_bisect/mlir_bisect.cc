@@ -256,8 +256,8 @@ void ReplaceArgsWithConstants(ModuleOp module,
         bbarg.getType());
     CHECK_EQ(attr.size(), 1) << "unsupported argument";
 
-    bbarg.replaceAllUsesWith(b.create<arith::ConstantOp>(
-        main.getLoc(), attr.front(), bbarg.getType()));
+    bbarg.replaceAllUsesWith(arith::ConstantOp::materialize(
+        b, attr.front(), bbarg.getType(), main.getLoc()));
   }
   while (main.getBody().getNumArguments() > 0) {
     main.getBody().eraseArgument(0);

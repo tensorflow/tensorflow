@@ -43,6 +43,7 @@ from tensorflow.python.client.client_lib import *
 
 # Ops
 from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
+from tensorflow.python.ops.random_crop_ops import *
 
 # Function
 from tensorflow.core.function.trace_type import *

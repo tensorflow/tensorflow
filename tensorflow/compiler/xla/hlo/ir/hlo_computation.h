@@ -74,8 +74,7 @@ class HloComputation {
    public:
     explicit Builder(absl::string_view name,
                      HloInstruction* fusion_instruction = nullptr)
-        : name_(name),
-          fusion_instruction_(fusion_instruction) {}
+        : name_(name), fusion_instruction_(fusion_instruction) {}
     Builder(Builder&& b) = default;
     virtual ~Builder() = default;
 
@@ -95,6 +94,12 @@ class HloComputation {
       auto* added_instruction = instruction.get();
       instructions_.push_back(std::move(instruction));
       return added_instruction;
+    }
+
+    HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
+                                   std::optional<absl::string_view> new_name) {
+      instruction->SetAndSanitizeName(new_name.value());
+      return AddInstruction(std::move(instruction));
     }
 
     Status ForEachInstruction(
@@ -234,7 +239,7 @@ class HloComputation {
     return param_instructions_[param_no];
   }
 
-  const std::vector<HloInstruction*>& parameter_instructions() const {
+  const HloInstruction::InstructionVector& parameter_instructions() const {
     return param_instructions_;
   }
 
@@ -377,10 +382,12 @@ class HloComputation {
   // of the async done instruction so that can be accessed using that. If
   // present, `async_execution_thread` will be attached to the
   // async-start/update/done instructions as well as wrapped computations.
+  // If `replace` is true, replace instruction with the async done instruction.
   StatusOr<HloInstruction*> CreateAsyncInstructions(
       HloInstruction* instruction, absl::Span<const Shape> context_shapes,
       absl::string_view async_execution_thread =
-          HloInstruction::kMainExecutionThread);
+          HloInstruction::kMainExecutionThread,
+      bool replace = true);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
@@ -797,7 +804,7 @@ class HloComputation {
   // deallocated when Cleanup is called.
   std::vector<std::unique_ptr<HloInstruction>> to_be_deleted_;
 
-  std::vector<HloInstruction*> param_instructions_;
+  HloInstruction::InstructionVector param_instructions_;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;

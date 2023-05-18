@@ -40,6 +40,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -220,7 +221,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
     # TODO(chienchunh): Identify why sync needs to be called here.
     if enable_async_ckpt:
-      checkpoint._async_checkpointer().sync()
+      checkpoint.sync()
     self.evaluate(v.non_dep_variable.assign(43.))
     self.evaluate(v.mirrored.assign(44.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
@@ -230,7 +231,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
     # TODO(chienchunh): Identify why sync needs to be called here.
     if enable_async_ckpt:
-      checkpoint._async_checkpointer().sync()
+      checkpoint.sync()
     self.evaluate(v.non_dep_variable.assign(45.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
     self.assertEqual(44., self.evaluate(v.non_dep_variable))
@@ -1220,7 +1221,7 @@ class SerializeToTensorTest(test.TestCase):
 
     with self.cached_session() as sess:
       root = autotrackable.AutoTrackable()
-      root.v = variables_lib.VariableV1(5, use_resource=False)
+      root.v = variable_v1.VariableV1(5, use_resource=False)
       sess.run(root.v.initializer)
       ckpt = trackable_utils.Checkpoint(root)
       ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")

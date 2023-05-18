@@ -11,6 +11,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/tfrt/...",
         "//learning/brain/mobile/lite/...",
+        "//learning/infra/mira/distributed/...",
     ]),
 )
 
@@ -96,12 +97,12 @@ cc_library(
         "//third_party/tf_runtime_google:xprof_tracing_sink_alwayslink",
     ]) + [
         ":bef_executor_flags",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/runtime_fallback/util:fallback_test_util",
         "//tensorflow/core/tfrt/utils:thread_pool",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@tf_runtime//:bef_executor_driver",
         "@tf_runtime//:hostcontext_alwayslink",
         "@tf_runtime//:io_alwayslink",

@@ -13,11 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for DTensorDevice in python."""
+import threading
 from absl.testing import parameterized
-
 import numpy as np
 
 from tensorflow.dtensor.python import api
+
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
@@ -28,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_collective_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -104,6 +106,34 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     with self.assertRaises(errors_impl.UnimplementedError):
       a + big  # pylint:disable=pointless-statement
     a + small  # pylint:disable=pointless-statement
+
+  def test_concurrent_execute(self):
+    results = {}
+
+    def func(thread_id):
+      @polymorphic_function.function
+      def update_variable(initial_value, num_round):
+        y = math_ops.multiply(initial_value, num_round)
+        return math_ops.add(initial_value, y)
+
+      for n in range(10):
+        with api._dtensor_device()._experimental_default_mesh(self.mesh):
+          x = stateless_random_ops.stateless_random_uniform(
+              [10], seed=(1, 2), minval=0, maxval=255
+          )
+          y = api.copy_to_mesh(x, Layout.replicated(self.mesh, rank=1))
+          y = update_variable(y, n + 1)
+          results[thread_id] = y
+
+    threads = {}
+    for a in range(10):
+      t = threading.Thread(target=func, args=(a,))
+      threads[a] = t
+      t.start()
+
+    for thrad_id, thread in threads.items():
+      thread.join()
+      self.assertIsNotNone(results[thrad_id])
 
   def testNoImplicitCopyOnForScalarVariableOnNonCPUMesh(self):
     self.skipForTfrt("b/235088250")
@@ -272,6 +302,32 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     output, = f.get_concrete_function().outputs
     self.assertEqual([2], output.shape)
 
+  def testUnpackInvalidInput(self):
+    # Test for b/255629824
+    with self.assertRaisesRegex(TypeError, "Expecting a Tensor"):
+      api.unpack(
+          **{
+              "tensor": [[
+                  41.8684053521925,
+                  731.610023060566,
+                  356.0701500440248,
+                  9.62928117100512,
+                  185.0041559439026,
+                  225.87663065861508,
+                  450.2403652750002,
+                  268.7273627027147,
+              ]]
+          }
+      )
+
+  def testIsDTensorInvalidInput(self):
+    # Test for b/272381211
+    self.assertFalse(api.fetch_layout(**{"tensor": -1024}))
+
+  def testFetchLayoutInvalidInput(self):
+    # Test for b/272381211
+    self.assertIsNone(api.fetch_layout(**{"tensor": -1024}))
+
   def testFetchLayoutForDVariablesReturnsCorrectLayout(self):
     layout = Layout.replicated(self.mesh, 2)
     with api._dtensor_device()._experimental_default_mesh(self.mesh):
@@ -318,6 +374,9 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     d_tensor = api.call_with_layout(array_ops.zeros, layout=layout, shape=[10])
     self.assertTrue(api.is_dtensor(d_tensor))
 
+    var = d_variable.DVariable(d_tensor)
+    self.assertTrue(api.is_dtensor(var))
+
     self.assertFalse(api.is_dtensor([0, 1]))
     self.assertFalse(api.is_dtensor({False: True}))
 
@@ -341,6 +400,57 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
               constant_op.constant(1.0), Layout.replicated(self.mesh, 0)
           )
       )
+
+  def testSingleDeviceMesh(self):
+    # FIXME(b/274647196): Add a mesh_util API that takes CPU:0.
+    cpu0_mesh = Mesh.from_device("/job:localhost/replica:0/task:0/device:CPU:0")
+    with api.default_mesh(cpu0_mesh):
+      a = constant_op.constant(1.0)
+
+    self.assertFalse(api.is_dtensor(a))
+    self.assertIn("CPU:0", a.device)
+
+    with api.default_mesh(cpu0_mesh):
+      b = array_ops.ones(shape=(3, 3))
+
+    self.assertTrue(api.is_dtensor(b))
+    self.assertEqual(api.fetch_layout(b).mesh, cpu0_mesh)
+
+  def testUnsupportedOpReplicatedInput(self):
+    with api.default_mesh(self.mesh):
+      t = array_ops.ones(shape=(8, 3))
+      a = gen_collective_ops.collective_reduce_v2(
+          t,
+          group_size=1,
+          group_key=1030,
+          instance_key=1,
+          merge_op="Add",
+          final_op="Id",
+          ordering_token=[],
+      )
+
+    self.assertFalse(api.is_dtensor(a))
+    self.assertAllClose(a.numpy(), t.numpy())
+
+  def testUnsupportedOpShardedInput(self):
+    with api.default_mesh(self.mesh):
+      t = array_ops.ones(shape=(8, 3))
+      t = api.relayout(
+          t, Layout.batch_sharded(mesh=self.mesh, batch_dim=_BATCH_DIM, rank=2)
+      )
+      with self.assertRaisesRegex(
+          errors_impl.UnimplementedError, "not supported"
+      ):
+        # This is an Op that we don't have a SPMD expander.
+        gen_collective_ops.collective_reduce_v2(
+            t,
+            group_size=1,
+            group_key=1030,
+            instance_key=1,
+            merge_op="Add",
+            final_op="Id",
+            ordering_token=[],
+        )
 
 
 class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
@@ -375,9 +485,7 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
             layout=Layout.replicated(self.mesh, 2),
         )
     )
-    with self.assertRaisesRegex(
-        TypeError,
-        "Received Variable input to unpack, Variable is not supported."):
+    with self.assertRaisesRegex(TypeError, "Expecting a Tensor"):
       api._dtensor_device().unpack(v0)
 
   def testUnpackingRegularTensorRaisesInvalidArgumentError(self):
@@ -427,10 +535,10 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
     with self.assertRaisesRegex(RuntimeError, "`pack` must be called eagerly."):
       f(constant_op.constant([1.0]))
 
-  def testPackingVariablesRaisesTypeError(self):
+  def testPackingVariablesRaisesError(self):
     with self.assertRaisesRegex(
-        TypeError,
-        "Received Variable input to Pack, Variable is not supported."):
+        errors_impl.InvalidArgumentError, "Variable input is not supported."
+    ):
       api._dtensor_device().pack(
           [
               d_variable.DVariable(array_ops.ones([2, 3])),

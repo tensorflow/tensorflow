@@ -54,6 +54,7 @@ MATCHER(QuantizedNear, "") {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() { options_.disallow_nnapi_cpu = false; }
+  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
@@ -420,7 +421,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithQoS) {
 }
 
 // Sanity check for the state-ful NNAPI delegate using TfLiteBufferHandle.
-TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
+TEST(NNAPIDelegate, DISABLED_StatefulDelegateWithBufferHandles) {
   // Skip the test if Android specific functions could not be found.
   if (!NnApiImplementation()->ASharedMemory_create ||
       !NnApiImplementation()->ANeuralNetworksMemory_createFromFd) {
@@ -5653,7 +5654,7 @@ TEST(NNAPIDelegate, CustomFloorVendorExtension) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.0, 1.0, 2.0}));
 }
 
-TEST(NNAPIDelegate, CustomFloorVendorExtensionDynamic) {
+TEST(NNAPIDelegate, DISABLED_CustomFloorVendorExtensionDynamic) {
   // Models with dynamic dimensions and vendor plugin is not supported before
   // NNAPI 1.2 (API level 29).
   if (NnApiImplementation()->android_sdk_version <

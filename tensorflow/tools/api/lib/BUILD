@@ -25,8 +25,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":api_objects_proto_py",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )

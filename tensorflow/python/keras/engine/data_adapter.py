@@ -27,7 +27,7 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -1161,10 +1161,10 @@ class DataHandler(object):
         max_queue_size=max_queue_size,
         workers=workers,
         use_multiprocessing=use_multiprocessing,
-        distribution_strategy=ds_context.get_strategy(),
+        distribution_strategy=distribute_lib.get_strategy(),
         model=model)
 
-    strategy = ds_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
 
     self._current_step = 0
     self._step_increment = self._steps_per_execution_value - 1

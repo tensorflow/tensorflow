@@ -82,3 +82,6 @@ def distribute_py_test(
             disable_mlir_bridge = disable_mlir_bridge,
             disable_tfrt = disable_tpu_use_tfrt,
         )
+
+def distribute_py_strict_test(**kwargs):
+    distribute_py_test(**kwargs)

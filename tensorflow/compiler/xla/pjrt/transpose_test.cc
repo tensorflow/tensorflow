@@ -122,7 +122,7 @@ TEST(TransposeTest, InvalidTilings) {
                             /*output_tiling=*/TransposePlan::Tiling{{4}});
   EXPECT_EQ(plan.status().code(), tsl::error::UNIMPLEMENTED);
   EXPECT_THAT(
-      plan.status().error_message(),
+      plan.status().message(),
       testing::HasSubstr(
           "Only one of the input and output may have a non-trivial tiling"));
 }

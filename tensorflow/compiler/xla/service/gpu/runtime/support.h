@@ -49,7 +49,7 @@ inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 
 template <typename T>
 absl::StatusOr<T> ToAbsl(StatusOr<T> status_or) {
-  if (!status_or.ok()) return ToAbslStatus(status_or.status());
+  if (!status_or.ok()) return status_or.status();
   return std::move(status_or).value();
 }
 
@@ -115,15 +115,6 @@ inline void PopulateDotDimsAttrEncoding(
           .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
           .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
-
-class CapturingCudaGraph {
- public:
-  explicit CapturingCudaGraph(bool capturing) : capturing_(capturing) {}
-  bool capturing() { return capturing_; }
-
- private:
-  bool capturing_ = false;
-};
 
 }  // namespace gpu
 }  // namespace xla

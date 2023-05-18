@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -32,13 +33,12 @@ using ::mlir::DialectRegistry;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
-using ::mlir::RegisterAllTensorFlowDialects;
 using ::tsl::StatusOr;
 
 StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     absl::string_view module_string, MLIRContext* context) {
   DialectRegistry mlir_registry;
-  RegisterAllTensorFlowDialects(mlir_registry);
+  RegisterCommonToolingDialects(mlir_registry);
   context->appendDialectRegistry(mlir_registry);
 
   OwningOpRef<ModuleOp> mlir_module;

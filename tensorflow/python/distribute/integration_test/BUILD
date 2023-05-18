@@ -1,13 +1,14 @@
-load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-distribute_py_test(
+distribute_py_strict_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
     tags = [
@@ -26,11 +27,12 @@ distribute_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:errors",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "mwms_peer_failure_test",
     size = "medium",
     srcs = ["mwms_peer_failure_test.py"],
@@ -44,7 +46,6 @@ cuda_py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:test_util",
@@ -52,14 +53,13 @@ cuda_py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "mwms_peer_failure_test_lib",
     srcs = ["mwms_peer_failure_test.py"],
     visibility = ["//learning/brain/runtime/python:__pkg__"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:test_util",
@@ -67,7 +67,7 @@ py_library(
     ],
 )
 
-tpu_py_test(
+tpu_py_strict_test(
     name = "tpu_memory_test",
     size = "medium",
     srcs = ["tpu_memory_test.py"],
@@ -79,8 +79,7 @@ tpu_py_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
+        "//tensorflow/python/platform:flags",
     ],
 )

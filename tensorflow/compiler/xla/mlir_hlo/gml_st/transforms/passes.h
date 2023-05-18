@@ -26,11 +26,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
+namespace mlir::gml_st {
+
 #define GEN_PASS_DECL
 #include "gml_st/transforms/passes.h.inc"
-
-namespace mlir {
-namespace gml_st {
 
 /// Pass to fuse producers into a tiled consumer.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
@@ -63,20 +62,18 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass(
     int64_t numElementsThreshold = 1024);
 
 /// Pass to vectorize `memref.copy`.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass(
+    int64_t numElementsThreshold = 1024);
 
 /// Pass to remove redundant `memref.copy` ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 
 /// Pass to gradually lower vector ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
-    bool enableAVX2 = true);
+    bool enableAVX2 = true, bool flatten = false);
 
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
-
-/// Pass to transform a conv op for CPU backend.
-std::unique_ptr<OperationPass<func::FuncOp>> createTransformConvForCpuPass();
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
@@ -104,9 +101,8 @@ createTransformElementwiseForCpuPass(int64_t vectorSize = 8,
                                      bool fuseDegenerateReshapes = false);
 
 /// Pass to transform a linalg.reduce op for CPU backend.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
-                                ArrayRef<int64_t> tileSizes2D = {});
+std::unique_ptr<Pass> createTransformReduceForCpuPass(
+    const TransformReduceForCpuPassOptions &option = {});
 
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -118,6 +114,10 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> createFusionOutliningPass();
 /// Pass to inline fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createInlineFusionClustersPass();
+
+/// Pass with canonicalization patterns for linalg ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createOptimizeLinalgOpsPass();
 
 /// Pass to rewrite tensor.from_elements into tensor.insert.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -148,26 +148,44 @@ struct GmlStCPUTilingOptions
     this->lowerToMmt4d = opts.lowerToMmt4d;
     this->matmulTileSizes = opts.matmulTileSizes;
     this->reduction1DTileSize = opts.reduction1DTileSize;
-    this->reduction2DTileSizes = opts.reduction2DTileSizes;
+    this->reduction1DSplitRatio = opts.reduction1DSplitRatio;
+    this->reduction2DParallelDimTileSize = opts.reduction2DParallelDimTileSize;
+    this->reduction2DReductionDimTileSize =
+        opts.reduction2DReductionDimTileSize;
     this->vectorSize = opts.vectorSize;
-    this->enableFusionClusters = opts.enableFusionClusters;
     this->statsDetailLevel = opts.statsDetailLevel;
-    this->enableFusionClusterOutlining = opts.enableFusionClusterOutlining;
     this->cpuName = opts.cpuName;
+    this->inlineFusionClusters = opts.inlineFusionClusters;
   }
 
   Option<int64_t> vectorSize{*this, "vector-size",
                              llvm::cl::desc("Vector size for a 1D reduction."),
                              llvm::cl::init(8)};
 
+  Option<bool> reductionEnableHeuristic{
+      *this, "reduction-enable-heuristic",
+      llvm::cl::desc("Enable tiling parameters heuristic for reductions."),
+      llvm::cl::init(false)};
+
   Option<int64_t> reduction1DTileSize{
       *this, "reduction-1d-tile-size",
       llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(32)};
 
-  ListOption<int64_t> reduction2DTileSizes{
-      *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."),
-      llvm::cl::list_init<int64_t>({4, 4}), llvm::cl::ZeroOrMore};
+  Option<int64_t> reduction1DSplitRatio{
+      *this, "reduction-1d-split-ratio",
+      llvm::cl::desc("Ratio used to split the reduction dimension"),
+      llvm::cl::init(8)};
+
+  Option<int64_t> reduction2DParallelDimTileSize{
+      *this, "reduction-2d-parallel-dim-tile-size",
+      llvm::cl::desc("Tile size for the parallel dimension of a 2D reduction."),
+      llvm::cl::init(4)};
+
+  Option<int64_t> reduction2DReductionDimTileSize{
+      *this, "reduction-2d-reduction-dim-tile-size",
+      llvm::cl::desc(
+          "Tile size for the reduction dimension of a 2D reduction."),
+      llvm::cl::init(4)};
 
   ListOption<int64_t> matmulTileSizes{
       *this, "matmul-tile-sizes",
@@ -190,17 +208,6 @@ struct GmlStCPUTilingOptions
                      "operations."),
       llvm::cl::init(false)};
 
-  Option<bool> enableFusionClusters{
-      *this, "enable-fusion-clusters",
-      llvm::cl::desc("Enable the pass to create gml_st.fusion clusters."),
-      llvm::cl::init(false)};
-
-  Option<bool> enableFusionClusterOutlining{
-      *this, "enable-fusion-cluster-outlining",
-      llvm::cl::desc(
-          "Enable passes to outline and deduplicate gml_st.fusion clusters."),
-      llvm::cl::init(false)};
-
   Option<StringRef> cpuName{
       *this, "cpu",
       llvm::cl::desc("CPU name, similar to llc's -mcpu flag. e.g. 'znver2', "
@@ -209,12 +216,18 @@ struct GmlStCPUTilingOptions
 
   Option<int64_t> statsDetailLevel{
       *this, "stats-detail-level",
-      llvm::cl::desc("Vector size for a 1D reduction."), llvm::cl::init(0)};
+      llvm::cl::desc("Detail level for collecting IR statistics."),
+      llvm::cl::init(0)};
 
   Option<bool> fuseDegenerateReshapes{
       *this, "fuse-degenerate-reshapes",
       llvm::cl::desc("Fuse through tensor.expand/collapse_shape"),
       llvm::cl::init(false)};
+
+  Option<bool> inlineFusionClusters{
+      *this, "inline-fusion-clusters",
+      llvm::cl::desc("Inline fusion clusters at the end of the pipeline."),
+      llvm::cl::init(true)};
 };
 
 // Returns default "optimized" tiling parameters.
@@ -233,7 +246,6 @@ void addDefaultCPUTilingPipeline(OpPassManager &pm, StringRef cpuName,
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st
 
 #endif  // MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H

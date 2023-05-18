@@ -501,7 +501,7 @@ Status Member::AssignDevice(const Node& node) {
         "root's assigned device name: ",
         DeviceNameUtils::ParsedNameToString(assigned_device_name_),
         " node's assigned device name \"", node.assigned_device_name(),
-        ". Error: ", s.error_message());
+        ". Error: ", s.message());
   }
   s = DeviceNameUtils::MergeOverrideDevNames(&resource_device_name_, parsed);
   if (!s.ok()) {
@@ -510,7 +510,7 @@ Status Member::AssignDevice(const Node& node) {
         "root's resource device name: ",
         DeviceNameUtils::ParsedNameToString(resource_device_name_),
         " node's assigned device name \"", node.assigned_device_name(),
-        ". Error: ", s.error_message());
+        ". Error: ", s.message());
   }
   s = DeviceNameUtils::MergeOverrideDevNames(&requested_device_name_, parsed);
   if (!s.ok()) {
@@ -519,7 +519,7 @@ Status Member::AssignDevice(const Node& node) {
         "root's requested device name: \"",
         DeviceNameUtils::ParsedNameToString(requested_device_name_),
         "\", node's assigned device name \"", node.assigned_device_name(),
-        "\". Error: ", s.error_message());
+        "\". Error: ", s.message());
   }
 
   assigned_device_name_index_ = node.assigned_device_name_index();
@@ -728,7 +728,7 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
             "Nodes were connected by a reference or resource connection "
             "(requiring them to be on the same device), but the two nodes "
             "were assigned two different devices: ",
-            status.error_message()),
+            status.message()),
         *dst);
   }
   return OkStatus();
@@ -1135,8 +1135,7 @@ Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
     return errors::InvalidArgument(
         "Cannot colocate nodes ",
         errors::FormatColocationNodeForError(x.name()), " and ",
-        errors::FormatColocationNodeForError(y.name()), ": ",
-        s.error_message());
+        errors::FormatColocationNodeForError(y.name()), ": ", s.message());
   }
 
   // Ensure that the common root has at least one supported device

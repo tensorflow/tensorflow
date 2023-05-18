@@ -116,10 +116,10 @@ TEST(NumElementsTest, Int) {
   EXPECT_EQ(count, 0);
 
   status = NumElements(std::vector<int>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<int>{1024, 1024, 2048}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, Int32) {
@@ -131,10 +131,10 @@ TEST(NumElementsTest, Int32) {
   EXPECT_EQ(count, 2146435072);
 
   status = NumElements(std::vector<int32_t>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<int32_t>{1024, 1024, 2048}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, Int64) {
@@ -146,10 +146,10 @@ TEST(NumElementsTest, Int64) {
   EXPECT_EQ(count, 9223090561878065152LL);
 
   status = NumElements(std::vector<int64_t>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<int64_t>{16777216, 16777216, 32768}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, UnsignedInt32) {
@@ -161,10 +161,10 @@ TEST(NumElementsTest, UnsignedInt32) {
   EXPECT_EQ(count, 4292870144);
 
   status = NumElements(std::vector<int>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<uint32_t>{1024, 2048, 2048}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, UnsignedInt64) {
@@ -177,11 +177,11 @@ TEST(NumElementsTest, UnsignedInt64) {
   EXPECT_EQ(count, 18446462598732840960ULL);
 
   status = NumElements(std::vector<int>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status =
       NumElements(std::vector<uint64_t>{16777216, 16777216, 65536}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, Scalar) {

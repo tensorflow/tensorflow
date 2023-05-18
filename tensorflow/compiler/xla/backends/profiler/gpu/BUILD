@@ -240,11 +240,6 @@ tsl_gpu_library(
     copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:abi",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
@@ -257,6 +252,11 @@ tsl_gpu_library(
         "//tensorflow/tsl/profiler/utils:xplane_builder",
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/strings",
     ] + tf_additional_cupti_deps(),
 )
 

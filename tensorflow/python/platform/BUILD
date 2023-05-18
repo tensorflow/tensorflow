@@ -1,11 +1,17 @@
 # platform package
 
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_test", "tf_python_pybind_extension")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_oss",
+)
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 
 visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
+    "//learning/brain/python/platform:__subpackages__",
 ]
 
 package(
@@ -19,89 +25,74 @@ tf_py_build_info_genrule(
     out = "build_info.py",
 )
 
-py_library(
+py_strict_library(
     name = "build_info",
     srcs = ["build_info.py"],
     srcs_version = "PY3",
 )
 
-py_library(
-    name = "platform",
-    srcs = glob(
-        [
-            "*.py",
-        ],
-        exclude = [
-            "*test.py",
-            "benchmark.py",  # In platform_benchmark.
-            "analytics.py",  # In platform_analytics.
-            "device_context.py",  # In platform_device_context.
-            "self_check.py",  # In self_check
-        ],
-    ) + ["build_info.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":_pywrap_cpu_feature_guard",
-        ":build_info",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:util",
-        "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/util:_pywrap_util_port",
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
-        "@rules_python//python/runfiles",
-    ],
-)
-
-py_library(
+py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
     srcs_version = "PY3",
-    deps = [
-        ":_pywrap_cpu_feature_guard",
+    deps = if_oss([
         ":build_info",
-    ],
+        ":_pywrap_cpu_feature_guard",
+    ]),
 )
 
-py_library(
+py_strict_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
     srcs_version = "PY3",
     deps = [
-        ":platform",
+        ":gfile",
+        ":tf_logging",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
+        "@absl_py//absl:app",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "analytics",
     srcs = ["analytics.py"],
     srcs_version = "PY3",
 )
 
-py_library(
+py_strict_library(
     name = "device_context",
     srcs = ["device_context.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
+        "//tensorflow/python/framework:ops",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test",
     srcs = ["googletest.py"],
     srcs_version = "PY3",
     deps = [
         ":benchmark",
+        ":flags",
+        "//tensorflow/python/util:tf_export",
+    ] + if_oss([
+        ":tf_logging",
+        "@absl_py//absl:app",
         "@absl_py//absl/testing:absltest",
-    ],
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
+    ]),
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "resource_loader_test",
     size = "small",
     srcs = ["resource_loader_test.py"],
@@ -114,12 +105,12 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":platform",
+        ":resource_loader",
         ":test",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "sysconfig_test",
     size = "small",
     srcs = ["sysconfig_test.py"],
@@ -134,13 +125,14 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":platform",
+        ":client_testlib",
+        ":sysconfig",
         ":test",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "flags_test",
     size = "small",
     srcs = ["flags_test.py"],
@@ -151,11 +143,12 @@ tf_py_test(
     ],
     deps = [
         ":client_testlib",
-        ":platform",
+        ":flags",
+        "@absl_py//absl/flags",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "stacktrace_handler_test",
     size = "small",
     srcs = ["stacktrace_handler_test.py"],
@@ -167,11 +160,11 @@ tf_py_test(
     ],
     deps = [
         ":client_testlib",
-        ":platform",
+        ":tf_logging",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "app_test",
     size = "small",
     srcs = ["app_test.py"],
@@ -180,7 +173,10 @@ tf_py_test(
         "manual",
         "notap",
     ],
-    deps = [":platform"],
+    deps = [
+        ":app",
+        ":flags",
+    ],
 )
 
 tf_python_pybind_extension(
@@ -206,23 +202,121 @@ tf_python_pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "client_testlib",
     srcs = ["test.py"],
     srcs_version = "PY3",
     deps = [
         ":test",
-        "//tensorflow/python:client",
-        "//tensorflow/python:cond_v2",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradient_checker",
-        "//tensorflow/python:gradient_checker_v2",
-        "//tensorflow/python:util",
-        "//tensorflow/python:while_v2",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
-tf_py_test(
+py_strict_library(
+    name = "app",
+    srcs = ["app.py"],
+    deps = [
+        ":flags",
+        "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl:app",
+    ],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_strict_library(
+#     name = "cpp_memory_checker",
+#     srcs = ["cpp_memory_checker.py"],
+#     deps = [
+#         ":tf_logging",
+#         "//perftools/profiles/collector/heap:pywrap_alloc_recorder",
+#         "//perftools/profiles/proto:profile_py_pb2",
+#         "//pyglib:resources",
+#         "//tensorflow/python/profiler:trace",
+#     ],
+# )
+# copybara:uncomment_end
+
+py_strict_library(
+    name = "sysconfig",
+    srcs = ["sysconfig.py"],
+    deps = [
+        ":build_info",
+        "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/framework:versions",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    deps = [
+    ],
+)
+
+py_strict_library(
+    name = "control_imports",
+    srcs = ["control_imports.py"],
+    deps = [
+    ],
+)
+
+py_strict_library(
+    name = "parameterized",
+    srcs = ["parameterized.py"],
+)
+
+py_strict_library(
+    name = "remote_utils",
+    srcs = ["remote_utils.py"],
+    deps = [
+    ],
+)
+
+py_strict_library(
+    name = "gfile",
+    srcs = ["gfile.py"],
+    deps = [
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "tf_logging",
+    srcs = ["tf_logging.py"],
+    deps = [
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
+    ],
+)
+
+py_strict_library(
+    name = "flags",
+    srcs = ["flags.py"],
+    deps = [
+        "//tensorflow/python/util:tf_decorator",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_strict_library(
+    name = "resource_loader",
+    srcs = ["resource_loader.py"],
+    deps = [
+        ":tf_logging",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
+    ] + if_oss([
+        "@rules_python//python/runfiles",
+    ]),
+)
+
+tf_py_strict_test(
     name = "build_info_test",
     size = "small",
     srcs = [
@@ -236,12 +330,13 @@ tf_py_test(
         "notap",
     ],
     deps = [
+        ":build_info",
         ":client_testlib",
-        ":platform",
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "benchmark_test",
     size = "small",
     srcs = [
@@ -255,7 +350,14 @@ tf_py_test(
     ],
     deps = [
         ":client_testlib",
-        ":platform",
+        ":gfile",
+        ":tf_logging",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
+        "@absl_py//absl:app",
     ],
 )
 

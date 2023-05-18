@@ -334,8 +334,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // data: User-provided callback provided to HostCallback() above, captured
   //       as a std::function<void()>. Allocated/initialized inside
   //       HostCallback() and owned and deleted by this call.
-  static void InternalHostCallback(GpuStreamHandle stream, GpuStatus status,
-                                   void* data);
+  static void InternalHostCallback(void* data);
 
   // Collects metadata for the specified kernel.
   tsl::Status GetKernelMetadata(GpuKernel* cuda_kernel,

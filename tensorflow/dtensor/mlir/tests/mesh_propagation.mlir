@@ -598,3 +598,59 @@ module @test_if {
     func.return %9 : tensor<4xf32>
   }
 }
+
+// -----
+
+// Check mesh propagation of tf.WhileRegion inside tf.IfRegion op.
+// This test only checks that the code doesn't crash under asan.
+// Correctness check are covered by other tests.
+// CHECK-LABEL: module @test_nested_while_inside_if
+module @test_nested_while_inside_if {
+  func.func @main(%arg0: tensor<i32>,
+    %arg1: tensor<4xf32> {tf._layout = "sharding_specs:unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1",
+                          tf._mesh = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"}) -> tensor<4xf32> {
+
+   %0 = "tf_device.cluster"() ({
+      %1 = "tf.Const"() {value = dense<0> : tensor<i1>} : () -> tensor<i1>
+      tf_device.return %1 : tensor<i1>
+    }) : () -> tensor<i1>
+
+   %7:1 = "tf_device.cluster"() ({
+      %10:1 = "tf.IfRegion"(%0) ({
+          %3:2 = "tf.WhileRegion"(%arg1, %arg0) ({
+            ^bb0(%carg0: tensor<4xf32>, %carg1: tensor<i32>):
+               %11 = "tf_device.cluster"() ({
+                 %limit = arith.constant dense<5> : tensor<i32>
+                 tf_device.return %limit : tensor<i32>
+               }) : () -> tensor<i32>
+
+               %12 = "tf_device.cluster"() ({
+                 %cond = "tf.NotEqual"(%carg1, %11) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+                 tf_device.return %cond : tensor<i1>
+               }) : () -> tensor<i1>
+
+           "tf.Yield"(%12) : (tensor<i1>) -> ()
+          },  {
+            ^bb0(%barg0: tensor<4xf32>, %barg1: tensor<i32>):
+              %13 = "tf_device.cluster"() ({
+                %one = arith.constant dense<1.0> : tensor<4xf32>
+                tf_device.return %one: tensor<4xf32>
+               }) : () -> tensor<4xf32>
+
+              %14 = "tf_device.cluster"() ({
+                %sub = "tf.Sub"(%barg0, %13) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+                tf_device.return %sub: tensor<4xf32>
+               }) : () -> tensor<4xf32>
+
+              "tf.Yield"(%14, %barg1) : (tensor<4xf32>, tensor<i32>) -> ()
+          }) {is_stateless = true} : (tensor<4xf32>, tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
+        "tf.Yield"(%3#0) : (tensor<4xf32>) -> ()
+      },  {
+        "tf.Yield"(%arg1) : (tensor<4xf32>) -> ()
+      }) {_else_func_name = "cond_false_150", _lower_using_switch_merge = true, _read_only_resource_inputs = [], _then_func_name = "cond_true_140", device = "", is_stateless = true} : (tensor<i1>) -> (tensor<4xf32>)
+      tf_device.return %10#0 : tensor<4xf32>
+    }) : () -> (tensor<4xf32>)
+
+    func.return %7#0 : tensor<4xf32>
+  }
+}

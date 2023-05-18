@@ -261,14 +261,11 @@ xla_cc_binary(
     srcs = ["interactive_graphviz.cc"],
     deps = [
         ":hlo_extractor",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:local_service",
@@ -279,6 +276,9 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:subprocess",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([
@@ -405,7 +405,6 @@ xla_cc_binary(
     ],
     deps = [
         ":run_hlo_module_lib",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_runner",
@@ -417,6 +416,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([

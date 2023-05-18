@@ -99,9 +99,9 @@ sh_test(
     name = "external_delegate_test",
     srcs = ["external_delegate_test.sh"],
     data = [
-        "//tensorflow/lite/delegates/coreml/internal_test/testdata:mobilenet_v2_1.0_224_quantized_weights_fp16.tflite",
         "//tensorflow/lite/delegates/utils/dummy_delegate:dummy_external_delegate.so",
         "//tensorflow/lite/tools/benchmark:benchmark_model",
+        "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
     ],
     visibility = ["//visibility:private"],
 )

@@ -31,9 +31,10 @@ TMP_WORK_DIR = "tmp_work_dir_placeholder"
 NO_WORK_DIR = ""
 # We use a faster than normal heartbeat interval so that tests run faster.
 TEST_HEARTBEAT_INTERVAL_MS = 100
-TEST_DISPATCHER_TIMEOUT_MS = 1000
+TEST_DISPATCHER_TIMEOUT_MS = 5000
 TEST_WORKER_TIMEOUT_MS = 200
 TEST_JOB_GC_CHECK_INTERNAL_MS = 1000
+TEST_SNAPSHOT_MAX_CHUNK_SIZE_BYTES = 16 << 10  # 16 KB
 PROTOCOL = "grpc"
 
 
@@ -45,12 +46,15 @@ def all_cluster_configurations():
   return with_work_dir + without_work_dir
 
 
-def _make_worker(dispatcher_address,
-                 data_transfer_protocol,
-                 shutdown_quiet_period_ms=0,
-                 port=0,
-                 worker_tags=None,
-                 cross_trainer_cache_size_bytes=None):
+def _make_worker(
+    dispatcher_address,
+    data_transfer_protocol,
+    shutdown_quiet_period_ms=0,
+    port=0,
+    worker_tags=None,
+    cross_trainer_cache_size_bytes=None,
+    snapshot_max_chunk_size_bytes=TEST_SNAPSHOT_MAX_CHUNK_SIZE_BYTES,
+):
   """Creates a worker server."""
   defaults = server_lib.WorkerConfig(dispatcher_address=dispatcher_address)
   config_proto = service_config_pb2.WorkerConfig(
@@ -64,7 +68,9 @@ def _make_worker(dispatcher_address,
       data_transfer_protocol=data_transfer_protocol,
       data_transfer_address=defaults.worker_address,
       shutdown_quiet_period_ms=shutdown_quiet_period_ms,
-      cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes)
+      cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes,
+      snapshot_max_chunk_size_bytes=snapshot_max_chunk_size_bytes,
+  )
   return server_lib.WorkerServer(config_proto, start=False)
 
 
@@ -72,13 +78,16 @@ def _make_worker(dispatcher_address,
 class TestWorker:
   """A tf.data service worker."""
 
-  def __init__(self,
-               dispatcher_address,
-               shutdown_quiet_period_ms,
-               data_transfer_protocol=None,
-               port=0,
-               worker_tags=None,
-               cross_trainer_cache_size_bytes=None):
+  def __init__(
+      self,
+      dispatcher_address,
+      shutdown_quiet_period_ms,
+      data_transfer_protocol=None,
+      port=0,
+      worker_tags=None,
+      cross_trainer_cache_size_bytes=None,
+      snapshot_max_chunk_size_bytes=TEST_SNAPSHOT_MAX_CHUNK_SIZE_BYTES,
+  ):
     self._dispatcher_address = dispatcher_address
     self._shutdown_quiet_period_ms = shutdown_quiet_period_ms
     self._server = _make_worker(
@@ -87,7 +96,9 @@ class TestWorker:
         shutdown_quiet_period_ms,
         port=port,
         worker_tags=worker_tags,
-        cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes)
+        cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes,
+        snapshot_max_chunk_size_bytes=snapshot_max_chunk_size_bytes,
+    )
     self._running = False
     self._data_transfer_protocol = data_transfer_protocol
 
@@ -140,6 +151,7 @@ class TestCluster:
       job_gc_timeout_ms=None,
       worker_timeout_ms=TEST_WORKER_TIMEOUT_MS,
       worker_shutdown_quiet_period_ms=0,
+      snapshot_max_chunk_size_bytes=TEST_SNAPSHOT_MAX_CHUNK_SIZE_BYTES,
       start=True,
       data_transfer_protocol=None,
   ):
@@ -162,6 +174,8 @@ class TestCluster:
         considering it missing, in milliseconds.
       worker_shutdown_quiet_period_ms: When shutting down a worker, how long to
         wait for the gRPC server to process the final requests.
+      snapshot_max_chunk_size_bytes: The maximum size of a distributed snapshot
+        chunk file.
       start: Whether to immediately start the servers in the cluster. If
         `False`, the servers can be started later by calling
         `start_dispatcher()` and `start_workers()`.
@@ -171,7 +185,11 @@ class TestCluster:
     if work_dir == TMP_WORK_DIR:
       work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._worker_shutdown_quiet_period_ms = worker_shutdown_quiet_period_ms
+    self._snapshot_max_chunk_size_bytes = snapshot_max_chunk_size_bytes
     self._data_transfer_protocol = data_transfer_protocol
+    self._job_gc_check_interval_ms = job_gc_check_interval_ms
+    self._job_gc_timeout_ms = job_gc_timeout_ms
+    self._worker_timeout_ms = worker_timeout_ms
     self.dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
             port=dispatcher_port,
@@ -193,9 +211,12 @@ class TestCluster:
     return self.dispatcher.target.split("://")[1]
 
   def add_worker(self, start=True):
-    worker = TestWorker(self.dispatcher_address(),
-                        self._worker_shutdown_quiet_period_ms,
-                        self._data_transfer_protocol)
+    worker = TestWorker(
+        self.dispatcher_address(),
+        self._worker_shutdown_quiet_period_ms,
+        self._data_transfer_protocol,
+        snapshot_max_chunk_size_bytes=self._snapshot_max_chunk_size_bytes,
+    )
     if start:
       worker.start()
     self.workers.append(worker)
@@ -210,6 +231,9 @@ class TestCluster:
   def stop_dispatcher(self):
     # pylint: disable=protected-access
     self.dispatcher._stop()
+
+  def restart_worker(self, index):
+    self.workers[index].restart()
 
   def stop_worker(self, index):
     self.workers[index].stop()
@@ -235,7 +259,12 @@ class TestCluster:
             port=port,
             work_dir=self.dispatcher._config.work_dir,
             protocol=PROTOCOL,
-            fault_tolerant_mode=self.dispatcher._config.fault_tolerant_mode))
+            fault_tolerant_mode=self.dispatcher._config.fault_tolerant_mode,
+            job_gc_check_interval_ms=self._job_gc_check_interval_ms,
+            job_gc_timeout_ms=self._job_gc_timeout_ms,
+            worker_timeout_ms=self._worker_timeout_ms,
+        )
+    )
 
   def num_registered_workers(self):
     return self.dispatcher._num_workers()

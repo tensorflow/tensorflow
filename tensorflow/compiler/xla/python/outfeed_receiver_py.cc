@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {
@@ -167,9 +170,10 @@ void BuildOutfeedReceiverSubmodule(py::module* m) {
       outfeed_receiver, "OutfeedReceiverForPython");
 
   outfeed_receiver_class.def(
-      "add_outfeed", &OutfeedReceiverForPython::AddOutfeed, py::arg("builder"),
-      py::arg("token"), py::arg("consumer_id"), py::arg("arrays"),
-      py::arg("device_idx"),
+      "add_outfeed",
+      xla::ValueOrThrowWrapper(&OutfeedReceiverForPython::AddOutfeed),
+      py::arg("builder"), py::arg("token"), py::arg("consumer_id"),
+      py::arg("arrays"), py::arg("device_idx"),
       R"(Adds an outfeed into the given computation builder.
 
       Has the side-effect of registering the sent shape along with the consumer

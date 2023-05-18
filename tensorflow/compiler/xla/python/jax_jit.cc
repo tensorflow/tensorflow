@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -349,17 +350,19 @@ void BuildJaxjitSubmodule(py::module& m) {
 
   py::class_<xla::PyArgSignature> arg_signature(jitlib, "PyArgSignature");
   arg_signature
-      .def_property_readonly("dtype",
-                             [](const xla::PyArgSignature& sig) {
-                               return PrimitiveTypeToDtype(sig.dtype);
-                             })
+      .def_property_readonly(
+          "dtype",
+          [](const xla::PyArgSignature& sig) {
+            return xla::ValueOrThrow(PrimitiveTypeToDtype(sig.dtype));
+          })
       .def_property_readonly(
           "shape",
           [](const xla::PyArgSignature& sig) {
             return xla::SpanToTuple(absl::MakeConstSpan(sig.shape));
           })
       .def_readonly("weak_type", &xla::PyArgSignature::weak_type);
-  jitlib.def("_ArgSignatureOfValue", &xla::PyArgSignatureOfValue);
+  jitlib.def("_ArgSignatureOfValue",
+             xla::ValueOrThrowWrapper(xla::PyArgSignatureOfValue));
 
   jitlib.def("_is_float0", &xla::IsFloat0);
 }

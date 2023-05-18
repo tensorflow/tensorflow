@@ -142,6 +142,7 @@ cc_library(
     srcs = [
         "jchuff.h",
         "jconfig.h",
+        "jconfigint.h",
         "jdct.h",
         "jerror.h",
         "jinclude.h",
@@ -368,8 +369,8 @@ HDRS_SIMD_ARM = [
 cc_library(
     name = "simd_armv7a",
     srcs = [
-        "simd/arm/aarch32/jsimd.c",
         "simd/arm/aarch32/jchuff-neon.c",
+        "simd/arm/aarch32/jsimd.c",
     ] + SRCS_SIMD_COMMON + SRCS_SIMD_ARM,
     hdrs = [
         "simd/arm/aarch32/jccolext-neon.c",
@@ -382,8 +383,8 @@ cc_library(
 cc_library(
     name = "simd_armv8a",
     srcs = [
-        "simd/arm/aarch64/jsimd.c",
         "simd/arm/aarch64/jchuff-neon.c",
+        "simd/arm/aarch64/jsimd.c",
     ] + SRCS_SIMD_COMMON + SRCS_SIMD_ARM,
     hdrs = [
         "simd/arm/aarch64/jccolext-neon.c",

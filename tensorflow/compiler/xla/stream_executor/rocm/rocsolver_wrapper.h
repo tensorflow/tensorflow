@@ -49,17 +49,17 @@ namespace wrap {
 
 #define ROCSOLVER_API_WRAPPER(api_name)                                       \
   template <typename... Args>                                                 \
-  auto api_name(Args... args)->decltype(::api_name(args...)) {                \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) {              \
     using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;            \
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = TO_STR(api_name);                            \
       void* f;                                                                \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
+      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
           stream_executor::internal::CachedDsoLoader::GetRocsolverDsoHandle() \
               .value(),                                                       \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
-                    << " in rocsolver lib; dlerror: " << s.error_message();   \
+                    << " in rocsolver lib; dlerror: " << s.message();         \
       return reinterpret_cast<FuncPtrT>(f);                                   \
     }();                                                                      \
     return loaded(args...);                                                   \

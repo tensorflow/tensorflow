@@ -46,12 +46,11 @@ void QuantizeTester::PopulateInput(Interpreter* delegate_interpreter,
   auto input_rng = std::bind(input_distribution, std::ref(rng));
 
   T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
-  std::generate(default_input_data, default_input_data + ComputeSize(Shape()),
-                std::ref(input_rng));
+  std::generate_n(default_input_data, ComputeSize(Shape()),
+                  std::ref(input_rng));
 
   T* xnnpack_input_data = delegate_interpreter->typed_input_tensor<T>(0);
-  std::copy(default_input_data, default_input_data + ComputeSize(Shape()),
-            xnnpack_input_data);
+  std::copy_n(default_input_data, ComputeSize(Shape()), xnnpack_input_data);
 }
 
 template <>
@@ -63,13 +62,12 @@ void QuantizeTester::PopulateInput<float>(
   auto input_rng = std::bind(input_distribution, std::ref(rng));
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data, default_input_data + ComputeSize(Shape()),
-                std::ref(input_rng));
+  std::generate_n(default_input_data, ComputeSize(Shape()),
+                  std::ref(input_rng));
 
   float* xnnpack_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + ComputeSize(Shape()),
-            xnnpack_input_data);
+  std::copy_n(default_input_data, ComputeSize(Shape()), xnnpack_input_data);
 }
 
 template <class T>

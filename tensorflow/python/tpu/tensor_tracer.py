@@ -563,7 +563,7 @@ class TensorTracer:
     """
     self._replica_id = None
     self._tt_config = tensor_tracer_report.TensorTracerConfig()
-    self._parameters = None
+    self._parameters = tensor_tracer_flags.TTParameters()
     self._host_call_fn = {}
     # _cache_variables is a dict (key = graph, value = dicts
     # (key = name, value = tensors))

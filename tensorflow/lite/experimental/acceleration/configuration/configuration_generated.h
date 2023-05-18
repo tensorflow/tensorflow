@@ -24,7 +24,7 @@ limitations under the License.
 // generated, otherwise it may not be compatible.
 static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
               FLATBUFFERS_VERSION_MINOR == 1 &&
-              FLATBUFFERS_VERSION_REVISION == 20,
+              FLATBUFFERS_VERSION_REVISION == 21,
              "Non-compatible flatbuffers version included");
 
 namespace tflite {
@@ -749,6 +749,39 @@ inline const char *EnumNamePriority(Priority e) {
   if (::flatbuffers::IsOutRange(e, Priority_PRIORITY_UNDEFINED, Priority_PRIORITY_HIGH)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesPriority()[index];
+}
+
+enum TriState : int32_t {
+  TriState_TRISTATE_UNDEFINED = 0,
+  TriState_TRISTATE_FALSE = 1,
+  TriState_TRISTATE_TRUE = 2,
+  TriState_MIN = TriState_TRISTATE_UNDEFINED,
+  TriState_MAX = TriState_TRISTATE_TRUE
+};
+
+inline const TriState (&EnumValuesTriState())[3] {
+  static const TriState values[] = {
+    TriState_TRISTATE_UNDEFINED,
+    TriState_TRISTATE_FALSE,
+    TriState_TRISTATE_TRUE
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesTriState() {
+  static const char * const names[4] = {
+    "TRISTATE_UNDEFINED",
+    "TRISTATE_FALSE",
+    "TRISTATE_TRUE",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameTriState(TriState e) {
+  if (::flatbuffers::IsOutRange(e, TriState_TRISTATE_UNDEFINED, TriState_TRISTATE_TRUE)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesTriState()[index];
 }
 
 }  // namespace GoogleEdgeTpuSettings_
@@ -2097,6 +2130,11 @@ struct GoogleEdgeTpuSettingsT : public ::flatbuffers::NativeTable {
   tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED;
   std::vector<uint8_t> extension_data{};
   std::string model_identifier{};
+  bool use_async_api = false;
+  bool delegate_should_manage_cache_for_inputs = true;
+  bool delegate_should_manage_cache_for_outputs = true;
+  tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED;
+  tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED;
 };
 
 struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -2107,7 +2145,12 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
     VT_ENABLE_TRACING = 6,
     VT_PRIORITY = 8,
     VT_EXTENSION_DATA = 10,
-    VT_MODEL_IDENTIFIER = 12
+    VT_MODEL_IDENTIFIER = 12,
+    VT_USE_ASYNC_API = 14,
+    VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_INPUTS = 16,
+    VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_OUTPUTS = 18,
+    VT_PREFER_CACHE_COHERENCY_FOR_INPUTS = 20,
+    VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS = 22
   };
   int32_t log_verbosity() const {
     return GetField<int32_t>(VT_LOG_VERBOSITY, -1);
@@ -2124,6 +2167,21 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
   const ::flatbuffers::String *model_identifier() const {
     return GetPointer<const ::flatbuffers::String *>(VT_MODEL_IDENTIFIER);
   }
+  bool use_async_api() const {
+    return GetField<uint8_t>(VT_USE_ASYNC_API, 0) != 0;
+  }
+  bool delegate_should_manage_cache_for_inputs() const {
+    return GetField<uint8_t>(VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_INPUTS, 1) != 0;
+  }
+  bool delegate_should_manage_cache_for_outputs() const {
+    return GetField<uint8_t>(VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_OUTPUTS, 1) != 0;
+  }
+  tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs() const {
+    return static_cast<tflite::GoogleEdgeTpuSettings_::TriState>(GetField<int32_t>(VT_PREFER_CACHE_COHERENCY_FOR_INPUTS, 0));
+  }
+  tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs() const {
+    return static_cast<tflite::GoogleEdgeTpuSettings_::TriState>(GetField<int32_t>(VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS, 0));
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_LOG_VERBOSITY, 4) &&
@@ -2133,6 +2191,11 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
            verifier.VerifyVector(extension_data()) &&
            VerifyOffset(verifier, VT_MODEL_IDENTIFIER) &&
            verifier.VerifyString(model_identifier()) &&
+           VerifyField<uint8_t>(verifier, VT_USE_ASYNC_API, 1) &&
+           VerifyField<uint8_t>(verifier, VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_INPUTS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_OUTPUTS, 1) &&
+           VerifyField<int32_t>(verifier, VT_PREFER_CACHE_COHERENCY_FOR_INPUTS, 4) &&
+           VerifyField<int32_t>(verifier, VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS, 4) &&
            verifier.EndTable();
   }
   GoogleEdgeTpuSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2159,6 +2222,21 @@ struct GoogleEdgeTpuSettingsBuilder {
   void add_model_identifier(::flatbuffers::Offset<::flatbuffers::String> model_identifier) {
     fbb_.AddOffset(GoogleEdgeTpuSettings::VT_MODEL_IDENTIFIER, model_identifier);
   }
+  void add_use_async_api(bool use_async_api) {
+    fbb_.AddElement<uint8_t>(GoogleEdgeTpuSettings::VT_USE_ASYNC_API, static_cast<uint8_t>(use_async_api), 0);
+  }
+  void add_delegate_should_manage_cache_for_inputs(bool delegate_should_manage_cache_for_inputs) {
+    fbb_.AddElement<uint8_t>(GoogleEdgeTpuSettings::VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_INPUTS, static_cast<uint8_t>(delegate_should_manage_cache_for_inputs), 1);
+  }
+  void add_delegate_should_manage_cache_for_outputs(bool delegate_should_manage_cache_for_outputs) {
+    fbb_.AddElement<uint8_t>(GoogleEdgeTpuSettings::VT_DELEGATE_SHOULD_MANAGE_CACHE_FOR_OUTPUTS, static_cast<uint8_t>(delegate_should_manage_cache_for_outputs), 1);
+  }
+  void add_prefer_cache_coherency_for_inputs(tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs) {
+    fbb_.AddElement<int32_t>(GoogleEdgeTpuSettings::VT_PREFER_CACHE_COHERENCY_FOR_INPUTS, static_cast<int32_t>(prefer_cache_coherency_for_inputs), 0);
+  }
+  void add_prefer_cache_coherency_for_outputs(tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs) {
+    fbb_.AddElement<int32_t>(GoogleEdgeTpuSettings::VT_PREFER_CACHE_COHERENCY_FOR_OUTPUTS, static_cast<int32_t>(prefer_cache_coherency_for_outputs), 0);
+  }
   explicit GoogleEdgeTpuSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2176,12 +2254,22 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
     bool enable_tracing = false,
     tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
     ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> extension_data = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> model_identifier = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> model_identifier = 0,
+    bool use_async_api = false,
+    bool delegate_should_manage_cache_for_inputs = true,
+    bool delegate_should_manage_cache_for_outputs = true,
+    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED,
+    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED) {
   GoogleEdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_prefer_cache_coherency_for_outputs(prefer_cache_coherency_for_outputs);
+  builder_.add_prefer_cache_coherency_for_inputs(prefer_cache_coherency_for_inputs);
   builder_.add_model_identifier(model_identifier);
   builder_.add_extension_data(extension_data);
   builder_.add_priority(priority);
   builder_.add_log_verbosity(log_verbosity);
+  builder_.add_delegate_should_manage_cache_for_outputs(delegate_should_manage_cache_for_outputs);
+  builder_.add_delegate_should_manage_cache_for_inputs(delegate_should_manage_cache_for_inputs);
+  builder_.add_use_async_api(use_async_api);
   builder_.add_enable_tracing(enable_tracing);
   return builder_.Finish();
 }
@@ -2192,7 +2280,12 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettingsD
     bool enable_tracing = false,
     tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
     const std::vector<uint8_t> *extension_data = nullptr,
-    const char *model_identifier = nullptr) {
+    const char *model_identifier = nullptr,
+    bool use_async_api = false,
+    bool delegate_should_manage_cache_for_inputs = true,
+    bool delegate_should_manage_cache_for_outputs = true,
+    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_inputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED,
+    tflite::GoogleEdgeTpuSettings_::TriState prefer_cache_coherency_for_outputs = tflite::GoogleEdgeTpuSettings_::TriState_TRISTATE_UNDEFINED) {
   auto extension_data__ = extension_data ? _fbb.CreateVector<uint8_t>(*extension_data) : 0;
   auto model_identifier__ = model_identifier ? _fbb.CreateString(model_identifier) : 0;
   return tflite::CreateGoogleEdgeTpuSettings(
@@ -2201,7 +2294,12 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettingsD
       enable_tracing,
       priority,
       extension_data__,
-      model_identifier__);
+      model_identifier__,
+      use_async_api,
+      delegate_should_manage_cache_for_inputs,
+      delegate_should_manage_cache_for_outputs,
+      prefer_cache_coherency_for_inputs,
+      prefer_cache_coherency_for_outputs);
 }
 
 ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(::flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4632,7 +4730,12 @@ inline bool operator==(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSet
       (lhs.enable_tracing == rhs.enable_tracing) &&
       (lhs.priority == rhs.priority) &&
       (lhs.extension_data == rhs.extension_data) &&
-      (lhs.model_identifier == rhs.model_identifier);
+      (lhs.model_identifier == rhs.model_identifier) &&
+      (lhs.use_async_api == rhs.use_async_api) &&
+      (lhs.delegate_should_manage_cache_for_inputs == rhs.delegate_should_manage_cache_for_inputs) &&
+      (lhs.delegate_should_manage_cache_for_outputs == rhs.delegate_should_manage_cache_for_outputs) &&
+      (lhs.prefer_cache_coherency_for_inputs == rhs.prefer_cache_coherency_for_inputs) &&
+      (lhs.prefer_cache_coherency_for_outputs == rhs.prefer_cache_coherency_for_outputs);
 }
 
 inline bool operator!=(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs) {
@@ -4654,6 +4757,11 @@ inline void GoogleEdgeTpuSettings::UnPackTo(GoogleEdgeTpuSettingsT *_o, const ::
   { auto _e = priority(); _o->priority = _e; }
   { auto _e = extension_data(); if (_e) { _o->extension_data.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->extension_data.begin()); } }
   { auto _e = model_identifier(); if (_e) _o->model_identifier = _e->str(); }
+  { auto _e = use_async_api(); _o->use_async_api = _e; }
+  { auto _e = delegate_should_manage_cache_for_inputs(); _o->delegate_should_manage_cache_for_inputs = _e; }
+  { auto _e = delegate_should_manage_cache_for_outputs(); _o->delegate_should_manage_cache_for_outputs = _e; }
+  { auto _e = prefer_cache_coherency_for_inputs(); _o->prefer_cache_coherency_for_inputs = _e; }
+  { auto _e = prefer_cache_coherency_for_outputs(); _o->prefer_cache_coherency_for_outputs = _e; }
 }
 
 inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> GoogleEdgeTpuSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -4669,13 +4777,23 @@ inline ::flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
   auto _priority = _o->priority;
   auto _extension_data = _o->extension_data.size() ? _fbb.CreateVector(_o->extension_data) : 0;
   auto _model_identifier = _o->model_identifier.empty() ? 0 : _fbb.CreateString(_o->model_identifier);
+  auto _use_async_api = _o->use_async_api;
+  auto _delegate_should_manage_cache_for_inputs = _o->delegate_should_manage_cache_for_inputs;
+  auto _delegate_should_manage_cache_for_outputs = _o->delegate_should_manage_cache_for_outputs;
+  auto _prefer_cache_coherency_for_inputs = _o->prefer_cache_coherency_for_inputs;
+  auto _prefer_cache_coherency_for_outputs = _o->prefer_cache_coherency_for_outputs;
   return tflite::CreateGoogleEdgeTpuSettings(
       _fbb,
       _log_verbosity,
       _enable_tracing,
       _priority,
       _extension_data,
-      _model_identifier);
+      _model_identifier,
+      _use_async_api,
+      _delegate_should_manage_cache_for_inputs,
+      _delegate_should_manage_cache_for_outputs,
+      _prefer_cache_coherency_for_inputs,
+      _prefer_cache_coherency_for_outputs);
 }
 
 

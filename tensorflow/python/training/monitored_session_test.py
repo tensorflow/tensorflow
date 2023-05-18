@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder as saved_model_builder
@@ -76,8 +77,8 @@ class ScaffoldTest(test.TestCase):
   def test_defaults_empty_graph(self):
     with ops.Graph().as_default():
       scaffold = monitored_session.Scaffold()
-      variables.VariableV1(1, name='my_var')
-      variables.VariableV1(
+      variable_v1.VariableV1(1, name='my_var')
+      variable_v1.VariableV1(
           2, name='my_local_var', collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scaffold.finalize()
       self.assertTrue(isinstance(scaffold.init_op, ops.Operation))
@@ -114,7 +115,7 @@ class ScaffoldTest(test.TestCase):
 
   def test_caches_values(self):
     with ops.Graph().as_default():
-      variables.VariableV1([1])
+      variable_v1.VariableV1([1])
       scaffold1 = monitored_session.Scaffold()
       scaffold1.finalize()
       scaffold2 = monitored_session.Scaffold()
@@ -128,7 +129,7 @@ class ScaffoldTest(test.TestCase):
 
   def test_raise_error_if_more_than_one_cached_item(self):
     with ops.Graph().as_default():
-      variables.VariableV1([1])
+      variable_v1.VariableV1([1])
       ops.add_to_collection(ops.GraphKeys.SAVERS, saver_lib.Saver())
       ops.add_to_collection(ops.GraphKeys.SAVERS, saver_lib.Saver())
       with self.assertRaisesRegex(RuntimeError, 'More than one item'):
@@ -136,7 +137,7 @@ class ScaffoldTest(test.TestCase):
 
   def test_uses_passed_values(self):
     with ops.Graph().as_default():
-      variables.VariableV1([1])
+      variable_v1.VariableV1([1])
       saver = saver_lib.Saver()
       scaffold = monitored_session.Scaffold(
           init_op=2,
@@ -159,7 +160,7 @@ class ScaffoldTest(test.TestCase):
 
   def test_graph_is_finalized(self):
     with ops.Graph().as_default():
-      variables.VariableV1([1])
+      variable_v1.VariableV1([1])
       monitored_session.Scaffold().finalize()
       with self.assertRaisesRegex(RuntimeError,
                                   'Graph is finalized and cannot be modified'):
@@ -168,7 +169,7 @@ class ScaffoldTest(test.TestCase):
   def test_new_scaffold_from_default_scaffold(self):
     scaffold1 = monitored_session.Scaffold()
     with ops.Graph().as_default():
-      variables.VariableV1([1])
+      variable_v1.VariableV1([1])
       saver = saver_lib.Saver()
       scaffold2 = monitored_session.Scaffold(
           init_op=2,
@@ -193,7 +194,7 @@ class ScaffoldTest(test.TestCase):
 
   def test_new_scaffold_from_existing_scaffold(self):
     with ops.Graph().as_default():
-      variables.VariableV1([1])
+      variable_v1.VariableV1([1])
       saver = saver_lib.Saver()
       scaffold1 = monitored_session.Scaffold(
           init_op=2,
@@ -1506,7 +1507,7 @@ class MonitoredSessionTest(test.TestCase):
 
   def test_defaults(self):
     with ops.Graph().as_default():
-      a_var = variables.VariableV1(0)
+      a_var = variable_v1.VariableV1(0)
       with monitored_session.MonitoredSession() as session:
         self.assertEqual(0, session.run(a_var))
 
@@ -1833,7 +1834,7 @@ class MonitoredSessionTest(test.TestCase):
 
   def test_graph_finalized_during_run_unfinalized_after_exit(self):
     with ops.Graph().as_default() as g:
-      a_var = variables.VariableV1(0)
+      a_var = variable_v1.VariableV1(0)
       with monitored_session.MonitoredSession() as session:
         self.assertEqual(0, session.run(a_var))
         self.assertTrue(g.finalized)
@@ -1841,7 +1842,7 @@ class MonitoredSessionTest(test.TestCase):
 
   def test_keep_finalized_graph_as_finalized(self):
     with ops.Graph().as_default() as g:
-      a_var = variables.VariableV1(0)
+      a_var = variable_v1.VariableV1(0)
       monitored_session.Scaffold().finalize()
       with monitored_session.MonitoredSession() as session:
         self.assertEqual(0, session.run(a_var))
@@ -2167,7 +2168,7 @@ class MonitoredSessionTest(test.TestCase):
     with ops.Graph().as_default():
       c = array_ops.placeholder(dtypes.float32)
       v = array_ops.identity(c)
-      graph_state = variables.VariableV1(0.0)
+      graph_state = variable_v1.VariableV1(0.0)
       graph_side_effect = state_ops.assign_add(graph_state, 0.31)
 
       def step_fn(step_context):
@@ -2223,7 +2224,7 @@ class MonitoredSessionTest(test.TestCase):
       c = array_ops.placeholder(dtypes.float32)
       v = array_ops.identity(c)
       vv = constant_op.constant(3.2)
-      graph_state = variables.VariableV1(0.0)
+      graph_state = variable_v1.VariableV1(0.0)
       graph_side_effect = state_ops.assign_add(graph_state, 0.31)
 
       class Hook(session_run_hook.SessionRunHook):
@@ -2260,7 +2261,7 @@ class SingularMonitoredSessionTest(test.TestCase):
 
   def test_handles_initialization(self):
     with ops.Graph().as_default():
-      a_var = variables.VariableV1(0)
+      a_var = variable_v1.VariableV1(0)
       with monitored_session.SingularMonitoredSession() as session:
         # If it's not initialized, following statement raises an error.
         self.assertEqual(0, session.run(a_var))

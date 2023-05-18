@@ -70,9 +70,8 @@ class ExecutionEngine {
   using OptimizingTransformer = std::function<llvm::Error(llvm::Module *)>;
 
   // Callback to construct an optimizing transformer for the given options.
-  using MakeOptimizingTransformer = std::function<OptimizingTransformer(
-      unsigned opt_level, unsigned size_level,
-      llvm::TargetMachine *targetMachine)>;
+  using MakeOptimizingTransformer =
+      std::function<OptimizingTransformer(llvm::TargetMachine *targetMachine)>;
 
   // Compose multiple symbol bindings into a single symbol binding function.
   static SymbolsBinding BindAll(std::vector<SymbolsBinding> bindings);
@@ -167,6 +166,14 @@ class ExecutionEngine {
   llvm::JITEventListener *gdb_listener_ = nullptr;
   llvm::JITEventListener *perf_listener_ = nullptr;
 };
+
+// Emits an interface function ('exported_name') that wraps all arguments
+// of a function ('original_name') into a single pointer to a ptr**,
+// thereby exposing a trivial ABI. The original function is also inlined,
+// if possible.
+absl::Status ExportWithXlaRuntimeAbi(llvm::Module &module,
+                                     std::string_view original_name,
+                                     std::string_view exported_name);
 
 }  // namespace runtime
 }  // namespace xla

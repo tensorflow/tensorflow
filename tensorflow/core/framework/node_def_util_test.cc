@@ -67,7 +67,7 @@ void ExpectFailure(const NodeDef& bad, const OpDef& op_def,
       << status << "; NodeDef: " << SummarizeNodeDef(bad)
       << "; OpDef: " << SummarizeOpDef(op_def);
 
-  LOG(INFO) << "Message: " << status.error_message();
+  LOG(INFO) << "Message: " << status.message();
   EXPECT_TRUE(absl::StrContains(status.ToString(), message))
       << "NodeDef: " << SummarizeNodeDef(bad)
       << "; OpDef: " << SummarizeOpDef(op_def) << "\nActual error: " << status
@@ -878,9 +878,9 @@ TEST(AttachDef, AllowMultipleFormattedNode) {
   b.set_name("b");
   Status s = Status(absl::StatusCode::kCancelled, "Error");
   Status s2 = AttachDef(s, a, true);
-  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
+  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.message());
   Status s3 = AttachDef(s2, b, true);
-  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[{{node b}}]]", s3.error_message());
+  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[{{node b}}]]", s3.message());
 }
 
 TEST(AttachDef, DisallowMultipleFormattedNode) {
@@ -890,9 +890,9 @@ TEST(AttachDef, DisallowMultipleFormattedNode) {
   b.set_name("b");
   Status s = Status(absl::StatusCode::kCancelled, "Error");
   Status s2 = AttachDef(s, a, false);
-  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
+  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.message());
   Status s3 = AttachDef(s2, b, false);
-  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[b]]", s3.error_message());
+  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[b]]", s3.message());
 }
 
 }  // namespace

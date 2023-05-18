@@ -41,7 +41,7 @@ py::bytes WrappedSetSignatureDefMap(
   }
   auto status = tflite::SetSignatureDefMap(model, signature_def_map, &data);
   if (status != ::tensorflow::OkStatus()) {
-    throw std::invalid_argument(status.error_message());
+    throw std::invalid_argument(std::string(status.message()));
   }
   return py::bytes(data);
 }

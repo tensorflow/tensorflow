@@ -36,9 +36,6 @@ cc_library(
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
-        "@com_google_protobuf//:protobuf_headers",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "//tensorflow/c:kernels",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector",
         "//tensorflow/compiler/mlir/lite/python:flatbuffer_to_mlir",
@@ -65,6 +62,9 @@ cc_library(
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/lite/toco/logging:conversion_log_util",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_protobuf//:protobuf_headers",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.
@@ -97,10 +97,11 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:_pywrap_toco_api",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
         "@absl_py//absl:app",
+        "//tensorflow/python:_pywrap_toco_api",
+        "//tensorflow/python:pywrap_tensorflow",
+        # Needed to provide PyArray_API
+        "//third_party/py/numpy",  # buildcleaner: keep
     ],
 )
 
@@ -116,5 +117,7 @@ tf_py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/platform:test",
     ],
 )

@@ -103,9 +103,9 @@ SE_DeviceMemoryAllocator ToC(
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
     if (!allocation.ok()) {
       auto status = allocation.status();
+      auto message = status.message();
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.raw_code(), status.error_message().data(),
-          status.error_message().size());
+          se_status, status.raw_code(), message.data(), message.size());
     } else {
       auto& scoped_memory = allocation.value();
       memory->wrapped = ApiConverter::ToC(scoped_memory.Release());
@@ -118,9 +118,9 @@ SE_DeviceMemoryAllocator ToC(
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
+      auto message = status.message();
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.raw_code(), status.error_message().data(),
-          status.error_message().size());
+          se_status, status.raw_code(), message.data(), message.size());
     }
   };
   return se_allocator;
@@ -298,6 +298,7 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.dim_ordered(), &c_layout->dim_ordered);
   c_layout->index_primitive_type = layout.index_primitive_type();
   c_layout->pointer_primitive_type = layout.pointer_primitive_type();
+  c_layout->element_size_in_bits = layout.element_size_in_bits();
   c_layout->memory_space = layout.memory_space();
   c_layout->dynamic_shape_metadata_prefix_bytes =
       layout.dynamic_shape_metadata_prefix_bytes();
@@ -331,7 +332,8 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
       minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
-      c_layout->memory_space, /*physical_shape=*/nullptr,
+      c_layout->element_size_in_bits, c_layout->memory_space,
+      /*physical_shape=*/nullptr,
       c_layout->dynamic_shape_metadata_prefix_bytes);
 }
 

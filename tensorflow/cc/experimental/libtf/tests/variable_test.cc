@@ -48,7 +48,7 @@ class VariableTest
   impl::TaggedValueTensor CreateScalarTensor(T val) {
     AbstractTensorHandle* raw = nullptr;
     Status s = TestScalarTensorHandle<T, datatype>(ctx_.get(), val, &raw);
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
     return impl::TaggedValueTensor(raw, /*add_ref=*/false);
   }
 
@@ -62,12 +62,12 @@ class VariableTest
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = tensorflow::StatusFromTF_Status(status.get());
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
 
     // Set the runtime impl, Core RT vs TFRT.
     AbstractContext* ctx_raw = nullptr;
     s = BuildImmediateExecutionContext(UseTfrt(), &ctx_raw);
-    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(tensorflow::errors::OK, s.code()) << s.message();
     ctx_.reset(ctx_raw);
   }
 };
@@ -76,7 +76,7 @@ template <typename T>
 void ExpectEquals(AbstractTensorHandle* t, T expected) {
   TF_Tensor* result_t;
   Status s = tensorflow::GetValue(t, &result_t);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   auto value = static_cast<T*>(TF_TensorData(result_t));
   EXPECT_EQ(*value, expected);
   TF_DeleteTensor(result_t);
@@ -89,7 +89,7 @@ TEST_P(VariableTest, CreateAssignReadDestroy) {
     AbstractTensorHandle* var_ptr = nullptr;
     PartialTensorShape scalar_shape;
     TF_EXPECT_OK(
-        PartialTensorShape::MakePartialShape<int32>({}, 0, &scalar_shape));
+        PartialTensorShape::MakePartialShape<int32_t>({}, 0, &scalar_shape));
     TF_EXPECT_OK(tensorflow::ops::VarHandleOp(ctx_.get(), &var_ptr, DT_FLOAT,
                                               scalar_shape));
     var.reset(var_ptr);

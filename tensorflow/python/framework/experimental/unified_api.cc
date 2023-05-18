@@ -258,6 +258,7 @@ PYBIND11_MODULE(_unified_api, m) {
     return t;
   });
 
-  py::class_<AbstractFunction, RefCountPtr<AbstractFunction>> AbstractFunction(
-      m, "AbstractFunction");
+  py::class_<AbstractFunction,
+             std::unique_ptr<AbstractFunction, tsl::core::RefCountDeleter>>
+      AbstractFunction(m, "AbstractFunction");
 }

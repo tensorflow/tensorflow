@@ -515,7 +515,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
 
   if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
-                                    hlo_str.status().error_message())
+                                    hlo_str.status().message())
                         .c_str());
   }
   return py::bytes(*hlo_str);
@@ -818,6 +818,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
               tensorflow::make_safe(TF_NewStatus());
           TFE_ContextGetFunctionDef(tensorflow::InputTFE_Context(ctx),
                                     function_name, &buf, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
+  m.def("TFE_ContextGetGraphDebugInfo",
+        [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_ContextGetGraphDebugInfo(tensorflow::InputTFE_Context(ctx),
+                                       function_name, &buf, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
   m.def("TFE_ContextRemoveFunction", [](py::handle& ctx, const char* name) {

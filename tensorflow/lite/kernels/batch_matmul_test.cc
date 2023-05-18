@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <numeric>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -90,6 +91,37 @@ class BatchMatMulOpTest : public SingleOpTest {
     return *kKernelMap;
   }
 };
+
+TEST_P(BatchMatMulOpTest, Float32Test_Ones) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {3, 2, 1, 4}},
+                                  {TensorType_FLOAT32, {3, 1, 4, 1}});
+  std::vector<float> lhs(24);
+  std::iota(lhs.begin(), lhs.end(), 1);
+  std::vector<float> rhs(12);
+  std::iota(rhs.begin(), rhs.end(), 1);
+  std::vector<float> res{30, 70, 278, 382, 782, 950};
+  model.PopulateTensor<float>(model.lhs(), lhs);
+  model.PopulateTensor<float>(model.rhs(), rhs);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray(res));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 2, 1, 1}));
+}
+
+TEST_P(BatchMatMulOpTest, Float32Test_Flatten) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {3, 2, 2, 4}},
+                                  {TensorType_FLOAT32, {3, 1, 4, 1}});
+  std::vector<float> lhs(48);
+  std::iota(lhs.begin(), lhs.end(), 1);
+  std::vector<float> rhs(12);
+  std::iota(rhs.begin(), rhs.end(), 1);
+  std::vector<float> res{30,  70,  110,  150,  486,  590,
+                         694, 798, 1454, 1622, 1790, 1958};
+  model.PopulateTensor<float>(model.lhs(), lhs);
+  model.PopulateTensor<float>(model.rhs(), rhs);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray(res));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 2, 2, 1}));
+}
 
 TEST_P(BatchMatMulOpTest, Float32Test_Simple) {
   BatchMatMulOpModel<float> model({TensorType_FLOAT32, {1, 2, 3}},

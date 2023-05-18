@@ -1844,6 +1844,22 @@ Uses oneDNN APIs to perform fused batch normalization and relu.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklFusedInstanceNorm")
+    .Input("x: T")
+    .Input("gamma: T")
+    .Input("beta: T")
+    .Output("y: T")
+    .Attr("T: {float, bfloat16}")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("leakyrelu_alpha: float = 0.2")
+    .Attr("reduction_axes: list(int)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(
+        R"doc(oneDNN version of fused instance normalization operator.
+        Do not invoke this operator directly in Python.
+        Graph rewrite pass is expected to invoke this operator.)doc");
+
 REGISTER_OP("_MklFusedMish")
     .Input("features: T")
     .Output("activations: T")

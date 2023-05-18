@@ -110,7 +110,7 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
   if (!initialization_status.ok()) {
     // Compilation failure might caused the subsequent tpu_program_group init
     // failed with assert error. Log the error here to make debugging easier.
-    LOG(ERROR) << initialization_status.error_message();
+    LOG(ERROR) << initialization_status.message();
   }
 
   // Add the entry to the uid index.

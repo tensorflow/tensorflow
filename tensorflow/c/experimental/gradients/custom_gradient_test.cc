@@ -38,7 +38,7 @@ class CustomGradientTest
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 };
 
@@ -92,7 +92,7 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -100,7 +100,7 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   {
     AbstractTensorHandle* x_raw = nullptr;
     Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -113,11 +113,11 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   Status s = RunModel(ExpWithPassThroughGrad, ctx.get(), {x.get()},
                       absl::MakeSpan(outputs),
                       /*use_function=*/!std::get<2>(GetParam()));
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 
   TF_Tensor* result_tensor;
   s = GetValue(outputs[0], &result_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
   outputs[0]->Unref();

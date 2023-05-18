@@ -13,6 +13,9 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/infra/mira/distributed/...",
+        "//learning/serving/...",
+        "//quality/webanswers/...",
         "//smartass/brain/inference/...",
         # copybara:uncomment "//smartass/brain/ops/...",
         "//tensorflow/c/eager/...",
@@ -20,9 +23,18 @@ package_group(
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/python/...",
-        # copybara:uncomment "//tensorflow_serving/batching/google/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
+        # copybara:uncomment "//tensorflow_serving/...",
         # copybara:uncomment "//third_party/tf_runtime_google/...",
+    ],
+)
+
+cc_library(
+    name = "tfrt_runtime",
+    srcs = ["tfrt_runtime.cc"],
+    hdrs = ["tfrt_runtime.h"],
+    deps = [
+        "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -42,6 +54,7 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tfrt/eager:virtual_device",
@@ -80,9 +93,6 @@ cc_library(
         "tensor_util.h",
     ],
     deps = [
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
@@ -91,6 +101,9 @@ cc_library(
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -265,7 +278,7 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
-        "@com_google_absl//absl/types:variant",
+        "//tensorflow/tsl/profiler/lib:traceme",
     ],
 )
 

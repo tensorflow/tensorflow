@@ -97,7 +97,8 @@ void EliminateUnusedResults(
   OpBuilder builder(op);
   Operation *new_op = Operation::create(
       op->getLoc(), op->getName(), new_result_types, op->getOperands(),
-      op->getAttrs(), op->getSuccessors(), op->getNumRegions());
+      op->getAttrs(), op->getPropertiesStorage(), op->getSuccessors(),
+      op->getNumRegions());
   builder.insert(new_op);
 
   // Move region bodies to the new operation.

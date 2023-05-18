@@ -26,7 +26,7 @@ import tflite.Delegate;
  */
 final class RawDelegateMetricsEntry {
   // The name of the delegate. The available names are listed in
-  // tensorflow/tensorflow/lite/experimental/acceleration/configuration/configuration.proto
+  // tensorflow/tensorflow/lite/acceleration/configuration/configuration.proto
   // TODO(b/267431570): consider replacing the field with an Enum value.
   private final String delegateName;
   // Specifies the path to the delegate settings file.

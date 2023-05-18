@@ -132,7 +132,7 @@ message FreezeAllVariables {
 // 2) A set of supported operations.
 // 3) Unit wise quantization precision.
 // 4) Target hardware name.
-// NEXT ID: 11
+// NEXT ID: 12
 message QuantizationOptions {
   // The default quantization configuration for the model. If the below
   // unit-wise configuration does not exist, we use this default quantization
@@ -181,4 +181,8 @@ message QuantizationOptions {
   // Produces legacy weight-only graph where the qconst op(containing quantized
   // values) is followed by a dequantization op.
   bool enable_legacy_weight_only = 10;
+
+  // If set to true, it forces calibration in graph model instead of eager mode
+  // when the context is in eager mode.
+  bool force_graph_mode_calibration = 11;
 }

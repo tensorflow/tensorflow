@@ -20,10 +20,8 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <cstdlib>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -464,17 +462,40 @@ class Subgraph {
   // index. If an invalid subgraph index is given, then returns nullptr.
   TfLiteContext* GetSubgraphContext(int subgraph_index);
 
+  // Retrieves a const pointer to the corresponding TfLiteContext of a subgraph
+  // given a subgraph index. If an invalid subgraph index is given, then returns
+  // nullptr.
+  const TfLiteContext* GetSubgraphContext(int subgraph_index) const;
+
   // Marks the subgraph with the given index as "delegation-skippable". Returns
   // kTfLiteOk if the given subgraph index is valid and is successfully marked
-  // as delegation-skippable.
+  // as delegation-skippable, and an error status if the subgraph index is
+  // invalid.
   // If a subgraph is delegation-skippable, then the subgraph will be handled by
   // a TfLiteDelegate (and that the delegate is supposed to be already aware of
   // this state), and therefore, TfLiteInterpreter can skip invoking
   // `ModifyGraphWithDelegate` on this subgraph.
-  // NOTE: This function is expected to be called only when the subgraph will be
-  // skipped by the interpreter (e.g. the subgraph is part of the list of callee
-  // subgraphs of the same control flow node, and all of those callees are
-  // supported by the same delegate at once).
+  // NOTE: This function is expected to be called only when the subgraph that
+  // `subgraph_index` is pointing to should be skipped by
+  // interpreter::ModifyGraphWithDelegate (e.g. the subgraph is part of the list
+  // of callee subgraphs of the same control flow node, and all of those callees
+  // are supported by the same delegate at once).
+  //
+  // For example, this function can be used when the delegate is handling
+  // control flow ops like while op. E.g. A while op has condition subgraph
+  // indexed at `i` and body subgraph indexed at `j`. The op can be delegated
+  // when the following condition satisfied:
+  //   1. The delegate supports while op
+  //   2. Both condition subgraph `i` and body subgraph `j` can be fully
+  //      delegated by the delegate.
+  // Then if the delegate decides to support the while node along with both body
+  // and condition subgraphs, it should mark subgraphs `i` and `j` skippable so
+  // those two subgraphs won't be delegated separately again after being
+  // absorbed by the parent subgraph.
+  // WARNING: It is the delegate's responsibility to define when to skip
+  // subgraph->ModifyGraphWithDelegate, to check any edge cases (i.e. multiple
+  // references to the subgraph that `subgraph_index` is pointing to), and to
+  // mark that subgraph as skippable using this function.
   TfLiteStatus MarkSubgraphAsDelegationSkippable(int subgraph_index);
 
   // Returns whether this subgraph is delegation-skippable.
@@ -858,6 +879,27 @@ class Subgraph {
   // sits inside the associated TFLite interpreter instance.
   TfLiteExternalContext** external_contexts_;
 
+  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
+  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
+  // pointers are deleted in the 'Subgraph' destructor.
+  //
+  // The intended usage of this container is to provide (friend) classes
+  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
+  // and then tie the lifetime of these objects to a subgraph.
+  //
+  // WARNING: This field needs to precede 'nodes_and_registration_', to ensure
+  // that it outlives that field, since that field might contain references to
+  // the TfLiteRegistrationExternal objects contained in this fielld.
+  //
+  // LINT.IfChange
+  // Ideally we could include c_api.h and use
+  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
+  // dependency cycle.
+  std::unordered_set<  // NOLINT
+      std::unique_ptr<const TfLiteRegistrationExternal>>
+      registration_externals_;
+  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
+
   // Node inputs/outputs are stored in TfLiteNode and TfLiteRegistration stores
   // function pointers to actual implementation.
   // Nodes should appear in the order in which they are instantiated at runtime.
@@ -999,23 +1041,6 @@ class Subgraph {
   // Mapping between tensor index to the last index of the execution plan that
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
-
-  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
-  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
-  // pointers are deleted in the 'Subgraph' destructor.
-  //
-  // The intended usage of this container is to provide (friend) classes
-  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
-  // and then tie the lifetime of these objects to a subgraph.
-  //
-  // LINT.IfChange
-  // Ideally we could include c_api.h and use
-  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
-  // dependency cycle.
-  std::unordered_set<  // NOLINT
-      std::unique_ptr<const TfLiteRegistrationExternal>>
-      registration_externals_;
-  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
 
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;

@@ -163,3 +163,13 @@ func.func @UnsupportedOp(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %0 : tensor<i32>
 }
 
+// -----
+
+// _XlaHostComputeMlir with manual_sharding should not fall back to
+// XlaHostCompute, because XlaHostCompute does not support manual_sharding.
+
+func.func @HostComputeManualNoFallback(%arg0: tensor<i32>) -> () {
+  // expected-error @+1 {{manual_sharding not supported with fallback}}
+  %1 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", host_mlir_module = "", manual_sharding = true} : (tensor<i32>) -> (tensor<f32>)
+  func.return
+}

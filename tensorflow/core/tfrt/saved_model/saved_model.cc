@@ -25,10 +25,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/import_model.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/batch_kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
+#include "learning/infra/mira/mlrt/bytecode/bytecode.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -44,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -64,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
@@ -82,7 +86,6 @@ namespace {
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
-using ::tensorflow::SessionMetadata;
 using ::tensorflow::StatusOr;
 
 struct Initializer {
@@ -236,35 +239,36 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
 }
 
 tensorflow::Status RunBytecodeInitializers(
+    const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
-    const SessionMetadata& model_metadata,
-    const mlrt::LoadedExecutable& loaded_executable, const Runtime& runtime,
+    const mlrt::LoadedExecutable& loaded_executable,
     tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
     const FallbackState& fallback_state) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(/*run_options=*/{}, model_metadata, runtime,
-                        runtime.work_queue(), resource_context, runner_table,
+      CreateRequestInfo(options, /*run_options=*/{},
+                        options.runtime->work_queue(), resource_context,
+                        /*client_graph_resource_context=*/nullptr, runner_table,
                         resource_array, fallback_state));
 
   std::vector<tensorflow::Tensor> outputs;
   if (auto function = loaded_executable.GetFunction("_tfrt_fallback_init")) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        /*sync_resource_state=*/nullptr));
   }
 
   for (const auto& p : initializers_and_signatures.initializers) {
     const auto& initializer_name = p.name;
     const auto& initializer_inputs = p.inputs;
-    GraphExecutionOptions options(&runtime);
-    options.model_metadata = model_metadata;
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
         options, /*run_options=*/{}, initializer_name, nullptr,
         &loaded_executable, initializer_inputs, &outputs, resource_context,
-        runner_table, resource_array, runtime, fallback_state,
+        /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
+        *options.runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
     DCHECK(outputs.empty());
   }
@@ -272,23 +276,26 @@ tensorflow::Status RunBytecodeInitializers(
   if (auto function = loaded_executable.GetFunction("_tfrt_resource_init")) {
     TF_RETURN_IF_ERROR(RunMlrtFunction(
         function, loaded_executable, request_info->tfrt_request_context,
-        *request_info->request_queue, {}, &outputs));
+        *request_info->request_queue, {}, &outputs,
+        /*sync_resource_state=*/nullptr));
   }
 
   return OkStatus();
 }
 
 tensorflow::Status RunBefInitializers(
+    const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
-    const SessionMetadata& model_metadata, tfrt::BEFFile* bef_file,
-    const Runtime& runtime, tfrt::ResourceContext* resource_context,
+    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
     const FallbackState& fallback_state) {
+  DCHECK(options.runtime);
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(/*run_options=*/{}, model_metadata, runtime,
-                        runtime.work_queue(), resource_context, runner_table,
+      CreateRequestInfo(options, /*run_options=*/{},
+                        options.runtime->work_queue(), resource_context,
+                        /*client_graph_resource_context=*/nullptr, runner_table,
                         resource_array, fallback_state));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
@@ -302,15 +309,15 @@ tensorflow::Status RunBefInitializers(
   for (const auto& p : initializers_and_signatures.initializers) {
     const auto& initializer_name = p.name;
     const auto& initializer_inputs = p.inputs;
-    GraphExecutionOptions options(&runtime);
-    options.model_metadata = model_metadata;
     auto* func = bef_file->GetFunction(initializer_name);
     DCHECK(func);
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
         options, /*run_options=*/{}, initializer_name, func,
         /*loaded_executable=*/nullptr, initializer_inputs, &outputs,
-        resource_context, runner_table, resource_array, runtime, fallback_state,
+        resource_context,
+        /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
+        *options.runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
     DCHECK(outputs.empty());
   }
@@ -447,10 +454,9 @@ tensorflow::Status CheckInputSpecs(
         ->GetCell(
             absl::StrCat(model_metadata.name(), ":", model_metadata.version()))
         ->Set(true);
-    const auto error_string =
-        absl::StrCat("model: ", model_metadata.name(),
-                     ", version: ", model_metadata.version(),
-                     ", error: ", status.error_message());
+    const auto error_string = absl::StrCat(
+        "model: ", model_metadata.name(),
+        ", version: ", model_metadata.version(), ", error: ", status.message());
     if (!run_options.validate_input_specs_dry_run) {
       return tensorflow::errors::InvalidArgument(error_string);
     }
@@ -581,6 +587,20 @@ void UpdateCompileOptions(SavedModel::Options& options) {
     // remove the obsolete TFRT GPU runtime as well.
     options.graph_execution_options.compile_options.use_bridge_for_gpu = true;
   }
+
+  options.graph_execution_options.compile_options
+      .fuse_get_resource_ops_in_hoisting =
+      !options.graph_execution_options.enable_mlrt;
+
+  if (options.graph_execution_options.enable_mlrt) {
+    options.lazy_loading_use_graph_executor = options.enable_lazy_loading;
+    LOG(INFO) << "lazy_loading_use_graph_executor is updated to be the same as "
+                 "enable_lazy_loading: "
+              << options.enable_lazy_loading;
+    options.graph_execution_options.compile_options
+        .enable_while_parallel_iterations = true;
+    LOG(INFO) << "enable_while_parallel_iterations is always true for MLRT";
+  }
 }
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
@@ -676,11 +696,11 @@ SavedModelImpl::LoadSavedModel(Options options,
     GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
                                   meta_graph_def.signature_def(), options);
   }
-  tfrt::BefBuffer bef;
   mlrt::bc::Buffer bytecode;
+  tfrt::BefBuffer bef;
   if (options.graph_execution_options.enable_mlrt) {
     ASSIGN_OR_RETURN_IN_COMPILE(
-        bytecode, CompileMlirModuleToByteCode(
+        bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                       options.graph_execution_options.compile_options,
                       mlir_module.get()));
   } else {
@@ -727,17 +747,13 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   if (loaded_executable) {
     RETURN_IF_ERROR_IN_INIT(RunBytecodeInitializers(
-        initializers_and_signatures,
-        options.graph_execution_options.model_metadata, *loaded_executable,
-        *options.graph_execution_options.runtime,
-        &graph_executor->resource_context(), runner_table.get(),
-        resource_array.get(), *fallback_state));
+        graph_executor->options(), initializers_and_signatures,
+        *loaded_executable, &graph_executor->resource_context(),
+        runner_table.get(), resource_array.get(), *fallback_state));
   } else {
     DCHECK(bef_file);
     RETURN_IF_ERROR_IN_INIT(RunBefInitializers(
-        initializers_and_signatures,
-        options.graph_execution_options.model_metadata, bef_file.get(),
-        *options.graph_execution_options.runtime,
+        graph_executor->options(), initializers_and_signatures, bef_file.get(),
         &graph_executor->resource_context(), runner_table.get(),
         resource_array.get(), *fallback_state));
   }
@@ -774,7 +790,7 @@ SavedModelImpl::SavedModelImpl(
       bytecode_(std::move(bytecode)),
       loaded_executable_(std::move(loaded_executable)),
       req_deadline_tracker_(
-          options.graph_execution_options.runtime->core_runtime()
+          options_.graph_execution_options.runtime->core_runtime()
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),
@@ -869,8 +885,9 @@ tensorflow::Status SavedModelImpl::Run(
 
   return GraphExecutionRunOnFunction(
       options_.graph_execution_options, run_options, name, func,
-      loaded_executable, inputs, outputs, resource_context, runner_table,
-      resource_array, runtime(), *fallback_state_, &req_deadline_tracker_);
+      loaded_executable, inputs, outputs, resource_context,
+      /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
+      runtime(), *fallback_state_, &req_deadline_tracker_);
 }
 
 struct SavedModelImpl::JoinedSignature {
@@ -1097,9 +1114,8 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       tfrt::CreateBefFileFromBefBuffer(
           *options_.graph_execution_options.runtime, loading_result->bef));
   RETURN_IF_ERROR_IN_INIT(RunBefInitializers(
-      /*initializers_and_signatures=*/{},
-      options_.graph_execution_options.model_metadata,
-      loading_result->bef_file.get(), *options_.graph_execution_options.runtime,
+      graph_executor_->options(),
+      /*initializers_and_signatures=*/{}, loading_result->bef_file.get(),
       &graph_executor_->resource_context(), loading_result->runner_table.get(),
       loading_result->resource_array.get(), *fallback_state_));
 
@@ -1127,6 +1143,13 @@ SavedModelImpl::GetOrCreateLoadingResult(const RunOptions& run_options,
   TF_ASSIGN_OR_RETURN(
       const auto joined_signature,
       JoinSignatures(names, signatures_, meta_graph_def_.signature_def()));
+
+  LOG(INFO) << "TFRT loading joined signature " << joined_signature.name;
+  absl::Cleanup log_finish([&joined_signature, start_time = absl::Now()]() {
+    LOG(INFO) << "TFRT finished loading joined signature "
+              << joined_signature.name << ". Took "
+              << absl::ToInt64Milliseconds(absl::Now() - start_time) << " ms.";
+  });
 
   return LoadJoinedSignature(joined_signature);
 }

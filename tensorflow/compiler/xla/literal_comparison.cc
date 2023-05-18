@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
+#include "tensorflow/compiler/xla/primitive_util.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -86,6 +88,13 @@ bool CompareEqual<tsl::float8_e4m3fn>(tsl::float8_e4m3fn lhs,
                                                                 multi_index);
 }
 template <>
+bool CompareEqual<tsl::float8_e4m3b11>(tsl::float8_e4m3b11 lhs,
+                                       tsl::float8_e4m3b11 rhs,
+                                       absl::Span<const int64_t> multi_index) {
+  return CompareFloatsBitwiseEqual<tsl::float8_e4m3b11, uint8_t>(lhs, rhs,
+                                                                 multi_index);
+}
+template <>
 bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
                             absl::Span<const int64_t> multi_index) {
   return CompareFloatsBitwiseEqual<bfloat16, uint16_t>(lhs, rhs, multi_index);
@@ -144,6 +153,24 @@ Status MakeErrorStatus(NativeT lhs, NativeT rhs,
 }
 
 template <>
+Status MakeErrorStatus(s4 lhs, s4 rhs, absl::Span<const int64_t> multi_index) {
+  return InvalidArgument(
+      "first mismatch at array index %s:\n  expected value: %s\n  actual "
+      "value:   %s",
+      LiteralUtil::MultiIndexAsString(multi_index),
+      StrCat(static_cast<int8_t>(lhs)), StrCat(static_cast<int8_t>(rhs)));
+}
+
+template <>
+Status MakeErrorStatus(u4 lhs, u4 rhs, absl::Span<const int64_t> multi_index) {
+  return InvalidArgument(
+      "first mismatch at array index %s:\n  expected value: %s\n  actual "
+      "value:   %s",
+      LiteralUtil::MultiIndexAsString(multi_index),
+      StrCat(static_cast<uint8_t>(lhs)), StrCat(static_cast<uint8_t>(rhs)));
+}
+
+template <>
 Status MakeErrorStatus(tsl::float8_e5m2 lhs, tsl::float8_e5m2 rhs,
                        absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<tsl::float8_e5m2, uint8_t>(lhs, rhs,
@@ -154,6 +181,12 @@ Status MakeErrorStatus(tsl::float8_e4m3fn lhs, tsl::float8_e4m3fn rhs,
                        absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<tsl::float8_e4m3fn, uint8_t>(lhs, rhs,
                                                              multi_index);
+}
+template <>
+Status MakeErrorStatus(tsl::float8_e4m3b11 lhs, tsl::float8_e4m3b11 rhs,
+                       absl::Span<const int64_t> multi_index) {
+  return MakeBitwiseErrorStatus<tsl::float8_e4m3b11, uint8_t>(lhs, rhs,
+                                                              multi_index);
 }
 template <>
 Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
@@ -275,6 +308,10 @@ std::string FpValueToString(tsl::float8_e4m3fn value) {
   return absl::StrFormat("%5.3g", static_cast<double>(value));
 }
 
+std::string FpValueToString(tsl::float8_e4m3b11 value) {
+  return absl::StrFormat("%5.3g", static_cast<double>(value));
+}
+
 std::string FpValueToString(bfloat16 value) {
   return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
@@ -325,6 +362,11 @@ double FpAbsoluteValue(tsl::float8_e5m2 value) {
 
 template <>
 double FpAbsoluteValue(tsl::float8_e4m3fn value) {
+  return FpAbsoluteValue<float>(static_cast<float>(value));
+}
+
+template <>
+double FpAbsoluteValue(tsl::float8_e4m3b11 value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
@@ -778,67 +820,23 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     Literal* miscompared_ptr =
         (miscompare_callback == nullptr ? nullptr : &miscompared);
 
-    switch (expected.shape().element_type()) {
-      case PRED:
-        result = Equal<bool>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S8:
-        result = Equal<int8_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S16:
-        result = Equal<int16_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S32:
-        result = Equal<int32_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S64:
-        result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U8:
-        result = Equal<uint8_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U16:
-        result = Equal<uint16_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U32:
-        result = Equal<uint32_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U64:
-        result = Equal<uint64_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F8E5M2:
-        result = Equal<tsl::float8_e5m2>(expected, actual, index, 0,
-                                         miscompared_ptr);
-        break;
-      case F8E4M3FN:
-        result = Equal<tsl::float8_e4m3fn>(expected, actual, index, 0,
-                                           miscompared_ptr);
-        break;
-      case BF16:
-        result = Equal<bfloat16>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F16:
-        result = Equal<half>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F32:
-        result = Equal<float>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F64:
-        result = Equal<double>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case C64:
-        result = Equal<complex64>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case C128:
-        result = Equal<complex128>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case TOKEN:
-        // Tokens have no on-device representation and are trivially equal.
-        return OkStatus();
-      default:
-        LOG(FATAL) << "Unsupported primitive type: "
-                   << PrimitiveType_Name(expected.shape().element_type());
-    }
+    primitive_util::PrimitiveTypeSwitch<void>(
+        [&](auto primitive_type_constant) -> void {
+          if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+            using NativeT =
+                primitive_util::NativeTypeOf<primitive_type_constant>;
+            result =
+                Equal<NativeT>(expected, actual, index, 0, miscompared_ptr);
+            return;
+          }
+          if constexpr (primitive_type_constant == TOKEN) {
+            // Tokens have no on-device representation and are trivially equal.
+            return;
+          }
+          LOG(FATAL) << "Unsupported primitive type: "
+                     << PrimitiveType_Name(expected.shape().element_type());
+        },
+        expected.shape().element_type());
 
     if (!result.ok() && miscompare_callback) {
       miscompare_callback(expected, actual, LiteralSlice(miscompared),
@@ -874,14 +872,13 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
           NearHelper(expected_element, actual_element, element_index, error,
                      detailed_message, miscompare_callback);
       if (!element_result.ok()) {
-        element_result = InvalidArgument("Array at shape index %s, %s",
-                                         element_index.ToString(),
-                                         element_result.error_message());
+        element_result =
+            InvalidArgument("Array at shape index %s, %s",
+                            element_index.ToString(), element_result.message());
         if (return_status.ok()) {
           return_status = element_result;
         } else {
-          return_status =
-              AppendStatus(return_status, element_result.error_message());
+          return_status = AppendStatus(return_status, element_result.message());
         }
       }
     }
@@ -892,7 +889,7 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       return_status =
           InvalidArgument("\nMismatches in shape %s (%d elements):\n%s",
                           ShapeUtil::HumanString(actual.shape()),
-                          total_elements, return_status.error_message());
+                          total_elements, return_status.message());
     }
     return return_status;
   }
@@ -909,6 +906,11 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case F8E4M3FN:
         return NearComparator<tsl::float8_e4m3fn>::Compare(
+            expected, actual, shape_index, error, use_detailed_message,
+            miscompare_callback);
+        break;
+      case F8E4M3B11FNUZ:
+        return NearComparator<tsl::float8_e4m3b11>::Compare(
             expected, actual, shape_index, error, use_detailed_message,
             miscompare_callback);
         break;
@@ -1062,7 +1064,7 @@ Status EmitLiteralsInErrorMessage(const Status& result,
     return result;
   }
   return InvalidArgument("%s\n\nExpected literal:\n%s\n\nActual literal:\n%s",
-                         result.error_message(), ToStringTruncated(expected),
+                         result.message(), ToStringTruncated(expected),
                          ToStringTruncated(actual));
 }
 

@@ -108,6 +108,7 @@ cc_library(
         ":errors",
         ":logical_result",
         ":map_by_type",
+        ":memref_view",
         ":state",
         ":type_id",
         "//tensorflow/compiler/xla:shape_util",
@@ -211,6 +212,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
         "//tensorflow/compiler/xla/mlir/runtime/utils:c_runner_utils",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:float_16bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -372,13 +374,23 @@ cc_library(
     hdrs = ["memory_mapper.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/tsl/platform",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Support",
-        "//tensorflow/tsl/platform",
     ] + tf_platform_deps(
         "memory_mapper",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
     ),
+)
+
+cc_library(
+    name = "memref_view",
+    hdrs = ["memref_view.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(

@@ -71,15 +71,11 @@ TfLiteRegistration* Register_RANDOM_INT() {
 
 namespace subgraph_test_util {
 
-namespace {
-
 void SetupTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
   ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 0,
                                                    nullptr, {}, false),
             kTfLiteOk);
 }
-
-}  // namespace
 
 SubgraphBuilder::~SubgraphBuilder() {
   for (auto buffer : buffers_) {
@@ -292,8 +288,8 @@ void SubgraphBuilder::BuildAccumulateLoopBodySubgraph(Subgraph* subgraph) {
                                   &node_index);
 }
 
-void SubgraphBuilder::BuildPadLoopBodySubgraph(Subgraph* subgraph,
-                                               const std::vector<int> padding) {
+void SubgraphBuilder::BuildPadLoopBodySubgraph(
+    Subgraph* subgraph, const std::vector<int>& padding) {
   const int kInputCounter = 0;
   const int kInputValue = 1;
   const int kOutputCounter = 2;

@@ -1032,7 +1032,7 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
   }
 }
 
-// Extern template instantiated in conv_grad_filter_ops.cc.
+// Extern template instantiated in conv_grad_ops.cc.
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
@@ -1040,7 +1040,7 @@ extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// Extern template instantiated in conv_grad_filter_ops.cc.
+// Extern template instantiated in conv_grad_ops.cc.
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, Eigen::bfloat16>;
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, float>;

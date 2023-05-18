@@ -64,7 +64,7 @@ TfLiteStatus PrepareOutput(TfLiteContext* context,
 
   // Exit early if cond is a non-const tensor. Set output tensor to dynamic so
   // output size can be determined in Eval.
-  if (!IsConstantTensor(cond_tensor)) {
+  if (!IsConstantOrPersistentTensor(cond_tensor)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

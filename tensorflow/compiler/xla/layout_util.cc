@@ -60,8 +60,8 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
-    PrimitiveType pointer_primitive_type, int64_t memory_space,
-    std::optional<Shape> physical_shape,
+    PrimitiveType pointer_primitive_type, int64_t element_size_in_bits,
+    int64_t memory_space, std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
@@ -89,6 +89,7 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   }
   layout.set_index_primitive_type(index_primitive_type);
   layout.set_pointer_primitive_type(pointer_primitive_type);
+  layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
@@ -701,10 +702,25 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
       return dim_unique && dim_ordered;
     case DIM_COMPRESSED:
     case DIM_SINGLETON:
+    case DIM_COMPRESSED_WITH_HI:
       return true;
     default:
       return false;
   }
+}
+
+/*static*/ bool LayoutUtil::ByteStridesIsMajorToMinor(
+    absl::Span<const int64_t> byte_strides, absl::Span<const int64_t> dims,
+    PrimitiveType element_type) {
+  CHECK_EQ(dims.size(), byte_strides.size());
+  int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  for (int i = dims.size() - 1; i >= 0; --i) {
+    if (byte_strides[i] != stride) {
+      return false;
+    }
+    stride *= dims[i];
+  }
+  return true;
 }
 
 }  // namespace xla

@@ -2,7 +2,7 @@
 #   Low-level utilities for reading and writing checkpoints.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -46,6 +46,7 @@ py_strict_library(
         ":saveable_object",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops_gen",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
@@ -57,11 +58,11 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
@@ -84,7 +85,7 @@ py_strict_library(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "saveable_object_util_test",
     srcs = ["saveable_object_util_test.py"],
     deps = [
@@ -96,7 +97,6 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
     ],

@@ -30,7 +30,7 @@ class UnifiedAPI
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 
  public:
@@ -61,7 +61,7 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -69,7 +69,7 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
   {
     AbstractTensorHandle* x_raw = nullptr;
     Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -77,7 +77,7 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
                       /*inputs=*/{x.get()},
                       /*outputs=*/{},
                       /*use_function=*/UseFunction());
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 }
 
 // Checks that inputs[0] is a matrix with shape 2x4.
@@ -111,7 +111,7 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -122,7 +122,7 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
     int64_t dim_sizes[] = {2, 4};
     Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx.get(), data,
                                                          dim_sizes, 2, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -130,7 +130,7 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
                       /*inputs=*/{x.get()},
                       /*outputs=*/{},
                       /*use_function=*/UseFunction());
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 }
 
 TEST_P(UnifiedAPI, TestUnknownShapeTracing) {
@@ -148,13 +148,13 @@ TEST_P(UnifiedAPI, TestUnknownShapeTracing) {
     PartialTensorShape shape;
     Status s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(
         DT_FLOAT, shape, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
   PartialTensorShape shape;
   Status s = x->Shape(&shape);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_TRUE(shape.unknown_rank());
 }
 
@@ -172,16 +172,16 @@ TEST_P(UnifiedAPI, TestPartialShapeTracing) {
     PartialTensorShape shape;
     int64_t dim_sizes[] = {2, -1};
     Status s = PartialTensorShape::MakePartialShape(dim_sizes, 2, &shape);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(
         DT_FLOAT, shape, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
   PartialTensorShape shape;
   Status s = x->Shape(&shape);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_FALSE(shape.unknown_rank());
 
   ASSERT_EQ(2, shape.dim_size(0));

@@ -91,6 +91,20 @@ final class HtmlWriter implements ReportWriter {
             .append(".status-NOT_APPLICABLE {\n")
             .append("  background-color: grey;\n")
             .append("}\n")
+            .append(".ls-info-box {\n")
+            .append("  padding: 5px 10px;\n")
+            .append("  margin: 10px;\n")
+            .append("  border-style: solid;\n")
+            .append("  border-left-width: 5px;\n")
+            .append("  border-radius: 4px;\n")
+            .append("  color: #666;\n")
+            .append("  font-size: 13px;\n")
+            .append("  line-height: 1.3\n")
+            .append("}\n")
+            .append(".ls-info-box {\n")
+            .append("  background-color: #f0f0f0;\n")
+            .append("  border-left-color: silver\n")
+            .append("}\n")
             .append("</style>\n")
             .append("</head>\n")
             .append("<body>\n")
@@ -98,7 +112,7 @@ final class HtmlWriter implements ReportWriter {
             .append("<h1>Delegate Performance Benchmark Report</h1>\n");
     // Summary table
     sb.append("<table>\n").append("<tr>\n").append("<td>Summary</td>\n");
-    addResultCell(report.result(), sb);
+    addResultCell(report.result(), /* isStrictCriteria= */ null, sb);
     sb.append("</tr>\n").append("</table>\n");
 
     // Heading row for the detailed metric table. It is structured as below:
@@ -118,7 +132,20 @@ final class HtmlWriter implements ReportWriter {
     for (ModelBenchmarkReportInterface modelReport : modelReports) {
       writerModelReport(modelReport, sb);
     }
-    sb.append("</tbody>\n").append("</table>\n").append("</body>\n").append("</html>\n");
+    sb.append("</tbody>\n")
+        .append("</table>\n")
+        .append("<div class=\"ls-info-box\">\n")
+        .append("<p>\n")
+        .append(
+            "When the test target delegate type is the same as the reference delegate, the checks"
+                + " are more strict. Otherwise, the checks are relaxed. Please see \n")
+        .append(
+            "<a href=\"https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java\">BenchmarkResultType.java</a>\n")
+        .append(" for the meanings of PASS, PASS_WITH_WARNING and FAIL.\n")
+        .append("</p>\n")
+        .append("</div>\n")
+        .append("</body>\n")
+        .append("</html>\n");
     try (PrintWriter writer = new PrintWriter(filePath)) {
       writer.write(sb.toString());
     } catch (IOException e) {
@@ -142,7 +169,7 @@ final class HtmlWriter implements ReportWriter {
           sb.append("<td>").append(metricEntry.value()).append("</td>\n");
           if (!delegateMetricsEntry.isTestTarget()) {
             sb.append("<td>").append(metricEntry.regression()).append("</td>\n");
-            addResultCell(metricEntry.result(), sb);
+            addResultCell(metricEntry.result(), /* isStrictCriteria= */ null, sb);
           }
         }
         sb.append("</tr>\n");
@@ -153,22 +180,23 @@ final class HtmlWriter implements ReportWriter {
         sb.append("<td/>\n");
         if (!delegateMetricsEntry.isTestTarget()) {
           sb.append("<td/>\n");
-          addResultCell(delegateMetricsEntry.result(), sb);
+          addResultCell(delegateMetricsEntry.result(), delegateMetricsEntry.isStrictCriteria(), sb);
         }
       }
       sb.append("</tr>\n<tr>\n<td>").append(modelName).append("</td>\n<td>model_summary</td>\n");
-      addResultCell(modelReport.result(), sb);
+      addResultCell(modelReport.result(), /* isStrictCriteria= */ null, sb);
       sb.append("</tr>\n");
     }
   }
 
   /** Adds a colored result cell to the table. */
-  private void addResultCell(BenchmarkResultType result, StringBuilder sb) {
-    sb.append("<td class=\"status-")
-        .append(result.name())
-        .append("\">")
-        .append(result)
-        .append("</td>\n");
+  private void addResultCell(
+      BenchmarkResultType result, Boolean isStrictCriteria, StringBuilder sb) {
+    sb.append("<td class=\"status-").append(result.name()).append("\">").append(result);
+    if (isStrictCriteria != null && isStrictCriteria) {
+      sb.append(" (strict)");
+    }
+    sb.append("</td>\n");
   }
 
   static ReportWriter create(String destinationFolderPath) {

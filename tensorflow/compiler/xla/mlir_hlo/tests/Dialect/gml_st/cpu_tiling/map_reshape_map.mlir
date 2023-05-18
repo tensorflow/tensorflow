@@ -58,7 +58,7 @@ func.func @fuse_reshape_map(%arg0: tensor<10x16xf32>,
 // CHECK:         %[[RES:.*]] = scf.for {{.*}} (tensor<10x1x4x4x1xf32>) {
 // CHECK:           scf.for
 // CHECK:             scf.for
-// CHECK:               %[[EXTRACT:.*]] = tensor.extract_slice %[[EXPAND]]
+// CHECK:               %[[EXTRACT:.*]] = tensor.extract %[[EXPAND]]
 // CHECK:               arith.negf
 // CHECK:             }
 // CHECK:           }

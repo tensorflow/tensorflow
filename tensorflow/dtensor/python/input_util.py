@@ -641,3 +641,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     enumerated_dataset = dataset.enumerate()
     partitioned_dataset = enumerated_dataset.map(slice_batch)
     return partitioned_dataset
+
+  @property
+  def element_spec(self):
+    return self._global_element_spec

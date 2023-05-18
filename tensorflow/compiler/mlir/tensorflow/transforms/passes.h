@@ -377,10 +377,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterConstantSinkingPass(
     llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter = {});
 
 // Creates a pass that outlines regions of tf_device.cluster operations.
-std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass(
+    bool globally_unique_func_names = true);
 
 // Creates a pass that outlines regions of tf_device.launch operations.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass(
+    bool globally_unique_func_names = true);
 
 // Creates a pass that converts tf_device::LaunchFuncOp into
 // TF::PartitionedCallOp.
@@ -431,6 +433,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass(
 // using the replica id attribute.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicaIDToDeviceOrdinalPass();
+
+// Creates a pass that adds pipelining to a graph that contains device
+// accelerated embeddings.
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
@@ -532,12 +538,13 @@ CreateTPUResourceReadsWritesPartitioningPass();
 // Creates a pass that looks for usage of the result of
 // TPUCopyWithDynamicShapeOp and annotate these values to be dynamic shape. This
 // ensures that the generated tpu program has the correct inputs annotation.
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUAnnotateDynamicShapeInputsPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass(
+    llvm::StringRef module_name = llvm::StringRef());
 
 // Creates a pass that identifies XLASharding ops in launch op for TPU
 // computation.
@@ -590,9 +597,13 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 // Creates a pass that propagates TPU devices to users.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
 
+// Create a pass that colocates each `Split` with its predecessor.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUColocateSplitsPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // bridge.
-void CreateTPUBridgePipeline(OpPassManager& pm);
+void CreateTPUBridgePipeline(OpPassManager& pm,
+                             llvm::StringRef module_name = llvm::StringRef());
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge in V1 mode.

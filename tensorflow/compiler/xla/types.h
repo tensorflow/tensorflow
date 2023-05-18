@@ -23,6 +23,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 
 namespace xla {
@@ -33,6 +34,7 @@ using ::Eigen::half;      // NOLINT(misc-unused-using-decls)
 using complex64 = std::complex<float>;
 using complex128 = std::complex<double>;
 
+// LINT.IfChange
 template <typename UnderlyingTy>
 struct i4 {
  private:
@@ -76,6 +78,12 @@ struct i4 {
   bool operator<=(const int64_t other) const { return v <= other; }
   bool operator>=(const int64_t other) const { return v >= other; }
 
+  i4 operator-() const { return i4(-v); }
+  i4 operator++(int) {
+    i4 tmp(*this);
+    v = (v + 1) & 0x0F;
+    return tmp;
+  }
   i4& operator++() {
     v = (v + 1) & 0x0F;
     return *this;
@@ -93,11 +101,18 @@ struct i4 {
     return is;
   }
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const i4& i) {
+    absl::Format(&sink, "%d", i.v);
+  }
+
   std::string to_string() const { return std::to_string(v); }
 };
 
 using u4 = i4<uint8_t>;
 using s4 = i4<int8_t>;
+// LINT.ThenChange(//tensorflow/compiler/xla/literal.cc)
+
 }  // namespace xla
 
 // Alias namespace ::stream_executor as ::xla::se.

@@ -51,6 +51,7 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
     }
   }
 
+  // TODO(frgossen): Fix this in the `RegionBranchOpInterface`.
   // RegionBranchOpInterface believes for ops are always executed at least once.
   if (llvm::isa<scf::ForOp>(op) && !index) {
     assert(llvm::none_of(edges,

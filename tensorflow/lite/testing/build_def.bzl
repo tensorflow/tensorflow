@@ -22,6 +22,7 @@ def generated_test_models():
         "batch_to_space_nd",
         "batchmatmul",
         "bitcast",
+        "bitwise_xor",
         "broadcast_args",
         "broadcast_gradient_args",
         "broadcast_to",
@@ -63,6 +64,7 @@ def generated_test_models():
         "floor_div",
         "floor_mod",
         "fully_connected",
+        "fully_connected_4bit_hybrid",
         "fused_batch_norm",
         "gather",
         "gather_nd",
@@ -136,6 +138,7 @@ def generated_test_models():
         "reverse_v2",
         "rfft",
         "rfft2d",
+        "right_shift",
         "roll",
         "roll_with_constant",
         "round",
@@ -576,7 +579,7 @@ def gen_zipped_test_file(name, file, flags = ""):
                 " --zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
-        exec_tools = [
+        tools = [
             "//tensorflow/lite/testing:generate_examples",
         ],
     )

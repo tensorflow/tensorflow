@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
@@ -533,12 +534,11 @@ class RunManyGraphs {
       Status resp_status = call->resp->status();
       ReportBadStatus(errors::CreateWithUpdatedMessage(
           resp_status, strings::StrCat("From ", *call->worker_name, ":\n",
-                                       resp_status.error_message())));
+                                       resp_status.message())));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
       ReportBadStatus(errors::CreateWithUpdatedMessage(
-          s, strings::StrCat("From ", *call->worker_name, ":\n",
-                             s.error_message())));
+          s, strings::StrCat("From ", *call->worker_name, ":\n", s.message())));
     }
     pending_.DecrementCount();
   }
@@ -1933,7 +1933,7 @@ Status MasterSession::PostRunCleanup(MasterSession::ReffedClientGraph* rcg,
     }
     // Schedule post-processing and cleanup to be done asynchronously.
     rcg->ProcessStats(step_id, pss, ph.get(), run_options, out_run_metadata);
-  } else if (errors::IsCancelled(s)) {
+  } else if (absl::IsCancelled(s)) {
     mutex_lock l(mu_);
     if (closed_) {
       if (garbage_collected_) {

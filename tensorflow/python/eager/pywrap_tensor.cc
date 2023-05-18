@@ -198,7 +198,7 @@ int ConvertDeviceName(PyObject* obj, const char** dst) {
 
 void RaiseExceptionTypeFromTFStatus(TF_Status* tf_status) {
   auto status = tensorflow::StatusFromTF_Status(tf_status);
-  SetRegisteredErrFromStatus(status);
+  tsl::SetRegisteredErrFromStatus(status);
 }
 
 }  // namespace

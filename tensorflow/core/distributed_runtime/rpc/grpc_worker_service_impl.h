@@ -56,7 +56,7 @@ class SerializationTraits<tensorflow::TensorResponse> {
       if (!s.ok()) {
         result = Status(StatusCode::INTERNAL,
                         ::tensorflow::strings::StrCat(
-                            "TensorResponse parse error", s.error_message()));
+                            "TensorResponse parse error", s.message()));
       }
     }
     buffer->Clear();

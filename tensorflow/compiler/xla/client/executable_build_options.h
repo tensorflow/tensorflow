@@ -138,6 +138,7 @@ class ExecutableBuildOptions {
     CHECK(device_assignment_.has_value());
     return device_assignment_.value();
   }
+  void clear_device_assignment() { device_assignment_.reset(); }
 
   // Whether input and output buffers are aliased if the associated parameter is
   // passed-through XLA modules without being changed.

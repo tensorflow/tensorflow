@@ -636,6 +636,18 @@ class Interpreter {
                                TfLiteDelegate* delegate);
 
   /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set the delegate buffer handle to the given tensor.
+  // It can be called in the following cases:
+  // 1. Set the buffer handle to a tensor that is used by other computing
+  // hardware such as EdgeTpu. For example, EdgeTpu delegate imports a tensor's
+  // memory into EdgeTpu's virtual address and returns a buffer handle. Then
+  // EdgeTpu delegate calls this API to associate the tensor with the buffer
+  // handle. Example bug b/277217867.
+  TfLiteStatus SetBufferHandle(TfLiteTensor* tensor,
+                               TfLiteBufferHandle buffer_handle,
+                               TfLiteDelegate* delegate);
+
+  /// \warning This is an experimental API and subject to change. \n
   /// \brief Get the delegate buffer handle, and the delegate which can process
   /// the buffer handle.
   TfLiteStatus GetBufferHandle(int tensor_index,

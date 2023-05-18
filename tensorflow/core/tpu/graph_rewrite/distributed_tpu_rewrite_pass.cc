@@ -4967,7 +4967,7 @@ Status DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
 Status DistributedTPURewritePass::Run(
     const GraphOptimizationPassOptions& options) {
   Status status = InternalRun(options);
-  OkOrSetErrorCounterPayload(
+  tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::TF_XLA_BRIDGE, status);
   return status;
 }

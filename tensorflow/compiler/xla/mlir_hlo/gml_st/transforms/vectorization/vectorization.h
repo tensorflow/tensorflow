@@ -24,11 +24,6 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-// The upper limit for vectorization of untiled `linalg.fill`. If a tensor has a
-// static shape with more elements, then `linalg.fill` won't be vectorized. It
-// is expected that such operations are tiled to get to small static shapes.
-static constexpr int64_t kNumElementsThreshold = 1024;
-
 // TODO(manany): This should be parameterized later on depending on hardware.
 static constexpr int64_t kNumElementsVectorization = 8;
 

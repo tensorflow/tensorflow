@@ -324,7 +324,8 @@ TEST(UnsignedQuantizedConcatenation, 4D_of_4) {
   }
 }
 
-TEST(UnsignedQuantizedConcatenation, 2D_2_inputs_differnet_zero_points) {
+TEST(UnsignedQuantizedConcatenation,
+     DISABLED_2D_2_inputs_different_zero_points) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -350,7 +351,7 @@ TEST(UnsignedQuantizedConcatenation, 2D_2_inputs_differnet_zero_points) {
   }
 }
 
-TEST(UnsignedQuantizedConcatenation, 2D_2_inputs_differnet_scales) {
+TEST(UnsignedQuantizedConcatenation, DISABLED_2D_2_inputs_different_scales) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);

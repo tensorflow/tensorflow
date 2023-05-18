@@ -76,7 +76,7 @@ extern void __xla_cpu_runtime_ACLConv2DF32(
 #include <iostream>
 
 extern "C" {
-extern void __xla_cpu_runtime_ACLConv2DF32(
+inline extern void __xla_cpu_runtime_ACLConv2DF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, int64_t input_batch, int64_t input_rows,
     int64_t input_cols, int64_t input_channels, int64_t kernel_rows,

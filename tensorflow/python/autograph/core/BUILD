@@ -62,7 +62,7 @@ py_strict_library(
         ":ag_ctx",
         ":converter",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:variables",
         "//tensorflow/python/framework:auto_control_deps",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:nest",

@@ -152,16 +152,14 @@ StatusOr<FingerprintDef> ReadSavedModelFingerprint(
   const string fingerprint_pb_path =
       io::JoinPath(export_dir, kFingerprintFilenamePb);
   Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
-  if (found_pb.ok()) {
-    FingerprintDef fingerprint_proto;
-    Status result = ReadBinaryProto(Env::Default(), fingerprint_pb_path,
-                                    &fingerprint_proto);
-    if (result.ok()) {
-      return fingerprint_proto;
-    }
-    return result;
-  }
-  return found_pb;
+  if (!found_pb.ok()) return found_pb;
+
+  FingerprintDef fingerprint_proto;
+  Status result =
+      ReadBinaryProto(Env::Default(), fingerprint_pb_path, &fingerprint_proto);
+  if (!result.ok()) return result;
+
+  return fingerprint_proto;
 }
 
 std::string Singleprint(uint64 graph_def_program_hash,

@@ -1,1 +1,0 @@
-Utilities for splitting large protos.

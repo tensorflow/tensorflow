@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/base/log_severity.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -90,7 +93,7 @@ TEST_F(HloVerifierTest, NullInstructionParent) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("has a null parent pointer"));
+  EXPECT_THAT(status.message(), HasSubstr("has a null parent pointer"));
 }
 
 TEST_F(HloVerifierTest, NullComputationParent) {
@@ -109,7 +112,7 @@ TEST_F(HloVerifierTest, NullComputationParent) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("has a null parent pointer"));
+  EXPECT_THAT(status.message(), HasSubstr("has a null parent pointer"));
 }
 
 TEST_F(HloVerifierTest, DifferentOperandParents) {
@@ -132,8 +135,7 @@ TEST_F(HloVerifierTest, DifferentOperandParents) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("is in a different computation"));
+  EXPECT_THAT(status.message(), HasSubstr("is in a different computation"));
 }
 
 TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
@@ -180,8 +182,7 @@ TEST_F(HloVerifierTest, CheckCallOperandParameterShapesMismatch) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("shape does not match parameter"));
+  EXPECT_THAT(status.message(), HasSubstr("shape does not match parameter"));
 }
 
 TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
@@ -201,7 +202,7 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("expects parent computation thread name same as called "
                         "computation's thread name"));
 }
@@ -232,8 +233,7 @@ TEST_F(HloVerifierTest, CheckConditionalOperandParameterShapesMismatch) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("shape does not match parameter"));
+  EXPECT_THAT(status.message(), HasSubstr("shape does not match parameter"));
 }
 
 TEST_F(HloVerifierTest, CheckConditionalBranchIndexOperandShape) {
@@ -271,14 +271,14 @@ TEST_F(HloVerifierTest, CheckConditionalBranchIndexOperandShape) {
   status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr(
           "first operand of indexed conditional must be a scalar of S32"));
 
   *condition->mutable_shape() = ShapeUtil::MakeShape(S32, {4});
   status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("first operand of conditional must be a scalar"));
 }
 
@@ -311,7 +311,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchThread) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("expects parent computation thread name same as called "
                         "computation's thread name"));
 }
@@ -364,7 +364,7 @@ TEST_F(HloVerifierTest, RngOpnd0NotScalar) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("Expected scalar type"));
+  EXPECT_THAT(status.message(), HasSubstr("Expected scalar type"));
 }
 
 TEST_F(HloVerifierTest, RngOperandElementTypesDoNotMatch) {
@@ -383,8 +383,7 @@ TEST_F(HloVerifierTest, RngOperandElementTypesDoNotMatch) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Expected compatible element types"));
+  EXPECT_THAT(status.message(), HasSubstr("Expected compatible element types"));
 }
 
 TEST_F(HloVerifierTest, RngMixedPrecisionNotAllowed) {
@@ -403,8 +402,7 @@ TEST_F(HloVerifierTest, RngMixedPrecisionNotAllowed) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Expected compatible element types"));
+  EXPECT_THAT(status.message(), HasSubstr("Expected compatible element types"));
 }
 
 TEST_F(HloVerifierTestAllowMixedPrecision, RngMixedPrecisionAllowed) {
@@ -441,7 +439,7 @@ TEST_F(HloVerifierTest, RngElementTypeNotSupported) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("Element type not supported"));
+  EXPECT_THAT(status.message(), HasSubstr("Element type not supported"));
 }
 
 TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
@@ -464,7 +462,7 @@ TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Interior padding cannot be negative"));
 }
 
@@ -486,7 +484,7 @@ TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
   auto module = CreateUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Interior padding cannot be negative"));
 }
 
@@ -524,7 +522,7 @@ TEST_F(HloVerifierTest, ConvNegativeWindowDilationNotAllowed) {
   w.mutable_dimensions(0)->set_window_dilation(-1);
   conv->set_window(w);
 
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("non-positive window dilation factor"));
 }
 
@@ -536,7 +534,7 @@ TEST_F(HloVerifierTest, ConvNegativeBaseDilationNotAllowed) {
   w.mutable_dimensions(0)->set_base_dilation(-1);
   conv->set_window(w);
 
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("non-positive base area dilation factor"));
 }
 
@@ -622,7 +620,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, DynamicUpdateSliceMixedPrecision) {
                                            kDynamicUpdateSliceMixedPrecision));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected instruction to have shape equal to "
                         "f32[32,511,2048], actual shape is bf16[32,511,2048]"));
 }
@@ -632,7 +630,7 @@ TEST_F(HloVerifierTestLayoutSensitive, AddWithLayoutChangeNotAllowed) {
       auto module, ParseAndReturnUnverifiedModule(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Instruction shouldn't change layouts"));
 }
 
@@ -651,7 +649,7 @@ TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
       auto module, ParseAndReturnUnverifiedModule(kSliceWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Instruction shouldn't change layouts"));
 }
 
@@ -669,7 +667,7 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
       auto module, ParseAndReturnUnverifiedModule(kConcatWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Instruction shouldn't change layouts"));
 }
 
@@ -687,7 +685,7 @@ TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Bitcast cannot have different shape sizes of output "
                         "(12) and operand (8)"));
 }
@@ -708,7 +706,7 @@ TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Seen floating point types of different precisions"));
 }
 
@@ -746,7 +744,7 @@ TEST_F(HloVerifierTest, SelectTupleNotAllowed) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected array argument for select"));
 }
 
@@ -782,7 +780,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDoneWrongLayout) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected instruction to have shape equal to"));
 }
 
@@ -801,7 +799,7 @@ TEST_F(HloVerifierTest, CopyStartAndCopyDoneWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected instruction to have shape equal to "
                         "(f32[2,3], f32[2,3], u32[])"));
 }
@@ -824,7 +822,7 @@ TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("copy-start instruction requires one consumer, found 2"));
 }
 
@@ -844,7 +842,7 @@ TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("The operand of a copy-done instruction needs to be "
                         "copy-start, found tuple"));
 }
@@ -920,7 +918,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-done expects the async shape at index {1} to "
                         "match the async computation root shape"));
 }
@@ -940,7 +938,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongThreadName) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("thread name (main_thread vs parallel_thread)."));
 }
 
@@ -959,7 +957,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongAttr) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-done expects its wrapped async computation to "
                         "be identical to its operand's"));
 }
@@ -982,7 +980,7 @@ TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("async-start instruction requires one consumer, found 2"));
 }
 
@@ -1001,7 +999,7 @@ TEST_F(HloVerifierTest, AsyncStartNoAsyncDone) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("async-start instruction requires one consumer, found 0"));
 }
 
@@ -1021,7 +1019,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncUpdateNoAsyncDone) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("async-update instruction requires one consumer, found 0"));
 }
 
@@ -1041,7 +1039,7 @@ TEST_F(HloVerifierTest, AsyncDoneNoAsyncStart) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("The operand of a async-done instruction needs to be "
                         "async-start or async-update, found tuple"));
 }
@@ -1063,7 +1061,7 @@ TEST_F(HloVerifierTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("The operand of a async-update instruction needs to be "
                         "async-start or async-update, found tuple"));
 }
@@ -1088,7 +1086,7 @@ TEST_F(HloVerifierTest, AsyncOpComputationParamWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-start expects the async shape at index {0} to "
                         "match async computation parameter shape"));
 }
@@ -1113,7 +1111,7 @@ TEST_F(HloVerifierTest, AsyncOpComputationRootWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-start expects the async shape at index {1} to "
                         "match the async computation root shape"));
 }
@@ -1138,7 +1136,7 @@ TEST_F(HloVerifierTest, AsyncOpTupleWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-start expects the async shape to be a tuple of "
                         "at least two elements"));
 }
@@ -1163,7 +1161,7 @@ TEST_F(HloVerifierTest, AsyncStartOperandWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-start expects the shape of operand 0 to match "
                         "the async shape at index {0}"));
 }
@@ -1188,7 +1186,7 @@ TEST_F(HloVerifierTest, AsyncDoneOutputWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-done expects the shape of output to match the "
                         "async shape at index {1}"));
 }
@@ -1215,7 +1213,7 @@ TEST_F(HloVerifierTest, AsyncUpdateWrongType) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr(
           "async-update expects the shape of operand and output to match"));
 }
@@ -1237,7 +1235,7 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncDoneWrongGroupId) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-done expects its operand to have the same group "
                         "id (1 vs 0)."));
 }
@@ -1259,7 +1257,7 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncUpdateWrongGroupId) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("async-update expects its operand to have the same "
                         "group id (none vs 0)."));
 }
@@ -1278,8 +1276,7 @@ TEST_F(HloVerifierTest, IotaNonArrayResult) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("does not support non-array result"));
+  EXPECT_THAT(status.message(), HasSubstr("does not support non-array result"));
 }
 
 TEST_F(HloVerifierTest, IotaNegativeDimension) {
@@ -1296,7 +1293,7 @@ TEST_F(HloVerifierTest, IotaNegativeDimension) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("negative"));
+  EXPECT_THAT(status.message(), HasSubstr("negative"));
 }
 
 TEST_F(HloVerifierTest, IotaPredResultNotAllowed) {
@@ -1313,7 +1310,7 @@ TEST_F(HloVerifierTest, IotaPredResultNotAllowed) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), HasSubstr("got PRED"));
+  EXPECT_THAT(status.message(), HasSubstr("got PRED"));
 }
 
 static const char* const kMapOperandComputationMismatchHlo = R"(
@@ -1336,7 +1333,7 @@ TEST_F(HloVerifierTest, MapOperandComputationMismatch) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr(
           "Shape mismatch between to_apply computation parameter and operand"));
 }
@@ -1368,7 +1365,7 @@ TEST_F(HloVerifierTest, ReduceOperandComputationMismatch) {
       ParseAndReturnUnverifiedModule(kReduceOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected instruction to have shape equal to f32[64]"));
 }
 
@@ -1451,27 +1448,27 @@ TEST_F(HloVerifierTest, AllReduce_DifferentGroupSizesOk) {
 
 TEST_F(HloVerifierTest, AllReduce_EmptyReplicaGroup) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0}, {}}));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("empty replica group"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_RepeatedReplicaId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 0 is repeated"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllReduceComputation({{0, 1}, {2, 3}, {5, 6}}));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 4 is not named"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("In kCrossReplica mode, replica groups should contain "
                         "8 replicas, but found 2"));
 }
@@ -1479,7 +1476,7 @@ TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
 TEST_F(HloVerifierTest, AllReduce_TooManyReplicasInGroupConfig) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("In kCrossReplica mode, replica groups should contain "
                         "2 replicas, but found 4"));
 }
@@ -1489,7 +1486,7 @@ TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Invalid) {
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 1, "channel_id=1"));
   EXPECT_THAT(
-      verifier().Run(module.get()).status().error_message(),
+      verifier().Run(module.get()).status().message(),
       HasSubstr(
           "In kCrossReplicaAndPartition mode, replica groups should contain "
           "2 replicas, but found 4"));
@@ -1507,7 +1504,7 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Invalid) {
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 1, 2,
                                "channel_id=1, use_global_device_ids=true"));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("In kFlattenedID mode, replica groups should contain "
                         "2 flattened IDs, but found 4"));
 }
@@ -1559,7 +1556,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
                           ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected instruction to have shape equal to "
                         "f32[2,3]"));
 }
@@ -1585,7 +1582,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndMultipleDone) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("all-reduce-start instruction requires one consumer, found 2"));
 }
 
@@ -1604,7 +1601,7 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("The operand of a all-reduce-done instruction "
                         "needs to be all-reduce-start, found tuple"));
 }
@@ -1628,34 +1625,34 @@ StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
 }
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}, 2));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllToAll_EmptyReplicaGroup) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {}}));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("cannot have an empty replica group"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_RepeatedReplicaId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllToAllComputation({{0, 1}, {2, 3}, {4, 0}}));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 0 is repeated"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_MissingReplicaId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllToAllComputation({{0, 1}, {2, 3}, {5, 6}}));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 4 is not named"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_UniformSizeOfReplicasInGroup) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllToAllComputation({{0, 1}, {2}, {3, 4}}));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica groups expected to be of uniform size"));
 }
 
@@ -1663,7 +1660,7 @@ TEST_F(HloVerifierTest, AllToAll_CrossPartition_Invalid) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       MakeAllToAllComputation({{0, 1}, {2, 3}}, 1, 2, "channel_id=1"));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("In kCrossPartition mode, replica groups should "
                         "contain 2 partitions, but found 4"));
 }
@@ -1689,8 +1686,26 @@ TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
   config.set_replica_count(2);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_OperandCountMismatchWithReplicaGroupSize) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4] parameter(0)
+    p1 = f32[128,4] parameter(1)
+    ROOT a2a = (f32[128,4], f32[128,4], f32[128,4]) all-to-all(p0, p1, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("hlo->operand_count() == split_count"));
 }
 
 TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
@@ -1706,7 +1721,7 @@ TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
   config.set_replica_count(3);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Source 0 appears more than once"));
 }
 
@@ -1721,7 +1736,7 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Target 2 appears more than once"));
 }
 
@@ -1743,7 +1758,7 @@ TEST_F(HloVerifierTest, CollectivePermuteSameSourceTooManyTimes) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Source 0 appears more than 2 times in instruction's "
                         "source-target pairs:"));
 }
@@ -1766,7 +1781,7 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTooManyTimes) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Target 3 appears more than 2 times in instruction's "
                         "source-target pairs:"));
 }
@@ -1795,7 +1810,7 @@ TEST_F(HloVerifierTest, CollectivePermuteUnmatchingSourceTarget) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Unmatching input buffers and output buffers"));
 }
 
@@ -1824,7 +1839,7 @@ TEST_F(HloVerifierTest, CollectivePermuteUnmatchingInputAndInputOffset) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Unmatching input buffers and input offset."));
 }
 
@@ -1853,7 +1868,7 @@ TEST_F(HloVerifierTest, CollectivePermuteUnmatchingOutputAndOutputOffset) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Unmatching output buffers and output offset."));
 }
 
@@ -1870,8 +1885,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaSourceOOR) {
   config.set_replica_count(3);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
-  const std::string error_message =
-      verifier().Run(module.get()).status().error_message();
+  const std::string error_message(
+      verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Source 5"));
   EXPECT_THAT(error_message, HasSubstr("must be < 3"));
 }
@@ -1889,8 +1904,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaTargetOOR) {
   config.set_replica_count(3);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
-  const std::string error_message =
-      verifier().Run(module.get()).status().error_message();
+  const std::string error_message(
+      verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Target 7"));
   EXPECT_THAT(error_message, HasSubstr("must be < 3"));
 }
@@ -1908,8 +1923,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionSourceOOR) {
   config.set_num_partitions(3);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
-  const std::string error_message =
-      verifier().Run(module.get()).status().error_message();
+  const std::string error_message(
+      verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Source 5"));
   EXPECT_THAT(error_message, HasSubstr("must be < 3"));
 }
@@ -1927,8 +1942,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionTargetOOR) {
   config.set_num_partitions(3);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
-  const std::string error_message =
-      verifier().Run(module.get()).status().error_message();
+  const std::string error_message(
+      verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Target 7"));
   EXPECT_THAT(error_message, HasSubstr("must be < 3"));
 }
@@ -1948,7 +1963,7 @@ TEST_F(HloVerifierTest, FusionShapeVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Fused computation shape"));
 }
 
@@ -1967,7 +1982,7 @@ TEST_F(HloVerifierTest, FusionThreadVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("expects parent computation thread name same as called "
                         "computation's thread name"));
 }
@@ -1998,7 +2013,7 @@ TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(
-      verifier().Run(module.get()).status().error_message(),
+      verifier().Run(module.get()).status().message(),
       HasSubstr("Nested computations expects same computation's thread name"));
 }
 
@@ -2023,7 +2038,7 @@ TEST_F(HloVerifierTest, AllReduceVerifier) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(
-      verifier().Run(module.get()).status().error_message(),
+      verifier().Run(module.get()).status().message(),
       HasSubstr("mix of layout constrained and unconstrained AllReduce"));
 }
 
@@ -2049,7 +2064,7 @@ TEST_F(HloVerifierTest, ChannelVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("used for different types of channel instructions"));
 }
 
@@ -2074,7 +2089,7 @@ TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("used for different types of channel instructions"));
 }
 
@@ -2110,9 +2125,9 @@ TEST_F(HloVerifierTest, CollectivePermuteStartAndDoneWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected instruction to have shape equal to "
-                        "(f32[2,3], f32[2,3], u32[], u32[])"));
+                        "(f32[2,3], f32[2,3])"));
 }
 
 TEST_F(HloVerifierTest, CollectivePermuteStartAndMultipleDone) {
@@ -2132,7 +2147,7 @@ TEST_F(HloVerifierTest, CollectivePermuteStartAndMultipleDone) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("collective-permute-start instruction requires one consumer, "
                 "found 2"));
 }
@@ -2155,7 +2170,7 @@ TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("The operand of a collective-permute-done instruction "
                         "needs to be collective-permute-start, found tuple"));
 }
@@ -2174,7 +2189,7 @@ TEST_F(HloVerifierTest, ComparisonTypeFloat) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Expected comparison type FLOAT or TOTALORDER"));
 }
 
@@ -2192,8 +2207,7 @@ TEST_F(HloVerifierTest, ComparisonTypeSigned) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Expected comparison type SIGNED"));
+  EXPECT_THAT(status.message(), HasSubstr("Expected comparison type SIGNED"));
 }
 
 TEST_F(HloVerifierTest, ComparisonTypeUnsigned) {
@@ -2210,8 +2224,7 @@ TEST_F(HloVerifierTest, ComparisonTypeUnsigned) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Expected comparison type UNSIGNED"));
+  EXPECT_THAT(status.message(), HasSubstr("Expected comparison type UNSIGNED"));
 }
 
 TEST_F(HloVerifierTest, ComparisonTypePred) {
@@ -2228,8 +2241,7 @@ TEST_F(HloVerifierTest, ComparisonTypePred) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Expected comparison type UNSIGNED"));
+  EXPECT_THAT(status.message(), HasSubstr("Expected comparison type UNSIGNED"));
 }
 
 TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
@@ -2252,7 +2264,7 @@ TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("Replica groups must be specified in flattened-id mode"));
 }
 
@@ -2276,7 +2288,7 @@ TEST_F(HloVerifierTest, InvalidChannelIDandUseGlobalDeviceIDs) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr(
           "Invalid combination of has_channel_id and use_global_device_ids"));
 }
@@ -2300,7 +2312,7 @@ TEST_F(HloVerifierTest, ReduceScatterInvalidOutputSize0) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("shard_count = 1, subgroup_size = 2"));
 }
 
@@ -2324,7 +2336,7 @@ TEST_F(HloVerifierTest, ReduceScatterInvalidScatterDim) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("ars->scatter_dimension() < ars->operand(i)->shape().rank()"));
 }
 
@@ -2347,7 +2359,7 @@ TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Replica groups expected to be of uniform size"));
 }
 
@@ -2366,7 +2378,7 @@ ENTRY computation {
                     .Run(module.get())
                     .status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Broadcast dimensions should be ordered"));
 }
 
@@ -2403,7 +2415,7 @@ ENTRY main {
           .Run(module.get())
           .status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Reshape should be a physical bitcast"));
 }
 
@@ -2446,7 +2458,7 @@ TEST_F(HloVerifierTest, VerifyCustomCallThread) {
           .Run(module.get())
           .status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("expects parent computation thread name same as called "
                         "computation's thread name"));
 }
@@ -2476,7 +2488,7 @@ TEST_F(HloVerifierTest, CheckWhileThread) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("expects parent computation thread name same as called "
                         "computation's thread name"));
 }
@@ -2556,7 +2568,7 @@ ENTRY main {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("tile assignment dimensions (excluding subgroups) is "
                         "different than the input rank."));
 }
@@ -2580,7 +2592,7 @@ ENTRY main {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("device 2 > num_devices (2) in tile assignment"));
 }
 
@@ -2609,7 +2621,7 @@ TEST_F(HloVerifierTest, InconsistentWhileSharding) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Inconsistent while sharding among instructions"));
 }
 
@@ -2639,7 +2651,7 @@ TEST_F(HloVerifierTest, InconsistentConditionSharding) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("Inconsistent conditional sharding among instructions"));
 }
 
@@ -2657,7 +2669,7 @@ TEST_F(HloVerifierTest, InvalidS4Usage) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
 }
 
@@ -2675,8 +2687,103 @@ TEST_F(HloVerifierTest, InvalidU4Usage) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+}
+
+TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
+  if (tsl::testing::kIsOpenSource) {
+    return;
+  }
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+    ENTRY entry {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT sum = s32[] add(p0, p1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  ::absl::ScopedMockLog log(::absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      log,
+      Log(absl::LogSeverity::kInfo, ::testing::EndsWith("/hlo_verifier.cc"),
+          ::testing::StartsWith("TEST PREFIX creation_pass_coverage=0")))
+      .Times(1);
+  log.StartCapturingLogs();
+  {
+    MetadataTracker tracker("TEST PREFIX");
+    for (const auto* c : module->computations()) {
+      TF_ASSERT_OK(c->Accept(&tracker));
+    }
+  }
+}
+
+TEST_F(HloVerifierTest, TopKWrongComparator) {
+  const char* const hlo = R"(
+HloModule module
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  p3 = f32[] parameter(2)
+  p4 = f32[] parameter(3)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY entry {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("to have 2 parameters"));
+}
+
+TEST_F(HloVerifierTest, TopKUnexpectedComparator) {
+  const char* const hlo = R"(
+HloModule module
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LE
+}
+
+ENTRY entry {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("expects a strict comparison"));
+}
+
+TEST_F(HloVerifierTest, TopKOK) {
+  const char* const hlo = R"(
+HloModule topk, entry_computation_layout={(f32[10,10]{0,1})->(f32[10,2]{0,1}, s32[10,2]{0,1})}
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY TopK {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
 }
 
 }  // namespace

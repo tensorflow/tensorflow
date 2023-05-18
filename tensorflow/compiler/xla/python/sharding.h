@@ -155,7 +155,7 @@ class GSPMDSharding : public XLACompatibleSharding {
   xla::HloSharding hlo_sharding() const {
     auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
     if (!hlo_sharding.ok()) {
-      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+      throw xla::XlaRuntimeError(std::string(hlo_sharding.status().message()));
     }
     return hlo_sharding.value();
   }
@@ -170,7 +170,7 @@ class GSPMDSharding : public XLACompatibleSharding {
     // We only hash `op_sharding_` here for performance.
     auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
     if (!hlo_sharding.ok()) {
-      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+      throw xla::XlaRuntimeError(std::string(hlo_sharding.status().message()));
     }
     return absl::Hash<xla::HloSharding>()(*hlo_sharding);
   }

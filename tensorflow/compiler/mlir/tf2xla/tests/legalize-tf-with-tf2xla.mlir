@@ -337,6 +337,54 @@ func.func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>
   func.return %1 : tensor<10000000xf32>
 }
 
+// Check XlaSpmdFullToShardShape's conversion from split sharding to manual
+// sharding.
+// The split sharding is:
+//   type: OTHER
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\02\01\22\02\00\01"
+// The manual sharding is:
+//   type: MANUAL
+// Serialized string:
+//   "\08\04"
+
+// CHECK-LABEL: @xla_spmd_full_to_shard_shape
+func.func @xla_spmd_full_to_shard_shape(%arg0: tensor<2x2xi64>) -> (tensor<1x2xi64>) {
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "{devices=[2,1]0,1}"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: %[[MANUAL:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "{manual}"} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  // CHECK: return %[[MANUAL]]
+  %0 = "tf.XlaSpmdFullToShardShape"(%arg0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  func.return %0 : tensor<1x2xi64>
+}
+
+// Check XlaSpmdShardToFullShape's conversion from manual sharding to split
+// sharding.
+// The manual sharding is:
+//   type: MANUAL
+// Serialized string:
+//   "\08\04"
+// The split sharding is:
+//   type: OTHER
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\02\01\22\02\00\01"
+
+// CHECK-LABEL: @xla_spmd_shard_to_full_shape
+func.func @xla_spmd_shard_to_full_shape(%arg0: tensor<1x2xi64>) -> (tensor<2x2xi64>) {
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "{manual}"} : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  // CHECK: %[[FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "{devices=[2,1]0,1}"} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  // CHECK: return %[[FULL]]
+  %0 = "tf.XlaSpmdShardToFullShape"(%arg0) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  func.return %0 : tensor<2x2xi64>
+}
+
 // CHECK-LABEL: @xla_svd
 func.func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>) {
   // CHECK-NOT: XlaSvd
@@ -426,6 +474,36 @@ func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
 
   // CHECK: return %[[RESULT]]
   func.return %bounded : tensor<i32>
+}
+
+// CHECK-LABEL: @XlaScatterOpNotSupported
+func.func @XlaScatterOpNotSupported(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<8xi32> {
+  // CHECK: tf.XlaScatter
+  %0 = "tf.XlaScatter"(%arg0, %arg1, %arg2) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", indices_are_sorted = false, update_computation = @no_reducer} : (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+}
+
+// CHECK-LABEL: approx_topk
+func.func @approx_topk(%arg0: tensor<!tf_type.resource<tensor<10x500xbf16>>> {tf._user_specified_name = "db"}) -> (tensor<10x10xbf16>) {
+  %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf_type.resource<tensor<10x500xbf16>>>) -> tensor<10x500xbf16>
+  // CHECK: mhlo.compare  GT
+  %values, %indices = "tf.ApproxTopK"(%0) {aggregate_to_topk = true, device = "", is_max_k = true, k = 10 : i64, recall_target = 0.949999988 : f32, reduction_dimension = -1 : i64, reduction_input_size_override = -1 : i64} : (tensor<10x500xbf16>) -> (tensor<10x10xbf16>, tensor<10x10xi32>)
+  return %values : tensor<10x10xbf16>
+}
+
+// CHECK-LABEL: func @xla_call_module
+func.func @xla_call_module(%arg0: tensor<f32>) -> tensor<*xf32> {
+  // Equivalent to the following:
+  //
+  // module @jit_sin {
+  //   func.func public @main(%arg0: tensor<f32>) -> tensor<f32> {
+  //     %0 = mhlo.sine %arg0 : tensor<f32>
+  //     return %0 : tensor<f32>
+  //   }
+  // }
+  // expected-remark@+1 {{UNIMPLEMENTED: MlirHloBuilder does not support op call}}
+  %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], function_list = [], module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = [], version = 4 : i64} : (tensor<f32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

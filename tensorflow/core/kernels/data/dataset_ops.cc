@@ -89,7 +89,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   Status s = AsGraphDef(dataset, SerializationContext(params), &graph_def);
   if (!s.ok()) {
     ctx->CtxFailure(errors::FailedPrecondition(
-        "Failed to serialize the input pipeline graph: ", s.error_message()));
+        "Failed to serialize the input pipeline graph: ", s.message()));
     return;
   }
   if (strip_device_assignment_) {

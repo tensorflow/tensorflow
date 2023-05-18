@@ -38,7 +38,6 @@ py_library(
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics",
-        "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -65,7 +64,7 @@ py_test(
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
     ],
 )
@@ -91,6 +90,8 @@ py_library(
     deps = [
         ":tflite_convert_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/util:keras_deps",
         "@absl_py//absl:app",
     ],
 )
@@ -104,8 +105,8 @@ py_library(
         ":lite",
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
-        "//tensorflow/python:util",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/util:keras_deps",
         "@absl_py//absl:app",
     ],
 )
@@ -132,6 +133,9 @@ py_test(
     python_version = "PY3",
     deps = [
         ":test_util",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -163,11 +167,12 @@ py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
@@ -204,12 +209,13 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
@@ -233,6 +239,8 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -259,6 +267,7 @@ py_test(
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -349,8 +358,10 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:keras_deps",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -363,7 +374,6 @@ py_library(
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -374,6 +384,8 @@ py_library(
     deps = [
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -394,8 +406,8 @@ pytype_strict_library(
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -408,8 +420,10 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:graph_util",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -447,7 +461,7 @@ py_library(
         ":convert_phase",
         ":util",
         "//tensorflow/python:graph_util",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model",
     ],
 )
@@ -498,7 +512,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/lite/schema:utils_friends"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
     ],
 )
 
@@ -543,5 +557,6 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )

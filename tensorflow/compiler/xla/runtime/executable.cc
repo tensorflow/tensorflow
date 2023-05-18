@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/c_runner_utils.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/float_16bits.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
@@ -130,6 +131,8 @@ ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
        AsyncRuntimeMemoryAllocationSymbolMap,
        // Register Runtime API intrinsics (returning results and errors).
        RuntimeApiSymbolMap,
+       // Register LLVM f16 and bf16 API intrinsics (defined in Float16bits).
+       Float16bitsSymbolMap,
        // Register any additional user-defined symbol bindings
        std::move(custom_binding)});
 }
@@ -448,7 +451,8 @@ Status Executable::ReturnResults(unsigned ordinal,
     functions.push_back(Executable::Function(
         std::move(fn.name), (*engine)->exported(indexed.index()),
         std::move(fn.signature), std::move(fn.runtime_signature),
-        std::move(*args_memory_layout), std::move(*results_memory_layout)));
+        std::move(*args_memory_layout), std::move(*results_memory_layout),
+        true));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),

@@ -23,20 +23,18 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
@@ -55,7 +53,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.training import server_lib
 
 
 CollectiveAllReduceStrategy = (
@@ -81,15 +79,17 @@ def create_test_objects(cluster_spec=None,
     tpu_strategy_util.initialize_tpu_system()
 
   if cluster_spec and task_type and task_id is not None:
-    cluster_resolver = SimpleClusterResolver(
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
         cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
         task_type=task_type,
         task_id=task_id,
         num_accelerators={'GPU': num_gpus, 'TPU': num_tpus})
     target = 'grpc://' + cluster_spec[task_type][task_id]
   else:
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec({}), num_accelerators={'GPU': num_gpus, 'TPU': num_tpus})
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec({}),
+        num_accelerators={'GPU': num_gpus, 'TPU': num_tpus},
+    )
     target = ''
 
   strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
@@ -716,7 +716,7 @@ class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
   def test_replica_id_in_sync_group(self, strategy):
 
     def replica_fn():
-      replica_ctx = distribution_strategy_context.get_replica_context()
+      replica_ctx = distribute_lib.get_replica_context()
       return replica_ctx.replica_id_in_sync_group, replica_ctx._replica_id
 
     results = test_util.gather(strategy, strategy.run(replica_fn))
@@ -764,7 +764,7 @@ class ExperimentalCompatibilityTest(test.TestCase):
 
 def _replica_id_f32():
   return math_ops.cast(
-      distribution_strategy_context.get_replica_context()
+      distribute_lib.get_replica_context()
       .replica_id_in_sync_group, dtypes.float32)
 
 

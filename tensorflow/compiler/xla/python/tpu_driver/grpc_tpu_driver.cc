@@ -529,17 +529,16 @@ void GrpcTpuStream::UpdateEventStatus(EventId id, Status status) {
   if (it->second.done) {
     // Done and deleted events must have already been removed.
     CHECK(!it->second.deleted);
-    VLOG(1) << "Received a second status update: " << status.error_message()
-            << ", for GrpcEvent " << id << " already done with status: "
-            << it->second.status.error_message();
+    VLOG(1) << "Received a second status update: " << status.message()
+            << ", for GrpcEvent " << id
+            << " already done with status: " << it->second.status.message();
     return;
   }
 
   // This is the first time this event finishes. Remember the results and call
   // the callbacks.
-  VLOG(1) << "Response received for GrpcEvent " << id << ". "
-          << status.ToString() << ". Firing " << it->second.callbacks.size()
-          << " callbacks.";
+  VLOG(1) << "Response received for GrpcEvent " << id << ". " << status
+          << ". Firing " << it->second.callbacks.size() << " callbacks.";
   it->second.done = true;
   it->second.status = status;
   for (const auto& callback : it->second.callbacks) {

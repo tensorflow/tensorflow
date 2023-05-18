@@ -37,7 +37,12 @@ using ::testing::FieldsAre;
 
 namespace m = ::xla::match;
 
-using GemmRewriterTritonTest = HloTestBase;
+class GemmRewriterTritonTest : public HloTestBase {
+ public:
+  GemmRewriterTritonTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+};
 
 TEST_F(GemmRewriterTritonTest, TransposeSubdimensionGroup) {
   // This HLO is artificial because unnecessary reshapes get optimized
@@ -57,9 +62,9 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })")
                     .value();
-  EXPECT_TRUE(GemmRewriterTriton({se::CudaComputeCapability::AMPERE, 0})
-                  .Run(module.get())
-                  .value());
+  GpuVersion gpu_version{
+      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version).Run(module.get()).value());
 }
 
 TEST_F(GemmRewriterTritonTest, BitcastChain) {
@@ -82,9 +87,9 @@ ENTRY e {
     lhs_batch_dims={0}, rhs_batch_dims={0}
 })")
                     .value();
-  EXPECT_TRUE(GemmRewriterTriton({se::CudaComputeCapability::AMPERE, 0})
-                  .Run(module.get())
-                  .value());
+  GpuVersion gpu_version{
+      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
@@ -113,7 +118,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -125,14 +130,18 @@ ENTRY e {
             dot_computation->parameter_instruction(0));
   EXPECT_EQ(analysis.OperandToParameter(1),
             dot_computation->parameter_instruction(1));
-  EXPECT_THAT(analysis.IterSpec(0, 0),
-              ElementsAre(FieldsAre(/*stride=*/4, /*count=*/48)));
-  EXPECT_THAT(analysis.IterSpec(0, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4)));
-  EXPECT_THAT(analysis.IterSpec(1, 0),
-              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4)));
-  EXPECT_THAT(analysis.IterSpec(1, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3)));
+  EXPECT_THAT(
+      analysis.IterSpec(0, 0),
+      ElementsAre(FieldsAre(/*stride=*/4, /*count=*/48, ElementsAre(48))));
+  EXPECT_THAT(
+      analysis.IterSpec(0, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4, ElementsAre(4))));
+  EXPECT_THAT(
+      analysis.IterSpec(1, 0),
+      ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4, ElementsAre(4))));
+  EXPECT_THAT(
+      analysis.IterSpec(1, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3, ElementsAre(3))));
 }
 
 TEST_F(TritonDotAnalysisTest, Merge) {
@@ -156,7 +165,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -169,13 +178,17 @@ ENTRY e {
   EXPECT_EQ(analysis.OperandToParameter(1),
             dot_computation->parameter_instruction(1));
   EXPECT_THAT(analysis.IterSpec(0, 0),
-              ElementsAre(FieldsAre(/*stride=*/4, /*count=*/6 * 8)));
+              ElementsAre(FieldsAre(/*stride=*/4, /*count=*/6 * 8,
+                                    /*subfragments=*/ElementsAre(6, 8))));
   EXPECT_THAT(analysis.IterSpec(0, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 0),
-              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*subfragments=*/ElementsAre(3))));
 }
 
 TEST_F(TritonDotAnalysisTest, Split) {
@@ -198,7 +211,7 @@ ENTRY e {
     custom_call_target="__triton",
     called_computations={triton_dot}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
@@ -209,13 +222,17 @@ ENTRY e {
   EXPECT_EQ(analysis.OperandToParameter(1),
             dot_computation->parameter_instruction(0));
   EXPECT_THAT(analysis.IterSpec(0, 0),
-              ElementsAre(FieldsAre(/*stride=*/2, /*count=*/24000)));
+              ElementsAre(FieldsAre(/*stride=*/2, /*count=*/24000,
+                                    /*subfragments=*/ElementsAre(24000))));
   EXPECT_THAT(analysis.IterSpec(0, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
   EXPECT_THAT(analysis.IterSpec(1, 0),
-              ElementsAre(FieldsAre(/*stride=*/2, /*count=*/2)));
+              ElementsAre(FieldsAre(/*stride=*/2, /*count=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
   EXPECT_THAT(analysis.IterSpec(1, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
 }
 
 TEST_F(TritonDotAnalysisTest, TransposeMerge) {
@@ -240,7 +257,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -253,13 +270,17 @@ ENTRY e {
   EXPECT_EQ(analysis.OperandToParameter(1),
             dot_computation->parameter_instruction(1));
   EXPECT_THAT(analysis.IterSpec(0, 0),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6,
+                                    /*subfragments=*/ElementsAre(6, 8))));
   EXPECT_THAT(analysis.IterSpec(0, 1),
-              ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 0),
-              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*subfragments=*/ElementsAre(3))));
 }
 
 TEST_F(TritonDotAnalysisTest, CopyMerge) {
@@ -285,7 +306,7 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -298,13 +319,17 @@ ENTRY e {
   EXPECT_EQ(analysis.OperandToParameter(1),
             dot_computation->parameter_instruction(1));
   EXPECT_THAT(analysis.IterSpec(0, 0),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6,
+                                    /*subfragments=*/ElementsAre(6, 8))));
   EXPECT_THAT(analysis.IterSpec(0, 1),
-              ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 0),
-              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*subfragments=*/ElementsAre(3))));
 }
 
 TEST_F(TritonDotAnalysisTest, TransposeMergeNCN) {
@@ -327,7 +352,7 @@ ENTRY e {
     custom_call_target="__triton", called_computations={triton_dot}
   ROOT bitcast.2 = bf16[3,8,1,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
@@ -340,14 +365,19 @@ ENTRY e {
   EXPECT_EQ(analysis.OperandToParameter(1),
             dot_computation->parameter_instruction(1));
   EXPECT_THAT(analysis.IterSpec(0, 0),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8),
-                          FieldsAre(/*stride=*/4 * 8, /*count=*/3)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8,
+                                    /*subfragments=*/ElementsAre(8)),
+                          FieldsAre(/*stride=*/4 * 8, /*count=*/3,
+                                    /*subfragments=*/ElementsAre(3))));
   EXPECT_THAT(analysis.IterSpec(0, 1),
-              ElementsAre(FieldsAre(/*stride=*/8, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/8, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 0),
-              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4)));
+              ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
   EXPECT_THAT(analysis.IterSpec(1, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3)));
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
+                                    /*subfragments=*/ElementsAre(3))));
 }
 
 using SplitKTest = HloTestBase;
@@ -373,7 +403,7 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
@@ -384,11 +414,48 @@ ENTRY e {
   key.set_num_warps(4);
   TF_EXPECT_OK(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-  EXPECT_TRUE(VerifyHloModule(module.get(), /*layout_sensitive=*/true,
-                              /*allow_mixed_precision=*/false)
-                  .ok());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
+}
+
+TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
+  const std::string kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
+  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
+  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
+  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
+  parameter_1 = bf16[16,128]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{0,1} dot(convert.8, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  p1 = bf16[16,128]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{0,1} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  tensorflow::AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(4);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kReduce);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
+            Layout({0, 1}));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithExistingBatchDim) {
@@ -413,7 +480,7 @@ ENTRY e {
     kind=kCustom, calls=triton_gemm_dot.24,
     backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(32);
@@ -424,14 +491,11 @@ ENTRY e {
   key.set_num_warps(4);
   TF_EXPECT_OK(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-  EXPECT_TRUE(VerifyHloModule(module.get(), /*layout_sensitive=*/true,
-                              /*allow_mixed_precision=*/false)
-                  .ok());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
 }
 
-TEST_F(SplitKTest, SkipRequiringPadding) {
+TEST_F(SplitKTest, SkipIndivisible) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -452,7 +516,7 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
@@ -463,8 +527,8 @@ ENTRY e {
   key.set_num_warps(4);
   EXPECT_THAT(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(tsl::error::UNIMPLEMENTED,
-                             "K dimension requires padding for split-K."));
+      tsl::testing::StatusIs(tsl::error::CANCELLED,
+                             "Contracting dimension is too fragmented."));
 }
 
 TEST_F(SplitKTest, SkipSmallK) {
@@ -488,7 +552,7 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   tensorflow::AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
@@ -499,10 +563,96 @@ ENTRY e {
   key.set_num_warps(4);
   EXPECT_THAT(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(tsl::error::CANCELLED,
-                             "Too small contracting dimension."));
+      tsl::testing::StatusIs(
+          tsl::error::CANCELLED,
+          "Too small divisible part of the contracting dimension."));
 }
 
+TEST_F(SplitKTest, FragmentedKSupported) {
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_gemm_dot {
+  p0 = f16[7,2,16,4,20] parameter(0)
+  t0 = f16[2,16,4,20,7] transpose(p0), dimensions={1,2,3,4,0}
+  b0 = f16[2560,7] bitcast(t0)
+  a1 = f16[2560,5] parameter(1)
+  ROOT r = f16[7,5] dot(b0, a1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f16[7,2,16,4,20] parameter(0)
+  p1 = f16[2560,5] parameter(1)
+  ROOT fusion = f16[7,5] fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  tensorflow::AutotuneResult::TritonGemmKey key;
+  key.set_block_m(32);
+  key.set_block_n(32);
+  key.set_block_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+
+  // 5 divides the contracting dimension, but not its major subdimensions.
+  key.set_split_k(5);
+  EXPECT_THAT(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
+      tsl::testing::StatusIs(tsl::error::CANCELLED,
+                             "Contracting dimension is too fragmented."));
+
+  // 8 fits the constraints.
+  key.set_split_k(8);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
+  DotFusionAnalysis analysis(root->operand(0)->fused_expression_root(),
+                             key.split_k());
+  EXPECT_THAT(analysis.IterSpec(0, 0),
+              ElementsAre(FieldsAre(/*stride=*/320, /*count=*/8,
+                                    /*subfragments=*/ElementsAre(4, 2))));
+  EXPECT_THAT(analysis.IterSpec(0, 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/320,
+                                    /*subfragments=*/ElementsAre(20, 4, 4))));
+}
+
+TEST_F(SplitKTest, FragmentedKUnsupported) {
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_gemm_dot {
+  p0 = f32[3,128,77] parameter(0)
+  b0 = f32[384,77] bitcast(p0)
+  a1 = f32[384,25] parameter(1)
+  ROOT r = f32[77,25] dot(b0, a1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[3,128,77] parameter(0)
+  p1 = f32[384,25] parameter(1)
+  ROOT fusion = f32[77,25] fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  tensorflow::AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  key.set_split_k(4);
+  EXPECT_THAT(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
+      tsl::testing::StatusIs(tsl::error::CANCELLED,
+                             "Contracting dimension is too fragmented."));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

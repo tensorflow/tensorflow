@@ -155,6 +155,7 @@ cc_library(
         ],
         exclude = [
             "src/cpu/aarch64/**",
+            "src/cpu/rv64/**",
             "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
         ],
     ),

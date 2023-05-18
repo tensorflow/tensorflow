@@ -34,9 +34,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/tfrt/utils:tensor_util",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "//tensorflow/core/tfrt/utils:tensor_util",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -63,8 +63,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@llvm-project//llvm:Support",
         "//tensorflow/core/platform:logging",
+        "@llvm-project//llvm:Support",
         "@tf_runtime//:dtype",
     ] + select({
         "//tensorflow:android": [

@@ -23,9 +23,10 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/tools/api/generator:doc_srcs",
-        "//tensorflow/python/util:fast_module_type",
+        "//tensorflow/python/util:module_wrapper",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -35,7 +36,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -51,6 +52,8 @@ py_test(
         ":doc_srcs",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:no_contrib",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -94,5 +97,6 @@ py_test(
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python:no_contrib",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )

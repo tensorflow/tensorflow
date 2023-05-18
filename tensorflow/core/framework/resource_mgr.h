@@ -200,8 +200,8 @@ class ResourceMgr {
   template <typename T, bool use_dynamic_cast = false>
   Status LookupMany(absl::Span<std::pair<const string*, const string*> const>
                         containers_and_names,
-                    std::vector<std::unique_ptr<T, core::RefCountDeleter>>*
-                        resources) const TF_MUST_USE_RESULT;
+                    std::vector<core::RefCountPtr<T>>* resources) const
+      TF_MUST_USE_RESULT;
 
   // If "container" has a resource "name", returns it in
   // "*resource". Otherwise, invokes creator() to create the resource.
@@ -658,7 +658,7 @@ template <typename T, bool use_dynamic_cast>
 Status ResourceMgr::LookupMany(
     absl::Span<std::pair<const string*, const string*> const>
         containers_and_names,
-    std::vector<std::unique_ptr<T, core::RefCountDeleter>>* resources) const {
+    std::vector<core::RefCountPtr<T>>* resources) const {
   CheckDeriveFromResourceBase<T>();
   tf_shared_lock l(mu_);
   resources->resize(containers_and_names.size());

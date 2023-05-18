@@ -81,7 +81,7 @@ string LookupOrCreate(ResourceMgr* rm, const string& container,
 static void HasError(const Status& s, const error::Code code,
                      const string& substr) {
   EXPECT_EQ(s.code(), code);
-  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
+  EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
 }
 

@@ -75,9 +75,11 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import autograph_util
 from tensorflow.python.eager.polymorphic_function import compiler_ir
 from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
+from tensorflow.python.eager.polymorphic_function import tf_method_target
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
@@ -100,6 +102,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
+
 
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
@@ -217,19 +220,20 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
   supported.
   """
 
-  def __init__(self,
-               initial_value=None,
-               trainable=None,
-               caching_device=None,
-               name=None,
-               dtype=None,
-               constraint=None,
-               add_initializers_to=None,
-               lifted_initializer_graph=None,
-               synchronization=None,
-               aggregation=None,
-               shape=None,
-               **unused_kwargs):
+  def __init__(
+      self,
+      initial_value=None,
+      trainable=None,
+      caching_device=None,
+      name=None,
+      dtype=None,
+      constraint=None,
+      add_initializers_to=None,
+      synchronization=None,
+      aggregation=None,
+      shape=None,
+      **unused_kwargs,
+  ):
     """Creates a variable.
 
     Args:
@@ -237,8 +241,8 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called.
-        (Note that initializer functions from init_ops.py must first be bound
-         to a shape before being used here.)
+        (Note that initializer functions from init_ops.py must first be bound to
+        a shape before being used here.)
       trainable: If `True`, GradientTapes automatically watch uses of this
         Variable.
       caching_device: Optional device string or function describing where the
@@ -248,26 +252,24 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         deduplicate copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
-      dtype: If set, initial_value will be converted to the given type.
-        If None, either the datatype will be kept (if initial_value is
-       a Tensor) or float32 will be used (if it is a Python object convertible
-       to a Tensor).
+      dtype: If set, initial_value will be converted to the given type. If None,
+        either the datatype will be kept (if initial_value is a Tensor) or
+        float32 will be used (if it is a Python object convertible to a Tensor).
       constraint: An optional projection function to be applied to the variable
         after being updated by an `Optimizer` (e.g. used to implement norm
         constraints or value constraints for layer weights). The function must
         take as input the unprojected Tensor representing the value of the
-        variable and return the Tensor for the projected value
-        (which must have the same shape). Constraints are not safe to
-        use when doing asynchronous distributed training.
+        variable and return the Tensor for the projected value (which must have
+        the same shape). Constraints are not safe to use when doing asynchronous
+        distributed training.
       add_initializers_to: if not None and not in legacy graph mode, the
         initializer tensor will be added to this map in addition to adding the
         assignment to the function.
-      lifted_initializer_graph: FuncGraph to try to lift initializers to.
-      synchronization: Indicates when a distributed variable will be
-        aggregated. Accepted values are constants defined in the class
+      synchronization: Indicates when a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
-        `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize.
+        `AUTO` and the current `DistributionStrategy` chooses when to
+        synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -431,22 +433,6 @@ def _evaluate_var_is_initialized(variables):
           numpy_value = all_initialized
         var_is_initialized[index] = numpy_value
   return var_is_initialized
-
-
-class FunctionDeleter:
-  """An object responsible for cleaning up the function graph."""
-
-  __slots__ = ["func_graph"]
-
-  def __init__(self, func_graph):
-    self.func_graph = func_graph
-
-  def __del__(self):
-    try:
-      func_graph_module.dismantle_func_graph(self.func_graph)
-    except:  # pylint: disable=bare-except
-      # Note: bare except here because this can be noisy at shutdown time.
-      pass
 
 
 class OptionalXlaContext:
@@ -658,6 +644,10 @@ class Function(core.GenericFunction, trackable.Trackable):
     except AttributeError:
       name = "function"
 
+    if self._autograph:
+      fn = autograph_util.py_func_from_autograph(
+          fn, self._experimental_autograph_options)
+
     return tracing_compiler.TracingCompiler(
         fn,
         name,
@@ -683,7 +673,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       add_initializers_to: Where to collect variable initializers, if not None.
     """
     created_variables = []
-    lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
     def variable_capturing_scope(next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
@@ -693,8 +682,8 @@ class Function(core.GenericFunction, trackable.Trackable):
       if not enable_variable_lifting:
         return next_creator(**kwds)
       v = UnliftedInitializerVariable(
-          add_initializers_to=add_initializers_to,
-          lifted_initializer_graph=lifted_initializer_graph, **kwds)
+          add_initializers_to=add_initializers_to, **kwds
+      )
       created_variables.append(weakref.ref(v))
       return v
 
@@ -703,12 +692,9 @@ class Function(core.GenericFunction, trackable.Trackable):
         variable_capturing_scope)
     self._variable_creation_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
-    self._lifted_initializer_graph = lifted_initializer_graph
-    self._graph_deleter = FunctionDeleter(self._lifted_initializer_graph)
     self._concrete_variable_creation_fn = (
-        self._variable_creation_fn    # pylint: disable=protected-access
-        ._get_concrete_function_internal_garbage_collected(
-            *args, **kwds))
+        self._variable_creation_fn.get_concrete_function(args, kwds)
+    )
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
@@ -1187,13 +1173,13 @@ class Function(core.GenericFunction, trackable.Trackable):
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # version which is guaranteed to never create variables.
-      return self._no_variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
-          *args, **kwargs)
+      return self._no_variable_creation_fn.get_concrete_function(
+          args, kwargs, bind_graph_to_function=True)
     elif self._variable_creation_fn is not None:
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      concrete = self._variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
-          *args, **kwargs)
+      concrete = self._variable_creation_fn.get_concrete_function(
+          args, kwargs, bind_graph_to_function=True)
       if self._created_variables:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
@@ -1246,7 +1232,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       # It's unclear whether we need the tf-decorator, or could just call
       # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
-          tracing_compiler.class_method_to_instance_method(self, instance))
+          class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
 
 
@@ -1633,3 +1619,61 @@ def function(
   #
   # use case, which is equivalent to `foo = tf.function(...)(foo)`
   return decorated
+
+
+def class_method_to_instance_method(original_function, instance):
+  """Constructs a new `TracingCompiler` with `self` bound."""
+  weak_instance = weakref.ref(instance)
+
+  # Note: while we could bind to a weakref proxy instead, that causes the
+  # bound method to be unhashable.
+  bound_method = types_lib.MethodType(
+      original_function.python_function,
+      tf_method_target.TfMethodTarget(weak_instance,
+                                      original_function.python_function))
+
+  # original_function is expected to be either `TracingCompiler` or
+  # def_function.Function
+  assert hasattr(original_function, "_name")
+  assert hasattr(original_function, "_autograph")
+  assert hasattr(original_function, "_function_spec")
+  assert hasattr(original_function, "python_function")
+
+  weak_bound_method_wrapper = None
+
+  def bound_method_wrapper(*args, **kwargs):
+    """Wraps either a dummy MethodType or a converted AutoGraph function."""
+    # __wrapped__ allows AutoGraph to swap in a converted function.
+    strong_bound_method_wrapper = weak_bound_method_wrapper()
+    wrapped_fn = strong_bound_method_wrapper.__wrapped__
+
+    if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
+      # If __wrapped__ was not replaced, then call original_function.
+      # TODO(mdan): For better consistency, use the wrapper's call().
+      wrapped_fn = original_function.python_function
+      return wrapped_fn(weak_instance(), *args, **kwargs)
+
+    # If __wrapped__ was replaced, then it is always an unbound function.
+    # However, the replacer is still responsible for attaching self properly.
+    # TODO(mdan): Is it possible to do it here instead?
+    return wrapped_fn(*args, **kwargs)
+
+  weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
+
+  # pylint: disable=protected-access
+  # We make a dummy MethodType object to generate the correct bound method
+  # signature. The actual call is to a function with a weak reference to
+  # `instance`.
+  instance_func = type(original_function)(
+      tf_decorator.make_decorator(bound_method, bound_method_wrapper),
+      name=original_function._name,
+      autograph=original_function._autograph,
+      input_signature=original_function.input_signature,
+      reduce_retracing=original_function._reduce_retracing,
+      jit_compile=original_function._jit_compile)
+  # pylint: enable=protected-access
+
+  # We wrap the bound method with tf_decorator so inspection works correctly
+  wrapped_instance_func = tf_decorator.make_decorator(bound_method,
+                                                      instance_func)
+  return wrapped_instance_func

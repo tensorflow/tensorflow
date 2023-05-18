@@ -621,7 +621,7 @@ absl::Status GPUOperationFromNodePart0(
     }
     case OperationType::GATHER: {
       auto attr = absl::any_cast<GatherAttributes>(node.operation.attributes);
-      RETURN_IF_ERROR(SelectGather(attr, op_def, gpu_op));
+      RETURN_IF_ERROR(SelectGather(attr, op_def, gpu_info, gpu_op));
       return absl::OkStatus();
     }
     case OperationType::LSTM: {
@@ -760,6 +760,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::COS:
     case OperationType::ELU:
     case OperationType::EXP:
+    case OperationType::GELU:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::NEG:

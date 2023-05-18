@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 
+#include <functional>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -26,11 +28,19 @@ namespace xla {
 // all-reduce-done.
 class AsyncCollectiveCreator : public HloModulePass {
  public:
+  // Function to query the shape of the "context" for collectives that use
+  // HLO async-start/async-done.
+  using ContextShapeQuery =
+      std::function<std::vector<Shape>(const HloInstruction*)>;
   struct CollectiveCreatorConfig {
     HloPredicate convert_all_reduce = HloPredicateFalse;
     HloPredicate convert_all_gather = HloPredicateFalse;
     HloPredicate convert_collective_permute = HloPredicateFalse;
     HloPredicate convert_all_to_all = HloPredicateFalse;
+    HloPredicate convert_reduce_scatter = HloPredicateFalse;
+    ContextShapeQuery get_context_shapes = [](const HloInstruction*) {
+      return std::vector<Shape>{};
+    };
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : config_(std::move(creator_config)) {}

@@ -62,9 +62,9 @@ Status RetryingUtils::CallWithRetries(
       // at a higher level.
       return Status(
           absl::StatusCode::kAborted,
-          strings::StrCat("All ", config.max_retries,
-                          " retry attempts failed. The last failure: ",
-                          status.error_message()));
+          strings::StrCat(
+              "All ", config.max_retries,
+              " retry attempts failed. The last failure: ", status.message()));
     }
     int64_t delay_micros = 0;
     if (config.init_delay_time_us > 0) {

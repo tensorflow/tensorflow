@@ -112,6 +112,9 @@ WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
     new_config.set_dispatcher_timeout_ms(
         absl::ToInt64Milliseconds(kDefaultDispatcherTimeout));
   }
+  if (new_config.snapshot_max_chunk_size_bytes() == 0) {
+    new_config.set_snapshot_max_chunk_size_bytes(kDefaultMaxChunkSizeBytes);
+  }
   return new_config;
 }
 
@@ -631,16 +634,19 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
   }
 }
 
+// TODO(yangchen): Figure out why `mutex_lock`s here are needed for sanitizers.
 Status DataServiceWorkerImpl::UpdateSnapshotWriters(
-    const WorkerHeartbeatResponse& response) {
-  mutex_lock l(mu_);
+    const WorkerHeartbeatResponse& response) TF_LOCKS_EXCLUDED(mu_) {
   absl::flat_hash_set<SnapshotTask> assigned_snapshot_task_keys;
   for (const SnapshotTaskDef& snapshot_task : response.snapshot_tasks()) {
     SnapshotTask snapshot_task_key{snapshot_task.base_path(),
                                    snapshot_task.stream_index()};
     assigned_snapshot_task_keys.insert(snapshot_task_key);
-    if (snapshot_writers_.contains(snapshot_task_key)) {
-      continue;
+    {
+      mutex_lock l(mu_);
+      if (snapshot_writers_.contains(snapshot_task_key)) {
+        continue;
+      }
     }
 
     DatasetDef dataset_def;
@@ -649,16 +655,19 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
         &dataset_def));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<StandaloneTaskIterator> iterator,
                         MakeSnapshotTaskIterator(snapshot_task, dataset_def));
+    mutex_lock l(mu_);
     snapshot_writers_.emplace(
         snapshot_task_key,
         std::make_unique<SnapshotStreamWriter>(
             SnapshotWriterParams{
                 snapshot_task.base_path(), snapshot_task.stream_index(),
-                snapshot_task.metadata().compression(), Env::Default()},
+                snapshot_task.metadata().compression(), Env::Default(),
+                config_.snapshot_max_chunk_size_bytes()},
             std::move(iterator)));
   }
 
   // Cancel writers for snapshots that are no longer assigned by the dispatcher.
+  mutex_lock l(mu_);
   for (auto it = snapshot_writers_.begin(); it != snapshot_writers_.end();) {
     if (!assigned_snapshot_task_keys.contains(it->first)) {
       it->second->Cancel();

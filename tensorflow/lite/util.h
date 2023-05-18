@@ -115,7 +115,7 @@ inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
 // specified by the array dims (of length dims_size). Returns the status code
 // and bytes.
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
-                           size_t* bytes, TfLiteContext context);
+                           size_t* bytes, TfLiteContext* context);
 
 }  // namespace tflite
 

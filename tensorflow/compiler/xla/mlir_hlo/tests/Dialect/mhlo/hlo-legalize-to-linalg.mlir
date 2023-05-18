@@ -6128,3 +6128,23 @@ func.func @clamp_complex(%min: tensor<8xcomplex<f32>>,
   %result = mhlo.clamp %min, %operand, %max : tensor<8xcomplex<f32>>
   func.return %result : tensor<8xcomplex<f32>>
 }
+
+// -----
+
+// CHECK-LABEL: func @reshape_sparse_encoding
+// CHECK-PRIMITIVE-LABEL: func @reshape_sparse_encoding
+
+#ST_3D = #sparse_tensor.encoding<{
+  dimLevelType = ["compressed", "compressed", "compressed"]
+}>
+
+#ST_4D = #sparse_tensor.encoding<{
+  dimLevelType = ["compressed", "compressed", "compressed", "compressed"]
+}>
+
+func.func @reshape_sparse_encoding(%arg0: tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D>
+  func.return %0 : tensor<1x784x1x1xf32, #ST_4D>
+}
+// CHECK: tensor.collapse_shape %{{.*}} {{\[}}[0, 1, 2]] : tensor<1x49x16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>> into tensor<784xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>
+// CHECK-NEXT: tensor.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]] : tensor<784xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>> into tensor<1x784x1x1xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed", "compressed" ] }>>

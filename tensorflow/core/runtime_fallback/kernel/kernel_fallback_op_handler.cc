@@ -155,9 +155,9 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
           auto error = tfrt::EmitErrorAsync(
               invocation.exec_ctx,
               absl::Status(
-                  ToAbslStatus(s).code(),
+                  s.code(),
                   tfrt::StrCat("Error running kernel fallback OpHandler ",
-                               invocation.op_name, ":", s.error_message())));
+                               invocation.op_name, ":", s.message())));
           for (auto& result : invocation.results) {
             result = tfrt::TensorHandle::CreateError(error.CopyRef());
           }

@@ -139,3 +139,59 @@ module {
 // CHECK: Number of quantize layers added: 1
 // CHECK: Number of dequantize layers added: 1
 }
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1219 : i32}, tf_saved_model.semantics} {
+  func.func @embedding_with_one_float_conv_and_one_quantized_conv(%arg0: tensor<1xi32> {tf_saved_model.index_path = ["input"]}) -> (tensor<1x3x1x1xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+
+    %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<3x3x1024x1xf32>} : () -> tensor<3x3x1024x1xf32>
+    %cst_0 = "tf.Const"() {value = dense<0.000000e+00> : tensor<1024x3x4x3xf32>} : () -> tensor<1024x3x4x3xf32>
+    %cst_1 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %cst_2 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2x3x3x1024xf32>} : () -> tensor<2x3x3x1024xf32>
+
+    %0 = "tf.PartitionedCall"(%cst_0, %arg0, %cst_1) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_gather_fn_1} : (tensor<1024x3x4x3xf32>, tensor<1xi32>, tensor<i32>) -> tensor<1x3x4x3xf32>
+    %1 = "tf.PartitionedCall"(%0, %cst_2) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_2} : (tensor<1x3x4x3xf32>, tensor<2x3x3x1024xf32>) -> tensor<1x3x2x1024xf32>
+    %2 = "quantfork.qcast"(%1) : (tensor<1x3x2x1024xf32>) -> tensor<1x3x2x1024x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>
+    %3 = "quantfork.dcast"(%2) : (tensor<1x3x2x1024x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>) -> tensor<1x3x2x1024xf32>
+    %4 = "tf.PartitionedCall"(%3, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_1} : (tensor<1x3x2x1024xf32>, tensor<3x3x1024x1xf32>) -> tensor<1x3x1x1xf32>
+    %5 = "quantfork.qcast"(%4) : (tensor<1x3x1x1xf32>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>
+    %6 = "quantfork.dcast"(%5) : (tensor<1x3x1x1x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>) -> tensor<1x3x1x1xf32>
+    return %6 : tensor<1x3x1x1xf32>
+  }
+  func.func private @composite_gather_fn_1(%arg0: tensor<1024x3x4x3xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<1x3x4x3xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.GatherV2"(%arg0, %arg1, %arg2) {attr_map = "0:batch_dims", batch_dims = 0 : i64, device = ""} : (tensor<1024x3x4x3xf32>, tensor<1xi32>, tensor<i32>) -> tensor<1x3x4x3xf32>
+    return %0 : tensor<1x3x4x3xf32>
+  }
+  func.func private @composite_conv2d_fn_2(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x1024xf32>) -> tensor<1x3x2x1024xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x1024xf32>) -> tensor<1x3x2x1024xf32>
+    return %0 : tensor<1x3x2x1024xf32>
+  }
+  func.func private @composite_conv2d_fn_1(%arg0: tensor<1x3x2x1024xf32>, %arg1: tensor<3x3x1024x1xf32>) -> tensor<1x3x1x1xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x2x1024xf32>, tensor<3x3x1024x1xf32>) -> tensor<1x3x1x1xf32>
+    return %0 : tensor<1x3x1x1xf32>
+  }
+
+// CHECK-LABEL: func @embedding_with_one_float_conv_and_one_quantized_conv
+
+// CHECK: %[[quantized_gather:.*]] = "tf.PartitionedCall"(
+// CHECK-SAME: f = @quantized_gather_float_output_fn_0
+// CHECK: %[[float_conv:.*]] = "tf.PartitionedCall"(%[[quantized_gather]]
+// CHECK-SAME: f = @composite_conv2d_fn_2
+// CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%[[float_conv]]
+// CHECK-SAME: f = @quantize_i8
+// CHECK: %[[quantized_conv:.*]] = "tf.PartitionedCall"(%[[quantize]]
+// CHECK-SAME: f = @quantized_conv2d_float_output_fn_0
+
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Gather  1/1
+// CHECK: Conv2D  1/2
+
+// CHECK: Number of quantized layers with quantized outputs: 0/2
+// CHECK: Number of quantize layers added: 1
+// CHECK: Number of dequantize layers added: 0
+}

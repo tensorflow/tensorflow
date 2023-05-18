@@ -100,7 +100,7 @@ StatusOr<ModuleWithInputs> GetModuleAndInputData(
     module_or_status = LoadModuleFromHloProto(hlo_proto);
     if (!module_or_status.ok()) {
       LOG(ERROR) << "Failed to load hlo proto"
-                 << module_or_status.status().error_message();
+                 << module_or_status.status().message();
       return module_or_status.status();
     }
     module = std::move(module_or_status).value();
@@ -111,7 +111,7 @@ StatusOr<ModuleWithInputs> GetModuleAndInputData(
   Status to_string_status = tsl::ReadFileToString(env, input_file, &hlo_string);
   if (!to_string_status.ok()) {
     LOG(ERROR) << input_file << " problem in reading file to string: "
-               << to_string_status.error_message();
+               << to_string_status.message();
     return to_string_status;
   }
 
@@ -120,7 +120,7 @@ StatusOr<ModuleWithInputs> GetModuleAndInputData(
   module_or_status = ParseAndReturnUnverifiedModule(hlo_string, config);
   if (!module_or_status.ok()) {
     LOG(ERROR) << input_file << " is not HLO text either, error in parsing "
-               << module_or_status.status().error_message();
+               << module_or_status.status().message();
     return module_or_status.status();
   }
 
@@ -343,13 +343,13 @@ void RunBisect(std::unique_ptr<BisectRunner> runner, bool all_computations,
                absl::string_view dump_path, absl::string_view output_format) {
   StatusOr<std::unique_ptr<HloModule>> bisect_status =
       all_computations ? runner->RunAll() : runner->RunEntry();
-  CHECK(bisect_status.ok()) << bisect_status.status().error_message();
+  CHECK(bisect_status.ok()) << bisect_status.status().message();
 
   std::unique_ptr<HloModule> new_module = std::move(bisect_status.value());
   Status dump_status =
       DumpHloModule(new_module.get(), new_module->name() + "_trimmed",
                     dump_path, output_format);
-  CHECK(dump_status.ok()) << dump_status.error_message();
+  CHECK(dump_status.ok()) << dump_status.message();
 }
 
 StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
@@ -372,8 +372,7 @@ StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
                                .Run(module.get())
                                .status();
   if (!verified_status.ok()) {
-    LOG(ERROR) << "Failed to verify hlo module "
-               << verified_status.error_message();
+    LOG(ERROR) << "Failed to verify hlo module " << verified_status.message();
     return verified_status;
   }
 

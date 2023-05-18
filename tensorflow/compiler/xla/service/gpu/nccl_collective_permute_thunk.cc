@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 
-#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -101,10 +100,9 @@ bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
 }
 
 template <typename OpT>
-bool CanImplement(OpT op) {
-  const Shape shape = GetShape(op.getOperand());
-  return IsTypeSupportedByNccl(shape.element_type(),
-                               Thunk::kNcclCollectivePermute);
+Status CheckImplementable(OpT op) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+  return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
 }
 
 }  // namespace impl
@@ -145,43 +143,6 @@ Status NcclCollectivePermuteThunkBase::RunCollectivePermute(
 }
 
 /*static*/ NcclCollectivePermuteConfig
-NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
-    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::GetNcclCollectivePermuteConfig(op, replica_count,
-                                              partition_count);
-}
-
-/*static*/ bool NcclCollectivePermuteThunk::CanImplement(
-    mlir::lmhlo::CollectivePermuteOp op) {
-  return impl::CanImplement(op);
-}
-
-/*static*/ bool NcclCollectivePermuteThunk::IsDegenerate(
-    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclCollectivePermuteThunk::GetGroupMode(
-    mlir::lmhlo::CollectivePermuteOp op) {
-  return impl::GetGroupMode(op);
-}
-
-NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
-    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
-    : NcclCollectivePermuteThunkBase(
-          Thunk::kNcclCollectivePermute, thunk_info,
-          GetNcclCollectivePermuteConfig(op, replica_count, partition_count),
-          buffer) {}
-
-Status NcclCollectivePermuteThunk::RunNcclCollective(
-    const ExecuteParams& params, ncclComm_t comm) {
-  return RunCollectivePermute(params, *params.stream, comm);
-}
-
-/*static*/ NcclCollectivePermuteConfig
 NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
     mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
@@ -189,9 +150,11 @@ NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
                                               partition_count);
 }
 
-/*static*/ bool NcclCollectivePermuteStartThunk::CanImplement(
-    mlir::lmhlo_gpu::CollectivePermuteStartOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclCollectivePermuteStartThunk::CheckImplementable(
+    mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclCollectivePermuteStartThunk>(
+      impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
 /*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(

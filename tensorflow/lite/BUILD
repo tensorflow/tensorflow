@@ -546,21 +546,6 @@ cc_library_with_tflite(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
-# The key parts of the C++ API.  This target defines the TF Lite classes for
-# loading models and interpreting them.
-# DEPRECATED: prefer to depend on :cc_api_stable or :cc_api_experimental.
-alias_with_tflite(
-    name = "cc_api",
-    actual = "cc_api_experimental",
-    compatible_with = get_compatible_with_portable(),
-    generate_opaque_delegate_target = True,
-    visibility = [
-        "//tensorflow/lite/core/shims:__subpackages__",
-        "//tensorflow/lite/delegates/flex:__subpackages__",
-        "//tensorflow/lite/kernels:__subpackages__",
-    ],
-)
-
 cc_library(
     name = "logger",
     srcs = ["logger.cc"],
@@ -897,13 +882,13 @@ cc_library(
         "//tensorflow/lite/core/c:common",
     ] + select({
         ":tflite_with_xnnpack_explicit_true": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
             ":tflite_with_xnnpack_enabled",
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         ],
         ":tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
             ":tflite_with_xnnpack_default",
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         ],
     }),
 )
@@ -1158,16 +1143,10 @@ cc_library_with_tflite(
 # Defines CreateOpResolver with all builtin ops.
 cc_library_with_tflite(
     name = "create_op_resolver_with_builtin_ops",
-    srcs = ["create_op_resolver_with_builtin_ops.cc"],
     hdrs = ["create_op_resolver.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    deps = [
-        ":mutable_op_resolver",
-        ":op_resolver",
-        "//tensorflow/lite/core:create_op_resolver_header",
-        "//tensorflow/lite/core/kernels:builtin_ops",
-    ],
+    deps = ["//tensorflow/lite/core:create_op_resolver_with_builtin_ops"],
     # Some targets only have an implicit dependency on CreateOpResolver.
     # This avoids warnings about backwards references when linking.
     alwayslink = True,

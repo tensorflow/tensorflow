@@ -21,8 +21,8 @@ py_library(
     srcs = ["compat_checker.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )
@@ -37,7 +37,6 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":compat_checker",
-        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
     ],
 )

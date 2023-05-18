@@ -196,7 +196,8 @@ std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs) {
   size_t allocCounter = 0;
   for (const Value alloc : allocs) {
     auto shape = alloc.getType().cast<ShapedType>();
-    size_t shapeBytes = llvm::divideCeil(shape.getSizeInBits(), 8);
+    size_t shapeBytes = llvm::divideCeil(
+        shape.getNumElements() * shape.getElementTypeBitWidth(), 8);
     size_t alignFactor = llvm::divideCeil(shapeBytes, kPaddingSize);
     size_t size = alignFactor * kPaddingSize;
     totalSize += size;

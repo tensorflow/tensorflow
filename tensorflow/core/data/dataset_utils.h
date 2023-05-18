@@ -363,13 +363,28 @@ inline int GetCpuBudget() {
 // optimization.
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
+// A `DatasetExperimentRegistry::JobSelector` that randomly selects
+// `rollout_pct` percent of all jobs. `name_hash` is a hash of the experiment
+// and job names.
+template <int64_t rollout_pct>
+bool RandomJobSamplePercentage(uint64_t name_hash) {
+  return name_hash % 100 < rollout_pct;
+}
+
+// A `DatasetExperimentRegistry::TaskSelector` that selects all tasks.
+bool AllTasks(int64_t unused_task_id, bool unused_evens);
+
+// A `DatasetExperimentRegistry::TaskSelector` that selects the tasks for half
+// of all hosts. Typically, one or two consecutive tasks run on a single host.
+// If `evens` is `true`, selects tasks 0,1,4,5,8,9,..., otherwise selects tasks
+// 2,3,6,7,10,11,...
+bool IndependentHostTasks(int64_t task_id, bool evens);
+
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {
  public:
-  using JobSelector = std::function<bool(
-      std::function<uint64_t(const string&)> hash_func,
-      const std::string& experiment_name, const std::string& job_name)>;
-  using TaskSelector = std::function<bool(int64_t task_id)>;
+  using JobSelector = std::function<bool(uint64_t name_hash)>;
+  using TaskSelector = std::function<bool(int64_t task_id, bool evens)>;
 
   struct ExperimentSelector {
     JobSelector job_selector;

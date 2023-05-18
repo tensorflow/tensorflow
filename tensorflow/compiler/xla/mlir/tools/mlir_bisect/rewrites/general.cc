@@ -81,8 +81,8 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithConstant(
       auto attribute = interpreter::ValueToAttribute(value, type);
       if (attribute.size() == 1) {
         op_clone->getResults()[i].replaceAllUsesWith(
-            b.create<arith::ConstantOp>(op_clone->getLoc(), attribute.front(),
-                                        type));
+            arith::ConstantOp::materialize(b, attribute.front(), type,
+                                           op_clone->getLoc()));
       } else {
         // We don't currently support tuples.
         all_replaced = false;
@@ -117,8 +117,8 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOperandWithConstant(
         auto [module_clone, op_clone] = CloneModuleFor(op);
         OpBuilder b(op_clone);
         op_clone->setOperand(
-            i, b.create<arith::ConstantOp>(op_clone->getLoc(),
-                                           attribute.front(), type));
+            i, arith::ConstantOp::materialize(b, attribute.front(), type,
+                                              op_clone->getLoc()));
         result.push_back(std::move(module_clone));
       }
     }

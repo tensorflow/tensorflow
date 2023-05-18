@@ -23,8 +23,8 @@ cc_library(
         "//conditions:default": [
             "nnapi_delegate.cc",
             "nnapi_delegate_c_api.cc",
-            "quant_lstm_sup.h",
             "quant_lstm_sup.cc",
+            "quant_lstm_sup.h",
         ],
     }),
     hdrs = [
@@ -87,8 +87,8 @@ cc_library(
         ],
         "//conditions:default": [
             "nnapi_delegate.cc",
-            "quant_lstm_sup.h",
             "quant_lstm_sup.cc",
+            "quant_lstm_sup.h",
         ],
     }),
     hdrs = [
@@ -166,7 +166,6 @@ cc_test(
         "nnapi_delegate_test.cc",
     ],
     tags = [
-        "no_oss",  # TODO(b/273558651): Enable after updating flatbuffer version.
         "no_windows",
         "tflite_not_portable_ios",
     ],

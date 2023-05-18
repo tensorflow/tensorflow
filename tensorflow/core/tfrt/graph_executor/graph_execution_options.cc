@@ -28,6 +28,9 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
   tensorflow::SessionOptions session_options;
   auto& config = session_options.config;
 
+  *config.mutable_experimental()->mutable_session_metadata() =
+      options.model_metadata;
+
   *config.mutable_graph_options() = options.compile_options.graph_options;
 
   config.mutable_graph_options()

@@ -123,13 +123,13 @@ cc_library(
     deps = [
         ":trt_parameters",
         ":trt_resources",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc/tools:freeze_saved_model",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -211,11 +211,11 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":trt_conversion",
-        "@com_google_googletest//:gtest",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -255,8 +255,6 @@ cc_library(
         ":trt_plugins",
         ":trt_resources",
         ":utils",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
@@ -267,6 +265,8 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([
         ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",
@@ -285,14 +285,14 @@ cc_library(
         ":trt_logging",
         ":trt_plugins",
         ":trt_resources",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
@@ -347,11 +347,6 @@ tf_cuda_cc_test(
         ":trt_op_kernels",
         ":trt_op_libs",
         ":trt_resources",
-        "@com_google_googletest//:gtest",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:scope",
@@ -366,6 +361,11 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:ops_testutil",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -405,13 +405,13 @@ tf_cuda_library(
         ":trt_logging",
         ":trt_parameters",
         ":utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -424,8 +424,8 @@ tf_cuda_library(
         ":common_utils",
         ":logger_registry",
         ":utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib_proto_parsing",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -445,7 +445,6 @@ tf_custom_op_py_library(
         ":trt_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
         "//tensorflow/python:resources",
     ],
 )
@@ -459,9 +458,9 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -557,8 +556,8 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -604,8 +603,8 @@ tf_cuda_library(
     deps = [
         ":op_converter",
         ":utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -618,12 +617,12 @@ tf_cuda_library(
     deps = [
         ":op_converter",
         ":utils",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ] + if_static([":op_converter_registry_impl"]),
 )
 
@@ -714,8 +713,6 @@ tf_cuda_library(
         ":trt_resources",
         ":trt_weights",
         ":utils",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:array_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
@@ -739,6 +736,8 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tools/graph_transforms:transform_utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
         ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
         "//conditions:default": [],
@@ -760,8 +759,6 @@ tf_cuda_cc_test(
         ":trt_conversion",
         ":trt_op_kernels",
         ":trt_op_libs",
-        "@com_google_googletest//:gtest",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
@@ -775,6 +772,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -797,9 +796,6 @@ tf_cuda_cc_test(
         ":trt_logging",
         ":trt_plugins",
         ":utils",
-        "@com_google_googletest//:gtest",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:ops",
@@ -816,6 +812,9 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ] + if_tensorrt([
         ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",
@@ -843,9 +842,6 @@ tf_cuda_cc_test(
         ":trt_plugins",
         ":trt_resources",
         ":utils",
-        "@com_google_googletest//:gtest",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:ops",
@@ -866,6 +862,9 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ] + if_tensorrt([
         ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",
@@ -963,12 +962,12 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 

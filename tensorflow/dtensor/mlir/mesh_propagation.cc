@@ -60,7 +60,7 @@ mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
   }
   auto layout_or_status = ExtractLayoutFromOperand(block_arg);
   if (!layout_or_status.ok())
-    return func_op.emitOpError(layout_or_status.status().error_message());
+    return func_op.emitOpError(layout_or_status.status().message());
 
   if (layout_or_status->has_value()) {
     out->emplace(layout_or_status->value().mesh());
@@ -100,7 +100,7 @@ mlir::LogicalResult ExtractMeshFromOpOutput(mlir::Value value,
   if (!mesh_or_status.ok())
     return operand_cluster.emitOpError(
         llvm::formatv("Failed during mesh propagation. {0}",
-                      mesh_or_status.status().error_message()));
+                      mesh_or_status.status().message()));
 
   auto extracted_mesh = mesh_or_status.value();
   if (extracted_mesh) *out = extracted_mesh.value();
@@ -307,7 +307,7 @@ mlir::LogicalResult InferMeshFromConsumers(
 
       auto mesh_or_status = ExtractDeviceMeshFromOp(consumer_cluster);
       if (!mesh_or_status.ok())
-        return cluster.emitOpError(mesh_or_status.status().error_message());
+        return cluster.emitOpError(mesh_or_status.status().message());
 
       auto consumer_mesh = mesh_or_status.value();
       if (!consumer_mesh) continue;
@@ -413,7 +413,7 @@ mlir::LogicalResult AnnotateFunctionReturnValuesWithMeshInformation(
             Layout::FromString(function_result_layout.getValue().str());
         if (!layout_or_status.ok())
           return parent_function.emitOpError(
-              layout_or_status.status().error_message());
+              layout_or_status.status().message());
 
         result_mesh_attribute.emplace(
             builder->getStringAttr(layout_or_status->mesh().ToString()));
@@ -534,8 +534,7 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
 
     auto mesh_or_status = ExtractDeviceMeshFromOp(cluster);
     if (!mesh_or_status.ok()) {
-      cluster.GetBody().front().emitOpError(
-          mesh_or_status.status().error_message());
+      cluster.GetBody().front().emitOpError(mesh_or_status.status().message());
       return mlir::WalkResult::interrupt();
     }
 

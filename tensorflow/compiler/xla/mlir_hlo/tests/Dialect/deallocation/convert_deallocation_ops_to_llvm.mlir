@@ -55,3 +55,23 @@ func.func @freeAlloc(%arg0: !deallocation.ownership) {
 // CHECK: @freeAlloc
 // CHECK-NEXT: builtin.unrealized_conversion_cast
 // CHECK-NEXT: llvm.call @free
+
+// -----
+
+func.func @retain_multiple(%arg0: memref<?xi32>, %arg1: memref<?xi32>,
+        %arg2: !deallocation.ownership, %arg3: !deallocation.ownership)
+    -> (!deallocation.ownership, !deallocation.ownership) {
+  %ret:2 = deallocation.retain(%arg0, %arg1) of (%arg2, %arg3)
+    : (memref<?xi32>, memref<?xi32>, !deallocation.ownership, !deallocation.ownership)
+    -> (!deallocation.ownership, !deallocation.ownership)
+  return %ret#0, %ret#1 : !deallocation.ownership, !deallocation.ownership
+}
+
+// CHECK-LABEL: @retain_multiple
+// CHECK-SAME:     %[[ARG0:.*]]: memref<?xi32>, %[[ARG1:.*]]: memref<?xi32>
+// CHECK-SAME:     %[[ARG2:.*]]: {{.*}}, %[[ARG3:.*]]:
+// CHECK:          memref.alloca_scope
+// CHECK:          llvm.alloca
+// CHECK:          llvm.alloca
+// CHECK:          call @retainBuffers
+// CHECK:          memref.alloca_scope.return

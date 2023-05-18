@@ -103,15 +103,41 @@ func.func @validate_tpu_replicate_no_attr(%arg0: tensor<i32>, %arg1: tensor<i32>
 func.func @validate_tpu_replicate_wrong_attr(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   %0:2 = tf_executor.graph {
     %control = tf_executor.island() wraps "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _tpu_replicate = "cluster", device = "/device:TPU:0", num_replicas = 2, topology = "topology"} : () -> ()
-    // expected-error @+1 {{TF2XLA TPU bridge input check: no tf.TPUReplicateMetadata op with cluster = cluster_wrong The Parent op = tf.opA}}
     %ri, %c0 = tf_executor.island wraps "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 1 : i64, is_mirrored_variable = false, is_packed = false} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-     // expected-error @+1 {{tf_executor.yield' op TF2XLA TPU bridge input check: no tf.TPUReplicateMetadata op with cluster = cluster_wrong The Parent op = tf.opB}}
     %out, %c1 = tf_executor.island wraps "tf.opA"(%ri) {_tpu_replicate = "cluster_wrong"}: (tensor<i32>) -> tensor<i32>
-    %out2, %c2 = tf_executor.island wraps "tf.opB"(%out) {_tpu_replicate = "cluster_wrong"}: (tensor<i32>) -> tensor<i32>
+    // expected-error @+1 {{'tf.opB' op TF2XLA TPU bridge input check: mismatch clusters tpu_replicate attr. Parent op tf.opA with cluster = cluster_wrong has successor cluster op tf.opB with cluster = cluster}}
+    %out2, %c2 = tf_executor.island wraps "tf.opB"(%out) {_tpu_replicate = "cluster"}: (tensor<i32>) -> tensor<i32>
     %ro:2, %c3 = tf_executor.island wraps "tf.TPUReplicatedOutput"(%out2) : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
     tf_executor.fetch %ro#0, %ro#1 : tensor<i32>, tensor<i32>
   }
   return %0#0, %0#1 : tensor<i32>, tensor<i32>
+}
+
+// -----
+
+func.func @valid_xla_nonxla(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  %0:2 = tf_executor.graph {
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _tpu_replicate = "cluster", device = "/device:TPU:0", num_replicas = 2, topology = "topology"} : () -> ()
+    %ri, %c0 = tf_executor.island wraps "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 1 : i64, is_mirrored_variable = false, is_packed = false} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %out, %c1 = tf_executor.island wraps "tf.opA"(%ri) {_tpu_replicate = "cluster", device = "TPU"} : (tensor<i32>) -> tensor<i32>
+    %ro:2, %c2 = tf_executor.island wraps "tf.TPUReplicatedOutput"(%out) : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
+    tf_executor.fetch %ro#0, %ro#1 : tensor<i32>, tensor<i32>
+  }
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+}
+
+// -----
+
+func.func @valid_xla_nonxla_warning(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<*x!tf_type.string>, tensor<*x!tf_type.string>) {
+  %0:2 = tf_executor.graph {
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _tpu_replicate = "cluster", device = "/device:TPU:0", num_replicas = 2, topology = "topology"} : () -> ()
+    %ri, %c0 = tf_executor.island wraps "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 1 : i64, is_mirrored_variable = false, is_packed = false} : (tensor<i32>, tensor<i32>) -> tensor<*x!tf_type.string>
+    // expected-warning @+1 {{TF/XLA TPU bridge input check: found invalid op. tf.Identity can't be both xla and non-xla}}
+    %out, %c1 = tf_executor.island(%c0) wraps "tf.Identity"(%ri) {_tpu_replicate = "cluster", device = ""} : (tensor<*x!tf_type.string>) -> tensor<*x!tf_type.string>
+    %ro:2, %c2 = tf_executor.island wraps "tf.TPUReplicatedOutput"(%out) : (tensor<*x!tf_type.string>) -> (tensor<*x!tf_type.string>, tensor<*x!tf_type.string>)
+    tf_executor.fetch %ro#0, %ro#1 : tensor<*x!tf_type.string>, tensor<*x!tf_type.string>
+  }
+  return %0#0, %0#1 : tensor<*x!tf_type.string>, tensor<*x!tf_type.string>
 }
 
 // -----
