@@ -288,10 +288,13 @@ Status MetaOptimizer::InitializeOptimizers(
 
   // #TODO(b/200087693): LLVM does not build on Fuchsia.
 #if !NO_LLVM_SUPPORT
-  // Hooks the MLIR optimizer, it won't run any optimizations right now. This
-  // optimizer instance runs on functions one at a time; don't use any threads.
-  optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
-      mlir::tfg::DefaultGrapplerPipeline));
+  if (!cfg_.disable_tfg_optimizer()) {
+    // Hooks the MLIR optimizer, it won't run any optimizations right now. This
+    // optimizer instance runs on functions one at a time; don't use any
+    // threads.
+    optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
+        mlir::tfg::DefaultGrapplerPipeline));
+  }
 #endif
 
 // A set of macro utilities which check if the toggle of an optimization.
@@ -1275,7 +1278,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.
 #if !NO_LLVM_SUPPORT
-  {
+  if (!cfg_.disable_tfg_optimizer()) {
     // Create a Grappler optimization pipeline with only the TFG optimizer.
     std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
