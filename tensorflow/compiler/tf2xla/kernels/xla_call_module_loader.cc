@@ -315,15 +315,27 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     TF_ASSIGN_OR_RETURN(
         mlir::Type element_type,
         ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
-    mlir::Type type = mlir::RankedTensorType::get(xla_dimensions, element_type);
+    mlir::RankedTensorType type =
+        mlir::RankedTensorType::get(xla_dimensions, element_type);
     // TODO(burmako): This fails with an obscure compilation error.
     // TF_ASSIGN_OR_RETURN(
     //     mlir::Type type,
     //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
     VLOG(3) << "XlaCallModule static array input type #" << i << ": "
             << mlir::debugString(type);
-    // TODO(b/278273480): Determine whether it's safe to override the element
-    // type using that from the input shape.
+    mlir::RankedTensorType arg_type =
+        main_body.getArgument(i).getType().dyn_cast<mlir::RankedTensorType>();
+    if (!arg_type) {
+      return tsl::errors::InvalidArgument("Module argument ", i,
+                                          " does not have a RankedTensorType");
+    }
+    if (arg_type.getElementType() != type.getElementType() ||
+        mlir::failed(mlir::verifyCompatibleShape(arg_type.getShape(),
+                                                 type.getShape()))) {
+      return tsl::errors::InvalidArgument(
+          "Incorrect type ", mlir::debugString(type), " for argument ", i,
+          " passed to XlaCallModule. Expecting ", mlir::debugString(arg_type));
+    }
     static_array_input_types[i] = type;
   }
 
@@ -341,8 +353,10 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
                                 ModuleToString(*module_, VLOG_IS_ON(4))));
     return tsl::errors::InvalidArgument("Module inlining failed");
   }
-  XLA_VLOG_LINES(5, absl::StrCat("XlaCallModule module after inlining: ",
-                                 ModuleToString(*module_, VLOG_IS_ON(4))));
+  XLA_VLOG_LINES(
+      5, absl::StrCat(
+             "XlaCallModule module after setting input types and inlining: ",
+             ModuleToString(*module_, VLOG_IS_ON(4))));
 
   auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {

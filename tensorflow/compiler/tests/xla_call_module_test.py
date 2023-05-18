@@ -202,6 +202,40 @@ module @jit_f.0 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
 
+  def test_wrong_actual_args_errors(self):
+    x = np.arange(6, dtype=np.float32).reshape((3, 2))
+
+    # x: f32[a, 2], return x
+    module, version = serialize("""
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<?x2xf32>) -> tensor<?x2xf32> {
+    return %arg0 : tensor<?x2xf32>
+  }
+}
+""")
+    def f(x):
+      return xla.call_module([x],
+                             module=module, version=version,
+                             Tout=[x.dtype],
+                             Sout=[(None, 2)])
+    self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    x_bad_etype = x.astype(np.int32)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Incorrect type tensor<3x2xi32> for argument 0 passed to XlaCallModule.'
+        r' Expecting tensor<\?x2xf32>'):
+      self._assertOpOutputMatchesExpected(f, (x_bad_etype,),
+                                          (x_bad_etype,))
+
+    x_bad_shape = np.arange(15, dtype=np.float32).reshape(5, 3)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Incorrect type tensor<5x3xf32> for argument 0 passed to XlaCallModule.'
+        r' Expecting tensor<\?x2xf32>'):
+      self._assertOpOutputMatchesExpected(f, (x_bad_shape,),
+                                          (x_bad_shape,))
+
   def test_dim_args_spec_errors(self):
     # x, y: f32[2, b, c]
     x = np.arange(24, dtype=np.float32).reshape((2, 3, 4))
