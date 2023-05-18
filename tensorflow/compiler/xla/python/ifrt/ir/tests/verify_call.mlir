@@ -55,7 +55,7 @@ func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 func.func @call_requires_valid_reference(
     %arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' op requires '@missing_reference' to reference a valid function}}
+  // expected-error@+1 {{'ifrt.Call' op requires '@missing_reference' to reference a valid `func.func`}}
   %0, %ctrl_0 = ifrt.Call @missing_reference(%arg0) {devices=array<i64: 0, 1>}
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 2, [0,1]>

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_OPS_H_
 
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -47,6 +49,33 @@ class NestedInIfrtFuncTrait
   static LogicalResult verifyTrait(Operation* op) {
     return impl::verifyNestedInIfrtFunc(op);
   }
+};
+
+template <typename CalleeOpType>
+class IfrtCallLikeTrait {
+ public:
+  template <typename ConcreteType>
+  class Impl : public TraitBase<ConcreteType, Impl> {
+   public:
+    // Verifies getCallee() is a valid SymbolRefAttr to CalleeOpType.
+    static LogicalResult verifyTrait(Operation* op) {
+      mlir::SymbolTableCollection symbol_table;
+      ConcreteType concrete = llvm::cast<ConcreteType>(op);
+      CalleeOpType callee = concrete.getCalleeOp(symbol_table);
+      if (callee == nullptr) {
+        return op->emitOpError() << "requires '" << concrete.getCallee()
+                                 << "' to reference a valid `"
+                                 << CalleeOpType::getOperationName() << "`";
+      }
+      return success();
+    }
+
+    CalleeOpType getCalleeOp(mlir::SymbolTableCollection& symbol_table) {
+      SymbolRefAttr callee_attr = static_cast<ConcreteType*>(this)->getCallee();
+      return symbol_table.lookupNearestSymbolFrom<CalleeOpType>(
+          this->getOperation(), callee_attr);
+    }
+  };
 };
 
 }  // namespace ifrt

@@ -265,18 +265,8 @@ void CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
 mlir::Operation::operand_range CallOp::getArgOperands() { return getInputs(); }
 
 mlir::LogicalResult CallOp::verifySymbolUses(
-    mlir::SymbolTableCollection& symbolTable) {
-  const auto callee_attr =
-      (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
-  if (!callee_attr) {
-    return emitOpError() << "requires `callee` SymbolRefAttr";
-  }
-  auto callee = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(
-      *this, callee_attr);
-  if (!callee) {
-    return emitOpError() << "requires '" << callee_attr
-                         << "' to reference a valid function";
-  }
+    mlir::SymbolTableCollection& symbol_table) {
+  mlir::func::FuncOp callee = getCalleeOp(symbol_table);
   mlir::FunctionType callee_type = callee.getFunctionType();
 
   // Verify inputs.
@@ -350,19 +340,7 @@ mlir::Operation::operand_range CallLoadedExecutableOp::getArgOperands() {
 }
 
 mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
-    mlir::SymbolTableCollection& symbolTable) {
-  const auto callee_attr =
-      (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
-  if (!callee_attr) {
-    return emitOpError() << "requires `callee` SymbolRefAttr";
-  }
-  auto callee = symbolTable.lookupNearestSymbolFrom<LoadedExecutableOp>(
-      *this, callee_attr);
-  if (!callee) {
-    return emitOpError() << "requires '" << callee_attr
-                         << "' to reference a valid LoadedExecutable";
-  }
-
+    mlir::SymbolTableCollection& symbol_table) {
   llvm::SmallVector<mlir::Type, 4> input_types;
   input_types.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
@@ -375,6 +353,7 @@ mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
   }
   auto func_type =
       mlir::FunctionType::get(getContext(), input_types, output_types);
+  LoadedExecutableOp callee = getCalleeOp(symbol_table);
   if (callee.getFunctionType() != func_type) {
     return emitOpError() << "requires callee signature matching " << func_type
                          << ". Actual " << callee.getFunctionType();

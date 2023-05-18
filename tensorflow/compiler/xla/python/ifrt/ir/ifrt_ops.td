@@ -29,6 +29,12 @@ class Ifrt_Op<string mnemonic, list<Trait> traits = []> :
 // Verifies op used in a FuncOp with `ifrt.function` attr.
 def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
 
+// Verifies callee is a valid symbol ref to callee_op_type.
+// Provides `callee_op_type getCalleeOp(SymbolTableCollection)`.
+// Concrete type must have a SymbolRefAttr named `callee`.
+class IfrtCallLike<string callee_op_type>
+    : ParamNativeOpTrait<"xla::ifrt::IfrtCallLikeTrait", callee_op_type>;
+
 def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
   let summary = "Reshards a host tensor or device array";
   let description = [{
@@ -99,6 +105,7 @@ def IoAliasesAttr : TypedArrayAttrBase<
 def Ifrt_CallOp : Ifrt_Op<"Call",
     [AttrSizedOperandSegments,
      NestedInIfrtFunc,
+     IfrtCallLike<"::mlir::func::FuncOp">,
      DeclareOpInterfaceMethods<CallOpInterface>,
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some function on a set of devices";
@@ -142,6 +149,7 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
 def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     [AttrSizedOperandSegments,
      NestedInIfrtFunc,
+     IfrtCallLike<"LoadedExecutableOp">,
      DeclareOpInterfaceMethods<CallOpInterface>,
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some loaded executable";

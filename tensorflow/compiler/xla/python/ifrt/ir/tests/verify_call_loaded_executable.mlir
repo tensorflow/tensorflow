@@ -41,7 +41,7 @@ ifrt.LoadedExecutable @callee {devices=array<i64: 0, 1>}
 // -----
 
 func.func @requires_valid_reference() attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires '@missing_reference' to reference a valid LoadedExecutable}}
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires '@missing_reference' to reference a valid `ifrt.LoadedExecutable`}}
   %ctrl_0 = ifrt.CallLoadedExecutable @missing_reference() : () -> ()
   return
 }
@@ -51,7 +51,7 @@ func.func @requires_valid_reference() attributes {ifrt.function} {
 func.func @requires_loaded_executable_callee(
     %arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires '@wrong_reference' to reference a valid LoadedExecutable}}
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op requires '@wrong_reference' to reference a valid `ifrt.LoadedExecutable`}}
   %ctrl_0 = ifrt.CallLoadedExecutable @wrong_reference() : () -> ()
   return
 }
