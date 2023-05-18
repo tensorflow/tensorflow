@@ -266,7 +266,7 @@ std::string generate_node(const std::string name, const std::string op,
 }
 
 void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
-  // Fuzzer the assembles a graph that has a high chance of being a working graph.
+  // Fuzzer that assembles a graph that has a high chance of being a working graph.
   // Specifically, the nodes are connected to each other in terms of naming, and
   // the string representing ops are actual ops from Tensorflow.
   // Types (DT_FLOAT) is not necessarily compatible in the graph, although many
@@ -316,7 +316,7 @@ void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
     last_node = name;
     std::vector<std::string> inputs;
 
-    bool should_include_inputs = fdp.ConsumeBool() && i > 0;
+    bool should_include_inputs = fdp.ConsumeBool();
     if (should_include_inputs) {
       int inputs_to_include = fdp.ConsumeIntegralInRange<int>(1, 3);
       for (int j = 0; j < inputs_to_include; j++) {
@@ -341,7 +341,7 @@ void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
   // std::cout << graphFdp;
   // std::cout << "<<<<<<<<<<<<<<<<<<<<<<<\n";
 
-  // Convrt the ASCII graph to an actual graph
+  // Convert the ASCII graph to an actual graph
   GraphDef gdef_;
   ImportGraphDefOptions opts;
   EmptyErrorCollector emptyErrorCollector;
