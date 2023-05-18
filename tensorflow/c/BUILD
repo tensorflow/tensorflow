@@ -1032,7 +1032,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "kernels_test",
-    size = "small",
+    size = "medium",
     srcs = ["kernels_test.cc"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
