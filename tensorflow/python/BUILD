@@ -1146,6 +1146,7 @@ py_library(
         ":control_flow_util",
         ":math_ops_gen",
         ":shape_util",
+        "//tensorflow/dtensor/python:api",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:common_shapes",

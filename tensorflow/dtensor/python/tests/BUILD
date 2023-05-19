@@ -68,6 +68,23 @@ pytype_library(
 )
 
 dtensor_test(
+    name = "array_ops_test",
+    srcs = ["array_ops_test.py"],
+    additional_backends = [],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+dtensor_test(
     name = "config_test",
     srcs = ["config_test.py"],
     main = "config_test.py",
