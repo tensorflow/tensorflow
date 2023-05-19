@@ -260,6 +260,16 @@ bool IsNonContractingDimSupported(
                         [](int64_t dim) { return dim <= 512; });
 }
 
+bool IsRankSupported(const HloInstruction* bmm) {
+  return bmm->operand(0)->shape().dimensions().size() == 4 &&
+         bmm->operand(1)->shape().dimensions().size() == 4;
+}
+
+bool IsBatchDimSizeSupported(const DotDimensionNumbers& dot_dims) {
+  return dot_dims.lhs_batch_dimensions().size() == 2 &&
+         dot_dims.rhs_batch_dimensions().size() == 2;
+}
+
 std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
                                         absl::Span<const int64_t> dim_nums) {
   std::vector<int64_t> vec(dim_nums.size());
@@ -270,10 +280,12 @@ std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
 }
 
 StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
+  if (!IsRankSupported(bmm_1)) return false;
   GemmBackendConfig config_bmm1;
   TF_ASSIGN_OR_RETURN(config_bmm1, bmm_1->backend_config<GemmBackendConfig>());
   const DotDimensionNumbers& dot_dims_bmm1 =
       config_bmm1.dot_dimension_numbers();
+  if (IsBatchDimSizeSupported(dot_dims_bmm1)) return false;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_non_contracting_dim_nums_bmm1,
       GetNonContractingDims(bmm_1->operand(0)->shape(),
@@ -329,11 +341,12 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
 
 StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
                                bool need_canonicalization) {
+  if (!IsRankSupported(bmm_2)) return false;
   GemmBackendConfig config_bmm2;
   TF_ASSIGN_OR_RETURN(config_bmm2, bmm_2->backend_config<GemmBackendConfig>());
   const DotDimensionNumbers& dot_dims_bmm2 =
       config_bmm2.dot_dimension_numbers();
-
+  if (IsBatchDimSizeSupported(dot_dims_bmm2)) return false;
   // need swap lhs and rhs for bmm2 if canonicalization is needed
   int operand_index = need_canonicalization ? 0 : 1;
   auto batch_dim = need_canonicalization ? dot_dims_bmm2.lhs_batch_dimensions()
