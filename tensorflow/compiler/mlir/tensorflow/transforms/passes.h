@@ -332,6 +332,11 @@ void CreateTFXLABridgePipeline(OpPassManager& pm);
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateXlaCallModuleDeserializationPass();
 
+// Creates a pass that serializes StableHLO functions referenced by
+// `tf.XlaCallModule` from the top-level module to `tf.XlaCallModule`'s
+// `module` attribute.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaCallModuleSerializationPass();
+
 }  // namespace TF
 
 namespace tf_executor {
@@ -735,6 +740,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_UNROLLBATCHMATMULPASS
 #define GEN_PASS_DECL_VERIFYSUITABLEFOREXPORTPASS
 #define GEN_PASS_DECL_XLACALLMODULEDESERIALIZATIONPASS
+#define GEN_PASS_DECL_XLACALLMODULESERIALIZATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 }  // namespace detail
 using namespace detail;  // NOLINT

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,6 +32,7 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/statusor.h"
@@ -44,11 +44,8 @@ namespace {
 #define GEN_PASS_DEF_XLACALLMODULEDESERIALIZATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
-constexpr llvm::StringRef kMainFunction = "main";
-constexpr llvm::StringRef kEntryFunctionAttr = "_entry_function";
-constexpr llvm::StringRef kFromXlaCallModuleAttr = "_from_xla_call_module";
-
-// _stablehlo_{original function name}_{index}.
+// The function name format for the deserialized stablehlo functions:
+//   _stablehlo_{original function name}_{index}.
 constexpr const char *kNewFuncNameFormat = "_stablehlo_%s_%d";
 
 // Deserialize the StableHLO module embedded in XlaCallModuleOp's module
@@ -84,7 +81,7 @@ std::string NewFuncName(const SymbolTable &symbol_table,
 
 // Renames functions in the stablehlo module to avoid naming conflicts with
 // existing functions in the tf module.
-// Sets __from_xla_call_module attribute for each stablehlo function.
+// Sets _from_xla_call_module attribute for each stablehlo function.
 // Returns the new stablehlo main function's name or error.
 //
 // If we directly insert stablehlo functions into tf module, MLIR will rename
@@ -103,7 +100,7 @@ FailureOr<StringAttr> RenameStablehloFunctions(
   for (auto func : stablehlo_module.getOps<func::FuncOp>()) {
     auto new_func_name =
         builder.getStringAttr(NewFuncName(tf_sym_table, func.getSymName()));
-    if (func.getSymName() == kMainFunction) {
+    if (func.getSymName() == kStablehloMainFunctionName) {
       new_main_func_name = new_func_name;
     }
     if (failed(stablehlo_sym_table.replaceAllSymbolUses(func, new_func_name,
@@ -111,7 +108,7 @@ FailureOr<StringAttr> RenameStablehloFunctions(
       return failure();
     }
     func.setName(new_func_name);
-    func->setAttr(kFromXlaCallModuleAttr, builder.getUnitAttr());
+    func->setAttr(kFromXlaCallModuleAttrName, builder.getUnitAttr());
   }
   return new_main_func_name;
 }
@@ -128,6 +125,11 @@ void CopyFunctions(SymbolTableCollection &symbol_tables, ModuleOp from,
   }
 }
 
+void CopyStablehloModuleAttrs(ModuleOp stablehlo_module, XlaCallModuleOp op) {
+  op->setAttr(kStablehloModuleAttrsAttrName,
+              stablehlo_module->getAttrDictionary());
+}
+
 LogicalResult DeserializeXlaCallModule(MLIRContext *context,
                                        SymbolTableCollection &symbol_tables,
                                        ModuleOp module, XlaCallModuleOp op) {
@@ -136,6 +138,8 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
     return failure();
   }
   OwningOpRef<ModuleOp> stablehlo_module = std::move(deserialized.value());
+
+  CopyStablehloModuleAttrs(stablehlo_module.get(), op);
 
   auto main_func = RenameStablehloFunctions(context, symbol_tables, module,
                                             stablehlo_module.get());
@@ -153,7 +157,8 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
   // stablehlo function called by XlaCallModule, but also need the symbol
   // reference to prevent DCE from removing the stablehlo functions from the
   // top-level module.
-  op->setAttr(kEntryFunctionAttr, SymbolRefAttr::get(main_func.value()));
+  op->setAttr(kStablehloEntryFunctionAttrName,
+              SymbolRefAttr::get(main_func.value()));
 
   return success();
 }

@@ -1305,6 +1305,7 @@ cc_library(
         "transforms/update_control_dependencies.cc",
         "transforms/verify_suitable_for_graph_export_pass.cc",
         "transforms/xla_call_module_deserialization.cc",
+        "transforms/xla_call_module_serialization.cc",
         "transforms/xla_cluster_formation.cc",
         "transforms/xla_inline_device_ops.cc",
         "transforms/xla_rewrite.cc",
@@ -1369,6 +1370,8 @@ cc_library(
         ":unroll_batch_matmul_pass",
         ":verification_utils",
         ":verify_suitable_for_graph_export",
+        ":visitor",
+        ":xla_call_module_attrs",
         ":xla_sharding_util",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -1421,9 +1424,17 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
     ],
+)
+
+cc_library(
+    name = "xla_call_module_attrs",
+    srcs = [],
+    hdrs = ["utils/xla_call_module_attrs.h"],
+    deps = ["@llvm-project//llvm:Support"],
 )
 
 cc_library(

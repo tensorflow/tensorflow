@@ -2752,3 +2752,25 @@ def XlaCallModuleDeserializationPass
 
   let constructor = "TF::CreateXlaCallModuleDeserializationPass()";
 }
+
+def XlaCallModuleSerializationPass
+    : Pass<"tf-xla-call-module-serialization", "ModuleOp"> {
+  let summary = "Serializes StableHLO functions from top-level module into `tf.XlaCallModule`'s `module` attribute";
+
+  let description = [{
+    This pass collects StableHLO functions referenced from `tf.XlaCallModule`'s
+    `_entry_function` attribute into a module, serializes the module into MLIR
+    bytecode, and embed the bytecode to `tf.XlaCallModule`'s `module` attribute.
+
+    After serialization, this pass removes the `_entry_function` attribute from
+    `tf.XlaCallModule`, and removes all the serialized stablehlo functions
+    from the top-level module.
+  }];
+
+  let dependentDialects = [
+    "stablehlo::StablehloDialect",
+    "vhlo::VhloDialect",
+  ];
+
+  let constructor = "TF::CreateXlaCallModuleSerializationPass()";
+}
