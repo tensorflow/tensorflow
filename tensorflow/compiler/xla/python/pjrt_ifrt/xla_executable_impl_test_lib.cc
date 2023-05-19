@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/ifrt/test_util.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -53,9 +53,10 @@ StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
 
-  auto compile_options = std::make_unique<CompileOptions>();
+  auto compile_options =
+      std::make_unique<XlaCompileOptions>(xla::CompileOptions());
   ExecutableBuildOptions& build_options =
-      compile_options->xla_options.executable_build_options;
+      compile_options->compile_options.executable_build_options;
   for (Device* device : devices) {
     build_options.set_device_ordinal(device->id());
     if (replicated) {

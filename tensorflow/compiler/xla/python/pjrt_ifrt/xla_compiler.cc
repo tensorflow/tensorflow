@@ -13,22 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/ifrt/ir/compile_options.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.h"
 
 #include <memory>
 
 namespace xla {
 namespace ifrt {
 
-char IfrtIRCompileOptions::ID = 0;
+char XlaCompileOptions::ID = 0;
+char XlaDeserializeOptions::ID = 0;
 
-StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
+StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options) {
-  if (!llvm::isa<IfrtIRCompileOptions>(options.get())) {
-    return absl::InvalidArgumentError("options must be IfrtIRCompileOptions");
+  if (!llvm::isa<XlaCompileOptions>(options.get())) {
+    return xla::InvalidArgument("options must be XlaCompileOptions");
   }
-  return std::unique_ptr<IfrtIRCompileOptions>(
-      static_cast<IfrtIRCompileOptions*>(options.release()));
+  return std::unique_ptr<XlaCompileOptions>(
+      static_cast<XlaCompileOptions*>(options.release()));
+}
+
+StatusOr<std::unique_ptr<XlaDeserializeOptions>> GetXlaDeserializeOptions(
+    std::unique_ptr<DeserializeOptions> options) {
+  if (!llvm::isa<XlaDeserializeOptions>(options.get())) {
+    return xla::InvalidArgument("options must be XlaDeserializeOptions");
+  }
+  return std::unique_ptr<XlaDeserializeOptions>(
+      static_cast<XlaDeserializeOptions*>(options.release()));
 }
 
 }  // namespace ifrt
