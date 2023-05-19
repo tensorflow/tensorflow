@@ -57,7 +57,6 @@ cc_library(
         "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/tfrt/eager:virtual_device",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/status",

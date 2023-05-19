@@ -69,7 +69,6 @@ cc_library(
     visibility = [
         ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
-        # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/lite/delegates/flex:__pkg__",
     ],

@@ -25,7 +25,6 @@ package_group(
         "//tensorflow/compiler/jit/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
-        "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/core/tpu/...",
         "//tensorflow/dtensor/...",
         "//third_party/tf_runtime_google/...",
