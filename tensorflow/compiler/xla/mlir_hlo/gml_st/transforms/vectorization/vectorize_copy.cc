@@ -41,29 +41,26 @@ struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
 
   LogicalResult matchAndRewrite(memref::CopyOp op,
                                 PatternRewriter &rewriter) const override {
-    auto srcType = op.getSource().getType().cast<BaseMemRefType>();
-    auto targetType = op.getTarget().getType().cast<BaseMemRefType>();
+    auto srcType = dyn_cast<MemRefType>(op.getSource().getType());
+    auto targetType = dyn_cast<MemRefType>(op.getTarget().getType());
 
-    auto isContiguousMemrefType = [&](BaseMemRefType type) {
-      auto memrefType = type.dyn_cast<mlir::MemRefType>();
-      return memrefType &&
-             (memrefType.getLayout().isIdentity() ||
-              memref::isStaticShapeAndContiguousRowMajor(memrefType));
-    };
+    if (!srcType || !targetType) return failure();
 
-    auto isSmallMemrefType = [&](BaseMemRefType type) {
-      auto memrefType = type.dyn_cast<mlir::MemRefType>();
-      return memrefType && memrefType.hasStaticShape() &&
-             memrefType.getNumElements() > 0 &&
-             memrefType.getNumElements() < numElementsThreshold;
-    };
+    if (!srcType.hasStaticShape() || !targetType.hasStaticShape())
+      return failure();
 
     // If memref has an identity layout or is contiguous with an arbitrary
     // offset, it will be turned into llvm.memcpy intrinsic later, do not
     // vectorize it.
-    if (isContiguousMemrefType(srcType) && isContiguousMemrefType(targetType)) {
+    if (memref::isStaticShapeAndContiguousRowMajor(srcType) &&
+        memref::isStaticShapeAndContiguousRowMajor(targetType)) {
       return failure();
     }
+
+    auto isSmallMemrefType = [&](MemRefType memrefType) {
+      return memrefType.getNumElements() > 0 &&
+             memrefType.getNumElements() < numElementsThreshold;
+    };
 
     // If memref is too big, vectorizing it actually explodes the compilation
     // time. Also, ignore empty memrefs, which will be handled by memrefCopy
