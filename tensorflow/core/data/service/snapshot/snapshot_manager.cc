@@ -359,8 +359,8 @@ StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
       StreamWorkerFilePath(path_, new_stream_index), worker_address, env_));
   streams_.push_back(Stream(num_sources()));
   assignments_[worker_address] = new_stream_index;
-  LOG(INFO) << "creating stream_ " << new_stream_index << " and assigning to "
-            << worker_address;
+  LOG(INFO) << "For snapshot at " << path_ << ", created stream_"
+            << new_stream_index << " and assigned to " << worker_address;
   return new_stream_index;
 }
 
