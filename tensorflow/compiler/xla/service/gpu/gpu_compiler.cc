@@ -561,10 +561,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
       pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
-      // Dimension merger is most efficient after the dot decomposer. It also
-      // has to be after the transpose folding because otherwise it can insert
-      // reshapes which will prevent transpose folding.
-      pipeline.AddPass<DotDimensionMerger>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();
@@ -833,6 +829,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   {
     HloPassPipeline pipeline("hlo normalization");
+
+    pipeline.AddPass<DotDimensionMerger>();
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
