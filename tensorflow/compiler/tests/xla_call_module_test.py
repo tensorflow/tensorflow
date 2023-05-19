@@ -204,37 +204,51 @@ module @jit_f.0 {
 
   def test_wrong_actual_args_errors(self):
     x = np.arange(6, dtype=np.float32).reshape((3, 2))
+    y = np.arange(6, dtype=np.int32).reshape((2, 3))
 
     # x: f32[a, 2], return x
     module, version = serialize("""
 module @jit_f.0 {
-  func.func public @main(%arg0: tensor<?x2xf32>) -> tensor<?x2xf32> {
+  func.func public @main(%arg0: tensor<?x2xf32>, %arg1: tensor<*xi32>) -> tensor<?x2xf32> {
     return %arg0 : tensor<?x2xf32>
   }
 }
 """)
-    def f(x):
-      return xla.call_module([x],
-                             module=module, version=version,
-                             Tout=[x.dtype],
-                             Sout=[(None, 2)])
-    self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    def f(x, y):
+      return xla.call_module(
+          [x, y],
+          module=module,
+          version=version,
+          Tout=[x.dtype],
+          Sout=[(None, 2)],
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x, y), (x,))
 
     x_bad_etype = x.astype(np.int32)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Incorrect type tensor<3x2xi32> for argument 0 passed to XlaCallModule.'
-        r' Expecting tensor<\?x2xf32>'):
-      self._assertOpOutputMatchesExpected(f, (x_bad_etype,),
-                                          (x_bad_etype,))
+        'Element type mismatch for argument 0 passed to XlaCallModule: '
+        r'expecting tensor<\?x2xf32>, got tensor<3x2xi32>',
+    ):
+      self._assertOpOutputMatchesExpected(f, (x_bad_etype, y), (x_bad_etype,))
+
+    y_bad_etype = y.astype(np.float32)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Element type mismatch for argument 1 passed to XlaCallModule: '
+        r'expecting tensor<\*xi32>, got tensor<2x3xf32>',
+    ):
+      self._assertOpOutputMatchesExpected(f, (x, y_bad_etype), (x,))
 
     x_bad_shape = np.arange(15, dtype=np.float32).reshape(5, 3)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Incorrect type tensor<5x3xf32> for argument 0 passed to XlaCallModule.'
-        r' Expecting tensor<\?x2xf32>'):
-      self._assertOpOutputMatchesExpected(f, (x_bad_shape,),
-                                          (x_bad_shape,))
+        'Shape mismatch for argument 0 passed to XlaCallModule: '
+        r'expecting tensor<\?x2xf32>, got tensor<5x3xf32>',
+    ):
+      self._assertOpOutputMatchesExpected(f, (x_bad_shape, y), (x_bad_shape,))
 
   def test_dim_args_spec_errors(self):
     # x, y: f32[2, b, c]

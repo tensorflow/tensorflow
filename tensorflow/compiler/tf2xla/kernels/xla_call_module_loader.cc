@@ -323,19 +323,30 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
     VLOG(3) << "XlaCallModule static array input type #" << i << ": "
             << mlir::debugString(type);
-    mlir::RankedTensorType arg_type =
-        main_body.getArgument(i).getType().dyn_cast<mlir::RankedTensorType>();
-    if (!arg_type) {
-      return tsl::errors::InvalidArgument("Module argument ", i,
-                                          " does not have a RankedTensorType");
+    mlir::TensorType arg_type =
+        main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
+    if (arg_type == nullptr) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Argument ", i, " passed to XlaCallModule is not a tensor"));
     }
-    if (arg_type.getElementType() != type.getElementType() ||
-        mlir::failed(mlir::verifyCompatibleShape(arg_type.getShape(),
-                                                 type.getShape()))) {
-      return tsl::errors::InvalidArgument(
-          "Incorrect type ", mlir::debugString(type), " for argument ", i,
-          " passed to XlaCallModule. Expecting ", mlir::debugString(arg_type));
+
+    if (arg_type.getElementType() != type.getElementType()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Element type mismatch for argument ", i,
+          " passed to XlaCallModule: ", "expecting ",
+          mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
     }
+
+    if (auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>()) {
+      if (mlir::failed(mlir::verifyCompatibleShape(ranked_arg_type.getShape(),
+                                                   type.getShape()))) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Shape mismatch for argument ", i,
+            " passed to XlaCallModule: ", "expecting ",
+            mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
+      }
+    }
+
     static_array_input_types[i] = type;
   }
 
