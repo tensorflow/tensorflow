@@ -1,3 +1,37 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -11,7 +11,6 @@
+ # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+-load("@bazel_skylib//rules:build_test.bzl", "build_test")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
+ 
+ package(
+@@ -863,8 +862,8 @@
+     strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops",
++        ":tosa_pass_inc_gen",
+         ":tosa_pdll_inc_gen",
+-        ":tosa_pass_inc_gen",
+         "@llvm-project//mlir:FuncDialect",
+         "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Parser",
+diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
+--- stablehlo/CMakeLists.txt
++++ stablehlo/CMakeLists.txt
+@@ -133,4 +133,9 @@
+ add_custom_target(check-stablehlo-quick)
+ add_dependencies(check-stablehlo-ci check-stablehlo-quick)
+ 
++# TODO(burmako): This target is here for compatibility with the integrate CI.
++# Should be cleaned up in the near future.
++add_custom_target(check-stablehlo)
++add_dependencies(check-stablehlo check-stablehlo-ci)
++
+ add_subdirectory(stablehlo)
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
@@ -14,134 +48,4 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py 
 +  # TODO(b/282232437): Delete this TensorFlow-only API, now that we have an OSS
 +  # equivalent that does the same thing.
 +  return get_minimum_version()
-diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
---- stablehlo/stablehlo/tests/infer_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
-@@ -608,7 +608,7 @@
- //===----------------------------------------------------------------------===//
- 
- #CSR = #sparse_tensor.encoding<{
--  dimLevelType = ["dense", "compressed"]
-+  lvlTypes = ["dense", "compressed"]
- }>
- 
- // CHECK-LABEL: @tanh_sparsity
-@@ -622,7 +622,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  dimLevelType = ["dense", "compressed"]
-+  lvlTypes = ["dense", "compressed"]
- }>
- 
- // CHECK-LABEL: @abs_sparsity
-@@ -636,7 +636,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  dimLevelType = ["dense", "compressed"]
-+  lvlTypes = ["dense", "compressed"]
- }>
- 
- // CHECK-LABEL: @real_sparsity
-@@ -650,7 +650,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  dimLevelType = ["dense", "compressed"]
-+  lvlTypes = ["dense", "compressed"]
- }>
- 
- // CHECK-LABEL: @imag_sparsity
-@@ -664,7 +664,7 @@
- // -----
- 
- #CSR = #sparse_tensor.encoding<{
--  dimLevelType = ["dense", "compressed"]
-+  lvlTypes = ["dense", "compressed"]
- }>
- 
- // CHECK-LABEL: @complex_sparsity
-diff --ruN a/stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir b/stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
---- stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
-+++ stablehlo/stablehlo/tests/legalize_stablehlo_to_vhlo_invalid.mlir
-@@ -14,9 +14,9 @@
- // GH Issue: https://github.com/openxla/stablehlo/issues/907
- 
- // expected-error @+1 {{failed to legalize operation 'func.func' that was explicitly marked illegal}}
--func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32> {
--  // CHECK_DISABLED: "vhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> !vhlo.tensor<tensor<16xf32>>
--  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32>
-+func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32> {
-+  // CHECK_DISABLED: "vhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> !vhlo.tensor<tensor<16xf32>>
-+  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
-   func.return %0 : tensor<16xf32>
- }
- // CHECK-DISABLED-LABEL: "type_sparsity"
-diff --ruN a/stablehlo/stablehlo/tests/ops_sparse.mlir b/stablehlo/stablehlo/tests/ops_sparse.mlir
---- stablehlo/stablehlo/tests/ops_sparse.mlir
-+++ stablehlo/stablehlo/tests/ops_sparse.mlir
-@@ -6,15 +6,15 @@
- // output types), dense or sparse ops are semantically equivalent.
- 
- #SV = #sparse_tensor.encoding<{
--  dimLevelType = ["compressed"]
-+  lvlTypes = ["compressed"]
- }>
- 
- #CSR = #sparse_tensor.encoding<{
--  dimLevelType = ["dense", "compressed"]
-+  lvlTypes = ["dense", "compressed"]
- }>
- 
- #DCSR = #sparse_tensor.encoding<{
--  dimLevelType = ["compressed", "compressed"]
-+  lvlTypes = ["compressed", "compressed"]
- }>
- 
- //
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -5605,7 +5605,7 @@
- 
- 
- #SV = #sparse_tensor.encoding<{
--  dimLevelType = ["compressed"]
-+  lvlTypes = ["compressed"]
- }>
- 
- func.func @is_compatible_sparse_mix_non_sparse(%arg0: tensor<1xf32>, %arg1: tensor<1xf32, #SV>) {
-diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
---- stablehlo/stablehlo/tests/print_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/print_stablehlo.mlir
-@@ -292,21 +292,21 @@
- }
- 
- #CSR = #sparse_tensor.encoding<{
--  dimLevelType = ["dense", "compressed"]
-+  lvlTypes = ["dense", "compressed"]
- }>
- 
- #DCSR = #sparse_tensor.encoding<{
--  dimLevelType = ["compressed", "compressed"]
-+  lvlTypes = ["compressed", "compressed"]
- }>
- 
- // CHECK-LABEL: func @encodings
- func.func @encodings(%arg0: tensor<10x20xf32, #CSR>,
-                      %arg1: tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32> {
--  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>) -> tensor<10x20xf32>
--  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>
--  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>) -> tensor<10x20xf32>
--  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>
--  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>) -> tensor<10x20xcomplex<f32>>
-+  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>) -> tensor<10x20xf32>
-+  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>
-+  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xf32>
-+  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
-+  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xcomplex<f32>>
-   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
-                                    tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
-   %1 = "stablehlo.add"(%arg1, %arg1) : (tensor<10x20xf32, #DCSR>,
 
