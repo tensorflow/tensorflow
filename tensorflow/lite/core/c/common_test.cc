@@ -66,10 +66,13 @@ TEST(IntArray, TestIntArrayEqual) {
   TfLiteIntArray* d = TfLiteIntArrayCreate(2);
   d->data[0] = 6;
   d->data[1] = 6;
-  ASSERT_FALSE(TfLiteIntArrayEqual(a, b));
-  ASSERT_TRUE(TfLiteIntArrayEqual(b, c));
-  ASSERT_TRUE(TfLiteIntArrayEqual(b, b));
-  ASSERT_FALSE(TfLiteIntArrayEqual(c, d));
+  EXPECT_FALSE(TfLiteIntArrayEqual(a, b));
+  EXPECT_TRUE(TfLiteIntArrayEqual(b, c));
+  EXPECT_TRUE(TfLiteIntArrayEqual(b, b));
+  EXPECT_FALSE(TfLiteIntArrayEqual(c, d));
+  EXPECT_FALSE(TfLiteIntArrayEqual(nullptr, a));
+  EXPECT_FALSE(TfLiteIntArrayEqual(a, nullptr));
+  EXPECT_TRUE(TfLiteIntArrayEqual(nullptr, nullptr));
   TfLiteIntArrayFree(a);
   TfLiteIntArrayFree(b);
   TfLiteIntArrayFree(c);
