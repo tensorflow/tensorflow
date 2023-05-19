@@ -18,16 +18,21 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
+
+using testing::ElementsAreArray;
 
 TEST(ConvertVectorToTfLiteIntArray, TestWithVector) {
   std::vector<int> input = {1, 2};
@@ -162,6 +167,29 @@ TEST(FourBitTest, BytesRequiredOdd) {
                         &required_bytes_four_bit, &context);
 
   ASSERT_EQ(required_bytes_four_bit, 3);
+}
+
+TEST(TestMakeUniqueTensor, Valid) {
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
+  ASSERT_NE(t.get(), nullptr);
+
+  EXPECT_THAT(t.get(), DimsAre({2, 3}));
+  EXPECT_EQ(t->bytes, 24);
+
+  EXPECT_EQ(t->type, kTfLiteInt32);
+  EXPECT_EQ(t->allocation_type, kTfLiteDynamic);
+
+  // Check memory has been properly allocated.
+  int* data = t->data.i32;
+  std::fill_n(data, 6, 0);
+  ASSERT_NE(data, nullptr);
+  ASSERT_THAT(std::vector<int>(data, data + 6),
+              ElementsAreArray({0, 0, 0, 0, 0, 0}));
+}
+
+TEST(TestMakeUniqueTensor, NullDimsReturnsNull) {
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, nullptr, kTfLiteDynamic);
+  ASSERT_EQ(t.get(), nullptr);
 }
 
 }  // namespace
