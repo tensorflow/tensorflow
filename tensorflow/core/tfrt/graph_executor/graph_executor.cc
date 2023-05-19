@@ -937,5 +937,18 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
   return OkStatus();
 }
 
+tensorflow::Status GraphExecutor::CompileGraph(
+    const std::string& graph_name,
+    absl::Span<const std::string> input_tensor_names,
+    absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+    absl::Span<const std::string> output_tensor_names,
+    absl::Span<const std::string> target_tensor_names) {
+  return GetOrCreateLoadedClientGraph(
+             /*run_options=*/{}, input_tensor_names, input_tensor_dtypes,
+             output_tensor_names, target_tensor_names,
+             /*work_queue=*/nullptr, graph_name)
+      .status();
+}
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
