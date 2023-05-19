@@ -2707,3 +2707,48 @@ def NameAnonymousIteratorsPass : Pass<"tf-name-anonymous-iterators", "ModuleOp">
   }];
   let constructor = "TF::CreateNameAnonymousIteratorsPass()";
 }
+
+//===----------------------------------------------------------------------===//
+// XlaCallModule
+//===----------------------------------------------------------------------===//
+
+def XlaCallModuleDeserializationPass
+    : Pass<"tf-xla-call-module-deserialization", "ModuleOp"> {
+  let summary = "Deserializes StableHLO functions embedded in `tf.XlaCallModule` to top level module";
+
+  let description = [{
+    This pass deserializes the StableHLO bytecodes embedded in tf.XlaCallModule,
+    then outlines the functions in the deserialized StableHLO module to the top
+    level MLIR module, with function renamings to avoid naming conflicts.
+
+    After the outlining, it updates tf.XlaCallModule's module attribute to be
+    empty, adds an `_entry_function` attribute referring to the entry function.
+    It also adds a `_from_xla_call_module: true` attribute to each lifted
+    StableHLO function.
+  }];
+
+  // These dialects are needed by stablehlo deserialization.
+  //
+  // We use tensorflow::XlaCallModuleLoader.
+  // tensorflow::XlaCallModuleLoader will get or load dialects:
+  //   Func, Stablehlo, Mhlo, Chlo, and Vhlo.
+  //
+  // XlaCallModuleLoader uses mlir::stablehlo::deserializePortableArtifact,
+  // which runs VhloLegalizeToStablehloPass whose depends on dialects:
+  //   Func, Stablehlo, Shape, and Quantization.
+  //
+  // If we do not register them here, an error will be
+  // triggered because we cannot load a dialect while in a
+  // multi-threaded execution context, and PassManager is
+  // multi-threaded.
+  let dependentDialects = [
+    "chlo::ChloDialect",
+    "mhlo::MhloDialect",
+    "shape::ShapeDialect",
+    "stablehlo::StablehloDialect",
+    "vhlo::VhloDialect",
+    "quant::QuantizationDialect",
+  ];
+
+  let constructor = "TF::CreateXlaCallModuleDeserializationPass()";
+}

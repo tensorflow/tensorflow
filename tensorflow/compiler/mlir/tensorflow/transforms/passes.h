@@ -323,6 +323,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
 
+//===----------------------------------------------------------------------===//
+// XlaCallModule
+//===----------------------------------------------------------------------===//
+
+// Creates a pass that deserializes functions in the StableHLO modules from
+// `tf.XlaCallModule` to the top-level module.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateXlaCallModuleDeserializationPass();
+
 }  // namespace TF
 
 namespace tf_executor {
@@ -725,6 +734,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TRANSFORMEINSUMPASS
 #define GEN_PASS_DECL_UNROLLBATCHMATMULPASS
 #define GEN_PASS_DECL_VERIFYSUITABLEFOREXPORTPASS
+#define GEN_PASS_DECL_XLACALLMODULEDESERIALIZATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 }  // namespace detail
 using namespace detail;  // NOLINT
