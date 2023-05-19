@@ -180,7 +180,6 @@ py_strict_test(
     name = "input_util_test",
     size = "medium",
     srcs = ["input_util_test.py"],
-    flaky = True,
     shard_count = 8,
     deps = [
         ":test_util",
