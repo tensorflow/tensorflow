@@ -407,7 +407,6 @@ tf_py_strict_test(
     name = "session_partial_run_test",
     size = "small",
     srcs = ["session_partial_run_test.py"],
-    flaky = True,
     grpc_enabled = True,
     python_version = "PY3",
     tags = [
