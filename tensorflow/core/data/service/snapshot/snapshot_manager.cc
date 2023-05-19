@@ -399,6 +399,11 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
     TF_ASSIGN_OR_RETURN(assigned_stream_index,
                         CreateAndAssignNewStream(worker_address));
   }
+  // TODO(b/250921378): Add a unit test for this file.
+  if (assigned_stream_index &&
+      streams_[*assigned_stream_index].state == Stream::State::kDone) {
+    return std::optional<int64_t>();
+  }
   return assigned_stream_index;
 }
 
