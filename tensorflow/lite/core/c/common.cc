@@ -17,8 +17,9 @@ limitations under the License.
 
 #ifndef TF_LITE_STATIC_MEMORY
 #include <cstdlib>
-#include <cstring>
 #endif  // TF_LITE_STATIC_MEMORY
+
+#include <cstring>
 #include <type_traits>
 #include <utility>
 
@@ -43,7 +44,7 @@ size_t TfLiteVarArrayGetSizeInBytes(const int size) {
 template <class T, class U>
 int TfLiteVarArrayEqualsArray(const T* const a, const int b_size,
                               const U* const b_data) {
-  static_assert(std::is_same_v<decltype(a->data[0]), const U&>,
+  static_assert(std::is_same<decltype(a->data[0]), const U&>::value,
                 "TfLiteVarArrayEqualsArray can only compare same type arrays");
   if (a == nullptr) {
     return b_size == 0;
@@ -65,6 +66,8 @@ int TfLiteVarArrayEqual(const T* const a, const T* const b) {
   }
   return TfLiteVarArrayEqualsArray(a, b->size, b->data);
 }
+
+#ifndef TF_LITE_STATIC_MEMORY
 
 template <class T>
 T* TfLiteVarArrayCreate(const int size) {
@@ -91,6 +94,8 @@ T* TfLiteVarArrayCopy(const T* const src) {
   }
   return ret;
 }
+
+#endif  // TF_LITE_STATIC_MEMORY
 
 template <class T>
 void TfLiteVarArrayFree(T* a) {
