@@ -409,8 +409,9 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
   LOG_EVERY_N_SEC(INFO, 60)
-      << "tf.data snapshot progress: " << num_assigned_splits_ << " of "
-      << num_total_splits_ << " total splits have been assigned or completed.";
+      << "tf.data snapshot progress [" << path_ << "]: " << num_assigned_splits_
+      << " of " << num_total_splits_
+      << " total splits have been assigned or completed.";
 
   dead_workers_.erase(request.worker_address());
 
