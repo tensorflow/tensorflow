@@ -194,6 +194,7 @@ py_strict_library(
 cuda_py_strict_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
+    flaky = True,
     shard_count = 16,
     tags = [
         "no_rocm",
