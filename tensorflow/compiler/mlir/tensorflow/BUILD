@@ -2746,6 +2746,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "visitor",
+    srcs = ["utils/visitor.cc"],
+    hdrs = ["utils/visitor.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 build_test(
     name = "tensorflow_build_test",
     targets = [
