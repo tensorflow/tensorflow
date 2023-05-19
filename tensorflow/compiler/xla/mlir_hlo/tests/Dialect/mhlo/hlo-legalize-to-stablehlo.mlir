@@ -1816,9 +1816,9 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
 }
 
 // CHECK-LABEL: "type_sparsity"
-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32> {
-  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32>
-  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32>
+func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32> {
+  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
+  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
 
