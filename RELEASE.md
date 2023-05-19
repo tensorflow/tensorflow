@@ -51,10 +51,6 @@
     * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
       relayouting a tensor according to the layout of another tensor. 
 
-    * `tf.ones`, `tf.zeros`, `tf.fill`, `tf.ones_like`, `tf.zeros_like` now
-      take an additional Layout argument that controls the output layout of
-      their results.
-
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
