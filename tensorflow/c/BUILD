@@ -1016,7 +1016,7 @@ tf_kernel_library(
 
 tf_cuda_cc_test(
     name = "env_test",
-    size = "small",
+    size = "medium",
     srcs = ["env_test.cc"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
