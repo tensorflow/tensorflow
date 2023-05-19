@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -1293,33 +1294,12 @@ std::string FrozenStackTrace::ToString(const TracePrintingOptions& opts) const {
 
 tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
     const tensorflow::StackTracesMap& map) {
-  tensorflow::GraphDebugInfo debug_info;
-  for (const auto& [node_name, stack_trace] : map) {
-    if (stack_trace == nullptr) continue;
-
-    tensorflow::GraphDebugInfo::StackTrace stack_trace_proto;
-    absl::flat_hash_map<string, int> file_name_to_index;
-    int new_name_index = 0;
-
-    for (const auto& stack_frame : stack_trace->GetUserFrames(-1)) {
-      auto* file_line_col = stack_trace_proto.add_file_line_cols();
-      if (file_name_to_index.contains(stack_frame.file_name)) {
-        file_line_col->set_file_index(
-            file_name_to_index[stack_frame.file_name]);
-      } else {
-        *debug_info.add_files() = stack_frame.file_name;
-        file_line_col->set_file_index(new_name_index);
-        file_name_to_index[stack_frame.file_name] = new_name_index;
-        new_name_index++;
-      }
-      file_line_col->set_line(stack_frame.line_number);
-      file_line_col->set_func(stack_frame.function_name);
-    }
-
-    (*debug_info.mutable_traces())[node_name] = std::move(stack_trace_proto);
-  }
-
-  return debug_info;
+  GraphDebugInfoBuilder builder;
+  GraphDebugInfoBuilder::Options options;
+  options.user_frames = true;
+  options.user_frames_limit = -1;
+  builder.AccumulateStackTracesMap(map, "", options);
+  return builder.Build();
 }
 
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
