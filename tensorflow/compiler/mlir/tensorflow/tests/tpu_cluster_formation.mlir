@@ -838,7 +838,7 @@ func.func @valid_compilation_cluster_no_replication_op_device() {
 // CHECK-NOT: device =
 // CHECK: return
 func.func @valid_compilation_cluster_no_replication_op_device() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/device:CPU:0"} : () -> ()
+  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/device:TPU:0"} : () -> ()
   "tf.opB"() { _xla_compile_device_type = "TPU", device = "/task:0/device:TPU:1"} : () -> ()
   func.return
 }

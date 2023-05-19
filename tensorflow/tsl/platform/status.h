@@ -47,8 +47,6 @@ limitations under the License.
 
 namespace tsl {
 
-typedef SourceLocationImpl SourceLocation;
-
 // Since April 2023, tensorflow::Status is an alias to absl::Status. TF 2.13 is
 // the first release including this change.
 // At the same time `tsl::errors::Code` aliases `absl::StatusCode`.

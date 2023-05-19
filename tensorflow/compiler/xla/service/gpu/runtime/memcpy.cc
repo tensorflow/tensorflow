@@ -65,7 +65,7 @@ absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
   // transfer is completed.
   if (direction != MemcpyDirection::kD2D) {
     auto st = stream->BlockHostUntilDone();
-    if (!st.ok()) return ToAbslStatus(st);
+    if (!st.ok()) return st;
   }
 
   return absl::OkStatus();

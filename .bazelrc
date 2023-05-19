@@ -446,7 +446,7 @@ build:rbe --bes_backend=buildeventservice.googleapis.com
 build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
 build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
-build:rbe --flaky_test_attempts=3
+build:rbe --flaky_test_attempts=2
 build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:rbe --remote_timeout=3600
@@ -627,7 +627,7 @@ try-import %workspace%/.bazelrc.user
 
 # Here are bazelrc configs for release builds
 build:release_base --config=v2
-test:release_base --flaky_test_attempts=3
+test:release_base --flaky_test_attempts=2
 test:release_base --test_size_filters=small,medium
 
 build:release_cpu_linux --config=release_base

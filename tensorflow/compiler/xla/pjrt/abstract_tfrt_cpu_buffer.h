@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -37,10 +40,6 @@ limitations under the License.
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
-
-void CopyCpuBufferToLiteral(const Shape& device_shape,
-                            TrackedTfrtCpuDeviceBuffer* device_buffer,
-                            MutableLiteralBase* literal);
 
 // A RAII helper class used to set an AsyncValueRef<CpuEvent> to a ready state
 // upon destruction. In many cases in PjRt implementation, there will be
@@ -69,6 +68,46 @@ class MarkEventReadyOnExit {
   tfrt::AsyncValueRef<runtime::CpuEvent> event_;
 };
 
+// Async work runner abstracts away the implementation of the underlying thread
+// pool (or concurrent work queue).
+class AsyncWorkRunner {
+ public:
+  virtual ~AsyncWorkRunner() = default;
+
+  virtual void Schedule(absl::AnyInvocable<void()> work) = 0;
+  virtual void ScheduleWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
+      absl::AnyInvocable<void()> work) = 0;
+};
+
+// Represents the unpinned host memory accessible to a PjRtDevice.
+class UnpinnedHostMemorySpace : public PjRtMemorySpace {
+ public:
+  static constexpr absl::string_view kMemorySpaceKind = "unpinned_host";
+
+  UnpinnedHostMemorySpace(int id, PjRtClient* client);
+
+  PjRtClient* client() const override { return client_; }
+
+  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
+
+  int id() const override { return id_; }
+
+  absl::string_view memory_space_kind() const override {
+    return kMemorySpaceKind;
+  }
+
+  absl::string_view DebugString() const override { return debug_string_; }
+
+  void AttachDevice(PjRtDevice* device) { devices_.push_back(device); }
+
+ private:
+  int id_;
+  PjRtClient* client_;
+  std::vector<PjRtDevice*> devices_;
+  std::string debug_string_;
+};
+
 class AbstractTfrtCpuBuffer : public PjRtBuffer {
  public:
   AbstractTfrtCpuBuffer(
@@ -77,6 +116,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   ~AbstractTfrtCpuBuffer() override;
 
   const Shape& on_device_shape() const override { return on_device_shape_; }
+
+  StatusOr<Shape> logical_on_device_shape() override;
 
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
@@ -175,8 +216,56 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // already donated or there is outstanding external references.
   StatusOr<DonationTransaction> AcquireDonation();
 
+  // A helper function for PjRtClient::BufferFromHostLiteral. Copy the literal
+  // to the current buffer asynchronously. `avs` is used to signal when the copy
+  // is complete and `async_work_runner` is used to schedule the async work into
+  // the underlying thread pool or work queue (usually owned by the client).
+  void CopyFromLiteral(
+      const LiteralSlice& literal, const Shape& shape,
+      absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4>* avs,
+      AsyncWorkRunner* async_work_runner);
+
+  // Allocates a new `TrackedTfrtCpuDeviceBuffer` with the given shape and
+  // definition events.
+  static StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+  AllocateTrackedDeviceBuffer(
+      const Shape& on_device_shape,
+      absl::InlinedVector<tfrt::AsyncValueRef<runtime::CpuEvent>, 4>
+          definition_events);
+
+  // Allocates new cpu events to `avs` and `definition_events`. If `shape` is a
+  // tuple, multiple events will be allocated. Otherwise, `avs` and
+  // `definition_events` will only contain one event.
+  static void AllocateAvsAndEvents(
+      const Shape& shape,
+      absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4>* avs,
+      absl::InlinedVector<tfrt::AsyncValueRef<runtime::CpuEvent>, 4>*
+          definition_events);
+
+  // A helper function for PjRtClient::BufferFromHostBuffer. Creates a new cpu
+  // device buffer from the host buffer (maybe zero-copy or async).
+  // `transpose_mu` and `transpose_cache` are used to transpose the input
+  // layout.
+  static StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+  BufferFromHostBufferHelper(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      PjRtClient::HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, const Shape& shape,
+      AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
+      TransposePlanCache* transpose_cache);
+
  protected:
   virtual absl::string_view buffer_name() const = 0;
+
+  PjRtFuture<Status> ToLiteralHelper(MutableLiteralBase* literal,
+                                     AsyncWorkRunner* async_work_runner);
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
+      PjRtDevice* dst_device);
+
+  StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> CopyToDeviceHelper(
+      AsyncWorkRunner* async_work_runner);
 
   bool IsEmptyTuple() const {
     return on_device_shape_.IsTuple() &&

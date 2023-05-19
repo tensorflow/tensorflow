@@ -417,7 +417,8 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     // TODO(b/266857789): also fuse convert(dot()) at output if present:
     // seen on s8xf32->bf16
     std::string suggested_name = absl::StrCat("triton_gemm_", dot->name());
-    HloComputation::Builder builder(suggested_name);
+    HloComputation::Builder builder(
+        absl::StrCat(suggested_name, "_computation"));
     // Original instruction -> fused one.
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;

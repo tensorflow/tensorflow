@@ -27,9 +27,9 @@ from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import concrete_function as concrete_function_lib
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tf_method_target
 from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -242,7 +242,7 @@ class TracingCompiler:
     return concrete_function
 
   def _list_all_concrete_functions(
-      self) -> List[monomorphic_function.ConcreteFunction]:
+      self) -> List[concrete_function_lib.ConcreteFunction]:
     return self._function_cache.values()
 
   def __get__(self, instance, owner):
@@ -317,7 +317,7 @@ class TracingCompiler:
 
     transform.apply_func_graph_transforms(traced_func_graph)
 
-    concrete_function = monomorphic_function.ConcreteFunction(
+    concrete_function = concrete_function_lib.ConcreteFunction(
         traced_func_graph,
         self._function_attributes,
         spec=self.function_spec,

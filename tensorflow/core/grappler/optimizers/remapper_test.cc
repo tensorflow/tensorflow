@@ -2524,5 +2524,157 @@ class RemapperLeakyReluTest : public GrapplerTest {
 TEST_F(RemapperLeakyReluTest, F32) { RunTest<DT_FLOAT>(); }
 TEST_F(RemapperLeakyReluTest, BF16) { RunTest<DT_BFLOAT16>(); }
 
+class RemapperFuseFusedConvWithFusedActivation : public RemapperTest {
+ public:
+  template <int dim, DataType DTYPE>
+  void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+
+    using ::tensorflow::ops::Placeholder;
+
+    for (const string& activation : {"LeakyRelu", "Mish"}) {
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+      auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
+      auto filter_shape = ops::Placeholder::Shape({1, 1, 3, 128});
+      auto bias_shape = ops::Placeholder::Shape({128});
+      std::vector<int> strides = {1, 1, 1, 1};
+
+      auto input_t = GenerateTensorWithSetRandom<DTYPE>({8, 32, 32, 3});
+      auto filter_t = GenerateTensorWithSetRandom<DTYPE>({1, 1, 3, 128});
+      auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
+
+      if (dim == 3) {
+        input_shape = ops::Placeholder::Shape({8, 4, 32, 32, 3});
+        filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
+        bias_shape = ops::Placeholder::Shape({128});
+        strides = {1, 1, 1, 1, 1};
+
+        input_t = GenerateTensorWithSetRandom<DTYPE>({8, 4, 32, 32, 3});
+        filter_t = GenerateTensorWithSetRandom<DTYPE>({1, 1, 1, 3, 128});
+        bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
+      }
+
+      auto input = Placeholder(s.WithOpName("input"), DTYPE, input_shape);
+      auto filter = Placeholder(s.WithOpName("filter"), DTYPE, filter_shape);
+      auto bias = Placeholder(s.WithOpName("bias"), DTYPE, bias_shape);
+
+      float leakyrelu_alpha = 0.5;
+      if (dim == 2) {
+        auto conv =
+            ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
+        auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+
+        if (activation == "LeakyRelu") {
+          ops::Identity fetch = [&]() -> ops::Identity {
+            auto activate = s.WithOpName("activation");
+            auto fetch = s.WithOpName("fetch");
+            auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
+            return ops::Identity(
+                fetch, ops::internal::LeakyRelu(activate, bias_add, attr));
+          }();
+        } else if (activation == "Mish") {
+          ops::Identity fetch = [&]() -> ops::Identity {
+            auto activate = s.WithOpName("activation");
+            auto fetch = s.WithOpName("fetch");
+            auto softplus = ops::Softplus(s.WithOpName("softplus"), bias_add);
+            auto tanh = ops::Tanh(s.WithOpName("tanh"), softplus);
+            return ops::Identity(fetch, ops::Mul(activate, bias_add, tanh));
+          }();
+        }
+      } else if (dim == 3) {
+        auto conv =
+            ops::Conv3D(s.WithOpName("conv"), input, filter, strides, "SAME");
+        auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+
+        if (activation == "LeakyRelu") {
+          ops::Identity fetch = [&]() -> ops::Identity {
+            auto activate = s.WithOpName("activation");
+            auto fetch = s.WithOpName("fetch");
+            auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
+            return ops::Identity(
+                fetch, ops::internal::LeakyRelu(activate, bias_add, attr));
+          }();
+        } else if (activation == "Mish") {
+          ops::Identity fetch = [&]() -> ops::Identity {
+            auto activate = s.WithOpName("activation");
+            auto fetch = s.WithOpName("fetch");
+            auto softplus = ops::Softplus(s.WithOpName("softplus"), bias_add);
+            auto tanh = ops::Tanh(s.WithOpName("tanh"), softplus);
+            return ops::Identity(fetch, ops::Mul(activate, bias_add, tanh));
+          }();
+        }
+      }
+
+      GrapplerItem item;
+      item.fetch = {"fetch"};
+      item.feed = {{"input", input_t}, {"filter", filter_t}, {"bias", bias_t}};
+      TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+      // Place all nodes on CPU.
+      for (int i = 0; i < item.graph.node_size(); ++i) {
+        item.graph.mutable_node(i)->set_device("/device:CPU:0");
+      }
+
+      Remapper optimizer(RewriterConfig::ON);
+      GraphDef output_1;
+      TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output_1));
+      item.graph = std::move(output_1);
+      GraphDef output;
+      TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+      int found = 0;
+      for (const NodeDef& node : output.node()) {
+        if (node.name() == "activation") {
+          if (dim == 2) {
+            EXPECT_EQ(node.op(), "_FusedConv2D");
+          } else if (dim == 3) {
+            EXPECT_EQ(node.op(), "_FusedConv3D");
+          }
+
+          ASSERT_GE(node.input_size(), 3);
+          EXPECT_EQ(node.input(0), "input");
+          EXPECT_EQ(node.input(1), "filter");
+          EXPECT_EQ(node.attr().at("num_args").i(), 1);
+          EXPECT_EQ(node.input(2), "bias");
+
+          const auto fused_ops = node.attr().at("fused_ops").list().s();
+          ASSERT_EQ(fused_ops.size(), 2);
+          EXPECT_EQ(fused_ops[0], "BiasAdd");
+          EXPECT_EQ(fused_ops[1], activation);
+          if (activation == "LeakyRelu") {
+            EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), leakyrelu_alpha);
+          }
+
+          found++;
+        }
+      }
+      EXPECT_EQ(found, 1);
+
+      auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+      ASSERT_EQ(tensors_expected.size(), 1);
+      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+      ASSERT_EQ(tensors.size(), 1);
+      if (DTYPE == DT_BFLOAT16)
+        test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+      else
+        test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
+    }
+  }
+};
+
+TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv2D_F32) {
+  RunTest<2, DT_FLOAT>();
+}
+TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv2D_BF16) {
+  RunTest<2, DT_BFLOAT16>();
+}
+TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv3D_F32) {
+  RunTest<3, DT_FLOAT>();
+}
+TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv3D_BF16) {
+  RunTest<3, DT_BFLOAT16>();
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

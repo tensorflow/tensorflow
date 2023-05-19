@@ -58,12 +58,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(str.data(), str.size()), context);
   if (!module) {
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   return module;
 }

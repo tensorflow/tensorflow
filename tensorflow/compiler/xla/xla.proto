@@ -501,7 +501,7 @@ message DebugOptions {
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
-  string xla_gpu_pgle_profile_directory = 210;
+  string xla_gpu_pgle_profile_file_or_directory_path = 210;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;

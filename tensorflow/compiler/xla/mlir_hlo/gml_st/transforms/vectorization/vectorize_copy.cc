@@ -32,7 +32,10 @@ namespace {
 
 /// Custom vectorization pattern for small and non-contiguous memref::CopyOp.
 struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
-  using OpRewritePattern<memref::CopyOp>::OpRewritePattern;
+  CopyVectorizationPattern(MLIRContext *context, int64_t numElementsThreshold,
+                           mlir::PatternBenefit benefit = 1)
+      : OpRewritePattern<memref::CopyOp>(context, benefit),
+        numElementsThreshold(numElementsThreshold) {}
 
   LogicalResult matchAndRewrite(memref::CopyOp op,
                                 PatternRewriter &rewriter) const override {
@@ -64,7 +67,7 @@ struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
       auto memrefType = type.dyn_cast<mlir::MemRefType>();
       return memrefType && memrefType.hasStaticShape() &&
              memrefType.getNumElements() > 0 &&
-             memrefType.getNumElements() < kNumElementsThreshold;
+             memrefType.getNumElements() < numElementsThreshold;
     };
 
     // If memref has an identity layout or is contiguous with an arbitrary
@@ -82,16 +85,21 @@ struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
     }
     return linalg::vectorizeCopy(rewriter, op);
   }
+
+ private:
+  int64_t numElementsThreshold;
 };
 
 struct VectorizeCopyPass
     : public impl::VectorizeCopyPassBase<VectorizeCopyPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     auto func = getOperation();
     auto *ctx = func.getContext();
 
     RewritePatternSet patterns(ctx);
-    patterns.add<CopyVectorizationPattern>(ctx);
+    patterns.add<CopyVectorizationPattern>(ctx, numElementsThreshold);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }
@@ -100,8 +108,11 @@ struct VectorizeCopyPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass() {
-  return std::make_unique<VectorizeCopyPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass(
+    int64_t numElementsThreshold) {
+  VectorizeCopyPassOptions opts;
+  opts.numElementsThreshold = numElementsThreshold;
+  return std::make_unique<VectorizeCopyPass>(opts);
 }
 
 }  // namespace gml_st

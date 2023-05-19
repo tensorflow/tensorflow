@@ -146,10 +146,8 @@ tensorflow::Status RunMlrtFunction(
   execution_context.set_exit_handler(
       [chain = chain.get()]() { chain->SetStateConcrete(); });
 
-  std::vector<uint8_t> last_uses;
-  execution_context.Call(function, last_uses, absl::Span<mlrt::Value>(),
-                         absl::MakeSpan(mlrt_inputs),
-                         absl::MakeSpan(mlrt_outputs));
+  execution_context.CallByMove(function, absl::MakeSpan(mlrt_inputs),
+                               absl::MakeSpan(mlrt_outputs));
 
   // TODO(chky): Set up cancellation.
 
@@ -160,7 +158,7 @@ tensorflow::Status RunMlrtFunction(
 
   if (!execution_context.status().ok()) {
     outputs->resize(mlrt_outputs.size(), tensorflow::Tensor());
-    return tsl::FromAbslStatus(execution_context.status());
+    return execution_context.status();
   }
 
   for (auto& mlrt_output : mlrt_outputs) {
@@ -367,14 +365,14 @@ tensorflow::Status GraphExecutionRunOnFunction(
   tensorflow::StatusGroup status_group;
 
   if (chain->IsError()) {
-    status_group.Update(FromAbslStatus(chain->GetError()));
+    status_group.Update(chain->GetError());
   }
 
   for (tfrt::RCReference<tfrt::AsyncValue>& result : results) {
     DCHECK(result->IsAvailable());
 
     if (result->IsError()) {
-      status_group.Update(FromAbslStatus(result->GetError()));
+      status_group.Update(result->GetError());
       outputs->push_back(tensorflow::Tensor());
       continue;
     }
@@ -538,7 +536,8 @@ tensorflow::Status GraphExecutor::Run(
   // Conduct cost analysis for the first request on this `loaded_client_graph`.
   std::unique_ptr<CostRecorder> cost_recorder;
   if (options_.enable_online_cost_analysis) {
-    cost_recorder = loaded_client_graph.MaybeCreateCostRecorder();
+    cost_recorder = loaded_client_graph.MaybeCreateCostRecorder(
+        options_.online_cost_analysis_normalize_ratio);
   }
 
   std::vector<tensorflow::Tensor> flat_outputs;
@@ -880,18 +879,18 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
       loaded_client_graph.name());
   DCHECK(serving_function);
 
-  std::vector<uint8_t> last_uses;
-  execution_context.Call(serving_function, last_uses, absl::Span<mlrt::Value>(),
-                         input_values, outputs);
+  execution_context.CallByMove(serving_function, input_values, outputs);
   mlrt::Execute(execution_context);
-  return tsl::FromAbslStatus(execution_context.status());
+  return execution_context.status();
 }
 
 std::unique_ptr<CostRecorder>
-GraphExecutor::LoadedClientGraph::MaybeCreateCostRecorder() const {
+GraphExecutor::LoadedClientGraph::MaybeCreateCostRecorder(
+    uint64_t normalize_ratio) const {
   std::unique_ptr<CostRecorder> cost_recorder;
-  absl::call_once(create_cost_recorder_once_,
-                  [&]() { cost_recorder = std::make_unique<CostRecorder>(); });
+  absl::call_once(create_cost_recorder_once_, [&]() {
+    cost_recorder = std::make_unique<CostRecorder>(normalize_ratio);
+  });
   return cost_recorder;
 }
 

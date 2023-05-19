@@ -18,16 +18,26 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
 
 namespace xla {
 namespace ifrt {
 
 // TODO(hyeontaek): Generalize `xla::CompileOptions`.
-using CompileOptions = ::xla::CompileOptions;
+struct CompileOptions : llvm::RTTIExtends<CompileOptions, llvm::RTTIRoot> {
+  CompileOptions() = default;
+  explicit CompileOptions(xla::CompileOptions xla_options)
+      : xla_options(std::move(xla_options)) {}
+
+  xla::CompileOptions xla_options;
+
+  static char ID;  // NOLINT
+};
 
 // Represents a compiler that creates an `Executable` that can run a computation
 // on devices.
@@ -39,14 +49,14 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // instead of `LoadedExecutable`. This will factor out the loading portion of
   // the compilation, enabling ahead-of-time compilation.
   virtual StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options) = 0;
+      mlir::ModuleOp mlir_module, std::unique_ptr<CompileOptions> options) = 0;
 
   // Deserializes a serialized executable as produced by
   // `LoadedExecutable::Serialize()`. The compatibility of `serialized` is
   // implementation specific.
   virtual StatusOr<std::unique_ptr<LoadedExecutable>>
   DeserializeLoadedExecutable(absl::string_view serialized,
-                              std::optional<CompileOptions> options) = 0;
+                              std::optional<xla::CompileOptions> options) = 0;
 
   static char ID;  // NOLINT
 };

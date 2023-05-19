@@ -35,6 +35,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -52,33 +54,6 @@ limitations under the License.
 
 namespace xla {
 
-using PjRtPlatformId = uint64_t;
-
-inline const char* CpuName() {
-  static constexpr char kCpuName[] = "cpu";
-  return kCpuName;
-}
-inline const char* GpuName() {
-  static constexpr char kGpuName[] = "gpu";
-  return kGpuName;
-}
-inline const char* TpuName() {
-  static constexpr char kTpuName[] = "tpu";
-  return kTpuName;
-}
-inline PjRtPlatformId CpuId() {
-  static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
-  return kCpuId;
-}
-inline PjRtPlatformId GpuId() {
-  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
-  return kGpuId;
-}
-inline PjRtPlatformId TpuId() {
-  static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
-  return kTpuId;
-}
-
 enum PjRtRuntimeType { kStreamExecutor, kTfrt };
 inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
   switch (type) {
@@ -91,10 +66,6 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 
 class PjRtClient;
 class PjRtDevice;
-
-using PjRtValueType =
-    std::variant<std::string, int64_t, std::vector<int64_t>, float>;
-using PjRtDeviceAttribute = PjRtValueType;
 
 class PjRtMemorySpace {
  public:
@@ -117,42 +88,6 @@ class PjRtMemorySpace {
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current memory space unambiguously.
   virtual absl::string_view DebugString() const = 0;
-};
-
-class PjRtDeviceDescription {
- public:
-  virtual ~PjRtDeviceDescription() = default;
-
-  // The ID of this device. IDs are unique among devices of this type
-  // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
-  // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  virtual int id() const = 0;
-
-  // The index of the process that this device belongs to, i.e. is addressable
-  // from. This is not always identical to PjRtClient::process_index() in a
-  // multi-process setting, where each client can see devices from all
-  // processes, but only a subset of them are addressable and have the same
-  // process_index as the client.
-  virtual int process_index() const = 0;
-
-  // A vendor-dependent string that uniquely identifies the kind of device,
-  // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
-  // compatible compilation.
-  virtual absl::string_view device_kind() const = 0;
-
-  // Debug string suitable for logging when errors occur. Should be verbose
-  // enough to describe the current device unambiguously.
-  virtual absl::string_view DebugString() const = 0;
-
-  // Debug string suitable for reading by end users, should be reasonably terse,
-  // for example: "CpuDevice(id=0)".
-  virtual absl::string_view ToString() const = 0;
-
-  // Returns vendor specific attributes about the device. For example the model
-  // number of a GPU, or the mesh coordinates of a TPU device. The returned
-  // reference will remain valid for the lifetime of the PjRtDevice.
-  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-  Attributes() const = 0;
 };
 
 class PjRtDevice {

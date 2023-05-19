@@ -930,6 +930,19 @@ cc_library(
 )
 
 cc_library(
+    name = "string_util",
+    srcs = ["utils/string_util.cc"],
+    hdrs = ["utils/string_util.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "fake_session",
     srcs = ["utils/fake_session.cc"],
     hdrs = ["utils/fake_session.h"],
@@ -1333,6 +1346,7 @@ cc_library(
         ":parallel_execute_util",
         ":serialize_mlir_module_utils",
         ":shape_inference_pass",
+        ":string_util",
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_ops",

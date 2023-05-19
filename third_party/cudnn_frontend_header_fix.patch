@@ -1,27 +1,3 @@
-From 6e44c563e7d71e5a8988ac0d0f3259c4e3405b7d Mon Sep 17 00:00:00 2001
-From: Kaixi Hou <kaixih@nvidia.com>
-Date: Tue, 4 May 2021 15:21:11 -0700
-Subject: [PATCH] Update headers path to TF-compat
-
----
- include/cudnn_backend_base.h                | 2 +-
- include/cudnn_frontend_ConvDesc.h           | 4 ++--
- include/cudnn_frontend_Engine.h             | 4 ++--
- include/cudnn_frontend_EngineConfig.h       | 4 ++--
- include/cudnn_frontend_EngineFallbackList.h | 2 +-
- include/cudnn_frontend_ExecutionPlan.h      | 4 ++--
- include/cudnn_frontend_Filters.h            | 2 +-
- include/cudnn_frontend_Heuristics.h         | 4 ++--
- include/cudnn_frontend_MatMulDesc.h         | 4 ++--
- include/cudnn_frontend_Operation.h          | 4 ++--
- include/cudnn_frontend_OperationGraph.h     | 4 ++--
- include/cudnn_frontend_PointWiseDesc.h      | 4 ++--
- include/cudnn_frontend_ReductionDesc.h      | 4 ++--
- include/cudnn_frontend_Resample.h           | 4 ++--
- include/cudnn_frontend_Rng.h                | 4 ++--
- include/cudnn_frontend_VariantPack.h        | 4 ++--
- 16 files changed, 29 insertions(+), 29 deletions(-)
-
 diff --git a/include/cudnn_backend_base.h b/include/cudnn_backend_base.h
 index 56d8bec..8ceb19c 100644
 --- a/include/cudnn_backend_base.h
@@ -137,7 +113,7 @@ index 680906a..3df8924 100644
  #include "cudnn_frontend_OperationGraph.h"
  #include "cudnn_frontend_EngineConfig.h"
 diff --git a/include/cudnn_frontend_MatMulDesc.h b/include/cudnn_frontend_MatMulDesc.h
-index 0b15295..cae5323 100644
+index e7dd8f7..7a5d443 100644
 --- a/include/cudnn_frontend_MatMulDesc.h
 +++ b/include/cudnn_frontend_MatMulDesc.h
 @@ -29,8 +29,8 @@
@@ -152,7 +128,7 @@ index 0b15295..cae5323 100644
  #include "cudnn_frontend_utils.h"
  
 diff --git a/include/cudnn_frontend_Operation.h b/include/cudnn_frontend_Operation.h
-index 097e970..fca04ea 100644
+index fe75d5b..a43d696 100644
 --- a/include/cudnn_frontend_Operation.h
 +++ b/include/cudnn_frontend_Operation.h
 @@ -30,8 +30,8 @@
@@ -167,7 +143,7 @@ index 097e970..fca04ea 100644
  #include "cudnn_frontend_ConvDesc.h"
  #include "cudnn_frontend_PointWiseDesc.h"
 diff --git a/include/cudnn_frontend_OperationGraph.h b/include/cudnn_frontend_OperationGraph.h
-index 2a68c41..50162bd 100644
+index 919a190..5e31484 100644
 --- a/include/cudnn_frontend_OperationGraph.h
 +++ b/include/cudnn_frontend_OperationGraph.h
 @@ -30,8 +30,8 @@
@@ -182,7 +158,7 @@ index 2a68c41..50162bd 100644
  #include "cudnn_frontend_Operation.h"
  #include "cudnn_frontend_utils.h"
 diff --git a/include/cudnn_frontend_PointWiseDesc.h b/include/cudnn_frontend_PointWiseDesc.h
-index 7a69b66..cfc9559 100644
+index ad1f943..f320a27 100644
 --- a/include/cudnn_frontend_PointWiseDesc.h
 +++ b/include/cudnn_frontend_PointWiseDesc.h
 @@ -30,8 +30,8 @@
@@ -256,6 +232,3 @@ index dc68207..8b47fce 100644
  
  #include "cudnn_frontend_utils.h"
  
--- 
-2.25.1
-

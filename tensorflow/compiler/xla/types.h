@@ -77,6 +77,12 @@ struct i4 {
   bool operator<=(const int64_t other) const { return v <= other; }
   bool operator>=(const int64_t other) const { return v >= other; }
 
+  i4 operator-() const { return i4(-v); }
+  i4 operator++(int) {
+    i4 tmp(*this);
+    v = (v + 1) & 0x0F;
+    return tmp;
+  }
   i4& operator++() {
     v = (v + 1) & 0x0F;
     return *this;

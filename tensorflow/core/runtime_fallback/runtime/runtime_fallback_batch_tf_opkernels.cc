@@ -364,7 +364,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     // If there is only 1 error after deduplication, we emit the error with
     // proper error code mapping from TFRT to TF.
     if (errors.size() == 1) {
-      final_status = FromAbslStatus(*errors[0]);
+      final_status = *errors[0];
     } else {
       std::string msg;
       llvm::raw_string_ostream os(msg);

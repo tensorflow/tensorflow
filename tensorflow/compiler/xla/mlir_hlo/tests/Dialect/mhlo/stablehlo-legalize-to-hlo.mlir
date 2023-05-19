@@ -705,6 +705,19 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
   return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: op_custom_call_mhlo_backend_config
+func.func @op_custom_call_mhlo_backend_config(%arg0: tensor<16x256xbf16>) -> tensor<16x4xbf16> {
+  // CHECK: "mhlo.custom_call"(%arg0) {
+  // CHECK-SAME: api_version = 4 : i32,
+  // CHECK-SAME: backend_config = {aggregate_to_topk = true},
+  // CHECK-SAME: call_target_name = "foo"
+  // CHECK-SAME: } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
+  %4 = stablehlo.custom_call @foo(%arg0) {
+    "mhlo.backend_config" = {aggregate_to_topk = true}
+    } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
+  return %4 : tensor<16x4xbf16>
+}
+
 // CHECK-LABEL: "op_divide"
 func.func @op_divide(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.divide"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -1869,6 +1882,40 @@ func.func @op_custom_call_botched_extensibility_protocol(%arg0: tensor<f32>) -> 
     call_target_name = "mhlo.custom_call",
     backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}",
     has_side_effect = false
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_botched_mhlo_backend_config(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'stablehlo.custom_call' that was explicitly marked illegal}}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    mhlo.backend_config = "."
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_botched_mhlo_backend_config(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'stablehlo.custom_call' that was explicitly marked illegal}}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    mhlo.backend_config = 3
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_botched_mhlo_backend_config_version(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'stablehlo.custom_call' that was explicitly marked illegal}}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    api_version = 2 : i32,
+    mhlo.backend_config = 3
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }

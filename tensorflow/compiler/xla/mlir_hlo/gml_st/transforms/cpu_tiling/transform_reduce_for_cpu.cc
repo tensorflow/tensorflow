@@ -47,6 +47,8 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMREDUCEFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
+constexpr llvm::StringRef kReduceCluster = "__reduce_cluster__";
+
 struct Reduce1DTileSizes {
   int64_t tileSize;
   int64_t splitRatio;
@@ -77,8 +79,7 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter,
     return rewriter.notifyMatchFailure(reduceOp,
                                        "expects 1 operand. 0 or > 1 received.");
   }
-  const int64_t operandRank =
-      operands[0]->get().getType().cast<RankedTensorType>().getRank();
+  const int64_t operandRank = reduceOp.getRank(operands[0]);
   if (operandRank != expectedRank) {
     return rewriter.notifyMatchFailure(reduceOp, [&](Diagnostic &diag) {
       diag << "expects rank " << expectedRank << ". " << operandRank
@@ -86,6 +87,57 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter,
     });
   }
   return success();
+}
+
+bool reduce1DFusionFilter(Operation *op) {
+  return isa<linalg::FillOp, linalg::MapOp, thlo::ReverseOp>(op);
+}
+
+bool reduce2DProducerFusionFilter(Operation *op) {
+  return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
+             linalg::TransposeOp, tensor::CastOp>(op);
+}
+
+bool reduce2DConsumerFusionFilter(Operation *op) {
+  return isa<linalg::MapOp, thlo::ReverseOp>(op);
+}
+
+LogicalResult wrapReduceFusionCluster(
+    PatternRewriter &rewriter, linalg::ReduceOp reduceOp,
+    llvm::function_ref<bool(Operation *)> producerFilterFn,
+    llvm::function_ref<bool(Operation *)> consumerFilterFn) {
+  auto fusionCluster =
+      getFusionCluster(reduceOp, producerFilterFn, consumerFilterFn);
+
+  auto fusionOp = wrapFusionCluster(rewriter, fusionCluster);
+  if (failed(fusionOp)) return failure();
+
+  setLabel(reduceOp, kTransformedLabel);
+  setLabel(*fusionOp, kReduceCluster);
+  return success();
+}
+
+LogicalResult fusionClusterPattern(linalg::ReduceOp reduceOp,
+                                   PatternRewriter &rewriter) {
+  if (hasLabel(reduceOp, kTransformedLabel)) return failure();
+
+  auto fusionOp = reduceOp->getParentOfType<gml_st::FusionOp>();
+  if (fusionOp && hasLabel(fusionOp, kReduceCluster)) return failure();
+
+  const int64_t rank = reduceOp.getRank(reduceOp.getDpsInputOperand(0));
+
+  if (rank == 1) {
+    return wrapReduceFusionCluster(rewriter, reduceOp, reduce1DFusionFilter,
+                                   [](Operation *) { return false; });
+  }
+
+  if (rank == 2) {
+    return wrapReduceFusionCluster(rewriter, reduceOp,
+                                   reduce2DProducerFusionFilter,
+                                   reduce2DConsumerFusionFilter);
+  }
+
+  return failure();
 }
 
 struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
@@ -121,20 +173,18 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     scf::ForOp tailLoop = splitReduce->tailLoop;
 
     // Fusion.
-    auto fusionFilterFn = [](Operation *op) {
-      return isa<linalg::FillOp, linalg::MapOp, thlo::ReverseOp>(op);
-    };
     SmallVector<Block *> blocks;
     if (mainLoop) blocks.push_back(mainLoop.getBody());
     if (tailLoop) blocks.push_back(tailLoop.getBody());
-    fuseGreedily(rewriter, blocks, fusionFilterFn);
+    fuseGreedily(rewriter, blocks, reduce1DFusionFilter);
 
     // Tiling to 1 and fusion in the tail loop.
     if (tailLoop) {
       for (auto reduOp :
            llvm::to_vector(tailLoop.getBody()->getOps<linalg::ReduceOp>())) {
-        if (failed(tileUsingSCFForOpAndFuseGreedily(
-                rewriter, reduOp, getSCFTilingOptions({1}), fusionFilterFn))) {
+        if (failed(tileUsingSCFForOpAndFuseGreedily(rewriter, reduOp,
+                                                    getSCFTilingOptions({1}),
+                                                    reduce1DFusionFilter))) {
           return failure();
         }
       }
@@ -158,6 +208,9 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                                  linalg::ReduceOp reduceOp,
                                                  int64_t tileSize,
                                                  int64_t splitRatio) const {
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointAfter(reduceOp);
+
     // 0-d tensor with the neutral elements.
     auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
     if (!fillOp)
@@ -357,27 +410,11 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
     }
-    if (isa<scf::ForallOp, scf::ForOp>(reduceOp->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          reduceOp, "has already been tiled by another pass.");
-    }
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/2)))
       return failure();
 
-    auto producerFilterFn = [](Operation *op) {
-      return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
-                 linalg::TransposeOp, tensor::CastOp>(op);
-    };
-    auto consumerFilterFn = [](Operation *op) {
-      return isa<linalg::MapOp, thlo::ReverseOp>(op);
-    };
-    auto fusionClusterFn = [&](Operation *op) {
-      return producerFilterFn(op) || isa<linalg::ReduceOp>(op);
-    };
-    auto cluster =
-        getFusionCluster(reduceOp, producerFilterFn, consumerFilterFn);
-    auto fusionCluster = cluster.operations;
-    auto *tilingRoot = cluster.root;
+    auto fusionOp = reduceOp->getParentOfType<gml_st::FusionOp>();
+    auto *tilingRoot = fusionOp.getTerminator().getValues()[0].getDefiningOp();
 
     // First level tiling: parallel dimension.
     auto parallelDimsTileSizes =
@@ -386,12 +423,15 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                       parallelDimTileSize)
             : SmallVector<int64_t>{parallelDimTileSize};
     auto tilingParallelDimsResult = tileUsingSCFForallOpAndFuseGreedily(
-        rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes),
-        [&](Operation *op) { return fusionCluster.contains(op); });
+        rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes));
     if (failed(tilingParallelDimsResult)) return failure();
 
     auto peeledParallelLoop =
         peelAllLoops(tilingParallelDimsResult->loop, rewriter);
+
+    auto filterFn = [&](Operation *op) {
+      return reduce2DProducerFusionFilter(op) || isa<linalg::ReduceOp>(op);
+    };
 
     // Process main parallel loop.
     scf::ForallOp mainParallelLoop = peeledParallelLoop.mainLoop;
@@ -399,7 +439,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       auto tiledReduceOp =
           *mainParallelLoop.getBody()->getOps<linalg::ReduceOp>().begin();
       if (failed(tileAndPeelReductionDim(rewriter, tiledReduceOp, reductionDim,
-                                         producerFilterFn))) {
+                                         filterFn))) {
         return failure();
       }
     }
@@ -422,7 +462,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
               ? getSCFTilingOptions(getParallelDimTileSizes(reductionDim, 1))
               : getSCFTilingOptions({1});
       auto parallelDimTilingResult = tileUsingSCFForallOpAndFuseGreedily(
-          rewriter, definingOp, parallelDimTilingOpts, fusionClusterFn);
+          rewriter, definingOp, parallelDimTilingOpts, filterFn);
       if (failed(parallelDimTilingResult)) return failure();
 
       for (auto tiledReduceOp :
@@ -431,7 +471,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
         auto reductionDimTilingResult = tileUsingSCFForOpAndFuseGreedily(
             rewriter, tiledReduceOp,
             getSCFTilingOptions(getReductionDimTileSizes(reductionDim, 1)),
-            producerFilterFn);
+            reduce2DProducerFusionFilter);
         if (failed(reductionDimTilingResult)) return failure();
       }
     }
@@ -495,7 +535,8 @@ struct TransformReduceForCpuPass
   using Base::Base;
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<arith::ArithDialect, linalg::LinalgDialect, scf::SCFDialect,
+    registry.insert<arith::ArithDialect, gml_st::GmlStDialect,
+                    linalg::LinalgDialect, scf::SCFDialect,
                     tensor::TensorDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
@@ -504,24 +545,43 @@ struct TransformReduceForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    RewritePatternSet patterns(ctx);
-    Reduce1DTileSizeComputationFn tilingHeuristic;
-    if (enableHeuristic) {
-      tilingHeuristic = [](int64_t size) {
-        if (!ShapedType::isDynamic(size) && size > 96)
-          return Reduce1DTileSizes{32, 8};
-        return Reduce1DTileSizes{8, 8};
-      };
-    } else {
-      tilingHeuristic = [=](int64_t) {
-        return Reduce1DTileSizes{tileSize1D, splitRatio1D};
-      };
+    // Cleanup passes to prepare ops for better clustering.
+    {
+      RewritePatternSet patterns(ctx);
+      populateDuplicateInitOpsPatterns(patterns);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
     }
-    patterns.add<Reduce1DTransformPattern>(ctx, std::move(tilingHeuristic));
-    patterns.add<Reduce2DTransformPattern>(ctx, parallelDimTileSize2D,
-                                           reductionDimTileSize2D);
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
-      return signalPassFailure();
+
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add(fusionClusterPattern);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    {
+      RewritePatternSet patterns(ctx);
+      Reduce1DTileSizeComputationFn tilingHeuristic;
+      if (enableHeuristic) {
+        tilingHeuristic = [](int64_t size) {
+          if (!ShapedType::isDynamic(size) && size > 96)
+            return Reduce1DTileSizes{32, 8};
+          return Reduce1DTileSizes{8, 8};
+        };
+      } else {
+        tilingHeuristic = [=](int64_t) {
+          return Reduce1DTileSizes{tileSize1D, splitRatio1D};
+        };
+      }
+      patterns.add<Reduce1DTransformPattern>(ctx, std::move(tilingHeuristic));
+      patterns.add<Reduce2DTransformPattern>(ctx, parallelDimTileSize2D,
+                                             reductionDimTileSize2D);
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
   }
 };
 

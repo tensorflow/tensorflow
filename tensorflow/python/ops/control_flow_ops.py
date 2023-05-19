@@ -32,15 +32,11 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond as tf_cond
-from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops import while_loop as while_loop_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
@@ -51,22 +47,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
-# TODO(b/269483538): needed for references while refactors are in progress
-case = control_flow_case.case
-_case_helper = control_flow_case._case_helper  # pylint: disable=protected-access
-case_v2 = control_flow_case.case_v2
-_case_create_default_action = control_flow_case._case_create_default_action  # pylint: disable=protected-access
-_case_verify_and_canonicalize_args = control_flow_case._case_verify_and_canonicalize_args  # pylint: disable=protected-access
-_assert_at_most_n_true = control_flow_case._assert_at_most_n_true  # pylint: disable=protected-access
-Assert = control_flow_assert.Assert
-_summarize_eager = control_flow_assert._summarize_eager  # pylint: disable=protected-access
-while_loop = while_loop_ops.while_loop
-while_loop_v2 = while_loop_ops.while_loop_v2
-cond = tf_cond.cond
-cond_for_tf_v2 = tf_cond.cond_for_tf_v2
-_UnpackIfSingleton = tf_cond._UnpackIfSingleton  # pylint: disable=protected-access
-_eager_cond_implementation = tf_cond._eager_cond_implementation  # pylint: disable=protected-access
-_cast_indexed_slice_indices = tf_cond._cast_indexed_slice_indices  # pylint: disable=protected-access
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.

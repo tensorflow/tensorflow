@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -342,6 +343,43 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
   }
 };
 
+std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
+    const HloModule* module, const std::string& fingerprint) {
+  const std::string& pgle_profile_file_or_dir_path =
+      module->config()
+          .debug_options()
+          .xla_gpu_pgle_profile_file_or_directory_path();
+  if (pgle_profile_file_or_dir_path.empty()) {
+    return std::nullopt;
+  }
+  tsl::Env* env = tsl::Env::Default();
+  ProfiledInstructionsProto profile;
+  // If its a directory, use fingerprint to look for the profile for this
+  // specific module.
+  if (env->IsDirectory(pgle_profile_file_or_dir_path).ok()) {
+    std::string pgle_profile_path =
+        pgle_profile_file_or_dir_path + "/" + fingerprint + ".pbtxt";
+    Status s =
+        tsl::ReadTextProto(tsl::Env::Default(), pgle_profile_path, &profile);
+    if (!s.ok()) {
+      // Unable to read PGLE using fingerprint.
+      return std::nullopt;
+    }
+    LOG(INFO) << "Found profile for module using fingerprint";
+    return profile;
+  }
+
+  // The pgle_profile_file_or_dir is a file. Read the profile and see if its
+  // applicable for this HLO module (all instruction names in the profile should
+  // be present in the HLO module)
+  Status s = tsl::ReadTextProto(tsl::Env::Default(),
+                                pgle_profile_file_or_dir_path, &profile);
+  if (!s.ok()) {
+    return std::nullopt;
+  }
+  return profile;
+}
+
 }  // end namespace
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
@@ -367,7 +405,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
       HloPrintOptions::Canonical().set_print_backend_config(true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   FrontendAttributes attributes;
-  (*attributes.mutable_map())[kFingerprintBeforeLHS] = fingerprint;
+  (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
   root->add_frontend_attributes(attributes);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
@@ -385,22 +423,12 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
 
   std::unique_ptr<LatencyEstimator> latency_estimator;
-  const std::string& pgle_profile_dir =
-      module->config().debug_options().xla_gpu_pgle_profile_directory();
-  if (!pgle_profile_dir.empty()) {
-    std::string pgle_profile_path =
-        pgle_profile_dir + "/" + fingerprint + ".pbtxt";
-    ProfiledInstructionsProto proto;
-    Status s =
-        tsl::ReadTextProto(tsl::Env::Default(), pgle_profile_path, &proto);
-    if (s.ok()) {
-      LOG(INFO) << "Found profile for module, using PGLE";
-      latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
-          config, std::move(gpu_latency_estimator), proto);
-    } else {
-      LOG(INFO) << "Unable to read PGLE profile: " << s.message();
-      latency_estimator = std::move(gpu_latency_estimator);
-    }
+  std::optional<ProfiledInstructionsProto> profile =
+      ReadPGLEProfile(module, fingerprint);
+  if (profile.has_value()) {
+    latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), profile.value());
+    LOG(INFO) << "Found profile, using profile guided latency estimator";
   } else {
     latency_estimator = std::move(gpu_latency_estimator);
   }

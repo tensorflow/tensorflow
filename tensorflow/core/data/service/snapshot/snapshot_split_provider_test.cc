@@ -57,14 +57,11 @@ class MockDispatcherClient : public DataServiceDispatcherClient {
       : DataServiceDispatcherClient(/*address=*/"localhost",
                                     /*protocol=*/"grpc") {}
 
-  // NOLINTBEGIN(MOCK_METHOD does not work on Windows build, using deprecated
-  // MOCK_METHOD<N> instead)
-  MOCK_METHOD7(GetSnapshotSplit,
-               Status(const std::string& worker_address,
-                      const std::string& base_path, int64_t stream_index,
-                      int64_t source_index, Tensor& split,
-                      int64_t& local_split_index, bool& end_of_splits));
-  // NOLINTEND
+  MOCK_METHOD(Status, GetSnapshotSplit,
+              (const std::string& worker_address, const std::string& base_path,
+               int64_t stream_index, int64_t source_index, Tensor& split,
+               int64_t& local_split_index, bool& end_of_splits),
+              (override));
 };
 
 SnapshotTaskDef TestSnapshotTask() {

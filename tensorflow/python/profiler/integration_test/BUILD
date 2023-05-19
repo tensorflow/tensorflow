@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,7 +7,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "mnist_testing_utils",
     srcs = ["mnist_testing_utils.py"],
     srcs_version = "PY3",
@@ -16,7 +17,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "profiler_api_test",
     srcs = ["profiler_api_test.py"],
     python_version = "PY3",
@@ -26,14 +27,10 @@ cuda_py_test(
     ],
     deps = [
         ":mnist_testing_utils",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:multi_process_runner",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/eager:test",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",

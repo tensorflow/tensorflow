@@ -22,12 +22,14 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <string>
 #include <system_error>  // NOLINT
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "llvm/AsmParser/Parser.h"
@@ -73,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dot_dimension_merger.h"
 #include "tensorflow/compiler/xla/service/dot_merger.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
@@ -365,6 +368,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   pre_spmd_pipeline.AddPass<CallInliner>();
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+  pre_spmd_pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTopK;
+  });
+
   // The SPMD partitioner would mess up the sort+slice structure, so we need to
   // rewrite Topk before that happens.
   pre_spmd_pipeline.AddPass<TopkRewriter>(
@@ -556,6 +564,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
       pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
+      // Dimension merger is most efficient after the dot decomposer. It also
+      // has to be after the transpose folding because otherwise it can insert
+      // reshapes which will prevent transpose folding.
+      pipeline.AddPass<DotDimensionMerger>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();
@@ -863,7 +875,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             gpu_target_config.gpu_version)) {
       auto cuda_compute_capability =
           std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA) &&
+          !cuda_compute_capability.IsAtLeast(
+              se::CudaComputeCapability::HOPPER)) {
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }
@@ -1661,6 +1675,89 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
        std::move(ir_emitter_context->constants()), std::move(output_info),
        module_name, output_shape, std::move(allocations),
        enable_persistent_temp_buffers});
+}
+
+std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index) {
+  if (user->opcode() != HloOpcode::kFusion) {
+    return std::nullopt;
+  }
+
+  // First, do the trivial check: if the fusion operand and the fusion output
+  // have a different number of elements or have a different element byte size,
+  // the buffer cannot be shared.
+  const Shape& user_subshape =
+      ShapeUtil::GetSubshape(user->shape(), user_index);
+  const Shape& operand_shape = operand->shape();
+  const bool shapes_equal = ShapeUtil::Equal(operand_shape, user_subshape);
+  if (!shapes_equal) {
+    if (!operand_shape.IsArray() || !user_subshape.IsArray()) {
+      return false;
+    }
+    // We cannot share the buffer if the iteration space is not the same.
+    if (ShapeUtil::ElementsIn(operand_shape) !=
+        ShapeUtil::ElementsIn(user_subshape)) {
+      return false;
+    }
+    // The buffers needed for 'user_subshape' and 'operand_shape' need to have
+    // the same size, otherwise they cannot be shared. We already checked that
+    // the number of elements are the same, so now we check the number of bytes
+    // needed for the element types.
+    if (ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type()) !=
+        ShapeUtil::ByteSizeOfPrimitiveType(user_subshape.element_type())) {
+      return false;
+    }
+  }
+
+  // We need to make sure that the fusion parameter is accessed in the same
+  // iteration order as the fusion output. Also, there should not be two fusion
+  // outputs that consume the fusion parameter, because we do not want to share
+  // the same fusion operand with two different fusion outputs. To make sure
+  // that the iteration order is the same, we only allow ops on the path from
+  // fusion parameter to fusion output which are elementwise (no copy) or
+  // bitcast or a dynamic update slice with the first operand being on this
+  // path.
+  HloInstruction* fusion_param =
+      user->fused_parameter(user->operand_index(operand));
+  HloInstruction* output = user->fused_expression_root();
+  for (int64_t o : user_index) {
+    output = output->mutable_operand(o);
+  }
+  std::queue<HloInstruction*> q;
+  absl::flat_hash_set<HloInstruction*> visited;
+  q.push(fusion_param);
+  visited.insert(fusion_param);
+  bool found_path_to_output = false;
+  while (!q.empty()) {
+    HloInstruction* hlo_operand = q.front();
+    q.pop();
+    if (hlo_operand == output) {
+      found_path_to_output = true;
+      // The output should have at most 1 user: the tuple op (in case of a
+      // multi-output fusion)
+      if (hlo_operand->user_count() > 1) {
+        return false;
+      }
+      continue;
+    }
+    for (HloInstruction* hlo : hlo_operand->users()) {
+      if (visited.contains(hlo)) {
+        continue;
+      }
+      // This check also catches the case that we reach a different fusion
+      // output, as that fusion output would have a tuple op as user, which we
+      // do not allow here.
+      if ((!hlo->IsElementwiseOnOperand(hlo->operand_index(hlo_operand)) ||
+           hlo->opcode() == HloOpcode::kCopy) &&
+          hlo->opcode() != HloOpcode::kBitcast) {
+        return false;
+      }
+      visited.insert(hlo);
+      q.push(hlo);
+    }
+  }
+  return found_path_to_output;
 }
 
 }  // namespace gpu

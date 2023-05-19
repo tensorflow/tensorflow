@@ -31,14 +31,15 @@ namespace ifrt {
 char PjRtCompiler::ID = 0;
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
-    mlir::ModuleOp mlir_module, CompileOptions options) {
+    mlir::ModuleOp mlir_module, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  return PjRtLoadedExecutable::Create(client_, mlir_module, std::move(options));
+  return PjRtLoadedExecutable::Create(client_, mlir_module,
+                                      *std::move(options));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtCompiler::DeserializeLoadedExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
+    absl::string_view serialized, std::optional<xla::CompileOptions> options) {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executble,
                       client_->pjrt_client()->DeserializeExecutable(

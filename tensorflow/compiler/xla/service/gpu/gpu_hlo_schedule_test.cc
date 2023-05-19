@@ -215,7 +215,7 @@ TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
 
   Shape collective_permute_start_shape =
-      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_, u32_scalar, u32_scalar});
+      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_});
   HloInstruction* collective_permute_start =
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           collective_permute_start_shape, add0,

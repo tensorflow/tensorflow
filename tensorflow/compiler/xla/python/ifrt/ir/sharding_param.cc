@@ -64,10 +64,10 @@ void PopulateDevices(llvm::ArrayRef<int64_t> permutation,
 
 mlir::LogicalResult ShardingParam::MinorToMajor::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
-  if (permutation.size() != axis_sizes.size()) {
-    return emit_error()
-           << "Expect same size for `permutation` and `axis_sizes`. Actual "
-           << permutation.size() << " vs " << axis_sizes.size();
+  if (permutation.size() != axis_sizes.size() || axis_sizes.empty()) {
+    return emit_error() << "Expect same non-zero size for `permutation` and "
+                           "`axis_sizes`. Actual "
+                        << permutation.size() << " vs " << axis_sizes.size();
   }
   return mlir::success();
 }
@@ -115,6 +115,9 @@ mlir::LogicalResult ShardingParam::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
   if (mlir::failed(minor_to_major().verify(emit_error))) {
     return mlir::failure();
+  }
+  if (dim_shards().empty()) {
+    return emit_error() << "Dim shards is empty";
   }
 
   int64_t dim_index = 0;

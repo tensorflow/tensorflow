@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
@@ -155,7 +155,7 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "checkpoint_test_base",
     srcs = ["checkpoint_test_base.py"],
     srcs_version = "PY3",
@@ -1222,7 +1222,7 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test_base",
     srcs = ["test_base.py"],
     srcs_version = "PY3",
@@ -1288,7 +1288,7 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tf_record_test_base",
     srcs = [
         "tf_record_test_base.py",

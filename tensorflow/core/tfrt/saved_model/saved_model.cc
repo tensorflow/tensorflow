@@ -597,6 +597,9 @@ void UpdateCompileOptions(SavedModel::Options& options) {
     LOG(INFO) << "lazy_loading_use_graph_executor is updated to be the same as "
                  "enable_lazy_loading: "
               << options.enable_lazy_loading;
+    options.graph_execution_options.compile_options
+        .enable_while_parallel_iterations = true;
+    LOG(INFO) << "enable_while_parallel_iterations is always true for MLRT";
   }
 }
 
@@ -787,7 +790,7 @@ SavedModelImpl::SavedModelImpl(
       bytecode_(std::move(bytecode)),
       loaded_executable_(std::move(loaded_executable)),
       req_deadline_tracker_(
-          options.graph_execution_options.runtime->core_runtime()
+          options_.graph_execution_options.runtime->core_runtime()
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),

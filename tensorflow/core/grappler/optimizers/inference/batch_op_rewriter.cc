@@ -23,6 +23,7 @@ limitations under the License.
 #include "google/protobuf/repeated_field.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -139,7 +140,7 @@ Status BatchOpRewriter::Init(
   // Parse the config from params. Fail if its missing or fails to parse.
   if (config->parameter_map().find(kBatchOpRewriteConfigParamKey) ==
       config->parameter_map().end()) {
-    return ::tensorflow::errors::Internal(
+    return absl::InternalError(
         "batch_op_rewrite_config param must be set in the rewriter config "
         "with a serialized/encoded BatchOpRewriteConfig.");
   }
@@ -154,11 +155,11 @@ Status BatchOpRewriter::Init(
     return OkStatus();
   }
   if (!absl::Base64Unescape(params.s(), &unencoded)) {
-    return ::tensorflow::errors::Internal(
+    return absl::InternalError(
         "Failed to unencode batch_op_rewrite_config from params.");
   }
   if (!config_.ParseFromString(unencoded)) {
-    return ::tensorflow::errors::Internal(
+    return absl::InternalError(
         "Failed to parse batch_op_rewrite_config from params.");
   }
   VLOG(2) << "BatchOp Rewrite config is " << config_.DebugString();
@@ -177,7 +178,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
         config_proto_.experimental().session_metadata().name();
 
     if (!config_.model_scheduler_options().empty()) {
-      return ::tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "model_scheduler_options is deprecated. Please use the "
           "adaptive_batch_scheduler_option field in batch_options instead.");
     }
@@ -197,13 +198,13 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
         if ((params.min_inflight_batches > params.max_inflight_batches) ||
             (params.initial_inflight_batches < params.min_inflight_batches) ||
             (params.initial_inflight_batches > params.max_inflight_batches)) {
-          return errors ::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Requires min_inflight_batches <= initial_inflight_batches "
               "and initial_inflight_batches <= max_inflight_batches; Got "
               "{min_inflight_batches : ",
               params.min_inflight_batches,
               ", initial_inflight_batches : ", params.initial_inflight_batches,
-              ", max_inflight_batches : ", params.max_inflight_batches, "}.");
+              ", max_inflight_batches : ", params.max_inflight_batches, "}."));
         }
 
         asbs_overridden = true;
@@ -220,7 +221,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
       if (config_.enable_adaptive_shared_batching_thread_pool() &&
           !asbs_overridden && batch_options.has_num_batch_threads() &&
           batch_options.num_batch_threads() != 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Unable to enable adapative shared batching because it requires "
             "num_batch_threads=0 but the BatchOpRewriteConfig is also trying "
             "to set num_batch_threads. Set either set "

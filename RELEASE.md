@@ -34,6 +34,18 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* `tf.config.experimental.enable_tensor_float_32_execution`
+    * Disabling TensorFloat-32 execution now causes TPUs to use float32
+      precision for float32 matmuls and other ops. TPUs have always used
+      bfloat16 precision for certain ops, like matmul, when such ops had float32
+      inputs. Now, disabling TensorFloat-32 by calling
+      `tf.config.experimental.enable_tensor_float_32_execution(False)` will
+      cause TPUs to use float32 precision for such ops instead of bfloat16.
+
+*  `tf.experimental.dtensor`
+    * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
+      relayouting a tensor according to the layout of another tensor. 
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
@@ -243,6 +255,8 @@ This release contains contributions from many people at Google, as well as:
 
 *   `tf.lite`:
     *   Add UINT32 support to tfl.pack
+    *   Add INT64 support to tfl.range
+    *   Add UINT32 support to tfl.concatenation
 
 ## Thanks to our Contributors
 

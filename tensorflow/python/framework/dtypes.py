@@ -95,7 +95,13 @@ class DType(
 
   @property
   def base_dtype(self):
-    """Returns a non-reference `DType` based on this `DType`."""
+    """Returns a non-reference `DType` based on this `DType` (for TF1).
+
+    Programs written for TensorFlow 2.x do not need this attribute.
+    It exists only for compatibility with TensorFlow 1.x, which used
+    reference `DType`s in the implementation of `tf.compat.v1.Variable`.
+    In TensorFlow 2.x, `tf.Variable` is implemented without reference types.
+    """
     if self._is_ref_dtype:
       return _INTERN_TABLE[self._type_enum - 100]
     else:
@@ -198,13 +204,15 @@ class DType(
     return min, max
 
   def is_compatible_with(self, other):
-    """Returns True if the `other` DType will be converted to this DType.
+    """Returns True if the `other` DType will be converted to this DType (TF1).
 
-    The conversion rules are as follows:
+    Programs written for TensorFlow 2.x do not need this function.
+    Instead, they can do equality comparison on `DType` objects directly:
+    `tf.as_dtype(this) == tf.as_dtype(other)`.
 
-    ```python
-    DType(T)       .is_compatible_with(DType(T))        == True
-    ```
+    This function exists only for compatibility with TensorFlow 1.x, where it
+    additionally allows conversion from a reference type (used by
+    `tf.compat.v1.Variable`) to its base type.
 
     Args:
       other: A `DType` (or object that may be converted to a `DType`).

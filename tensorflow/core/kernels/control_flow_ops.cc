@@ -53,13 +53,7 @@ void SwitchNOp::Compute(OpKernelContext* context) {
 }
 
 REGISTER_KERNEL_BUILDER(
-    Name("Switch").Device(DEVICE_DEFAULT).HostMemory("pred"), SwitchOp);
-REGISTER_KERNEL_BUILDER(
     Name("Switch").Device(DEVICE_TPU_SYSTEM).HostMemory("pred"), SwitchOp);
-
-REGISTER_KERNEL_BUILDER(
-    Name("_SwitchN").Device(DEVICE_DEFAULT).HostMemory("output_index"),
-    SwitchNOp);
 
 #define REGISTER_CPU_SWITCH(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Switch")                  \
@@ -156,6 +150,71 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 #undef REGISTER_GPU_HOST_KERNEL
 #undef REGISTER_GPU_HOST_REF_KERNEL
 
+#define REGISTER_DEFAULT_SWITCH(type)                     \
+  REGISTER_KERNEL_BUILDER(Name("Switch")                  \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("pred")         \
+                              .TypeConstraint<type>("T"), \
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("output_index") \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
+
+#define REGISTER_DEFAULT_REF_SWITCH(type)                 \
+  REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("pred")         \
+                              .TypeConstraint<type>("T"), \
+                          SwitchOp)
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_SWITCH);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_SWITCH);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_REF_SWITCH);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_REF_SWITCH);
+TF_CALL_variant(REGISTER_DEFAULT_SWITCH);
+TF_CALL_bool(REGISTER_DEFAULT_SWITCH);
+TF_CALL_bool(REGISTER_DEFAULT_REF_SWITCH);
+
+#undef REGISTER_DEFAULT_SWITCH
+#undef REGISTER_DEFAULT_REF_SWITCH
+
+#define REGISTER_DEFAULT_HOST_KERNEL(type)                \
+  REGISTER_KERNEL_BUILDER(Name("Switch")                  \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("pred")         \
+                              .HostMemory("output_false") \
+                              .HostMemory("output_true")  \
+                              .TypeConstraint<type>("T"), \
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("output_index") \
+                              .HostMemory("outputs")      \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
+
+#define REGISTER_DEFAULT_HOST_REF_KERNEL(type)            \
+  REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("pred")         \
+                              .HostMemory("output_false") \
+                              .HostMemory("output_true")  \
+                              .TypeConstraint<type>("T"), \
+                          SwitchOp)
+
+REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_REF_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_REF_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
+
+#undef REGISTER_DEFAULT_HOST_KERNEL
+#undef REGISTER_DEFAULT_HOST_REF_KERNEL
 
 class RefSelectOp : public OpKernel {
  public:
@@ -237,8 +296,6 @@ void MergeOp::Compute(OpKernelContext* context) {
 
 REGISTER_KERNEL_BUILDER(Name("Merge").Device(DEVICE_CPU), MergeOp);
 REGISTER_KERNEL_BUILDER(
-    Name("Merge").Device(DEVICE_DEFAULT).HostMemory("value_index"), MergeOp);
-REGISTER_KERNEL_BUILDER(
     Name("Merge").Device(DEVICE_TPU_SYSTEM).HostMemory("value_index"), MergeOp);
 REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
 
@@ -267,7 +324,6 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
 
-
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -293,6 +349,52 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
+#define REGISTER_DEFAULT_KERNEL(type)                     \
+  REGISTER_KERNEL_BUILDER(Name("Merge")                   \
+                              .Device(DEVICE_DEFAULT)     \
+                              .TypeConstraint<type>("T")  \
+                              .HostMemory("value_index"), \
+                          MergeOp);
+
+#define REGISTER_DEFAULT_REF_KERNEL(type)                 \
+  REGISTER_KERNEL_BUILDER(Name("RefMerge")                \
+                              .Device(DEVICE_DEFAULT)     \
+                              .TypeConstraint<type>("T")  \
+                              .HostMemory("value_index"), \
+                          MergeOp);
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_REF_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_REF_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+REGISTER_DEFAULT_REF_KERNEL(bool);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+
+#undef REGISTER_DEFAULT_KERNEL
+#undef REGISTER_DEFAULT_REF_KERNEL
+
+#define REGISTER_DEFAULT_HOST_KERNEL(type)                \
+  REGISTER_KERNEL_BUILDER(Name("Merge")                   \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("inputs")       \
+                              .HostMemory("output")       \
+                              .HostMemory("value_index")  \
+                              .TypeConstraint<type>("T"), \
+                          MergeOp);                       \
+  REGISTER_KERNEL_BUILDER(Name("RefMerge")                \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("inputs")       \
+                              .HostMemory("output")       \
+                              .HostMemory("value_index")  \
+                              .TypeConstraint<type>("T"), \
+                          MergeOp)
+
+REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
+
+#undef REGISTER_DEFAULT_HOST_KERNEL
 
 void EnterOp::Compute(OpKernelContext* context) {
   if (IsRefType(context->input_dtype(0))) {
@@ -302,7 +404,6 @@ void EnterOp::Compute(OpKernelContext* context) {
   }
 }
 
-REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_DEFAULT), EnterOp);
 REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_TPU_SYSTEM), EnterOp);
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_CPU), EnterOp);
 
@@ -321,7 +422,6 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
-
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -351,6 +451,48 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 #undef REGISTER_GPU_HOST_KERNEL
 #undef REGISTER_GPU_HOST_REF_KERNEL
 
+#define REGISTER_DEFAULT_KERNEL(type) \
+  REGISTER_KERNEL_BUILDER(            \
+      Name("Enter").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), EnterOp)
+#define REGISTER_DEFAULT_REF_KERNEL(type)                                \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("RefEnter").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
+      EnterOp)
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_REF_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+REGISTER_DEFAULT_REF_KERNEL(bool);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+
+#undef REGISTER_DEFAULT_KERNEL
+#undef REGISTER_DEFAULT_REF_KERNEL
+
+#define REGISTER_DEFAULT_HOST_KERNEL(type)                \
+  REGISTER_KERNEL_BUILDER(Name("Enter")                   \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnterOp)
+
+#define REGISTER_DEFAULT_HOST_REF_KERNEL(type)            \
+  REGISTER_KERNEL_BUILDER(Name("RefEnter")                \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnterOp)
+
+REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_REF_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_REF_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
+
+#undef REGISTER_DEFAULT_HOST_KERNEL
+#undef REGISTER_DEFAULT_HOST_REF_KERNEL
+
 void ExitOp::Compute(OpKernelContext* context) {
   if (IsRefType(context->input_dtype(0))) {
     context->forward_ref_input_to_ref_output(0, 0);
@@ -359,7 +501,6 @@ void ExitOp::Compute(OpKernelContext* context) {
   }
 }
 
-REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_DEFAULT), ExitOp);
 REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_TPU_SYSTEM), ExitOp);
 REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_CPU), ExitOp);
 
@@ -378,7 +519,6 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
-
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -403,6 +543,43 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
+#define REGISTER_DEFAULT_KERNEL(type) \
+  REGISTER_KERNEL_BUILDER(            \
+      Name("Exit").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), ExitOp);
+#define REGISTER_DEFAULT_REF_KERNEL(type)                               \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("RefExit").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
+      ExitOp);
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_REF_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+REGISTER_DEFAULT_REF_KERNEL(bool);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+
+#undef REGISTER_DEFAULT_KERNEL
+#undef REGISTER_DEFAULT_REF_KERNEL
+
+#define REGISTER_DEFAULT_HOST_KERNEL(type)                \
+  REGISTER_KERNEL_BUILDER(Name("Exit")                    \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          ExitOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("RefExit")                 \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          ExitOp)
+
+REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
+
+#undef REGISTER_DEFAULT_HOST_KERNEL
+
 void NextIterationOp::Compute(OpKernelContext* context) {
   if (IsRefType(context->input_dtype(0))) {
     context->forward_ref_input_to_ref_output(0, 0);
@@ -411,8 +588,6 @@ void NextIterationOp::Compute(OpKernelContext* context) {
   }
 }
 
-REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_DEFAULT),
-                        NextIterationOp);
 REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_TPU_SYSTEM),
                         NextIterationOp);
 REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_CPU),
@@ -455,6 +630,40 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
+#define REGISTER_DEFAULT_KERNEL(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("NextIteration").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
+      NextIterationOp);                                                       \
+  REGISTER_KERNEL_BUILDER(Name("RefNextIteration")                            \
+                              .Device(DEVICE_DEFAULT)                         \
+                              .TypeConstraint<type>("T"),                     \
+                          NextIterationOp)
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+
+#undef REGISTER_DEFAULT_KERNEL
+
+#define REGISTER_DEFAULT_HOST_KERNEL(type)                \
+  REGISTER_KERNEL_BUILDER(Name("NextIteration")           \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          NextIterationOp);               \
+  REGISTER_KERNEL_BUILDER(Name("RefNextIteration")        \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          NextIterationOp)
+
+REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(tstring);
+REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
+
+#undef REGISTER_DEFAULT_HOST_KERNEL
 
 LoopCondOp::LoopCondOp(OpKernelConstruction* context) : OpKernel(context) {}
 LoopCondOp::~LoopCondOp() = default;

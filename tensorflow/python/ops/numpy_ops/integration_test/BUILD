@@ -19,7 +19,7 @@ cuda_py_test(
     srcs = ["np_config_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/ops/numpy_ops:numpy",
+        "//tensorflow/python/ops/numpy_ops:np_config",
         "//third_party/py/numpy",
     ],
 )

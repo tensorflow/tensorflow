@@ -373,7 +373,6 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     typedef Scalar Coefficient;
     const Scalar alpha = Scalar(1.0);
 
-
     // TODO(b/146763573): Consider using Trsv here when the right hand side is
     // a vector. This will require an explicit transpose since Trsv assumes
     // CUBLAS_SIDE_LEFT.
@@ -407,7 +406,6 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
         }
       }
     }
-    
   }
 };
 

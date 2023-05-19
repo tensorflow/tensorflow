@@ -38,8 +38,8 @@ portpicker ~= 1.4.0
 scipy ~= 1.7.2; python_version < '3.11'
 scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
 # Required for TFLite import from JAX tests
-jax ~= 0.3.24
-jaxlib ~= 0.3.24 # Earliest version for Python 3.11
+jax ~= 0.3.25
+jaxlib ~= 0.3.25 # Earliest version for Python 3.11
 # Needs to be addressed. Unblocked 2.4 branchcut cl/338377048
 PyYAML ~= 6.0
 # For uploading

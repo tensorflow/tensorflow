@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -split-input-file -xla-lmhlo-to-cpu-runtime | FileCheck %s
+// RUN: xla-cpu-opt %s -split-input-file -xla-cpu-to-cpu-runtime | FileCheck %s
 
 func.func @partition_id() -> i32 {
   %0 = "xla_cpu.partition_id"() : () -> i32

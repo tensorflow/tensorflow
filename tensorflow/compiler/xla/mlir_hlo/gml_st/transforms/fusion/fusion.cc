@@ -666,11 +666,10 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
 
     visitUsedValuesDefinedAbove(op->getRegions(), visitOpOperand);
 
-    for (Value result : op->getResults()) {
-      if (llvm::any_of(result.getUsers(), [&](Operation* user) {
-            return !fusionCluster.operations.contains(user);
-          }))
-        clusterResults.push_back(result);
+    if (llvm::any_of(op->getUsers(), [&](Operation* user) {
+          return !fusionCluster.operations.contains(user);
+        })) {
+      llvm::append_range(clusterResults, op->getResults());
     }
   }
 

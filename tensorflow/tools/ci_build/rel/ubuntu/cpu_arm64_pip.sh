@@ -73,7 +73,7 @@ source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS.sh
 export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true \
-    --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium \
+    --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium \
     --test_output=errors --verbose_failures=true --test_keep_going --notest_verbose_timeout_warnings"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
 export TF_PIP_TESTS="test_pip_virtualenv_clean test_pip_virtualenv_oss_serial"

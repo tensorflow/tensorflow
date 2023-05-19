@@ -181,28 +181,28 @@ class StackTraceWrapper : public AbstractStackTrace {
     if (stack_frames_cache_) {
       return *stack_frames_cache_;
     }
+    stack_frames_cache_ = ToUncachedFrames();
+    return *stack_frames_cache_;
+  }
 
+  std::vector<StackFrame> ToUncachedFrames() const override {
     // Grabbing the GIL solves two purposes: 1) makes the class thread-safe,
     // and 2) ToStackFrames and LineContents actually need it.
     PyGILState_STATE state = PyGILState_Ensure();
 
-    stack_frames_cache_ = captured_.ToStackFrames(
-        *source_map_, [&](const char* f) { return StackTraceFiltering(f); });
+    std::vector<StackFrame> frames = captured_.ToStackFrames(
+        *source_map_, [&](const char* f) { return StackTraceFiltering(f); },
+        /*reverse_traversal=*/false, /*limit=*/-1);
 
     // Drop last stack frames.
-    int newsize = stack_frames_cache_->size() - stacklevel_;
+    int newsize = frames.size() - stacklevel_;
     if (newsize < 0) {
       newsize = 0;
     }
-    stack_frames_cache_->resize(newsize);
+    frames.resize(newsize);
 
     PyGILState_Release(state);
-    return *stack_frames_cache_;
-  }
-
-  void WipeCache() override {
-    tensorflow::mutex_lock lock(mu_);
-    stack_frames_cache_ = {};
+    return frames;
   }
 
   int get_stacklevel() const { return stacklevel_; }
@@ -491,14 +491,17 @@ PYBIND11_MODULE(_tf_stack, m) {
           &StackTraceWrapper::set_stacklevel,
           "Adjusts stacklevel; no effects after ToFrames() is called.")
       .def(
+          "uncached",
+          [](const StackTraceWrapper& self) {
+            return StackTraceWrapper{self.ToUncachedFrames()};
+          },
+          "Gets stack frames without using (or filling) caches.")
+      .def(
           "get_user_frames",
           [](const StackTraceWrapper& self) {
             return StackTraceWrapper{self.GetUserFrames()};
           },
           "Returns the non-framework frames as a new trace object.")
-      .def(
-          "wipe_cache", [](StackTraceWrapper& self) { self.WipeCache(); },
-          "Remove all cached or generated data.")
       .def(
           "last_user_frame",
           [](const StackTraceWrapper& self) { return self.LastUserFrame(); },

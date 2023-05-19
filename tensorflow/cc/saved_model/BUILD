@@ -1,4 +1,5 @@
-# Description:
+#include "third_party/absl/strings/str_cat.h"
+#Description:
 # TensorFlow SavedModel.
 
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
@@ -131,6 +132,8 @@ cc_library(
         ":fingerprinting",
         ":loader_util",
         ":reader",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_not_mobile([
         ":metrics",
         ":util",

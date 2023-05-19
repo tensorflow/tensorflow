@@ -57,5 +57,11 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
 ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
+
+// Returns an OpSharding that represents the result of parsing the given string:
+// first, as serialized protobuf, and then as prettyprinted representation.
+// Will fail if both attempts at parsing failed.
+std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
+
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

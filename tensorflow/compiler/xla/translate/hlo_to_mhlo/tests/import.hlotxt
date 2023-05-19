@@ -1724,7 +1724,7 @@ add {
 // CHECK-LABEL : func private domain
 %domain (Arg_0.1: u32[]) -> u32[] {
   // CHECK: "mhlo.domain"(
-  // CHECK-SAME: {entry_metadata = "\08\01\1A\01\01\22\01\01", exit_metadata = "\08\02", kind = #mhlo<kind sharding>}
+  // CHECK-SAME: {entry_metadata = "{maximal device=1}", exit_metadata = "{}", kind = #mhlo<kind sharding>}
   %Arg_0.1 = u32[] parameter(0)
   ROOT %domain.2 = u32[] domain(u32[] %Arg_0.1), domain={kind="sharding", entry={maximal device=1}, exit={}}
 }

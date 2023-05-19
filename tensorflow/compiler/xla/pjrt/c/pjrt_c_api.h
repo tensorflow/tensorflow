@@ -1294,6 +1294,23 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_PlatformName_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_PlatformName(
     PJRT_TopologyDescription_PlatformName_Args* args);
 
+struct PJRT_TopologyDescription_GetDeviceDescriptions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_TopologyDescription* topology;
+  // Has the same lifetime as topology.
+  PJRT_DeviceDescription** descriptions;  // out
+  size_t num_descriptions;                // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_GetDeviceDescriptions_Args,
+                          num_descriptions);
+
+// Returns descriptions for all devices in this topology. The device
+// descriptions can be returned in any order, but will be in the same order
+// across calls within a process.
+typedef PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
+    PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
+
 struct PJRT_Compile_Args {
   size_t struct_size;
   void* priv;
@@ -1402,6 +1419,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformName);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformVersion);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetDeviceDescriptions);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 } PJRT_Api;

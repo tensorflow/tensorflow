@@ -743,6 +743,8 @@ class LatencyHidingScheduler : public HloModulePass {
     double all_gather_wasted_cycles = 0;
     double all_reduce_wasted_cycles = 0;
     double collective_permute_wasted_cycles = 0;
+    double all_to_all_wasted_cycles = 0;
+    double reduce_scatter_wasted_cycles = 0;
     double send_wasted_cycles = 0;
     double recv_wasted_cycles = 0;
     double total_cycles = 0;

@@ -30,6 +30,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
@@ -406,6 +407,9 @@ class RelayoutTest(test_util.DTensorBaseTest):
         for device in ('CPU', 'GPU', 'TPU')
     }
     self.mesh = self.configTestMesh(mesh_dict)
+    # 1D Layouts
+    self.x_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_X, rank=1)
+    self.y_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
     # 2D Layouts
     self.unsharded_unsharded_layout = layout.Layout.replicated(
         self.mesh, rank=2
@@ -439,6 +443,40 @@ class RelayoutTest(test_util.DTensorBaseTest):
       )
     else:
       self.assertDTensorEqual(inp, to_layout, do_relayout())
+
+  @combinations.generate(combinations.combine(is_graph=[False, True]))
+  def test_relayout_like_simple(self, is_graph):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+    inp_layout = api.relayout(data, self.x_layout)
+
+    def do_relayout():
+      return api.relayout_like(inp, inp_layout)
+
+    if is_graph:
+      do_relayout = polymorphic_function.function(do_relayout)
+
+    with api.default_mesh(self.mesh):
+      result = do_relayout()
+
+    self.assertDTensorEqual(data, self.x_layout, result)
+
+  def test_relayout_like_init_scope(self):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+    inp_layout = api.relayout(data, self.x_layout)
+
+    @polymorphic_function.function
+    def do_relayout(x):
+      with ops.init_scope():
+        return api.relayout_like(inp, x)
+
+    with api.default_mesh(self.mesh):
+      with self.assertRaisesRegex(
+          TypeError, 'is out of scope and cannot be used here'
+      ):
+        result = do_relayout(inp_layout)
+        result.numpy()
 
   def test_nested_relayout_gradient_preserves_layout(self):
     # Test that nesting gradient tapes with relayouts preserves the layout of
@@ -502,6 +540,33 @@ class RelayoutTest(test_util.DTensorBaseTest):
       return t
 
     func_with_relayout(sharded_w)
+
+  @combinations.generate(
+      combinations.combine(size=[16, 4096], is_graph=[False, True])
+  )
+  def test_call_with_layout(self, size, is_graph):
+    layout_x = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_X, rank=1
+    )
+    layout_y = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_Y, rank=1
+    )
+
+    expected = array_ops.zeros(shape=[size])
+
+    def func():
+      tensor_x = api.call_with_layout(array_ops.zeros, layout_x, shape=[size])
+      tensor_y = api.call_with_layout(array_ops.zeros, layout_y, shape=[size])
+      return tensor_x, tensor_y
+
+    if is_graph:
+      func = polymorphic_function.function(func)
+
+    with api.default_mesh(self.mesh):
+      tensor_x, tensor_y = func()
+
+    self.assertDTensorEqual(expected, layout_x, tensor_x)
+    self.assertDTensorEqual(expected, layout_y, tensor_y)
 
 
 if __name__ == '__main__':

@@ -341,12 +341,16 @@ tsl::Status DoLoadFromLevelDbTable(
              TraceEventsComparator());
   loaded_events_by_level.clear();
 
-  LOG(INFO) << "Loaded " << loaded_events.size() << " events and filtered "
+  LOG(INFO) << "Loaded " << loaded_events.size() << " events after filtering "
             << filtered << " events from LevelDb fast file: " << filename;
+  size_t visible_events_count = 0;
   for (TraceEvent* event : loaded_events) {
-    if (!visibility || !visibility->Filter(*event)) add_arena_event(event);
+    if (!visibility || !visibility->Filter(*event)) {
+      add_arena_event(event);
+      ++visible_events_count;
+    }
   }
-  LOG(INFO) << "Added " << trace.num_events()
+  LOG(INFO) << "Added " << visible_events_count
             << " visible events from LevelDb fast file: " << filename;
   return tsl::OkStatus();
 }

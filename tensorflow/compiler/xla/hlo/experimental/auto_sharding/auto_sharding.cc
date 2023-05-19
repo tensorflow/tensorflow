@@ -264,7 +264,8 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
                             communication_cost,
                             memory_cost,
                             {std::move(resharding_costs)},
-                            {}}));
+                            // {}}));
+                            {*output_spec}}));
     }
   }
   return strategies;
@@ -2163,7 +2164,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   int32_t num_workers = 32;
   // SAT or SCIP
-  std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
+  std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::SAT_INTEGER_PROGRAMMING));
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
   std::string solver_parameter_str;
@@ -2831,21 +2832,54 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
       // GetShardingStrategy, which is invoked below does not currently support
       // such instructions. Implement this support.
       if (inst->shape().IsTuple()) {
-        continue;
-      }
-      const ShardingStrategy& stra =
-          GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
-      if (stra.input_shardings.empty()) {
-        continue;
-      }
-      if (inst->opcode() == HloOpcode::kGetTupleElement) {
-        FixMixedMeshShapeReshardingGetTupleElement(inst, inst->sharding(),
-                                                   device_mesh);
+        switch (inst->opcode()) {
+          case HloOpcode::kReduce:
+          case HloOpcode::kSort: {
+            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+              const ShardingStrategy& stra = GetShardingStrategyForTuple(
+                  inst, i, strategy_map, cost_graph, s_val);
+              if (stra.input_shardings.size() > i) {
+                FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
+                                            device_mesh, resharding_cache);
+              }
+            }
+            break;
+          }
+          case HloOpcode::kTuple: {
+            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+              const ShardingStrategy& stra = GetShardingStrategyForTuple(
+                  inst, i, strategy_map, cost_graph, s_val);
+              CHECK_EQ(stra.input_shardings.size(), 1);
+              FixMixedMeshShapeResharding(inst, i, stra.input_shardings[0],
+                                          device_mesh, resharding_cache);
+            }
+            break;
+          }
+          case HloOpcode::kWhile:
+          case HloOpcode::kConditional: {
+            break;
+          }
+          case HloOpcode::kParameter: {
+            break;
+          }
+          default:
+            LOG(FATAL) << "Unhandled instruction: " + inst->ToString();
+        }
       } else {
-        for (size_t i = 0; i < inst->operand_count(); ++i) {
-          if (stra.input_shardings.size() > i) {
-            FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
-                                        device_mesh, resharding_cache);
+        const ShardingStrategy& stra =
+            GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
+        if (stra.input_shardings.empty()) {
+          continue;
+        }
+        if (inst->opcode() == HloOpcode::kGetTupleElement) {
+          FixMixedMeshShapeReshardingGetTupleElement(inst, inst->sharding(),
+                                                     device_mesh);
+        } else {
+          for (size_t i = 0; i < inst->operand_count(); ++i) {
+            if (stra.input_shardings.size() > i) {
+              FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
+                                          device_mesh, resharding_cache);
+            }
           }
         }
       }
@@ -4077,11 +4111,16 @@ StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
       total_devices *= i;
     }
     if (mesh_idx != partial_mesh_shapes.size() - 1) {
-      bool changed = spmd::AdjustShardingsWithPartialMeshShape(
-          sequence.instructions(), mesh_shape, total_devices);
-      LOG(INFO)
-          << "Shardings are adjusted based on current partial mesh shape: "
-          << changed;
+      auto changed_or = spmd::AdjustShardingsWithPartialMeshShape(
+          sequence.instructions(), mesh_shape, total_devices,
+          /* crash_on_error */ !option_.try_multiple_mesh_shapes);
+      if (changed_or.ok()) {
+        LOG(INFO)
+            << "Shardings are adjusted based on current partial mesh shape: "
+            << *changed_or;
+      } else {
+        return changed_or;
+      }
     }
     std::vector<int64_t> device_mesh_ids = std::vector<int64_t>(total_devices);
     std::iota(device_mesh_ids.begin(), device_mesh_ids.end(), 0);
@@ -4268,9 +4307,12 @@ StatusOr<bool> AutoSharding::Run(
     AutoShardingOption this_option = option_;
     this_option.device_mesh_shape = mesh_shapes[i];
     auto pass = new AutoShardingImplementation(this_option);
-    auto module_clone = module->Clone();
+    auto module_clone = module->Clone("");
+    module_clone->set_layout_canonicalization_callback(
+        module->layout_canonicalization_callback());
     auto pass_result =
         pass->RunAutoSharding(module_clone.get(), execution_threads);
+
     changed[i] = pass_result;
     objective_values[i] = pass->GetSolverOptimalObjectiveValue();
     modules[i] = std::move(module_clone);
@@ -4305,6 +4347,9 @@ StatusOr<bool> AutoSharding::Run(
 
       module->ReplaceComputations(computation_replacements);
       module->MoveComputationsFrom(modules[min_mesh_shape_index].get());
+
+      *module->config().mutable_entry_computation_layout() =
+          modules[min_mesh_shape_index]->entry_computation_layout();
 
       module_is_changed = true;
     } else if (!*changed[min_mesh_shape_index]) {

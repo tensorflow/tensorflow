@@ -1426,6 +1426,11 @@ Status XlaCompiler::CompileGraph(
     std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
     CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "XlaCompiler::CompileGraph: "
+            << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
+                               flib_runtime_->GetFunctionLibraryDefinition());
+  }
 
   DummyStackTrace stack_trace;
   for (auto node : graph->nodes()) {
@@ -1442,12 +1447,6 @@ Status XlaCompiler::CompileGraph(
       },
       graph.get(), local_flib_def_.get(),
       pflr_->GetFunctionLibraryDefinition()));
-
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << "XlaCompiler::CompileGraph: "
-            << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
-                               flib_runtime_->GetFunctionLibraryDefinition());
-  }
 
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);

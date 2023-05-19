@@ -730,6 +730,17 @@ py_strict_library(
     ],
 )
 
+tf_py_strict_test(
+    name = "lazy_loader_test",
+    srcs = ["lazy_loader_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":lazy_loader",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
 py_strict_library(
     name = "decorator_utils",
     srcs = ["decorator_utils.py"],

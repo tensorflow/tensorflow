@@ -329,7 +329,7 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
     if (assigned_stream_index.has_value() && snapshot_progress->completed()) {
       TF_RETURN_IF_ERROR(HandleStreamCompletion(
           snapshot_progress->snapshot_task().stream_index(), worker_address));
-      assigned_stream_index.reset();
+      return std::optional<int64_t>();
     }
     if (snapshot_progress->status().code() != error::OK) {
       TF_RETURN_IF_ERROR(

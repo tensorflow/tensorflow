@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/bitmap.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -74,9 +75,7 @@ namespace xla {
 
 namespace {
 
-template <PrimitiveType kType>
-using NativeTypeOf =
-    typename primitive_util::PrimitiveTypeToNative<kType>::type;
+using primitive_util::NativeTypeOf;
 
 template <typename OperandT>
 StatusOr<Literal> Compare(const Shape& shape, ComparisonDirection direction,
@@ -237,48 +236,17 @@ struct PopulateImpl {
 // native types to avoid templating the whole implementations.
 template <template <PrimitiveType> typename Trait, typename F>
 Status Apply(Literal& literal, F&& literal_generator) {
-  switch (literal.shape().element_type()) {
-    case U8:
-      return Trait<U8>::Run(literal, std::forward<F>(literal_generator));
-    case U16:
-      return Trait<U16>::Run(literal, std::forward<F>(literal_generator));
-    case U32:
-      return Trait<U32>::Run(literal, std::forward<F>(literal_generator));
-    case U64:
-      return Trait<U64>::Run(literal, std::forward<F>(literal_generator));
-    case S8:
-      return Trait<S8>::Run(literal, std::forward<F>(literal_generator));
-    case S16:
-      return Trait<S16>::Run(literal, std::forward<F>(literal_generator));
-    case S32:
-      return Trait<S32>::Run(literal, std::forward<F>(literal_generator));
-    case S64:
-      return Trait<S64>::Run(literal, std::forward<F>(literal_generator));
-    case F8E5M2:
-      return Trait<F8E5M2>::Run(literal, std::forward<F>(literal_generator));
-    case F8E4M3FN:
-      return Trait<F8E4M3FN>::Run(literal, std::forward<F>(literal_generator));
-    case F8E4M3B11FNUZ:
-      return Trait<F8E4M3B11FNUZ>::Run(literal,
-                                       std::forward<F>(literal_generator));
-    case F16:
-      return Trait<F16>::Run(literal, std::forward<F>(literal_generator));
-    case BF16:
-      return Trait<BF16>::Run(literal, std::forward<F>(literal_generator));
-    case F32:
-      return Trait<F32>::Run(literal, std::forward<F>(literal_generator));
-    case F64:
-      return Trait<F64>::Run(literal, std::forward<F>(literal_generator));
-    case C64:
-      return Trait<C64>::Run(literal, std::forward<F>(literal_generator));
-    case C128:
-      return Trait<C128>::Run(literal, std::forward<F>(literal_generator));
-    case PRED:
-      return Trait<PRED>::Run(literal, std::forward<F>(literal_generator));
-    default:
-      LOG(FATAL) << "Unhandled primitive type "
-                 << literal.shape().element_type();
-  }
+  return primitive_util::PrimitiveTypeSwitch<Status>(
+      [&, literal_generator = std::forward<F>(literal_generator)](
+          auto primitive_type_constant) -> Status {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          return Trait<primitive_type_constant>::Run(
+              literal, std::move(literal_generator));
+        }
+        LOG(FATAL) << "Unhandled primitive type "
+                   << literal.shape().element_type();
+      },
+      literal.shape().element_type());
 }
 
 constexpr absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
@@ -1214,23 +1182,17 @@ Status HloEvaluator::EvaluateParameterFromCallerArgument(
 std::vector<int64_t> HloEvaluator::GetS64Indices(
     absl::Span<HloInstruction* const> start_indices) {
   auto get_first_s64 = [&](const Literal& index) -> int64_t {
-    switch (index.shape().element_type()) {
-      case S16:
-        return index.GetFirstElement<NativeTypeOf<S16>>();
-      case S32:
-        return index.GetFirstElement<NativeTypeOf<S32>>();
-      case S64:
-        return index.GetFirstElement<NativeTypeOf<S64>>();
-      case U16:
-        return index.GetFirstElement<NativeTypeOf<U16>>();
-      case U32:
-        return index.GetFirstElement<NativeTypeOf<U32>>();
-      case U64:
-        return index.GetFirstElement<NativeTypeOf<U64>>();
-      default:
-        LOG(FATAL) << "GetS64Indices: unhandled primitive type for "
-                   << PrimitiveType_Name(index.shape().element_type());
-    }
+    return primitive_util::PrimitiveTypeSwitch<int64_t>(
+        [&](auto primitive_type_constant) -> int64_t {
+          if constexpr (primitive_util::IsIntegralType(
+                            primitive_type_constant)) {
+            return static_cast<int64_t>(
+                index.GetFirstElement<NativeTypeOf<primitive_type_constant>>());
+          }
+          LOG(FATAL) << "GetS64Indices: unhandled primitive type for "
+                     << PrimitiveType_Name(index.shape().element_type());
+        },
+        index.shape().element_type());
   };
   std::vector<int64_t> start;
   start.reserve(start_indices.size());
@@ -1498,188 +1460,83 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   auto operand = is_finite->operand(0);
   auto elem_ty = operand->shape().element_type();
-  switch (elem_ty) {
-    case PRED:
-    case TUPLE:
-    case OPAQUE_TYPE:
-    case TOKEN:
-    case S4:
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-    case U4:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-    case C64:
-    case C128:
-    // Explicitly enumerate all types in this switch so that when we add a new
-    // type, we'll get a compile error here.
-    case PRIMITIVE_TYPE_INVALID:
-    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
-    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
-      return InvalidArgument(
-          "expected element type in shape to be floating point, but "
-          "got: %s",
-          PrimitiveType_Name(elem_ty));
-    case F8E5M2:
-    case F8E4M3FN:
-    case F8E4M3B11FNUZ:
-      return InvalidArgument("F8 is unsupported in IsFinite");
-
-    case F16: {
-      auto result_or = ElementWiseUnaryOpImpl<bool, Eigen::half>(
-          is_finite,
-          [](Eigen::half elem_operand) {
-            return std::isfinite(static_cast<float>(elem_operand));
-          },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
-      break;
-    }
-    case BF16: {
-      auto result_or = ElementWiseUnaryOpImpl<bool, bfloat16>(
-          is_finite,
-          [](bfloat16 elem_operand) {
-            return std::isfinite(static_cast<float>(elem_operand));
-          },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
-      break;
-    }
-    case F32: {
-      auto result_or = ElementWiseUnaryOpImpl<bool, float>(
-          is_finite,
-          [](float elem_operand) { return std::isfinite(elem_operand); },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
-      break;
-    }
-    case F64: {
-      auto result_or = ElementWiseUnaryOpImpl<bool, double>(
-          is_finite,
-          [](double elem_operand) { return std::isfinite(elem_operand); },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
-      break;
-    }
-  }
-
-  return OkStatus();
+  return primitive_util::PrimitiveTypeSwitch<Status>(
+      [&](auto primitive_type_constant) -> Status {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          auto result_or = ElementWiseUnaryOpImpl<bool, NativeT>(
+              is_finite,
+              [](NativeT elem_operand) {
+                return Eigen::numext::isfinite(elem_operand);
+              },
+              GetEvaluatedLiteralFor(operand));
+          TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+          return OkStatus();
+        }
+        return InvalidArgument(
+            "expected element type in shape to be floating point, but got: %s",
+            PrimitiveType_Name(elem_ty));
+      },
+      elem_ty);
 }
 
 Status HloEvaluator::HandleReal(HloInstruction* real) {
   auto operand = real->operand(0);
-  switch (operand->shape().element_type()) {
-    case BF16: {
-      auto result_or = ElementWiseUnaryOpImpl<bfloat16, bfloat16>(
-          real, [](bfloat16 elem_operand) { return elem_operand; },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
-      break;
-    }
-    case C64: {
-      auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
-          real, [](complex64 elem_operand) { return std::real(elem_operand); },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
-      break;
-    }
-    case C128: {
-      auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
-          real, [](complex128 elem_operand) { return std::real(elem_operand); },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
-      break;
-    }
-    case F16: {
-      auto result_or = ElementWiseUnaryOpImpl<Eigen::half, Eigen::half>(
-          real, [](Eigen::half elem_operand) { return elem_operand; },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
-      break;
-    }
-    case F32: {
-      auto result_or = ElementWiseUnaryOpImpl<float, float>(
-          real, [](float elem_operand) { return elem_operand; },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
-      break;
-    }
-    case F64: {
-      auto result_or = ElementWiseUnaryOpImpl<double, double>(
-          real, [](double elem_operand) { return elem_operand; },
-          GetEvaluatedLiteralFor(operand));
-      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
-      break;
-    }
-    default:
-      LOG(FATAL) << "HandleReal: unknown/unhandled primitive type: "
-                 << PrimitiveType_Name(operand->shape().element_type());
-  }
-
-  return OkStatus();
+  return primitive_util::PrimitiveTypeSwitch<Status>(
+      [&](auto primitive_type_constant) -> Status {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          auto result_or = ElementWiseUnaryOpImpl<NativeT, NativeT>(
+              real, [](NativeT elem_operand) { return elem_operand; },
+              GetEvaluatedLiteralFor(operand));
+          TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+          return OkStatus();
+        }
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          auto result_or =
+              ElementWiseUnaryOpImpl<typename NativeT::value_type, NativeT>(
+                  real,
+                  [](NativeT elem_operand) { return std::real(elem_operand); },
+                  GetEvaluatedLiteralFor(operand));
+          TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+          return OkStatus();
+        }
+        LOG(FATAL) << "HandleReal: unknown/unhandled primitive type: "
+                   << PrimitiveType_Name(operand->shape().element_type());
+      },
+      operand->shape().element_type());
 }
 
 Status HloEvaluator::HandleImag(HloInstruction* imag) {
   auto operand = imag->operand(0);
-  switch (operand->shape().element_type()) {
-    case BF16: {
-      auto result_or = ElementWiseUnaryOpImpl<bfloat16, bfloat16>(
-          imag, [](bfloat16 elem_operand) { return bfloat16(0); },
-          GetEvaluatedLiteralFor(imag->operand(0)));
-
-      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
-      break;
-    }
-    case C64: {
-      auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
-          imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
-          GetEvaluatedLiteralFor(imag->operand(0)));
-
-      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
-      break;
-    }
-    case C128: {
-      auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
-          imag, [](complex128 elem_operand) { return std::imag(elem_operand); },
-          GetEvaluatedLiteralFor(imag->operand(0)));
-
-      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
-      break;
-    }
-    case F16: {
-      auto result_or = ElementWiseUnaryOpImpl<Eigen::half, Eigen::half>(
-          imag, [](Eigen::half elem_operand) { return Eigen::half(0); },
-          GetEvaluatedLiteralFor(imag->operand(0)));
-
-      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
-      break;
-    }
-    case F32: {
-      auto result_or = ElementWiseUnaryOpImpl<float, float>(
-          imag, [](float elem_operand) { return 0; },
-          GetEvaluatedLiteralFor(imag->operand(0)));
-
-      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
-      break;
-    }
-    case F64: {
-      auto result_or = ElementWiseUnaryOpImpl<double, double>(
-          imag, [](double elem_operand) { return 0; },
-          GetEvaluatedLiteralFor(imag->operand(0)));
-
-      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
-      break;
-    }
-    default:
-      LOG(FATAL) << "HandleImag: unknown/unhandled primitive type: "
-                 << PrimitiveType_Name(operand->shape().element_type());
-  }
-
-  return OkStatus();
+  return primitive_util::PrimitiveTypeSwitch<Status>(
+      [&](auto primitive_type_constant) -> Status {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          auto result_or = ElementWiseUnaryOpImpl<NativeT, NativeT>(
+              imag, [](NativeT elem_operand) { return NativeT(0); },
+              GetEvaluatedLiteralFor(operand));
+          TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+          return OkStatus();
+        }
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          auto result_or =
+              ElementWiseUnaryOpImpl<typename NativeT::value_type, NativeT>(
+                  imag,
+                  [](NativeT elem_operand) { return std::imag(elem_operand); },
+                  GetEvaluatedLiteralFor(operand));
+          TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+          return OkStatus();
+        }
+        LOG(FATAL) << "HandleImag: unknown/unhandled primitive type: "
+                   << PrimitiveType_Name(operand->shape().element_type());
+      },
+      operand->shape().element_type());
 }
 
 Status HloEvaluator::HandleComplex(HloInstruction* complex) {
@@ -1688,30 +1545,23 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
   TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
 
   Literal result(complex->shape());
-  switch (complex->shape().element_type()) {
-    case C64: {
-      TF_RETURN_IF_ERROR(result.Populate<complex64>(
-          [&](absl::Span<const int64_t> multi_index) {
-            return std::complex<float>(real.Get<float>(multi_index),
-                                       imag.Get<float>(multi_index));
-          }));
-      break;
-    }
-    case C128: {
-      TF_RETURN_IF_ERROR(result.Populate<complex128>(
-          [&](absl::Span<const int64_t> multi_index) {
-            return std::complex<double>(real.Get<double>(multi_index),
-                                        imag.Get<double>(multi_index));
-          }));
-      break;
-    }
-    default:
-      LOG(FATAL) << "HandleComplex: unknown/unhandled primitive type: "
-                 << PrimitiveType_Name(complex->shape().element_type());
-  }
-
-  evaluated_[complex] = std::move(result);
-  return OkStatus();
+  return primitive_util::PrimitiveTypeSwitch<Status>(
+      [&](auto primitive_type_constant) -> Status {
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          TF_RETURN_IF_ERROR(result.Populate<NativeT>(
+              [&](absl::Span<const int64_t> multi_index) {
+                return NativeT(
+                    real.Get<typename NativeT::value_type>(multi_index),
+                    imag.Get<typename NativeT::value_type>(multi_index));
+              }));
+          evaluated_[complex] = std::move(result);
+          return OkStatus();
+        }
+        LOG(FATAL) << "HandleComplex: unknown/unhandled primitive type: "
+                   << PrimitiveType_Name(complex->shape().element_type());
+      },
+      complex->shape().element_type());
 }
 
 Status HloEvaluator::HandleCompare(HloInstruction* compare) {
@@ -1727,103 +1577,19 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
   const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
 
   // Note here we switch on the operand's type.
-  switch (lhs->shape().element_type()) {
-    case PRED: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<bool>(compare->shape(), direction, lhs_literal, rhs_literal));
-    } break;
-    case U8: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint8_t>(compare->shape(), direction,
-                                           lhs_literal, rhs_literal));
-    } break;
-    case U16: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint16_t>(compare->shape(), direction,
-                                            lhs_literal, rhs_literal));
-    } break;
-    case U32: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint32_t>(compare->shape(), direction,
-                                            lhs_literal, rhs_literal));
-    } break;
-    case U64: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint64_t>(compare->shape(), direction,
-                                            lhs_literal, rhs_literal));
-    } break;
-    case S8: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int8_t>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
-    } break;
-    case S16: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int16_t>(compare->shape(), direction,
-                                           lhs_literal, rhs_literal));
-    } break;
-    case S32: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int32_t>(compare->shape(), direction,
-                                           lhs_literal, rhs_literal));
-    } break;
-    case S64: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int64_t>(compare->shape(), direction,
-                                           lhs_literal, rhs_literal));
-    } break;
-    case F8E5M2: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<tsl::float8_e5m2>(compare->shape(), direction,
-                                                    lhs_literal, rhs_literal));
-    } break;
-    case F8E4M3FN: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3fn>(
-                                                   compare->shape(), direction,
-                                                   lhs_literal, rhs_literal));
-    } break;
-    case F8E4M3B11FNUZ: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare], Compare<tsl::float8_e4m3b11>(
-                                                   compare->shape(), direction,
-                                                   lhs_literal, rhs_literal));
-    } break;
-    case F16: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<half>(compare->shape(), direction, lhs_literal, rhs_literal));
-    } break;
-    case BF16: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<bfloat16>(compare->shape(), direction,
-                                            lhs_literal, rhs_literal));
-    } break;
-    case F32: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<float>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
-    } break;
-    case F64: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<double>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
-    } break;
-    case C64: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<complex64>(compare->shape(), direction,
-                                             lhs_literal, rhs_literal));
-    } break;
-    case C128: {
-      TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<complex128>(compare->shape(), direction,
-                                              lhs_literal, rhs_literal));
-    } break;
-    default:
-      LOG(FATAL) << "HandleCompare: unknown primitive type: "
-                 << PrimitiveType_Name(lhs->shape().element_type());
-  }
-
-  return OkStatus();
+  return primitive_util::PrimitiveTypeSwitch<Status>(
+      [&](auto primitive_type_constant) -> Status {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                              Compare<NativeT>(compare->shape(), direction,
+                                               lhs_literal, rhs_literal));
+          return OkStatus();
+        }
+        LOG(FATAL) << "HandleCompare: unknown primitive type: "
+                   << PrimitiveType_Name(lhs->shape().element_type());
+      },
+      lhs->shape().element_type());
 }
 
 Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
@@ -3684,36 +3450,15 @@ namespace {
 
 StatusOr<Literal> CreateScalarLiteral(int64_t value,
                                       PrimitiveType element_type) {
-  Literal result;
-  switch (element_type) {
-    case S8:
-      result = LiteralUtil::CreateR0(static_cast<int8_t>(value));
-      break;
-    case U8:
-      result = LiteralUtil::CreateR0(static_cast<uint8_t>(value));
-      break;
-    case S16:
-      result = LiteralUtil::CreateR0(static_cast<int16_t>(value));
-      break;
-    case U16:
-      result = LiteralUtil::CreateR0(static_cast<uint16_t>(value));
-      break;
-    case S32:
-      result = LiteralUtil::CreateR0(static_cast<int32_t>(value));
-      break;
-    case U32:
-      result = LiteralUtil::CreateR0(static_cast<uint32_t>(value));
-      break;
-    case S64:
-      result = LiteralUtil::CreateR0(static_cast<int64_t>(value));
-      break;
-    case U64:
-      result = LiteralUtil::CreateR0(static_cast<uint64_t>(value));
-      break;
-    default:
-      return InvalidArgument("Unsupported element type.");
-  }
-  return result;
+  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+      [&](auto primitive_type_constant) -> StatusOr<Literal> {
+        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
+          return LiteralUtil::CreateR0(
+              static_cast<NativeTypeOf<primitive_type_constant>>(value));
+        }
+        return InvalidArgument("Unsupported element type.");
+      },
+      element_type);
 }
 
 // Parses the while loop if it matches one of the known patterns. Returns the
@@ -3835,58 +3580,16 @@ Literal ExtractLiteralFromIndexPositions(const Literal& from,
 StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
                                             absl::Span<int64_t const> indices) {
   PrimitiveType type = from.shape().element_type();
-  switch (type) {
-    case PRED: {
-      return ExtractLiteralFromIndexPositions<bool>(from, indices);
-    }
-    case U8: {
-      return ExtractLiteralFromIndexPositions<uint8_t>(from, indices);
-    }
-    case S8: {
-      return ExtractLiteralFromIndexPositions<int8_t>(from, indices);
-    }
-    case BF16: {
-      return ExtractLiteralFromIndexPositions<bfloat16>(from, indices);
-    }
-    case F16: {
-      return ExtractLiteralFromIndexPositions<Eigen::half>(from, indices);
-    }
-    case U16: {
-      return ExtractLiteralFromIndexPositions<uint16_t>(from, indices);
-    }
-    case S16: {
-      return ExtractLiteralFromIndexPositions<int16_t>(from, indices);
-    }
-    case F32: {
-      return ExtractLiteralFromIndexPositions<float>(from, indices);
-    }
-    case U32: {
-      return ExtractLiteralFromIndexPositions<uint32_t>(from, indices);
-    }
-    case S32: {
-      return ExtractLiteralFromIndexPositions<int32_t>(from, indices);
-    }
-    case F64: {
-      return ExtractLiteralFromIndexPositions<double>(from, indices);
-    }
-    case C64: {
-      return ExtractLiteralFromIndexPositions<std::complex<float>>(from,
-                                                                   indices);
-    }
-    case U64: {
-      return ExtractLiteralFromIndexPositions<uint64_t>(from, indices);
-    }
-    case S64: {
-      return ExtractLiteralFromIndexPositions<int64_t>(from, indices);
-    }
-    case C128: {
-      return ExtractLiteralFromIndexPositions<std::complex<double>>(from,
-                                                                    indices);
-    }
-    default:
-      return InvalidArgument("Unsupported type for Sort: %s",
-                             PrimitiveType_Name(type));
-  }
+  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+      [&](auto primitive_type_constant) -> StatusOr<Literal> {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          return ExtractLiteralFromIndexPositions<
+              NativeTypeOf<primitive_type_constant>>(from, indices);
+        }
+        return InvalidArgument("Unsupported type for Sort: %s",
+                               PrimitiveType_Name(type));
+      },
+      type);
 }
 
 // For one particular placement of a window in a base shape (the placement is
@@ -4016,49 +3719,44 @@ template <PrimitiveType operand_type, PrimitiveType random_type>
 StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                       const Literal& random_literal,
                                       const Shape& result_shape) {
-  switch (result_shape.element_type()) {
-#define CONVERT_IF_RESULT_TYPES_MATCH(type)                        \
-  case (type):                                                     \
-    return StochasticConvertOp<operand_type, random_type, (type)>( \
-        operand_literal, random_literal, result_shape);
-    CONVERT_IF_RESULT_TYPES_MATCH(S32)
-    CONVERT_IF_RESULT_TYPES_MATCH(S16)
-    CONVERT_IF_RESULT_TYPES_MATCH(S8)
-#undef CONVERT_IF_RESULT_TYPES_MATCH
-    default:
-      break;
-  }
-  // TODO(b/232442915): Enable converting big floats to small floats.
-  return Unimplemented(
-      "Stochastically converting from type %s to type %s is not implemented.",
-      PrimitiveType_Name(operand_literal.shape().element_type()),
-      PrimitiveType_Name(result_shape.element_type()));
+  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+      [&](auto primitive_type_constant) -> StatusOr<Literal> {
+        if constexpr (primitive_util::IsSignedIntegralType(
+                          primitive_type_constant)) {
+          return StochasticConvertOp<operand_type, random_type,
+                                     primitive_type_constant>(
+              operand_literal, random_literal, result_shape);
+        }
+        // TODO(b/232442915): Enable converting big floats to small floats.
+        return Unimplemented(
+            "Stochastically converting from type %s to type %s is not "
+            "implemented.",
+            PrimitiveType_Name(operand_literal.shape().element_type()),
+            PrimitiveType_Name(result_shape.element_type()));
+      },
+      result_shape.element_type());
 }
 
 StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                       const Literal& random_literal,
                                       const Shape& result_shape) {
-  switch (operand_literal.shape().element_type()) {
-    case F16:
-      return StochasticConvertOp<F16, U16>(operand_literal, random_literal,
-                                           result_shape);
-    case BF16:
-      return StochasticConvertOp<BF16, U16>(operand_literal, random_literal,
-                                            result_shape);
-    case F32:
-      return StochasticConvertOp<F32, U32>(operand_literal, random_literal,
-                                           result_shape);
-    case F64:
-      return StochasticConvertOp<F64, U64>(operand_literal, random_literal,
-                                           result_shape);
-    default:
-      break;
-  }
-  // TODO(b/232442915): Enable converting big floats to small floats.
-  return Unimplemented(
-      "Stochastically converting from type %s to type %s is not implemented.",
-      PrimitiveType_Name(operand_literal.shape().element_type()),
-      PrimitiveType_Name(result_shape.element_type()));
+  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+      [&](auto primitive_type_constant) -> StatusOr<Literal> {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          return StochasticConvertOp<
+              primitive_type_constant,
+              primitive_util::UnsignedIntegralTypeForBitWidth(
+                  primitive_util::BitWidth(primitive_type_constant))>(
+              operand_literal, random_literal, result_shape);
+        }  // TODO(b/232442915): Enable converting big floats to small floats.
+        return Unimplemented(
+            "Stochastically converting from type %s to type %s is not "
+            "implemented.",
+            PrimitiveType_Name(operand_literal.shape().element_type()),
+            PrimitiveType_Name(result_shape.element_type()));
+      },
+      operand_literal.shape().element_type());
 }
 }  // namespace
 

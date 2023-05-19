@@ -725,16 +725,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Fuse the possible addition of a matrix bias here to enable the subsequent
     // fusion of the scaling and conversion of D into the Custom Call. Fusing
     // a matrix bias is only supported with CUDA 12 and above.
-    HloInstruction *c = nullptr;
+    HloInstruction *c = nullptr, *add = nullptr;
 
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
-      HloInstruction *add = instr->users()[0];
-      HloInstruction *bias = add->mutable_operand(!add->operand_index(instr));
+      HloInstruction *bias = instr->users()[0]->mutable_operand(
+          !instr->users()[0]->operand_index(instr));
       if (bias->opcode() != HloOpcode::kBroadcast) {
         c = bias;
         gemm_backend_config.set_beta(1.0);
-        TF_RETURN_IF_ERROR(ReplaceInstruction(add, instr));
+        add = instr->users()[0];
       }
     }
 
@@ -893,7 +893,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           instr->shape().dimensions(), strides));
     }
     TF_RETURN_IF_ERROR(
-        ReplaceInstruction(instr, slice ? slice : new_custom_call));
+        ReplaceInstruction(add ? add : instr, slice ? slice : new_custom_call));
     return true;
   }
 

@@ -17,17 +17,11 @@
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-# TODO(b/269483538): needed for references while refactors are in progress
-# This is to avoid a circular dependency:
-# cond_v2 -> gradients_util -> control_flow_ops
-cond_v2 = LazyLoader("cond_v2", globals(),
-                     "tensorflow.python.ops.cond_v2")
 
 
 def _indexed_case_verify_and_canonicalize_args(branch_fns, default,

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/errors.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace tsl {
@@ -75,5 +76,33 @@ TEST(Status, ErrorStatusInsertPayloadsFromErrorStatus) {
   auto payloads_error_status = errors::GetPayloads(s_error2);
   ASSERT_EQ(payloads_error_status.size(), 3);
 }
+
+#if defined(PLATFORM_GOOGLE)
+
+Status GetError() {
+  return absl::InvalidArgumentError("An invalid argument error");
+}
+
+Status PropagateError() {
+  TF_RETURN_IF_ERROR(GetError());
+  return absl::OkStatus();
+}
+
+Status PropagateError2() {
+  TF_RETURN_IF_ERROR(PropagateError());
+  return absl::OkStatus();
+}
+
+TEST(Status, StackTracePropagation) {
+  Status s = PropagateError2();
+  auto sources = s.GetSourceLocations();
+  ASSERT_EQ(sources.size(), 3);
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_EQ(sources[i].file_name(),
+              "third_party/tensorflow/tsl/platform/errors_test.cc");
+  }
+}
+#endif
 
 }  // namespace tsl

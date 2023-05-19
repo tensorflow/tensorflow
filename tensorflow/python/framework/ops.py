@@ -3122,8 +3122,8 @@ class Graph(pywrap_tf_session.PyGraph):
     else:
       self._add_function(function)
 
-    if hasattr(function, "graph"):
-      for f in function.graph._functions.values():  # pylint: disable=protected-access
+    if hasattr(function, "children"):
+      for f in function.children:  # pylint: disable=protected-access
         if self._is_function(f.name):
           if overwrite:
             self._remove_function(f.name)
