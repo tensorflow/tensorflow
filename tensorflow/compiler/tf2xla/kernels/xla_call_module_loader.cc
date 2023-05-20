@@ -61,17 +61,17 @@ namespace {
 // version in the constructor in xla.py.
 // Version 1 used MHLO & CHLO, not supported anymore.
 // Version 2 supports StableHLO & CHLO. From 10/2022.
-const int VERSION_START_STABLE_HLO = 2;
+constexpr int VERSION_START_STABLE_HLO = 2;
 // Version 3 supports platform checking and multiple platforms. From 02/2023.
-const int VERSION_START_PLATFORMS = 3;
+constexpr int VERSION_START_PLATFORMS = 3;
 // Version 4 supports StableHLO with compatibility guarantees.
 // Used from 03/2023.
-const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
+constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
 // Version 5 add support to stablehlo.custom_call for host call tf graph.
 // Used from 04/2023.
-const int VERSION_SUPPORT_CUSTOM_CALL = 5;
-const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
-const int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
+constexpr int VERSION_SUPPORT_CUSTOM_CALL = 5;
+constexpr int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
+constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
 
 // Pretty-prints a module, optionally with debug information.
 std::string ModuleToString(mlir::ModuleOp mlir_module, bool with_debugging) {
