@@ -24,6 +24,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -378,10 +380,10 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
     if (assigned_stream_index.has_value() &&
         *assigned_stream_index !=
             snapshot_progress->snapshot_task().stream_index()) {
-      return errors::Internal("worker ", worker_address,
-                              " think it's assigned stream ",
-                              " but it's actually assigned assigned stream ",
-                              *assigned_stream_index);
+      return absl::InternalError(absl::StrCat(
+          "Worker ", worker_address, " was assigned stream ",
+          snapshot_progress->snapshot_task().stream_index(),
+          ", but is now assigned a different stream ", *assigned_stream_index));
     }
     if (assigned_stream_index.has_value() && snapshot_progress->completed()) {
       TF_RETURN_IF_ERROR(HandleStreamCompletion(
