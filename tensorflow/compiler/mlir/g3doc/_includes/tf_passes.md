@@ -2002,4 +2002,12 @@ After the outlining, it updates tf.XlaCallModule's module attribute to be
 empty, adds an `_entry_function` attribute referring to the entry function.
 It also adds a `_from_xla_call_module: true` attribute to each lifted
 StableHLO function.
+### `-tf-xla-call-module-serialization`: Serializes StableHLO functions from top-level module into `tf.XlaCallModule`'s `module` attribute
+This pass collects StableHLO functions referenced from `tf.XlaCallModule`'s
+`_entry_function` attribute into a module, serializes the module into MLIR
+bytecode, and embed the bytecode to `tf.XlaCallModule`'s `module` attribute.
+
+After serialization, this pass removes the `_entry_function` attribute from
+`tf.XlaCallModule`, and removes all the serialized stablehlo functions
+from the top-level module.
 ### `-tfe-legalize-tfg`: Legalize from TFG to the TFE dialect
