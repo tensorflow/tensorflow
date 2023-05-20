@@ -68,6 +68,7 @@ Status SnapshotManager::Start(const SnapshotRequest& request) {
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());
   TF_RETURN_IF_ERROR(WriteOnDiskMetadata(request));
   metadata_ = request.metadata();
+  LOG(INFO) << "Started writing tf.data distributed snapshot at " << path_;
   return OkStatus();
 }
 
@@ -143,6 +144,7 @@ Status SnapshotManager::Resume() {
   }
   TF_RETURN_IF_ERROR(ReadOnDiskMetadata());
   TF_RETURN_IF_ERROR(ReadOnDiskStreams());
+  LOG(INFO) << "Resumed writing tf.data distributed snapshot at " << path_;
   return OkStatus();
 }
 
