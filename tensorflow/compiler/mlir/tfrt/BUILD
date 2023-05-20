@@ -587,6 +587,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@tf_runtime//:compiler_tfrt_op_interfaces",
     ],
 )
 
