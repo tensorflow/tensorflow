@@ -61,6 +61,7 @@ StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
 }
 
 Status SnapshotManager::Start(const SnapshotRequest& request) {
+  LOG(INFO) << "Starting to write tf.data snapshot at " << request.path();
   if (env_->FileExists(request.path()).ok()) {
     return errors::AlreadyExists("tf.data snapshot at ", request.path(),
                                  " already exists.");
